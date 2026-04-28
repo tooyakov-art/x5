@@ -93,7 +93,7 @@ jobs:
             PROVISIONING_PROFILE_SPECIFIER="${{ steps.profile.outputs.name }}" \
             DEVELOPMENT_TEAM=F8LA8PC4U6 \
             OTHER_CODE_SIGN_FLAGS="--keychain $RUNNER_TEMP/build.keychain-db" \
-            archive | xcpretty || (cat /tmp/build.log || true; exit 1)
+            archive
 
       - name: Export IPA
         run: |
