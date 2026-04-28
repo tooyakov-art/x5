@@ -4,6 +4,21 @@
 > Build runs on **GitHub Actions macOS runner (free tier)**.
 > Read top-to-bottom on submission day. Every step has a checkbox.
 
+## Already done automatically
+
+- ✅ Private code repo: https://github.com/tooyakov-art/x5
+- ✅ Public site repo: https://github.com/tooyakov-art/x5site
+- ✅ Live legal pages on GitHub Pages:
+  - https://tooyakov-art.github.io/x5site/
+  - https://tooyakov-art.github.io/x5site/privacy.html
+  - https://tooyakov-art.github.io/x5site/terms.html
+  - https://tooyakov-art.github.io/x5site/support.html
+- ✅ Distribution key + CSR generated in `_signing/distribution.key` + `_signing/distribution.csr`
+- ✅ Swift sources reference real Pages URLs
+- ✅ `scripts/setup-secrets.sh` automates: cer→p12, base64, upload all 7 secrets via gh
+
+You only need to do the manual web-UI steps below + run `setup-secrets.sh` once.
+
 ---
 
 ## What you need before you start
