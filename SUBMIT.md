@@ -85,6 +85,8 @@ That is enough for native iOS sign-in. The Services ID / Secret Key fields are o
 
 Copy the numeric **App Store Connect App ID** from the URL (e.g. `https://appstoreconnect.apple.com/apps/1234567890`) — you'll use it in Phase 8.
 
+> Created on 2026-04-28: app name `X5 — AI Captions` (plain `X5` was taken), SKU `x5studio001` (`x5app001` was taken), **ASC App ID = 6764340680**.
+
 ---
 
 ## Phase 5 — Generate signing certificate (15 min)
@@ -311,7 +313,7 @@ Required content:
 - Main screen with results filled in
 - Profile screen (with Delete Account row visible)
 
-**Critical rule:** these screenshots must NOT visually resemble X5 Marketing screenshots. Apple compares.
+**Critical rule:** screenshots should reflect what the app actually does — caption generation in 5 different examples plus the Profile / Sign-in flows.
 
 ### 10.6 App Review Information *(this is what saves you)*
 
@@ -391,7 +393,7 @@ Required content:
 
 ---
 
-## Phase 12 — Roadmap to X5-level functionality
+## Phase 12 — Update cadence after launch
 
 **Once v1.0 is live**, ship one update per week. Updates are reviewed much more leniently — usually 1 day.
 
@@ -411,16 +413,16 @@ Suggested progression:
 |---------|------------|
 | **v1.0** | Caption generator (templates) + Apple Sign-In + Delete Account |
 | v1.1 | Replace template engine with real Gemini API via Supabase RPC |
-| v1.2 | Add "Content Ideas" tool (second use-case) |
+| v1.2 | Add "Content Ideas" tool — different angle, same writing-tools category |
 | v1.3 | Add local history (in-memory or UserDefaults) |
 | v1.4 | Add hashtag generator |
-| v1.5 | Push notifications (request permission contextually) |
-| v1.6 | AI chat (text-based) |
-| v1.7 | Image generation |
-| v1.8 | Voice TTS |
-| v1.9 | **First IAP** — Pro subscription (now safe, app has approval history) |
-| v2.0 | Polish + brand X5 unification |
-| v2.1+ | Courses, marketplace, etc. — full X5 catalogue |
+| v1.5 | Push notifications (contextual prompt) |
+| v1.6 | AI rewrite / tone-shift tool |
+| v1.7 | Multi-language support |
+| v1.8 | Optional Pro tier (longer outputs, more templates) — IAP |
+| v1.9+ | More tools in the AI-writing category (slogan generator, audience-persona helper, etc.) |
+
+X5 stays in the **AI writing tools** category. It is not merged with or transformed into any other product, regardless of what other apps live under the same Team.
 
 Each step: small, focused, low risk. Apple reviews subsequent updates in hours, not days.
 

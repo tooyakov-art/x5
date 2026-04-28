@@ -106,16 +106,14 @@ jobs:
           retention-days: 14
 
       - name: Write App Store Connect API key
-        if: ${{ secrets.ASC_API_KEY_BASE64 != '' }}
         env:
           ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
         run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo "$ASC_API_KEY_BASE64" | base64 --decode > "~/.appstoreconnect/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          echo "$ASC_API_KEY_BASE64" | base64 --decode > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
 
       - name: Upload to TestFlight
-        if: ${{ secrets.ASC_API_KEY_BASE64 != '' }}
         env:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
