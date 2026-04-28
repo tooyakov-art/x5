@@ -129,7 +129,12 @@ jobs:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
         run: |
           mkdir -p "$HOME/.appstoreconnect/private_keys"
-          echo "$ASC_API_KEY_BASE64" | base64 --decode > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
+          P8_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
+          printf '%s' "$ASC_API_KEY_BASE64" | base64 --decode > "$P8_PATH"
+          echo "p8 size: $(wc -c < "$P8_PATH")"
+          # Also place where altool searches per Apple docs
+          mkdir -p ./private_keys
+          cp "$P8_PATH" ./private_keys/
 
       - name: Upload to TestFlight
         env:
