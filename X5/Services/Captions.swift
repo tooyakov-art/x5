@@ -1,0 +1,54 @@
+import Foundation
+
+enum Tone: String, CaseIterable {
+    case friendly
+    case professional
+    case funny
+
+    var label: String {
+        switch self {
+        case .friendly: return "Friendly"
+        case .professional: return "Pro"
+        case .funny: return "Funny"
+        }
+    }
+}
+
+enum CaptionGenerator {
+    static let templates: [Tone: [String]] = [
+        .friendly: [
+            "Hey friends! Just thinking about {topic} today and had to share. What do you think?",
+            "Real talk about {topic} — would love to hear your take in the comments.",
+            "Sometimes the best ideas come from {topic}. Tag someone who needs this today.",
+            "A small reminder: {topic} matters more than we admit.",
+            "Quick story about {topic} — and why it changes things for me.",
+            "If {topic} resonates with you, drop a heart in the comments.",
+            "There is something beautiful about {topic}. Keep going.",
+        ],
+        .professional: [
+            "Three lessons from working with {topic} that you can apply this week.",
+            "A data-driven look at {topic} and what it means for your strategy.",
+            "Why {topic} should be on every marketer's radar in 2026.",
+            "Breaking down {topic}: a framework refined over years of practice.",
+            "The hidden cost of ignoring {topic} — and how to turn it into an advantage.",
+            "Most teams underestimate {topic}. Here is why that is changing.",
+            "A short thread on {topic}, written for operators who need results.",
+        ],
+        .funny: [
+            "Me trying to explain {topic} to my mom for the fifth time this month.",
+            "POV: you opened the app for a quick scroll and now you are deep into {topic}.",
+            "{topic} but make it relatable. You are welcome.",
+            "Plot twist: {topic} is actually personal development. Coping mechanism unlocked.",
+            "Daily reminder that {topic} is a mood, a vibe, and possibly a personality trait.",
+            "Nobody: literally nobody: me at 2am thinking about {topic}.",
+            "I came here to talk about {topic} and frankly I am not okay.",
+        ],
+    ]
+
+    static func generate(topic: String, tone: Tone) -> [String] {
+        let trimmed = topic.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let bank = templates[tone] else { return [] }
+        let shuffled = bank.shuffled().prefix(5)
+        return shuffled.map { $0.replacingOccurrences(of: "{topic}", with: trimmed) }
+    }
+}

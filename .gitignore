@@ -1,0 +1,38 @@
+## Xcode
+build/
+DerivedData/
+*.xcodeproj/
+!project.yml
+xcuserdata/
+*.xcworkspace/
+*.xcuserstate
+*.xcuserdatad/
+
+## Build products
+*.ipa
+*.dSYM.zip
+*.xcarchive
+
+## Signing artifacts (NEVER commit)
+*.p12
+*.mobileprovision
+*.cer
+*.p8
+*.key
+*.csr
+*.pem
+AuthKey_*.p8
+_signing/
+
+## macOS / editor cruft
+.DS_Store
+.swiftpm/
+*.swp
+*~
+
+## Node (icon generator)
+node_modules/
+
+## Local secrets
+.env
+secrets.local
