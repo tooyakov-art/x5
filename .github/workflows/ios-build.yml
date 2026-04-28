@@ -27,6 +27,14 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: List & install iOS simulator runtime if missing
+        run: |
+          xcodebuild -showsdks
+          xcrun simctl list runtimes
+          # Pre-install iOS runtime needed by actool when archiving on Xcode 16.
+          sudo xcodebuild -downloadPlatform iOS || true
+          xcrun simctl list runtimes
+
       - name: Install xcodegen
         run: brew install xcodegen
 
