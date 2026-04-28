@@ -69,11 +69,11 @@ struct LoginView: View {
             do {
                 try await auth.signInWithApple(authorization: authorization)
             } catch {
-                errorMessage = "Sign-in failed. Please try again."
+                errorMessage = error.localizedDescription
             }
         case .failure(let error as NSError):
             if error.code != ASAuthorizationError.canceled.rawValue {
-                errorMessage = "Sign-in failed. Please try again."
+                errorMessage = "Apple: \(error.localizedDescription)"
             }
         }
     }
