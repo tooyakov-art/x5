@@ -63,11 +63,11 @@ struct ProfileView: View {
                 Section {
                     Link(
                         "Privacy Policy",
-                        destination: URL(string: "https://x5studio.app/privacy")!
+                        destination: URL(string: "https://tooyakov-art.github.io/x5site/privacy.html")!
                     )
                     Link(
                         "Terms of Service",
-                        destination: URL(string: "https://x5studio.app/terms")!
+                        destination: URL(string: "https://tooyakov-art.github.io/x5site/terms.html")!
                     )
                     Link(
                         "Contact Support",

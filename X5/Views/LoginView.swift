@@ -50,7 +50,7 @@ struct LoginView: View {
                         .multilineTextAlignment(.center)
                 }
 
-                Link("Privacy Policy", destination: URL(string: "https://x5studio.app/privacy")!)
+                Link("Privacy Policy", destination: URL(string: "https://tooyakov-art.github.io/x5site/privacy.html")!)
                     .font(.footnote)
                     .foregroundColor(.white.opacity(0.5))
                     .padding(.top, 8)
