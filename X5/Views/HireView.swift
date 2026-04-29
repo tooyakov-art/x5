@@ -74,7 +74,7 @@ struct HireView: View {
                 .frame(maxWidth: .infinity)
             }
             .background(Color(red: 0.04, green: 0.04, blue: 0.07).ignoresSafeArea())
-            .navigationTitle("Hire")
+            .navigationTitle("Hub")
             .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(isPresented: $showingPaywall) { PaywallView() }
         }

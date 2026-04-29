@@ -37,38 +37,25 @@ struct PaywallView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
                 VStack(spacing: 10) {
-                    Button {
-                        // TODO: real StoreKit purchase
-                        sub.setPro(true)
-                        dismiss()
-                    } label: {
-                        VStack(spacing: 4) {
-                            Text("Subscribe — \(Subscription.monthlyPrice) / month")
-                                .font(.system(size: 17, weight: .bold))
-                                .foregroundColor(.black)
-                            Text("Cancel anytime")
-                                .font(.system(size: 12))
-                                .foregroundColor(.black.opacity(0.6))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Color.accentColor)
-                        .cornerRadius(16)
+                    VStack(spacing: 4) {
+                        Text("Subscribe — \(Subscription.monthlyPrice) / month")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(.black.opacity(0.5))
+                        Text("Coming soon")
+                            .font(.system(size: 12))
+                            .foregroundColor(.black.opacity(0.5))
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.accentColor.opacity(0.5))
+                    .cornerRadius(16)
 
-                    Button {
-                        // TODO: restore via StoreKit
-                    } label: {
-                        Text("Restore purchases")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.white.opacity(0.55))
-                    }
-
-                    Text("Auto-renewing subscription. Manage or cancel anytime in iOS Settings → Apple ID → Subscriptions.")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.4))
+                    Text("In-app purchase will be available soon. We're finalizing the App Store subscription.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.55))
                         .multilineTextAlignment(.center)
                         .padding(.top, 4)
+
                 }
 
                 HStack(spacing: 18) {

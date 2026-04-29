@@ -1,21 +1,20 @@
 import SwiftUI
 
-/// Standard SwiftUI TabView shell — same dark theme as build 10.
-/// 5 tabs: Captions / Chat / Courses / Hire / Profile.
+/// Bottom tab layout — matches x5 web order: Generate / Courses / Chat / Hub / Profile.
 struct AppTabView: View {
     var body: some View {
         TabView {
-            MainView()
-                .tabItem { Label("Captions", systemImage: "text.alignleft") }
-
-            ChatView()
-                .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
+            GenerateView()
+                .tabItem { Label("Generate", systemImage: "wand.and.stars") }
 
             CoursesView()
                 .tabItem { Label("Courses", systemImage: "graduationcap") }
 
+            ChatView()
+                .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
+
             HireView()
-                .tabItem { Label("Hire", systemImage: "person.2") }
+                .tabItem { Label("Hub", systemImage: "briefcase") }
 
             ProfileView(showsDoneButton: false)
                 .tabItem { Label("Profile", systemImage: "person.crop.circle") }
