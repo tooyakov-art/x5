@@ -1,0 +1,14 @@
+app_identifier "com.x5studio.app"
+team_id "F8LA8PC4U6"
+
+# Skip metadata management — keep what's already in ASC
+skip_metadata true
+
+# Screenshots live alongside this Deliverfile
+screenshots_path "./fastlane/screenshots"
+overwrite_screenshots true
+
+# Misc
+force true
+run_precheck_before_submit false
+automatic_release false

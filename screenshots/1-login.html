@@ -1,0 +1,40 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+html,body{width:1290px;height:2796px;background:#0a0a12;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",sans-serif;color:#fff}
+.status-bar{height:120px;display:flex;justify-content:space-between;align-items:center;padding:0 80px;font-weight:600;font-size:42px;color:#fff}
+.status-icons{display:flex;gap:20px;align-items:center;font-size:38px}
+.container{padding:0 80px;display:flex;flex-direction:column;height:calc(100% - 120px)}
+.spacer{flex:1}
+.brand{display:flex;flex-direction:column;align-items:center;gap:40px}
+.logo{width:240px;height:240px;background:#FFEB3B;border-radius:60px;display:flex;align-items:center;justify-content:center;color:#000;font-weight:900;font-size:96px}
+.brand-name{font-size:88px;font-weight:700;color:#fff}
+.tagline{text-align:center;font-size:42px;color:rgba(255,255,255,0.55);line-height:1.4;margin-top:8px}
+.bottom{padding-bottom:120px}
+.apple-btn{height:140px;background:#fff;color:#000;border-radius:38px;display:flex;align-items:center;justify-content:center;font-size:46px;font-weight:600;gap:20px}
+.apple-btn::before{content:"";width:48px;height:56px;background:#000;mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>') no-repeat center / contain;-webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>') no-repeat center / contain}
+.privacy{text-align:center;font-size:36px;color:rgba(255,255,255,0.5);margin-top:32px}
+.headline{position:absolute;left:80px;right:80px;top:200px;text-align:center;font-size:56px;font-weight:700;color:#FFEB3B}
+</style>
+</head>
+<body>
+<div class="status-bar">
+<span>9:41</span>
+<span class="status-icons">●●●● ●●●● 100%</span>
+</div>
+<div class="headline">Marketing captions in seconds.</div>
+<div class="container">
+  <div class="spacer"></div>
+  <div class="brand">
+    <div class="logo">X5</div>
+    <div class="brand-name">X5</div>
+    <div class="tagline">Smart caption studio for marketers.<br>Generate post copy in seconds.</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="bottom">
+    <div class="apple-btn">Sign in with Apple</div>
+    <div class="privacy">Privacy Policy</div>
+  </div>
+</div>
+</body></html>

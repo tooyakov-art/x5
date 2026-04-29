@@ -1,0 +1,41 @@
+name: ASC ship (screenshots + submit for review)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to run"
+        required: true
+        default: "ship"
+        type: choice
+        options:
+          - upload_screenshots
+          - submit_for_review
+          - ship
+
+jobs:
+  ship:
+    runs-on: macos-26
+    timeout-minutes: 25
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: false
+
+      - name: Install fastlane
+        run: gem install fastlane -N
+
+      - name: Run fastlane
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          fastlane ios ${{ inputs.action }}
