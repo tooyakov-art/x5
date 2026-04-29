@@ -23,7 +23,7 @@ struct LoginView: View {
                     .font(.system(size: 32, weight: .bold))
                     .foregroundColor(.white)
 
-                Text("AI caption writer for marketers.\nGenerate post copy in seconds.")
+                Text("Smart caption templates for marketers.\nGenerate post copy in seconds.")
                     .font(.system(size: 15))
                     .foregroundColor(.white.opacity(0.55))
                     .multilineTextAlignment(.center)

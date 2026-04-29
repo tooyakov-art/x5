@@ -2,10 +2,14 @@ import SwiftUI
 
 struct MainView: View {
     @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var history: CaptionHistory
+
     @State private var topic: String = ""
     @State private var tone: Tone = .friendly
+    @State private var platform: Platform = .instagram
     @State private var results: [String] = []
     @State private var showingProfile = false
+    @State private var showingHistory = false
     @FocusState private var topicFocused: Bool
 
     var body: some View {
@@ -33,6 +37,19 @@ struct MainView: View {
                             }
                         }
                     }
+
+                    sectionLabel("Platform")
+                    Picker("", selection: $platform) {
+                        ForEach(Platform.allCases, id: \.self) { p in
+                            Text(p.label).tag(p)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text("Target length: \(platform.recommendedLength) chars")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.45))
+                        .padding(.top, -6)
 
                     Button(action: generate) {
                         Text("Generate")
@@ -66,10 +83,16 @@ struct MainView: View {
             .navigationTitle("X5")
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showingHistory = true } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 19))
+                            .foregroundColor(.white)
+                    }
+                    .accessibilityLabel("History")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingProfile = true
-                    } label: {
+                    Button { showingProfile = true } label: {
                         Image(systemName: "person.crop.circle")
                             .font(.system(size: 22))
                             .foregroundColor(.white)
@@ -77,9 +100,8 @@ struct MainView: View {
                     .accessibilityLabel("Profile")
                 }
             }
-            .sheet(isPresented: $showingProfile) {
-                ProfileView()
-            }
+            .sheet(isPresented: $showingProfile) { ProfileView() }
+            .sheet(isPresented: $showingHistory) { HistoryView() }
         }
         .background(Color(red: 0.04, green: 0.04, blue: 0.07).ignoresSafeArea())
     }
@@ -90,7 +112,10 @@ struct MainView: View {
 
     private func generate() {
         topicFocused = false
-        results = CaptionGenerator.generate(topic: topic, tone: tone)
+        results = CaptionGenerator.generate(topic: topic, tone: tone, platform: platform)
+        if !results.isEmpty {
+            history.add(topic: topic, tone: tone, platform: platform, captions: results)
+        }
     }
 
     @ViewBuilder
@@ -116,16 +141,11 @@ private struct ToneChip: View {
                 .padding(.vertical, 10)
                 .background(
                     Capsule().fill(
-                        selected
-                            ? Color.accentColor.opacity(0.18)
-                            : Color.white.opacity(0.06)
+                        selected ? Color.accentColor.opacity(0.18) : Color.white.opacity(0.06)
                     )
                 )
                 .overlay(
-                    Capsule().stroke(
-                        selected ? Color.accentColor : Color.clear,
-                        lineWidth: 1
-                    )
+                    Capsule().stroke(selected ? Color.accentColor : Color.clear, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
@@ -135,6 +155,7 @@ private struct ToneChip: View {
 private struct ResultCard: View {
     let text: String
     @State private var copied = false
+    @State private var sharing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -144,17 +165,23 @@ private struct ResultCard: View {
                 .lineSpacing(4)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack {
+            HStack(spacing: 8) {
                 Spacer()
+                Button { sharing = true } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.85))
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .background(Capsule().fill(Color.white.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
+
                 Button(action: copy) {
                     Text(copied ? "Copied" : "Copy")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(copied ? .accentColor : .white.opacity(0.85))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule().fill(Color.white.opacity(0.08))
-                        )
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .background(Capsule().fill(Color.white.opacity(0.08)))
                 }
                 .buttonStyle(.plain)
             }
@@ -162,6 +189,9 @@ private struct ResultCard: View {
         .padding(16)
         .background(Color.white.opacity(0.05))
         .cornerRadius(14)
+        .sheet(isPresented: $sharing) {
+            ActivityViewController(items: [text])
+        }
     }
 
     private func copy() {
@@ -169,4 +199,12 @@ private struct ResultCard: View {
         copied = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
     }
+}
+
+private struct ActivityViewController: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }
