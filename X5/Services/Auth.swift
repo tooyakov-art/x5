@@ -36,6 +36,7 @@ final class Auth: ObservableObject {
         isAuthenticated = false
         userEmail = nil
         userId = nil
+        NotificationCenter.default.post(name: .x5UserDidSignOut, object: nil)
     }
 
     func deleteAccount() async throws {
