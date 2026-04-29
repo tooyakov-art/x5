@@ -81,12 +81,30 @@ enum CaptionGenerator {
         ]
     ]
 
-    static func generate(topic: String, tone: Tone, platform: Platform = .instagram) -> [String] {
+    static func generate(
+        topic: String,
+        tone: Tone,
+        platform: Platform = .instagram,
+        brand: BrandProfileData = .empty
+    ) -> [String] {
         let trimmed = topic.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let bank = templates[tone] else { return [] }
         let shuffled = bank.shuffled().prefix(5)
-        return shuffled.map { template in
-            let body = template.replacingOccurrences(of: "{topic}", with: trimmed)
+        let brandTokens = brand.vocabulary
+            .split(whereSeparator: { ",;|".contains($0) })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return shuffled.enumerated().map { (idx, template) in
+            var body = template.replacingOccurrences(of: "{topic}", with: trimmed)
+            // Sprinkle one brand word per generation when available
+            if !brandTokens.isEmpty {
+                let token = brandTokens[idx % brandTokens.count]
+                body = body.replacingOccurrences(of: " today", with: " today as we focus on \(token)")
+            }
+            // Audience aside on professional tone
+            if tone == .professional, !brand.audience.isEmpty {
+                body += " (Built for \(brand.audience).)"
+            }
             let withTail = body + platform.tail
             return clamp(withTail, to: platform.recommendedLength)
         }

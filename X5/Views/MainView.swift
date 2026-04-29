@@ -3,6 +3,7 @@ import SwiftUI
 struct MainView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var history: CaptionHistory
+    @EnvironmentObject private var brand: BrandProfile
 
     @State private var topic: String = ""
     @State private var tone: Tone = .friendly
@@ -10,6 +11,7 @@ struct MainView: View {
     @State private var results: [String] = []
     @State private var showingProfile = false
     @State private var showingHistory = false
+    @State private var showingBrand = false
     @FocusState private var topicFocused: Bool
 
     var body: some View {
@@ -84,12 +86,21 @@ struct MainView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { showingHistory = true } label: {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 19))
-                            .foregroundColor(.white)
+                    HStack(spacing: 14) {
+                        Button { showingHistory = true } label: {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.system(size: 19))
+                                .foregroundColor(.white)
+                        }
+                        .accessibilityLabel("History")
+
+                        Button { showingBrand = true } label: {
+                            Image(systemName: brand.isFilled ? "sparkles" : "sparkles")
+                                .font(.system(size: 19))
+                                .foregroundColor(brand.isFilled ? .accentColor : .white.opacity(0.85))
+                        }
+                        .accessibilityLabel("Brand voice")
                     }
-                    .accessibilityLabel("History")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingProfile = true } label: {
@@ -102,6 +113,7 @@ struct MainView: View {
             }
             .sheet(isPresented: $showingProfile) { ProfileView() }
             .sheet(isPresented: $showingHistory) { HistoryView() }
+            .sheet(isPresented: $showingBrand) { BrandProfileView() }
         }
         .background(Color(red: 0.04, green: 0.04, blue: 0.07).ignoresSafeArea())
     }
@@ -112,7 +124,7 @@ struct MainView: View {
 
     private func generate() {
         topicFocused = false
-        results = CaptionGenerator.generate(topic: topic, tone: tone, platform: platform)
+        results = CaptionGenerator.generate(topic: topic, tone: tone, platform: platform, brand: brand.data)
         if !results.isEmpty {
             history.add(topic: topic, tone: tone, platform: platform, captions: results)
         }
@@ -166,6 +178,9 @@ private struct ResultCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 8) {
+                Text("\(text.count) chars · \(hashtagCount(in: text)) tags")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.4))
                 Spacer()
                 Button { sharing = true } label: {
                     Image(systemName: "square.and.arrow.up")
@@ -198,6 +213,10 @@ private struct ResultCard: View {
         UIPasteboard.general.string = text
         copied = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+    }
+
+    private func hashtagCount(in text: String) -> Int {
+        text.split(separator: " ").filter { $0.hasPrefix("#") }.count
     }
 }
 
