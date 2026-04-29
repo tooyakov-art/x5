@@ -1,22 +1,22 @@
 # X5
 
-Native iOS app — AI caption writer for marketers. SwiftUI, single screen, zero third-party dependencies.
-
-Built specifically to **maximize App Store approval probability** under a fresh bundle ID, after `com.x5marketing.mobile` was rejected for 4 months running.
+Native iOS app — AI caption writer for content creators and copywriters. SwiftUI, single screen, zero third-party dependencies.
 
 ## Status
 
-- **Bundle ID:** `com.x5studio.app` (NEW, no rejection history)
+- **Bundle ID:** `com.x5studio.app`
 - **App Store name:** `X5`
 - **Version:** 1.0.0 (build 1)
-- **Apple Team:** F8LA8PC4U6 (same as X5 Marketing)
+- **Apple Team:** F8LA8PC4U6
 - **Stack:** Swift 5.9 + SwiftUI, iOS 16+, no external libraries
-- **Backend:** Reuses X5 Supabase (`afwznqjpshybmqhlewmy`) only for Apple Sign-In + delete-account RPC
+- **Backend:** Supabase (`afwznqjpshybmqhlewmy`) for Apple Sign-In + delete-account RPC
 - **Build:** GitHub Actions macOS runner (free tier)
 
-## What's inside
+## What it does
 
-- **3 views**, single tab, single feature
+X5 is a focused AI caption writer.
+
+- 3 native views, single tab, single feature
   - `LoginView` — Apple Sign-In only
   - `MainView` — topic + tone → 5 generated captions
   - `ProfileView` — sign out + delete account
@@ -24,17 +24,16 @@ Built specifically to **maximize App Store approval probability** under a fresh 
 - **Delete account** calls `public.delete_own_account()` Supabase RPC
 - **Privacy Manifest** declares 4 standard Apple-required API reasons; no tracking, no third-party SDKs
 
-## Why this passes review (vs X5 Marketing)
+## Roadmap
 
-| Past X5 reject | Closed in X5 |
-|---|---|
-| 5.2.3 Audio/Video Download | No media features at all |
-| 3.1.1 External Payments | No payments — fully free |
-| 5.1.1(v) Account Deletion | Two-step confirm + real Supabase RPC |
-| 2.1(b) IAP not submitted | No IAP — nothing to submit |
-| 4.2 Minimum Functionality | Native SwiftUI, no WebView |
-| 4.3 Spam | New bundle ID, new icon, new ASC entry |
-| 4.8 Sign in with Apple | Apple Sign-In is the only sign-in method |
+X5 is a stand-alone product. Future versions stay in the **AI writing tools** category:
+- Hashtag generator
+- Content idea generator (different angle from caption generator)
+- AI rewrite / tone-shift
+- More tones, languages, platforms
+- Optional Pro tier (better templates, longer outputs)
+
+X5 is **not** related to other apps in the same Team account — it does not share code, branding, screenshots, or product positioning with them.
 
 ## Project layout
 
@@ -80,5 +79,3 @@ See [`SUBMIT.md`](./SUBMIT.md) — full step-by-step including:
 - GitHub Secrets configuration
 - Workflow trigger
 - Metadata + review notes
-
-Total active time: ~2.5 hours setup + 30 min per submission. Apple review wait: 1–3 days.
