@@ -138,7 +138,7 @@ struct ProfileView: View {
         } catch {
             await MainActor.run {
                 deleteStage = .idle
-                errorMessage = "Could not delete account. Please try again or email support@x5studio.app"
+                errorMessage = "Delete failed: \(error.localizedDescription)"
             }
         }
     }
