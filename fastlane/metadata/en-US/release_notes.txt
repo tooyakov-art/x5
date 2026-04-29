@@ -1,0 +1,1 @@
+Initial release: platform-aware caption templates with three tones, brand voice profile, history, share sheet and Sign in with Apple.

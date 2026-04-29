@@ -1,0 +1,14 @@
+Sign in with Apple is required because the app saves caption history per Apple ID and supports in-app account deletion (Guideline 5.1.1(v)).
+
+To test:
+1. Tap "Sign in with Apple" → choose any account.
+2. Type a topic (e.g. "opening a coffee shop").
+3. Pick a tone (Friendly / Pro / Funny) and a platform (Instagram / X / LinkedIn / TikTok).
+4. Tap "Generate" — five captions appear, each with character + hashtag counter, copy and share buttons.
+5. Toolbar (top-left): clock icon → caption history. Sparkles icon → Brand voice profile (optional, persists per device).
+6. Toolbar (top-right): person icon → Profile → Sign out OR Delete Account.
+7. Delete Account flow: two confirmations → Supabase RPC removes the auth user → app returns to login.
+
+All caption text is generated locally on the device using deterministic templates. The app does not call any third-party AI service.
+
+If you have any questions, please email support@x5studio.app.

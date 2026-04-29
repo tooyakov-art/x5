@@ -4,32 +4,33 @@ require "json"
 default_platform(:ios)
 
 APP_BUNDLE_ID = "com.x5studio.app"
+KEY_PATH = File.expand_path("asc_api_key.json", __dir__)
 
 platform :ios do
   before_all do
     setup_api_key
   end
 
-  desc "Upload screenshots to App Store Connect"
-  lane :upload_screenshots do
+  desc "Push metadata + screenshots, do NOT submit"
+  lane :upload do
     deliver(
-      api_key_path: File.expand_path("asc_api_key.json", __dir__),
+      api_key_path: KEY_PATH,
       app_identifier: APP_BUNDLE_ID,
-      skip_metadata: true,
-      skip_binary_upload: true,
+      skip_metadata: false,
       skip_screenshots: false,
-      overwrite_screenshots: true,
-      run_precheck_before_submit: false,
+      skip_binary_upload: true,
       submit_for_review: false,
       automatic_release: false,
+      run_precheck_before_submit: false,
+      overwrite_screenshots: true,
       force: true
     )
   end
 
-  desc "Submit current version for review using the latest processed build"
+  desc "Submit current version for review"
   lane :submit_for_review do
     deliver(
-      api_key_path: File.expand_path("asc_api_key.json", __dir__),
+      api_key_path: KEY_PATH,
       app_identifier: APP_BUNDLE_ID,
       skip_metadata: true,
       skip_screenshots: true,
@@ -47,15 +48,14 @@ platform :ios do
     )
   end
 
-  desc "Upload screenshots AND submit for review (full ship)"
+  desc "Full ship: metadata + screenshots + submit"
   lane :ship do
-    upload_screenshots
+    upload
     submit_for_review
   end
 end
 
 def setup_api_key
-  require "json"
   key_id = ENV["ASC_API_KEY_ID"]
   issuer_id = ENV["ASC_API_ISSUER_ID"]
   key_b64 = ENV["ASC_API_KEY_BASE64"]
@@ -67,5 +67,5 @@ def setup_api_key
     "key"       => Base64.decode64(key_b64),
     "in_house"  => false
   }
-  File.write(File.expand_path("asc_api_key.json", __dir__), JSON.pretty_generate(payload))
+  File.write(KEY_PATH, JSON.pretty_generate(payload))
 end

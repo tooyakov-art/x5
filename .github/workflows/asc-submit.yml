@@ -9,7 +9,7 @@ on:
         default: "ship"
         type: choice
         options:
-          - upload_screenshots
+          - upload
           - submit_for_review
           - ship
 

@@ -1,0 +1,22 @@
+X5 helps marketers ship better posts faster with platform-aware caption templates.
+
+Pick a topic, a tone (Friendly / Pro / Funny), and a target platform — get five ready-to-post captions optimized for Instagram, X, LinkedIn or TikTok length and style.
+
+KEY FEATURES
+• Platform-aware templates — captions sized for Instagram, X, LinkedIn and TikTok
+• Three tones — Friendly, Professional, Funny
+• Brand voice profile — niche, audience and brand vocabulary woven into every caption
+• Caption history — your last 20 sessions, always within reach
+• Character and hashtag counters on every caption
+• One-tap copy and native share sheet
+• Sign in with Apple — privacy-first, no email required
+• Account deletion right inside the app
+
+WHO IT'S FOR
+Marketers, founders, content creators, and small business owners who post multiple times per week and want consistent voice without staring at a blank screen.
+
+PRIVACY & TRUST
+Authentication uses Sign in with Apple. Captions are generated locally on your device. No third-party tracking, no analytics, no ads.
+
+Terms of Service: https://tooyakov-art.github.io/x5site/terms.html
+Privacy Policy: https://tooyakov-art.github.io/x5site/privacy.html
