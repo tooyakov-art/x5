@@ -1,80 +1,40 @@
 import SwiftUI
 
-struct Course: Identifiable {
-    let id = UUID()
-    let title: String
-    let summary: String
-    let durationMinutes: Int
-    let icon: String
-    let lessons: [String]
-    let proOnly: Bool
-}
-
-private let demoCourses: [Course] = [
-    Course(
-        title: "Marketing 101",
-        summary: "Foundation: positioning, messaging, audience.",
-        durationMinutes: 35,
-        icon: "lightbulb",
-        lessons: ["Why positioning beats budget", "Pick a wedge audience", "Write the one-liner"],
-        proOnly: false
-    ),
-    Course(
-        title: "Brand voice in 30 minutes",
-        summary: "Find your tone and lock it across every channel.",
-        durationMinutes: 30,
-        icon: "speaker.wave.2",
-        lessons: ["Voice axes", "Word lists do/don't", "Audit your last 10 posts"],
-        proOnly: false
-    ),
-    Course(
-        title: "Funnel basics",
-        summary: "Plan an end-to-end customer funnel.",
-        durationMinutes: 45,
-        icon: "chart.bar",
-        lessons: ["Awareness → Consideration → Decision", "Channel selection", "Measuring honestly"],
-        proOnly: true
-    ),
-    Course(
-        title: "Ad copy patterns",
-        summary: "10 proven ad copy structures with breakdowns.",
-        durationMinutes: 50,
-        icon: "doc.text",
-        lessons: ["PAS · AIDA · BAB", "Specificity beats clever", "Headline tests"],
-        proOnly: true
-    ),
-    Course(
-        title: "Launch playbook",
-        summary: "Run a tight launch in two weeks.",
-        durationMinutes: 60,
-        icon: "rocket",
-        lessons: ["Asset checklist", "Day-by-day plan", "Post-launch review"],
-        proOnly: true
-    )
-]
-
 struct CoursesView: View {
     @EnvironmentObject private var sub: Subscription
+    @StateObject private var service = CoursesService()
     @State private var showingPaywall = false
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 12) {
-                    ForEach(demoCourses) { course in
-                        NavigationLink {
-                            CourseDetailView(course: course, openPaywall: { showingPaywall = true })
-                        } label: {
-                            CourseRow(course: course)
-                        }
-                        .buttonStyle(.plain)
+            Group {
+                if service.isLoading && service.courses.isEmpty {
+                    ProgressView().tint(.accentColor)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let err = service.error, service.courses.isEmpty {
+                    ErrorState(message: err) {
+                        Task { await service.loadCourses() }
                     }
+                } else {
+                    ScrollView {
+                        VStack(spacing: 12) {
+                            ForEach(service.courses) { course in
+                                NavigationLink {
+                                    CourseDetailView(course: course, openPaywall: { showingPaywall = true })
+                                } label: {
+                                    CourseRow(course: course)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 32)
+                        .frame(maxWidth: 640)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .refreshable { await service.loadCourses() }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 32)
-                .frame(maxWidth: 640)
-                .frame(maxWidth: .infinity)
             }
             .background(Color(red: 0.04, green: 0.04, blue: 0.07).ignoresSafeArea())
             .navigationTitle("Courses")
@@ -94,6 +54,7 @@ struct CoursesView: View {
                 }
             }
             .sheet(isPresented: $showingPaywall) { PaywallView() }
+            .task { await service.loadCourses() }
         }
     }
 }
@@ -106,18 +67,32 @@ private struct CourseRow: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Color.accentColor.opacity(0.14))
-                Image(systemName: course.icon)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundColor(.accentColor)
+                if let cover = course.coverUrl, !cover.isEmpty, let url = URL(string: cover) {
+                    AsyncImage(url: url) { phase in
+                        if let img = phase.image {
+                            img.resizable().scaledToFill()
+                        } else {
+                            Image(systemName: "graduationcap")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundColor(.accentColor)
+                        }
+                    }
+                } else {
+                    Image(systemName: "graduationcap")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                }
             }
-            .frame(width: 52, height: 52)
+            .frame(width: 56, height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(course.title)
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.white)
-                    if course.proOnly {
+                        .lineLimit(2)
+                    if !course.isFree && course.price > 0 {
                         Text("PRO")
                             .font(.system(size: 9, weight: .heavy))
                             .padding(.horizontal, 6).padding(.vertical, 2)
@@ -126,13 +101,32 @@ private struct CourseRow: View {
                             .clipShape(Capsule())
                     }
                 }
-                Text(course.summary)
-                    .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.55))
-                    .lineLimit(2)
-                Text("\(course.durationMinutes) min · \(course.lessons.count) lessons")
-                    .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.4))
+                if let summary = course.description, !summary.isEmpty {
+                    Text(summary)
+                        .font(.system(size: 13))
+                        .foregroundColor(.white.opacity(0.55))
+                        .lineLimit(2)
+                }
+                HStack(spacing: 8) {
+                    Text("\(course.totalLessons) lessons")
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.4))
+                    if !course.totalDurationLabel.isEmpty {
+                        Text("·")
+                            .foregroundColor(.white.opacity(0.3))
+                        Text(course.totalDurationLabel)
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
+                    if let r = course.averageRating, r > 0 {
+                        Text("·")
+                            .foregroundColor(.white.opacity(0.3))
+                        HStack(spacing: 2) {
+                            Image(systemName: "star.fill").font(.system(size: 9)).foregroundColor(.yellow)
+                            Text(String(format: "%.1f", r)).font(.system(size: 11)).foregroundColor(.white.opacity(0.55))
+                        }
+                    }
+                }
             }
 
             Spacer()
@@ -141,7 +135,7 @@ private struct CourseRow: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(.white.opacity(0.35))
         }
-        .padding(16)
+        .padding(14)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
@@ -152,22 +146,66 @@ struct CourseDetailView: View {
     var openPaywall: () -> Void
 
     @EnvironmentObject private var sub: Subscription
-    @Environment(\.dismiss) private var dismiss
+
+    var hasFullAccess: Bool { course.isFree || course.price == 0 || sub.isPro }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Image(systemName: course.icon)
-                    .font(.system(size: 56, weight: .light))
-                    .foregroundColor(.accentColor)
+                if let cover = course.coverUrl, !cover.isEmpty, let url = URL(string: cover) {
+                    AsyncImage(url: url) { phase in
+                        if let img = phase.image {
+                            img.resizable().scaledToFill()
+                        } else {
+                            Color.white.opacity(0.05)
+                        }
+                    }
+                    .frame(height: 180)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
 
                 Text(course.title)
-                    .font(.system(size: 28, weight: .heavy))
+                    .font(.system(size: 26, weight: .heavy))
                     .foregroundColor(.white)
 
-                Text(course.summary)
-                    .font(.system(size: 15))
-                    .foregroundColor(.white.opacity(0.65))
+                if let hook = course.marketingHook, !hook.isEmpty {
+                    Text(hook)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                }
+                if let desc = course.description, !desc.isEmpty {
+                    Text(desc)
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.7))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack(spacing: 12) {
+                    StatBubble(value: "\(course.totalLessons)", label: "lessons")
+                    if !course.totalDurationLabel.isEmpty {
+                        StatBubble(value: course.totalDurationLabel, label: "duration")
+                    }
+                    if let r = course.averageRating, r > 0 {
+                        StatBubble(value: String(format: "%.1f ⭐", r), label: "\(course.studentsCount ?? 0) students")
+                    }
+                }
+
+                if !hasFullAccess {
+                    Button(action: openPaywall) {
+                        HStack {
+                            Image(systemName: "lock.fill")
+                            Text("Unlock with Pro — \(Subscription.monthlyPrice) / month")
+                        }
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.accentColor)
+                        .cornerRadius(14)
+                    }
+                }
 
                 Text("LESSONS")
                     .font(.system(size: 11, weight: .bold))
@@ -175,58 +213,165 @@ struct CourseDetailView: View {
                     .foregroundColor(.white.opacity(0.45))
                     .padding(.top, 8)
 
-                VStack(spacing: 10) {
-                    ForEach(Array(course.lessons.enumerated()), id: \.offset) { idx, lesson in
-                        HStack(alignment: .top, spacing: 12) {
-                            Text("\(idx + 1)")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(.accentColor)
-                                .frame(width: 24, height: 24)
-                                .background(Color.accentColor.opacity(0.14))
-                                .clipShape(Circle())
-                            Text(lesson)
-                                .font(.system(size: 14))
-                                .foregroundColor(.white)
-                            Spacer()
-                        }
-                    }
-                }
-                .padding(16)
-                .background(Color.white.opacity(0.04))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                if course.proOnly && !sub.isPro {
-                    Button(action: openPaywall) {
-                        Text("Unlock with Pro")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Color.accentColor)
-                            .cornerRadius(14)
-                    }
-                    .padding(.top, 8)
-                } else {
-                    Button {
-                        // Stub: start course
-                    } label: {
-                        Text("Start course")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Color.accentColor)
-                            .cornerRadius(14)
-                    }
-                    .padding(.top, 8)
+                ForEach(course.categories.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) })) { category in
+                    CategorySection(category: category, hasFullAccess: hasFullAccess, openPaywall: openPaywall)
                 }
             }
-            .padding(20)
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
             .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)
         }
         .background(Color(red: 0.04, green: 0.04, blue: 0.07).ignoresSafeArea())
-        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+    }
+}
+
+private struct StatBubble: View {
+    let value: String
+    let label: String
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(value).font(.system(size: 14, weight: .bold)).foregroundColor(.white)
+            Text(label).font(.system(size: 10)).foregroundColor(.white.opacity(0.5))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct CategorySection: View {
+    let category: CourseCategory
+    let hasFullAccess: Bool
+    let openPaywall: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(category.title)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.top, 4)
+
+            ForEach(category.days.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) })) { day in
+                DaySection(day: day, hasFullAccess: hasFullAccess, openPaywall: openPaywall)
+            }
+        }
+    }
+}
+
+private struct DaySection: View {
+    let day: CourseDay
+    let hasFullAccess: Bool
+    let openPaywall: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(day.title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white.opacity(0.55))
+                .padding(.leading, 4)
+
+            VStack(spacing: 6) {
+                ForEach(day.lessons.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) })) { lesson in
+                    LessonRow(lesson: lesson, hasFullAccess: hasFullAccess, openPaywall: openPaywall)
+                }
+            }
+        }
+    }
+}
+
+private struct LessonRow: View {
+    let lesson: CourseLesson
+    let hasFullAccess: Bool
+    let openPaywall: () -> Void
+
+    var canPlay: Bool { hasFullAccess || lesson.freePreview }
+    var hasVideo: Bool { lesson.playableURL != nil }
+
+    var body: some View {
+        Group {
+            if canPlay && hasVideo {
+                NavigationLink {
+                    LessonPlayerView(lesson: lesson)
+                } label: { content }
+                .buttonStyle(.plain)
+            } else {
+                Button(action: { if !canPlay { openPaywall() } }) { content }
+                    .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var content: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(Color.white.opacity(0.06))
+                Image(systemName: !hasVideo ? "doc.text" : (canPlay ? "play.fill" : "lock.fill"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(canPlay ? .accentColor : .white.opacity(0.45))
+            }
+            .frame(width: 32, height: 32)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(lesson.title)
+                    .font(.system(size: 14))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                HStack(spacing: 8) {
+                    if let d = lesson.duration, !d.isEmpty {
+                        Text(d).font(.system(size: 11)).foregroundColor(.white.opacity(0.4))
+                    }
+                    if lesson.freePreview {
+                        Text("FREE PREVIEW")
+                            .font(.system(size: 9, weight: .heavy))
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.green.opacity(0.18))
+                            .foregroundColor(.green)
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+            Spacer()
+            if canPlay && hasVideo {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.3))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+private struct ErrorState: View {
+    let message: String
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 38, weight: .light))
+                .foregroundColor(.white.opacity(0.6))
+            Text("Could not load courses")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.white)
+            Text(message)
+                .font(.system(size: 12))
+                .foregroundColor(.white.opacity(0.5))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Button("Retry", action: retry)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.accentColor)
+                .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
