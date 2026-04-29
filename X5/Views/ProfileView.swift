@@ -93,33 +93,37 @@ struct ProfileView: View {
                     Button("Done") { dismiss() }
                 }
             }
-            .alert(
+            .confirmationDialog(
                 "Delete account?",
                 isPresented: Binding(
                     get: { deleteStage == .firstConfirm },
                     set: { if !$0 { deleteStage = .idle } }
-                )
+                ),
+                titleVisibility: .visible
             ) {
-                Button("Cancel", role: .cancel) { deleteStage = .idle }
                 Button("Continue", role: .destructive) {
-                    deleteStage = .finalConfirm
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        deleteStage = .finalConfirm
+                    }
                 }
+                Button("Cancel", role: .cancel) { deleteStage = .idle }
             } message: {
                 Text(
                     "This will permanently remove your account and all associated data. You will not be able to recover it."
                 )
             }
-            .alert(
+            .confirmationDialog(
                 "Are you absolutely sure?",
                 isPresented: Binding(
                     get: { deleteStage == .finalConfirm },
                     set: { if !$0 { deleteStage = .idle } }
-                )
+                ),
+                titleVisibility: .visible
             ) {
-                Button("Cancel", role: .cancel) { deleteStage = .idle }
                 Button("Delete forever", role: .destructive) {
                     Task { await runDelete() }
                 }
+                Button("Cancel", role: .cancel) { deleteStage = .idle }
             } message: {
                 Text("Once deleted, your account cannot be recovered.")
             }
