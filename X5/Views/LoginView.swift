@@ -7,7 +7,7 @@ struct LoginView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Spacer()
+            Spacer(minLength: 0)
 
             VStack(spacing: 16) {
                 ZStack {
@@ -58,6 +58,7 @@ struct LoginView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
+        .frame(maxWidth: 480)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(red: 0.04, green: 0.04, blue: 0.07).ignoresSafeArea())
     }
