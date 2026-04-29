@@ -2,10 +2,16 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var subscription: Subscription
     @Environment(\.dismiss) private var dismiss
+
+    /// When false the toolbar "Done" button is hidden — used when ProfileView is
+    /// embedded as a bottom-tab root rather than presented as a sheet.
+    var showsDoneButton: Bool = true
 
     @State private var deleteStage: DeleteStage = .idle
     @State private var errorMessage: String?
+    @State private var showingPaywall: Bool = false
 
     private enum DeleteStage {
         case idle
@@ -20,6 +26,31 @@ struct ProfileView: View {
                 Section("Account") {
                     if let email = auth.userEmail {
                         LabeledContent("Email", value: email)
+                    }
+                    HStack {
+                        Text("Subscription")
+                        Spacer()
+                        Text(subscription.isPro ? "Pro · active" : "Free")
+                            .foregroundColor(subscription.isPro ? .accentColor : .secondary)
+                    }
+                }
+
+                Section {
+                    if subscription.isPro {
+                        Button("Manage subscription") {
+                            if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                    } else {
+                        Button {
+                            showingPaywall = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "sparkles").foregroundColor(.accentColor)
+                                Text("Upgrade to Pro").foregroundColor(.accentColor)
+                            }
+                        }
                     }
                 }
 
@@ -89,8 +120,10 @@ struct ProfileView: View {
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                if showsDoneButton {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") { dismiss() }
+                    }
                 }
             }
             .confirmationDialog(
@@ -127,6 +160,7 @@ struct ProfileView: View {
             } message: {
                 Text("Once deleted, your account cannot be recovered.")
             }
+            .sheet(isPresented: $showingPaywall) { PaywallView() }
         }
     }
 
