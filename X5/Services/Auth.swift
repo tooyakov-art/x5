@@ -41,6 +41,16 @@ final class Auth: ObservableObject {
         store(session: session)
     }
 
+    func signInWithEmail(_ email: String, password: String) async throws {
+        let session = try await supabase.signInWithEmailPassword(email: email, password: password)
+        store(session: session)
+    }
+
+    func signUpWithEmail(_ email: String, password: String) async throws {
+        let session = try await supabase.signUpWithEmailPassword(email: email, password: password)
+        store(session: session)
+    }
+
     func signOut() async {
         clearStorage()
         supabase.accessToken = nil

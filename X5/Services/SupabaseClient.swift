@@ -27,6 +27,40 @@ final class SupabaseClient {
     /// Hook for the Auth layer to persist refreshed tokens to UserDefaults.
     var onSessionRefreshed: ((SupabaseSession) -> Void)?
 
+    func signInWithEmailPassword(email: String, password: String) async throws -> SupabaseSession {
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("auth/v1/token"),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = [URLQueryItem(name: "grant_type", value: "password")]
+
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "email": email,
+            "password": password
+        ])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try ensureOK(response: response, data: data)
+        return try JSONDecoder().decode(SupabaseSession.self, from: data)
+    }
+
+    func signUpWithEmailPassword(email: String, password: String) async throws -> SupabaseSession {
+        var request = URLRequest(url: baseURL.appendingPathComponent("auth/v1/signup"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "email": email,
+            "password": password
+        ])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try ensureOK(response: response, data: data)
+        return try JSONDecoder().decode(SupabaseSession.self, from: data)
+    }
+
     func signInWithApple(identityToken: String) async throws -> SupabaseSession {
         var components = URLComponents(
             url: baseURL.appendingPathComponent("auth/v1/token"),

@@ -163,6 +163,103 @@ final class HubService: ObservableObject {
         }
     }
 
+    // MARK: - Writes
+
+    /// Inserts a new task. Returns the new task on success.
+    @discardableResult
+    func createTask(authorId: String, authorName: String?, authorAvatar: String?, companyName: String?, title: String, description: String, budget: String, category: String, deadline: Date?, accessToken: String) async -> HubTask? {
+        var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/tasks"))
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("return=representation", forHTTPHeaderField: "Prefer")
+
+        var body: [String: Any] = [
+            "author_id": authorId,
+            "title": title,
+            "description": description,
+            "budget": budget,
+            "category": category,
+            "status": "open"
+        ]
+        if let n = authorName { body["author_name"] = n }
+        if let a = authorAvatar { body["author_avatar"] = a }
+        if let c = companyName, !c.isEmpty { body["company_name"] = c }
+        if let d = deadline {
+            let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]
+            body["deadline"] = f.string(from: d)
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let rows = try? JSONDecoder().decode([HubTask].self, from: data)
+        else { return nil }
+        let inserted = rows.first
+        await loadTasks()
+        return inserted
+    }
+
+    /// Inserts a response on a task. Returns the row on success.
+    @discardableResult
+    func respondToTask(taskId: String, specialistId: String, specialistName: String?, specialistAvatar: String?, message: String, accessToken: String) async -> TaskResponse? {
+        var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/task_responses"))
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("return=representation", forHTTPHeaderField: "Prefer")
+
+        var body: [String: Any] = [
+            "task_id": taskId,
+            "specialist_id": specialistId,
+            "message": message,
+            "status": "open"
+        ]
+        if let n = specialistName { body["specialist_name"] = n }
+        if let a = specialistAvatar { body["specialist_avatar"] = a }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let rows = try? JSONDecoder().decode([TaskResponse].self, from: data)
+        else { return nil }
+        return rows.first
+    }
+
+    /// Marks a response accepted and the task in_progress.
+    func acceptResponse(taskId: String, responseId: String, specialistId: String, specialistName: String?, accessToken: String) async {
+        // 1. Patch response status
+        var rURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/task_responses"), resolvingAgainstBaseURL: false)!
+        rURL.queryItems = [URLQueryItem(name: "id", value: "eq.\(responseId)")]
+        var rReq = URLRequest(url: rURL.url!)
+        rReq.httpMethod = "PATCH"
+        rReq.setValue(anonKey, forHTTPHeaderField: "apikey")
+        rReq.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        rReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        rReq.httpBody = try? JSONSerialization.data(withJSONObject: ["status": "accepted"])
+        _ = try? await URLSession.shared.data(for: rReq)
+
+        // 2. Patch task
+        var tURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/tasks"), resolvingAgainstBaseURL: false)!
+        tURL.queryItems = [URLQueryItem(name: "id", value: "eq.\(taskId)")]
+        var tReq = URLRequest(url: tURL.url!)
+        tReq.httpMethod = "PATCH"
+        tReq.setValue(anonKey, forHTTPHeaderField: "apikey")
+        tReq.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        tReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = [
+            "status": "in_progress",
+            "accepted_response_id": responseId,
+            "accepted_specialist_id": specialistId
+        ]
+        if let n = specialistName { body["accepted_specialist_name"] = n }
+        tReq.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await URLSession.shared.data(for: tReq)
+        await loadTasks()
+    }
+
     func loadResponses(taskId: String) async -> [TaskResponse] {
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/task_responses"), resolvingAgainstBaseURL: false)!
         components.queryItems = [

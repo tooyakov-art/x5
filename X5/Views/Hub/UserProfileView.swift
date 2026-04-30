@@ -7,8 +7,13 @@ struct UserProfileView: View {
     /// Optional already-fetched specialist row to render instantly.
     let fallback: HubSpecialist?
 
+    @EnvironmentObject private var auth: Auth
+    @StateObject private var chats = ChatsService()
+
     @State private var profile: UserProfile?
     @State private var isLoading: Bool = false
+    @State private var openingChat: Bool = false
+    @State private var navigatingChat: ChatRoom?
 
     private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
     private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
@@ -17,6 +22,9 @@ struct UserProfileView: View {
         ScrollView {
             VStack(spacing: 18) {
                 header
+                if !isMe {
+                    sendMessageButton
+                }
                 if let bio = profile?.bio ?? fallback?.bio, !bio.isEmpty {
                     Text(bio)
                         .font(.system(size: 13))
@@ -38,6 +46,42 @@ struct UserProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task { await load() }
+        .navigationDestination(item: $navigatingChat) { chat in
+            ChatThreadView(chat: chat)
+        }
+    }
+
+    private var isMe: Bool { auth.userId == userId }
+
+    private var sendMessageButton: some View {
+        Button(action: openChat) {
+            HStack(spacing: 8) {
+                if openingChat {
+                    ProgressView().tint(.black)
+                } else {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                }
+                Text(openingChat ? "Opening…" : "Send message")
+            }
+            .font(.system(size: 15, weight: .bold))
+            .foregroundColor(.black)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Color.accentColor)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(openingChat || auth.accessToken == nil)
+    }
+
+    private func openChat() {
+        guard let me = auth.userId, let token = auth.accessToken else { return }
+        openingChat = true
+        Task {
+            let chat = await chats.ensureChat(otherUserId: userId, currentUserId: me, taskId: nil, taskTitle: nil, accessToken: token)
+            openingChat = false
+            if let chat { navigatingChat = chat }
+        }
     }
 
     private var header: some View {

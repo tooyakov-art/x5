@@ -92,6 +92,7 @@ final class CurrentUser: ObservableObject {
     }
 
     /// Loads (or refreshes) the current user's profile row using the access token.
+    /// If the row does not exist yet, creates it with default values.
     func load(userId: String, accessToken: String) async {
         isLoading = true
         defer { isLoading = false }
@@ -113,14 +114,75 @@ final class CurrentUser: ObservableObject {
                 throw NSError(domain: "CurrentUser", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: body])
             }
             let rows = try JSONDecoder().decode([UserProfile].self, from: data)
-            self.profile = rows.first
+            if let row = rows.first {
+                self.profile = row
+            } else {
+                // Profile row missing — create one (covers users registered before the
+                // auth.users -> profiles Postgres trigger existed).
+                await ensureProfile(userId: userId, accessToken: accessToken)
+            }
         } catch {
             self.error = error.localizedDescription
         }
     }
 
+    private func ensureProfile(userId: String, accessToken: String) async {
+        var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/profiles"))
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("return=representation,resolution=ignore-duplicates", forHTTPHeaderField: "Prefer")
+        let body: [String: Any] = [
+            "id": userId,
+            "plan": "free",
+            "credits": 0,
+            "is_public": true
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        if let (data, response) = try? await URLSession.shared.data(for: request),
+           let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+           let rows = try? JSONDecoder().decode([UserProfile].self, from: data),
+           let row = rows.first {
+            self.profile = row
+        }
+    }
+
+    /// Uploads an avatar JPEG to Supabase Storage and patches profiles.avatar to the public URL.
+    /// Returns the new URL on success.
+    @discardableResult
+    func uploadAvatar(_ jpegData: Data, accessToken: String) async -> String? {
+        guard let userId = profile?.id else { return nil }
+        let path = "\(userId)/\(Int(Date().timeIntervalSince1970)).jpg"
+        let uploadURL = baseURL.appendingPathComponent("storage/v1/object/avatars/\(path)")
+
+        var request = URLRequest(url: uploadURL)
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.setValue("3600", forHTTPHeaderField: "Cache-Control")
+        request.setValue("true", forHTTPHeaderField: "x-upsert")
+        request.httpBody = jpegData
+
+        guard let (_, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode)
+        else { return nil }
+
+        let publicURL = baseURL.appendingPathComponent("storage/v1/object/public/avatars/\(path)").absoluteString
+        await patch("avatar", value: publicURL, accessToken: accessToken)
+        return publicURL
+    }
+
     /// Patches a single field on the profile row.
     func patch<T: Encodable>(_ field: String, value: T, accessToken: String) async {
+        await patchMany([field: AnyEncodable(value)], accessToken: accessToken)
+    }
+
+    /// Patches several fields atomically.
+    func patchMany(_ fields: [String: AnyEncodable], accessToken: String) async {
         guard let id = profile?.id else { return }
         do {
             var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
@@ -131,8 +193,7 @@ final class CurrentUser: ObservableObject {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue("return=representation", forHTTPHeaderField: "Prefer")
-            let body: [String: AnyEncodable] = [field: AnyEncodable(value)]
-            request.httpBody = try JSONEncoder().encode(body)
+            request.httpBody = try JSONEncoder().encode(fields)
 
             let (data, response) = try await URLSession.shared.data(for: request)
             if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {

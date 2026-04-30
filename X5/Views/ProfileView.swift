@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 struct ProfileView: View {
     @EnvironmentObject private var auth: Auth
@@ -10,6 +11,9 @@ struct ProfileView: View {
 
     @State private var showingPaywall = false
     @State private var showingSettings = false
+    @State private var showingEdit = false
+    @State private var avatarPickerItem: PhotosPickerItem?
+    @State private var uploadingAvatar = false
 
     var body: some View {
         NavigationStack {
@@ -59,6 +63,7 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showingSettings) { SettingsView() }
             .sheet(isPresented: $showingPaywall) { PaywallView() }
+            .sheet(isPresented: $showingEdit) { EditProfileView() }
         }
     }
 
@@ -66,9 +71,27 @@ struct ProfileView: View {
 
     private var header: some View {
         VStack(spacing: 12) {
-            AvatarView(urlString: currentUser.profile?.avatar,
-                       name: currentUser.profile?.name ?? auth.userEmail,
-                       size: 96)
+            ZStack(alignment: .bottomTrailing) {
+                AvatarView(urlString: currentUser.profile?.avatar,
+                           name: currentUser.profile?.name ?? auth.userEmail,
+                           size: 96)
+                if uploadingAvatar {
+                    Circle().fill(Color.black.opacity(0.5)).frame(width: 96, height: 96)
+                    ProgressView().tint(.white)
+                }
+                PhotosPicker(selection: $avatarPickerItem, matching: .images) {
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 30, height: 30)
+                        .background(Color.accentColor)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color(red: 0.04, green: 0.05, blue: 0.10), lineWidth: 3))
+                }
+                .disabled(uploadingAvatar)
+            }
+            .frame(width: 96, height: 96)
+
             VStack(spacing: 4) {
                 Text(currentUser.profile?.displayName ?? auth.userEmail ?? "User")
                     .font(.system(size: 22, weight: .heavy))
@@ -97,9 +120,40 @@ struct ProfileView: View {
                     }
                 }
             }
+
+            Button {
+                showingEdit = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "pencil")
+                    Text("Edit profile")
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Color.white.opacity(0.08))
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 4)
+        .onChange(of: avatarPickerItem) { newItem in
+            guard let item = newItem else { return }
+            Task { await uploadAvatar(item) }
+        }
+    }
+
+    private func uploadAvatar(_ item: PhotosPickerItem) async {
+        guard let token = auth.accessToken else { return }
+        uploadingAvatar = true
+        defer { uploadingAvatar = false }
+        if let data = try? await item.loadTransferable(type: Data.self),
+           let image = UIImage(data: data),
+           let jpeg = image.jpegData(compressionQuality: 0.85) {
+            await currentUser.uploadAvatar(jpeg, accessToken: token)
+        }
+        avatarPickerItem = nil
     }
 
     // MARK: - Stats

@@ -9,9 +9,13 @@ struct HubView: View {
         var label: String { self == .specialists ? "Specialists" : "Tasks" }
     }
 
+    @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var currentUser: CurrentUser
     @StateObject private var service = HubService()
     @State private var segment: Segment = .specialists
     @State private var category: String? = nil
+    @State private var showingPostTask = false
+    @State private var showingEditProfile = false
 
     var body: some View {
         NavigationStack {
@@ -36,9 +40,47 @@ struct HubView: View {
             .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
             .navigationTitle("Hub")
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if segment == .tasks {
+                        Button {
+                            showingPostTask = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus")
+                                Text("Post").bold()
+                            }
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(Color.accentColor)
+                            .clipShape(Capsule())
+                        }
+                    } else if !(currentUser.profile?.showInHub ?? false) {
+                        Button {
+                            showingEditProfile = true
+                        } label: {
+                            Text("Become a specialist")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 10).padding(.vertical, 5)
+                                .background(Color.accentColor)
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+            }
             .task {
                 await service.loadSpecialists()
                 await service.loadTasks()
+            }
+            .sheet(isPresented: $showingPostTask) {
+                CreateTaskView(onCreated: {
+                    Task { await service.loadTasks() }
+                })
+            }
+            .sheet(isPresented: $showingEditProfile) {
+                EditProfileView()
             }
         }
     }

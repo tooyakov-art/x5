@@ -7,6 +7,7 @@ struct HomeView: View {
     @State private var bannerIndex: Int = 0
     @State private var openTool: HomeTool?
     @State private var openCaptions: Bool = false
+    @State private var showingNotifications: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -27,8 +28,11 @@ struct HomeView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Image(systemName: "bell")
-                        .foregroundColor(.white.opacity(0.7))
+                    Button { showingNotifications = true } label: {
+                        Image(systemName: "bell")
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    .accessibilityLabel("Notifications")
                 }
             }
             .sheet(item: $openTool) { tool in
@@ -37,6 +41,9 @@ struct HomeView: View {
             .sheet(isPresented: $openCaptions) {
                 NavigationStack { MainView() }
                     .preferredColorScheme(.dark)
+            }
+            .sheet(isPresented: $showingNotifications) {
+                NotificationsView()
             }
         }
     }

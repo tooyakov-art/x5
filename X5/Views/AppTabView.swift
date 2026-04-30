@@ -9,7 +9,7 @@ struct AppTabView: View {
                 .tabItem { Label("Home", systemImage: "house") }
 
             CoursesView()
-                .tabItem { Label("Courses", systemImage: "graduationcap") }
+                .tabItem { Label("CourseUP", systemImage: "graduationcap") }
 
             ChatsListView()
                 .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
