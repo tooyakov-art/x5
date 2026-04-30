@@ -105,7 +105,7 @@ struct TaskDetailView: View {
             .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)
         }
-        .background(Color(red: 0.04, green: 0.04, blue: 0.07).ignoresSafeArea())
+        .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task {

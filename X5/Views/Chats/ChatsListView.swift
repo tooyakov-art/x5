@@ -33,7 +33,7 @@ struct ChatsListView: View {
                     .refreshable { await reload() }
                 }
             }
-            .background(Color(red: 0.04, green: 0.04, blue: 0.07).ignoresSafeArea())
+            .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
             .navigationTitle("Chats")
             .toolbarColorScheme(.dark, for: .navigationBar)
             .task { await reload() }

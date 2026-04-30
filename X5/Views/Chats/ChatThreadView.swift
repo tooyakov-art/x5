@@ -48,9 +48,9 @@ struct ChatThreadView: View {
                 .disabled(!canSend || sending)
             }
             .padding(12)
-            .background(Color(red: 0.04, green: 0.04, blue: 0.07))
+            .background(Color(red: 0.04, green: 0.05, blue: 0.10))
         }
-        .background(Color(red: 0.04, green: 0.04, blue: 0.07).ignoresSafeArea())
+        .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
         .navigationTitle(chat.taskTitle ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)

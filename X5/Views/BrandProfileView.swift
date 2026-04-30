@@ -26,7 +26,7 @@ struct BrandProfileView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Color(red: 0.04, green: 0.04, blue: 0.07))
+            .background(Color(red: 0.04, green: 0.05, blue: 0.10))
             .navigationTitle("Brand voice")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)

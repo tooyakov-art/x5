@@ -6,61 +6,73 @@ struct LoginView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
+        ZStack {
+            X5Background()
 
-            VStack(spacing: 16) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(Color.accentColor)
-                        .frame(width: 88, height: 88)
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+
+                VStack(spacing: 14) {
+                    // Big italic X5 logo
                     Text("X5")
-                        .font(.system(size: 36, weight: .heavy))
-                        .foregroundColor(.black)
-                }
+                        .font(.system(size: 84, weight: .black, design: .default))
+                        .italic()
+                        .foregroundColor(.white)
+                        .kerning(-3)
+                        .shadow(color: Color(red: 0.16, green: 0.50, blue: 0.95).opacity(0.6), radius: 32, x: 0, y: 0)
 
-                Text("X5")
-                    .font(.system(size: 32, weight: .bold))
-                    .foregroundColor(.white)
-
-                Text("Smart caption templates for marketers.\nGenerate post copy in seconds.")
-                    .font(.system(size: 15))
-                    .foregroundColor(.white.opacity(0.55))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-                    .padding(.horizontal, 24)
-            }
-
-            Spacer()
-
-            VStack(spacing: 16) {
-                SignInWithAppleButton(.signIn) { request in
-                    request.requestedScopes = [.fullName, .email]
-                } onCompletion: { result in
-                    Task { await handleApple(result) }
-                }
-                .signInWithAppleButtonStyle(.white)
-                .frame(height: 52)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                if let error = errorMessage {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundColor(.red)
+                    // Welcome title
+                    Text("Welcome to X5")
+                        .font(.system(size: 28, weight: .heavy))
+                        .foregroundColor(.white)
                         .multilineTextAlignment(.center)
+
+                    // Subtitle
+                    Text("Marketing studio for creators.\nGenerate, learn, and hire — in one app.")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.55))
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(2)
+                        .padding(.horizontal, 32)
                 }
 
-                Link("Privacy Policy", destination: URL(string: "https://tooyakov-art.github.io/x5site/privacy.html")!)
-                    .font(.footnote)
+                Spacer(minLength: 0)
+
+                VStack(spacing: 14) {
+                    SignInWithAppleButton(.signIn) { request in
+                        request.requestedScopes = [.fullName, .email]
+                    } onCompletion: { result in
+                        Task { await handleApple(result) }
+                    }
+                    .signInWithAppleButtonStyle(.white)
+                    .frame(height: 54)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundColor(.red.opacity(0.85))
+                            .multilineTextAlignment(.center)
+                    }
+
+                    HStack(spacing: 18) {
+                        Link("Privacy Policy",
+                             destination: URL(string: "https://tooyakov-art.github.io/x5site/privacy.html")!)
+                        Text("·")
+                        Link("Terms",
+                             destination: URL(string: "https://tooyakov-art.github.io/x5site/terms.html")!)
+                    }
+                    .font(.system(size: 12))
                     .foregroundColor(.white.opacity(0.5))
-                    .padding(.top, 8)
+                    .padding(.top, 6)
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 36)
+                .frame(maxWidth: 480)
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 32)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: 480)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(red: 0.04, green: 0.04, blue: 0.07).ignoresSafeArea())
+        .preferredColorScheme(.dark)
     }
 
     private func handleApple(_ result: Result<ASAuthorization, Error>) async {
