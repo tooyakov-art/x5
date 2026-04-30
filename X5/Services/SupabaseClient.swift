@@ -84,6 +84,17 @@ final class SupabaseClient {
         return try JSONDecoder().decode(SupabaseSession.self, from: data)
     }
 
+    /// Fetches the authenticated user info using a raw access token.
+    /// Used after OAuth flows where we only have the token, not a full session payload.
+    func fetchUser(accessToken: String) async throws -> SupabaseUser {
+        var request = URLRequest(url: baseURL.appendingPathComponent("auth/v1/user"))
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try ensureOK(response: response, data: data)
+        return try JSONDecoder().decode(SupabaseUser.self, from: data)
+    }
+
     func refreshSession() async throws -> SupabaseSession {
         guard let refresh = refreshToken else {
             throw SupabaseError.notAuthenticated

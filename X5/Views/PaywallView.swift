@@ -58,9 +58,11 @@ struct PaywallView: View {
                             Text(buttonTitle)
                                 .font(.system(size: 17, weight: .bold))
                                 .foregroundColor(.black)
-                            Text("Cancel anytime in iOS Settings")
-                                .font(.system(size: 12))
-                                .foregroundColor(.black.opacity(0.6))
+                            if iap.product != nil {
+                                Text("Cancel anytime in iOS Settings")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.black.opacity(0.6))
+                            }
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
@@ -68,6 +70,13 @@ struct PaywallView: View {
                         .cornerRadius(16)
                     }
                     .disabled(iap.product == nil || iap.isPurchasing)
+
+                    if iap.product == nil && iap.lastError == nil {
+                        Text("Subscription is not available right now. Please try again later.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.5))
+                            .multilineTextAlignment(.center)
+                    }
 
                     Button("Restore purchases") {
                         Task {
@@ -125,7 +134,7 @@ struct PaywallView: View {
         if let p = iap.product {
             return "Subscribe — \(p.displayPrice) / month"
         }
-        return "Subscribe — $9.99 / month"
+        return "Loading subscription…"
     }
 }
 

@@ -41,6 +41,27 @@ final class Auth: ObservableObject {
         store(session: session)
     }
 
+    /// Google OAuth via Supabase /authorize → x5://callback (handled by OAuthSession).
+    /// On success, fetches the user from Supabase using the access token and stores the session.
+    func signInWithGoogle() async throws {
+        let tokens = try await OAuthSession.shared.startGoogleSignIn()
+        supabase.accessToken = tokens.access
+        supabase.refreshToken = tokens.refresh
+        let user = try await supabase.fetchUser(accessToken: tokens.access)
+
+        let defaults = UserDefaults.standard
+        defaults.set(tokens.access, forKey: tokenKey)
+        if let refresh = tokens.refresh {
+            defaults.set(refresh, forKey: refreshKey)
+        }
+        defaults.set(user.id, forKey: userIdKey)
+        defaults.set(user.email, forKey: emailKey)
+
+        userId = user.id
+        userEmail = user.email
+        isAuthenticated = true
+    }
+
     func signInWithEmail(_ email: String, password: String) async throws {
         let session = try await supabase.signInWithEmailPassword(email: email, password: password)
         store(session: session)

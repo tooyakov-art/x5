@@ -65,6 +65,22 @@ final class ChatsService: ObservableObject {
         [a, b].sorted().joined(separator: "_")
     }
 
+    /// Load minimal public profile for any user by ID (used in chat header / row).
+    func loadPublicProfile(userId: String, accessToken: String) async -> UserProfile? {
+        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "id", value: "eq.\(userId)"),
+            URLQueryItem(name: "select", value: "*")
+        ]
+        var request = URLRequest(url: components.url!)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let rows = try? JSONDecoder().decode([UserProfile].self, from: data)
+        else { return nil }
+        return rows.first
+    }
+
     func loadChats(currentUserId: String, accessToken: String) async {
         isLoading = true
         defer { isLoading = false }

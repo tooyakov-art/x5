@@ -84,6 +84,29 @@ struct LoginView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             Button {
+                Task { await handleGoogle() }
+            } label: {
+                HStack(spacing: 10) {
+                    if loading {
+                        ProgressView().tint(.black)
+                    } else {
+                        Text("G")
+                            .font(.system(size: 18, weight: .heavy))
+                            .foregroundColor(.black)
+                    }
+                    Text("Continue with Google")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.black)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(loading)
+
+            Button {
                 mode = .email
                 errorMessage = nil
             } label: {
@@ -231,6 +254,21 @@ struct LoginView: View {
         if msg.localizedCaseInsensitiveContains("already registered") { return "This email is already registered." }
         if msg.localizedCaseInsensitiveContains("password should") { return "Password must be at least 6 characters." }
         return msg
+    }
+
+    private func handleGoogle() async {
+        errorMessage = nil
+        loading = true
+        defer { loading = false }
+        do {
+            try await auth.signInWithGoogle()
+        } catch {
+            // Cancellation should be silent
+            let msg = error.localizedDescription
+            if !msg.localizedCaseInsensitiveContains("cancel") {
+                errorMessage = humanError(error)
+            }
+        }
     }
 
     private func handleApple(_ result: Result<ASAuthorization, Error>) async {

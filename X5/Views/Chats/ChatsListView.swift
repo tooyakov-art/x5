@@ -4,6 +4,7 @@ import SwiftUI
 struct ChatsListView: View {
     @EnvironmentObject private var auth: Auth
     @StateObject private var service = ChatsService()
+    @State private var profiles: [String: UserProfile] = [:]
 
     var body: some View {
         NavigationStack {
@@ -20,10 +21,13 @@ struct ChatsListView: View {
                 } else {
                     List {
                         ForEach(service.chats) { chat in
+                            let otherId = chat.otherParticipantId(currentUser: auth.userId ?? "") ?? ""
                             NavigationLink {
                                 ChatThreadView(chat: chat)
                             } label: {
-                                ChatRow(chat: chat, currentUserId: auth.userId ?? "")
+                                ChatRow(chat: chat,
+                                        currentUserId: auth.userId ?? "",
+                                        other: profiles[otherId])
                             }
                             .listRowBackground(Color.white.opacity(0.04))
                         }
@@ -43,22 +47,41 @@ struct ChatsListView: View {
     private func reload() async {
         guard let uid = auth.userId, let token = auth.accessToken else { return }
         await service.loadChats(currentUserId: uid, accessToken: token)
+        // Pre-load profiles of all peers so rows show name + avatar instead of "?"
+        for chat in service.chats {
+            guard let otherId = chat.otherParticipantId(currentUser: uid),
+                  profiles[otherId] == nil else { continue }
+            if let p = await service.loadPublicProfile(userId: otherId, accessToken: token) {
+                profiles[otherId] = p
+            }
+        }
     }
 }
 
 private struct ChatRow: View {
     let chat: ChatRoom
     let currentUserId: String
+    let other: UserProfile?
 
     var body: some View {
         HStack(spacing: 12) {
-            AvatarView(urlString: nil, name: nil, size: 44)
+            AvatarView(urlString: other?.avatar, name: other?.displayName, size: 44)
             VStack(alignment: .leading, spacing: 4) {
-                Text(chat.taskTitle ?? "Conversation")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                Text(chat.lastMessage ?? "(no messages)")
+                HStack(spacing: 6) {
+                    Text(other?.displayName ?? "User")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    if other?.isPro == true {
+                        Text("PRO")
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 5).padding(.vertical, 1.5)
+                            .background(Color.accentColor)
+                            .clipShape(Capsule())
+                    }
+                }
+                Text(preview)
                     .font(.system(size: 13))
                     .foregroundColor(.white.opacity(0.55))
                     .lineLimit(1)
@@ -78,6 +101,13 @@ private struct ChatRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    /// Last message if present, otherwise task title (so the row is never empty).
+    private var preview: String {
+        if let last = chat.lastMessage, !last.isEmpty { return last }
+        if let task = chat.taskTitle, !task.isEmpty { return "Task: \(task)" }
+        return "(no messages)"
     }
 
     private func formatRelative(_ iso: String) -> String {

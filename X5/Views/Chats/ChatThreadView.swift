@@ -8,6 +8,8 @@ struct ChatThreadView: View {
     @State private var messages: [ChatMessageRow] = []
     @State private var draft: String = ""
     @State private var sending: Bool = false
+    @State private var other: UserProfile?
+    @State private var showingProfile: Bool = false
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -51,10 +53,52 @@ struct ChatThreadView: View {
             .background(Color(red: 0.04, green: 0.05, blue: 0.10))
         }
         .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
-        .navigationTitle(chat.taskTitle ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .task { await reload() }
+        .toolbar {
+            // Telegram-style: avatar + name in nav bar, tappable → opens profile
+            ToolbarItem(placement: .principal) {
+                Button { showingProfile = true } label: {
+                    HStack(spacing: 8) {
+                        AvatarView(urlString: other?.avatar, name: other?.displayName, size: 32)
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 4) {
+                                Text(other?.displayName ?? "Chat")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.white)
+                                if other?.isPro == true {
+                                    Text("PRO")
+                                        .font(.system(size: 8, weight: .heavy))
+                                        .foregroundColor(.black)
+                                        .padding(.horizontal, 4).padding(.vertical, 1)
+                                        .background(Color.accentColor)
+                                        .clipShape(Capsule())
+                                }
+                            }
+                            if let task = chat.taskTitle, !task.isEmpty {
+                                Text(task)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.5))
+                                    .lineLimit(1)
+                            } else {
+                                Text("tap to view profile")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.4))
+                            }
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .navigationDestination(isPresented: $showingProfile) {
+            let otherId = chat.otherParticipantId(currentUser: auth.userId ?? "") ?? ""
+            UserProfileView(userId: otherId, fallback: nil)
+        }
+        .task {
+            await reload()
+            await loadOther()
+        }
     }
 
     private var canSend: Bool {
@@ -64,6 +108,14 @@ struct ChatThreadView: View {
     private func reload() async {
         guard let token = auth.accessToken else { return }
         messages = await service.loadMessages(chatId: chat.id, accessToken: token)
+    }
+
+    private func loadOther() async {
+        guard let token = auth.accessToken,
+              let myId = auth.userId,
+              let otherId = chat.otherParticipantId(currentUser: myId)
+        else { return }
+        other = await service.loadPublicProfile(userId: otherId, accessToken: token)
     }
 
     private func send() {

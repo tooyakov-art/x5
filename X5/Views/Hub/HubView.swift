@@ -12,10 +12,13 @@ struct HubView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
     @StateObject private var service = HubService()
+    @StateObject private var chats = ChatsService()
     @State private var segment: Segment = .specialists
     @State private var category: String? = nil
     @State private var showingPostTask = false
     @State private var showingEditProfile = false
+    @State private var openingChatWith: String? = nil
+    @State private var startingChat: ChatRoom? = nil
 
     var body: some View {
         NavigationStack {
@@ -82,6 +85,20 @@ struct HubView: View {
             .sheet(isPresented: $showingEditProfile) {
                 EditProfileView()
             }
+            .sheet(item: $startingChat) { chat in
+                NavigationStack { ChatThreadView(chat: chat) }
+                    .preferredColorScheme(.dark)
+            }
+        }
+    }
+
+    private func startChat(with person: HubSpecialist) {
+        guard let myId = auth.userId, let token = auth.accessToken else { return }
+        openingChatWith = person.id
+        Task {
+            let chat = await chats.ensureChat(otherUserId: person.id, currentUserId: myId, taskId: nil, taskTitle: nil, accessToken: token)
+            openingChatWith = nil
+            if let chat { startingChat = chat }
         }
     }
 
@@ -89,12 +106,33 @@ struct HubView: View {
         ScrollView {
             LazyVStack(spacing: 10) {
                 ForEach(filteredSpecialists) { person in
-                    NavigationLink {
-                        UserProfileView(userId: person.id, fallback: person)
-                    } label: {
-                        SpecialistRow(person: person)
+                    HStack(spacing: 8) {
+                        NavigationLink {
+                            UserProfileView(userId: person.id, fallback: person)
+                        } label: {
+                            SpecialistRow(person: person)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            startChat(with: person)
+                        } label: {
+                            Group {
+                                if openingChatWith == person.id {
+                                    ProgressView().tint(.accentColor)
+                                } else {
+                                    Image(systemName: "message.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.accentColor)
+                                }
+                            }
+                            .frame(width: 44, height: 44)
+                            .background(Color.accentColor.opacity(0.12))
+                            .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(openingChatWith != nil)
                     }
-                    .buttonStyle(.plain)
                 }
                 if filteredSpecialists.isEmpty && !service.isLoading {
                     EmptyState(systemImage: "person.crop.circle.badge.questionmark",
