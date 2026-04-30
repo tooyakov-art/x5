@@ -20,7 +20,7 @@ struct HistoryView: View {
                             .foregroundColor(.white.opacity(0.55))
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(red: 0.04, green: 0.04, blue: 0.07))
+                    .background(Color(red: 0.04, green: 0.05, blue: 0.10))
                 } else {
                     List {
                         ForEach(history.items) { item in
@@ -50,7 +50,7 @@ struct HistoryView: View {
                         }
                     }
                     .scrollContentBackground(.hidden)
-                    .background(Color(red: 0.04, green: 0.04, blue: 0.07))
+                    .background(Color(red: 0.04, green: 0.05, blue: 0.10))
                 }
             }
             .navigationTitle("History")

@@ -115,7 +115,7 @@ struct MainView: View {
             .sheet(isPresented: $showingHistory) { HistoryView() }
             .sheet(isPresented: $showingBrand) { BrandProfileView() }
         }
-        .background(Color(red: 0.04, green: 0.04, blue: 0.07).ignoresSafeArea())
+        .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
     }
 
     private var canGenerate: Bool {

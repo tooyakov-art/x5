@@ -2,9 +2,13 @@ import SwiftUI
 
 @main
 struct X5App: App {
+    @UIApplicationDelegateAdaptor(X5AppDelegate.self) private var appDelegate
+
     @StateObject private var auth = Auth()
     @StateObject private var history = CaptionHistory()
     @StateObject private var brand = BrandProfile()
+    @StateObject private var subscription = Subscription()
+    @StateObject private var currentUser = CurrentUser()
 
     var body: some Scene {
         WindowGroup {
@@ -12,7 +16,18 @@ struct X5App: App {
                 .environmentObject(auth)
                 .environmentObject(history)
                 .environmentObject(brand)
+                .environmentObject(subscription)
+                .environmentObject(currentUser)
                 .preferredColorScheme(.dark)
+                .task(id: auth.isAuthenticated) {
+                    if auth.isAuthenticated {
+                        PushNotifications.shared.bootstrap()
+                        PushNotifications.shared.currentUserDidChange(
+                            userId: auth.userId,
+                            accessToken: auth.accessToken
+                        )
+                    }
+                }
         }
     }
 }
