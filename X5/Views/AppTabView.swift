@@ -11,7 +11,7 @@ struct AppTabView: View {
             CoursesView()
                 .tabItem { Label("Courses", systemImage: "graduationcap") }
 
-            ChatView()
+            ChatsListView()
                 .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
 
             HubView()
