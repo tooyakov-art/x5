@@ -1,6 +1,6 @@
 import Foundation
 
-struct SocialLinks: Codable, Equatable {
+struct SocialLinks: Codable, Equatable, Hashable {
     var instagram: String?
     var telegram: String?
     var whatsapp: String?
