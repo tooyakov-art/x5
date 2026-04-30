@@ -57,11 +57,12 @@ struct RespondTaskView: View {
                     .disabled(saving || message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-            .navigationDestination(item: $navigatingChat) { chat in
-                ChatThreadView(chat: chat)
-            }
         }
         .preferredColorScheme(.dark)
+        .sheet(item: $navigatingChat) { chat in
+            NavigationStack { ChatThreadView(chat: chat) }
+                .preferredColorScheme(.dark)
+        }
     }
 
     private func submit() async {
@@ -85,7 +86,6 @@ struct RespondTaskView: View {
         if let chat = await chats.ensureChat(otherUserId: task.authorId, currentUserId: uid, taskId: task.id, taskTitle: task.title, accessToken: token) {
             // Send the response message into the chat as well so the author sees it
             _ = await chats.sendText(chatId: chat.id, currentUserId: uid, text: trimmed, accessToken: token)
-            dismiss()
             navigatingChat = chat
         } else {
             dismiss()
