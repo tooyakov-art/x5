@@ -3,6 +3,7 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var subscription: Subscription
+    @EnvironmentObject private var currentUser: CurrentUser
     @Environment(\.dismiss) private var dismiss
 
     /// When false the toolbar "Done" button is hidden — used when ProfileView is
@@ -23,15 +24,55 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             List {
+                profileHeaderSection
+
+                if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
+                    Section("Specialist") {
+                        ForEach(cats, id: \.self) { id in
+                            HStack {
+                                Text(HubCategories.label(for: id))
+                                Spacer()
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.accentColor.opacity(0.7))
+                            }
+                        }
+                        if let inHub = currentUser.profile?.showInHub {
+                            HStack {
+                                Text("Show in Hub")
+                                Spacer()
+                                Text(inHub ? "On" : "Off")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                if let links = currentUser.profile?.socialLinks {
+                    Section("Social") {
+                        if let v = links.telegram, !v.isEmpty {
+                            LabeledContent("Telegram", value: v)
+                        }
+                        if let v = links.whatsapp, !v.isEmpty {
+                            LabeledContent("WhatsApp", value: v)
+                        }
+                        if let v = links.instagram, !v.isEmpty {
+                            LabeledContent("Instagram", value: v)
+                        }
+                    }
+                }
+
                 Section("Account") {
-                    if let email = auth.userEmail {
+                    if let email = currentUser.profile?.email ?? auth.userEmail {
                         LabeledContent("Email", value: email)
+                    }
+                    if let credits = currentUser.profile?.credits {
+                        LabeledContent("Credits", value: "\(credits)")
                     }
                     HStack {
                         Text("Subscription")
                         Spacer()
-                        Text(subscription.isPro ? "Pro · active" : "Free")
-                            .foregroundColor(subscription.isPro ? .accentColor : .secondary)
+                        Text(planLabel)
+                            .foregroundColor(currentUser.profile?.isPro == true ? .accentColor : .secondary)
                     }
                 }
 
@@ -162,6 +203,48 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showingPaywall) { PaywallView() }
         }
+    }
+
+    // MARK: - Header
+
+    @ViewBuilder
+    private var profileHeaderSection: some View {
+        Section {
+            HStack(spacing: 14) {
+                AvatarView(urlString: currentUser.profile?.avatar,
+                           name: currentUser.profile?.name ?? auth.userEmail,
+                           size: 60)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(currentUser.profile?.displayName ?? auth.userEmail ?? "User")
+                        .font(.headline)
+                    HStack(spacing: 6) {
+                        Text(planLabel)
+                            .font(.caption)
+                            .foregroundColor(currentUser.profile?.isPro == true ? .accentColor : .secondary)
+                        if let n = currentUser.profile?.signupNumber {
+                            Text("· #\(n)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    if let nick = currentUser.profile?.nickname, !nick.isEmpty {
+                        Text("@\(nick)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                Spacer()
+            }
+            .padding(.vertical, 4)
+            if let bio = currentUser.profile?.bio, !bio.isEmpty {
+                Text(bio).font(.callout).foregroundColor(.secondary)
+            }
+        }
+    }
+
+    private var planLabel: String {
+        if let p = currentUser.profile?.planLabel { return "\(p)\(currentUser.profile?.isPro == true ? " · active" : "")" }
+        return subscription.isPro ? "Pro · active" : "Free"
     }
 
     private func runDelete() async {
