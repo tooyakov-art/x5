@@ -7,7 +7,9 @@ final class Auth: ObservableObject {
     @Published private(set) var userEmail: String?
     @Published private(set) var userId: String?
 
-    private let supabase = SupabaseClient()
+    let supabase = SupabaseClient()
+
+    var accessToken: String? { supabase.accessToken }
 
     private let tokenKey = "x5.session.access_token"
     private let refreshKey = "x5.session.refresh_token"
@@ -15,6 +17,15 @@ final class Auth: ObservableObject {
     private let emailKey = "x5.session.email"
 
     init() {
+        // When SupabaseClient auto-refreshes the JWT (on a 401), persist the new tokens.
+        supabase.onSessionRefreshed = { [weak self] session in
+            guard let self else { return }
+            let defaults = UserDefaults.standard
+            defaults.set(session.accessToken, forKey: self.tokenKey)
+            if let refresh = session.refreshToken {
+                defaults.set(refresh, forKey: self.refreshKey)
+            }
+        }
         loadStoredSession()
     }
 
@@ -33,6 +44,7 @@ final class Auth: ObservableObject {
     func signOut() async {
         clearStorage()
         supabase.accessToken = nil
+        supabase.refreshToken = nil
         isAuthenticated = false
         userEmail = nil
         userId = nil
@@ -54,6 +66,7 @@ final class Auth: ObservableObject {
             return
         }
         supabase.accessToken = token
+        supabase.refreshToken = defaults.string(forKey: refreshKey)
         userId = uid
         userEmail = defaults.string(forKey: emailKey)
         isAuthenticated = true
@@ -67,6 +80,7 @@ final class Auth: ObservableObject {
         defaults.set(session.user.email, forKey: emailKey)
 
         supabase.accessToken = session.accessToken
+        supabase.refreshToken = session.refreshToken
         userId = session.user.id
         userEmail = session.user.email
         isAuthenticated = true

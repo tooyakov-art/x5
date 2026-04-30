@@ -1,17 +1,18 @@
 import SwiftUI
 
-/// Bottom tab layout — matches x5 web order: Generate / Courses / Chat / Hub / Profile.
+/// Bottom tab layout — matches web x5 mobile MAIN_TAB_VIEWS:
+/// Home / Courses / Chats / Hub / Profile.
 struct AppTabView: View {
     var body: some View {
         TabView {
-            GenerateView()
-                .tabItem { Label("Generate", systemImage: "wand.and.stars") }
+            HomeView()
+                .tabItem { Label("Home", systemImage: "house") }
 
             CoursesView()
                 .tabItem { Label("Courses", systemImage: "graduationcap") }
 
             ChatView()
-                .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
+                .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
 
             HireView()
                 .tabItem { Label("Hub", systemImage: "briefcase") }

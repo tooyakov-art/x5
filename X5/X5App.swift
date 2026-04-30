@@ -6,6 +6,7 @@ struct X5App: App {
     @StateObject private var history = CaptionHistory()
     @StateObject private var brand = BrandProfile()
     @StateObject private var subscription = Subscription()
+    @StateObject private var currentUser = CurrentUser()
 
     var body: some Scene {
         WindowGroup {
@@ -14,6 +15,7 @@ struct X5App: App {
                 .environmentObject(history)
                 .environmentObject(brand)
                 .environmentObject(subscription)
+                .environmentObject(currentUser)
                 .preferredColorScheme(.dark)
         }
     }
