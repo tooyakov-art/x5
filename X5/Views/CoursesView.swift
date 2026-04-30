@@ -2,8 +2,13 @@ import SwiftUI
 
 struct CoursesView: View {
     @EnvironmentObject private var sub: Subscription
+    @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = CoursesService()
     @State private var showingPaywall = false
+    @State private var devAlert = false
+
+    private var isDev: Bool { Roles.isDeveloper(auth.userEmail) }
 
     var body: some View {
         NavigationStack {
@@ -17,12 +22,12 @@ struct CoursesView: View {
                     }
                 } else {
                     ScrollView {
-                        VStack(spacing: 12) {
+                        VStack(spacing: 16) {
                             ForEach(service.courses) { course in
                                 NavigationLink {
                                     CourseDetailView(course: course, openPaywall: { showingPaywall = true })
                                 } label: {
-                                    CourseRow(course: course)
+                                    CourseCard(course: course)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -40,7 +45,23 @@ struct CoursesView: View {
             .navigationTitle("CourseUP")
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                if !sub.isPro {
+                if isDev {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            devAlert = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus")
+                                Text("Создать").bold()
+                            }
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Color.accentColor)
+                            .clipShape(Capsule())
+                        }
+                    }
+                } else if !sub.isPro {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { showingPaywall = true } label: {
                             Text("Pro")
@@ -54,8 +75,97 @@ struct CoursesView: View {
                 }
             }
             .sheet(isPresented: $showingPaywall) { PaywallView() }
+            .alert("Course editor", isPresented: $devAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Создание курсов через iOS — coming soon. Сейчас курсы редактируются в веб-версии х5: tooyakov-art.github.io/x5site")
+            }
             .task { await service.loadCourses() }
         }
+    }
+}
+
+/// Big card with cover image taking ~50% of card height — matches web Академия style.
+private struct CourseCard: View {
+    let course: Course
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack {
+                LinearGradient(colors: [Color.purple.opacity(0.6), Color.pink.opacity(0.6)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                if let cover = course.coverUrl, !cover.isEmpty, let url = URL(string: cover) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img):
+                            img.resizable().scaledToFill()
+                        default:
+                            Image(systemName: "graduationcap")
+                                .font(.system(size: 40, weight: .light))
+                                .foregroundColor(.white.opacity(0.7))
+                        }
+                    }
+                } else {
+                    Image(systemName: "play.circle")
+                        .font(.system(size: 60, weight: .ultraLight))
+                        .foregroundColor(.white.opacity(0.85))
+                }
+            }
+            .frame(height: 220)
+            .clipped()
+            .overlay(alignment: .topTrailing) {
+                if !(course.isFree ?? false) && (course.price ?? 0) > 0 {
+                    Text("PRO")
+                        .font(.system(size: 10, weight: .heavy))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.accentColor)
+                        .foregroundColor(.black)
+                        .clipShape(Capsule())
+                        .padding(12)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(course.title)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+
+                if let desc = course.description, !desc.isEmpty {
+                    Text(desc)
+                        .font(.system(size: 13))
+                        .foregroundColor(.white.opacity(0.55))
+                        .lineLimit(2)
+                }
+
+                HStack(spacing: 14) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "book").font(.system(size: 11))
+                        Text("\(course.totalLessons) уроков").font(.system(size: 12))
+                    }.foregroundColor(.white.opacity(0.5))
+
+                    if let students = course.studentsCount, students > 0 {
+                        HStack(spacing: 5) {
+                            Image(systemName: "person.2").font(.system(size: 11))
+                            Text("\(students)").font(.system(size: 12))
+                        }.foregroundColor(.white.opacity(0.5))
+                    }
+
+                    Spacer()
+
+                    ZStack {
+                        Circle().fill(Color.accentColor)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.black)
+                    }
+                    .frame(width: 36, height: 36)
+                }
+            }
+            .padding(14)
+        }
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 

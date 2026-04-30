@@ -52,14 +52,22 @@ struct EditProfileView: View {
                     }
                 }
 
-                Section(header: Text("Social links")) {
-                    socialField("Instagram", text: $instagram, placeholder: "@username")
-                    socialField("Telegram", text: $telegram, placeholder: "@username")
-                    socialField("WhatsApp", text: $whatsapp, placeholder: "+7…")
-                    socialField("TikTok", text: $tiktok, placeholder: "https://tiktok.com/@…")
-                    socialField("YouTube", text: $youtube, placeholder: "https://youtube.com/@…")
-                    socialField("LinkedIn", text: $linkedin, placeholder: "https://linkedin.com/in/…")
-                    socialField("Facebook", text: $facebook, placeholder: "https://facebook.com/…")
+                Section(header: Text("Social links"),
+                        footer: Text("Эти ссылки увидят клиенты в твоём профиле в Hub.").font(.caption)) {
+                    socialRow(icon: "camera.aperture", color: Color(red: 0.91, green: 0.27, blue: 0.55),
+                              name: "Instagram", text: $instagram, placeholder: "@username")
+                    socialRow(icon: "paperplane.fill", color: Color(red: 0.16, green: 0.55, blue: 0.93),
+                              name: "Telegram", text: $telegram, placeholder: "@username")
+                    socialRow(icon: "phone.fill", color: Color(red: 0.15, green: 0.78, blue: 0.40),
+                              name: "WhatsApp", text: $whatsapp, placeholder: "+7…")
+                    socialRow(icon: "music.note", color: .black.opacity(0.85),
+                              name: "TikTok", text: $tiktok, placeholder: "@username")
+                    socialRow(icon: "play.rectangle.fill", color: Color(red: 0.92, green: 0.05, blue: 0.10),
+                              name: "YouTube", text: $youtube, placeholder: "@channel")
+                    socialRow(icon: "briefcase.fill", color: Color(red: 0.04, green: 0.46, blue: 0.71),
+                              name: "LinkedIn", text: $linkedin, placeholder: "linkedin.com/in/…")
+                    socialRow(icon: "f.cursive", color: Color(red: 0.10, green: 0.33, blue: 0.78),
+                              name: "Facebook", text: $facebook, placeholder: "facebook.com/…")
                 }
 
                 if let err = errorMessage {
@@ -94,6 +102,30 @@ struct EditProfileView: View {
             .autocapitalization(.none)
             .textInputAutocapitalization(.never)
             .keyboardType(.URL)
+    }
+
+    private func socialRow(icon: String, color: Color, name: String,
+                           text: Binding<String>, placeholder: String) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(color)
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .frame(width: 28, height: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                TextField(placeholder, text: text)
+                    .autocapitalization(.none)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    .font(.system(size: 14))
+            }
+        }
     }
 
     private var isValid: Bool {
