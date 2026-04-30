@@ -92,7 +92,7 @@ private struct CourseRow: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.white)
                         .lineLimit(2)
-                    if !course.isFree && course.price > 0 {
+                    if !(course.isFree ?? false) && (course.price ?? 0) > 0 {
                         Text("PRO")
                             .font(.system(size: 9, weight: .heavy))
                             .padding(.horizontal, 6).padding(.vertical, 2)
@@ -147,7 +147,7 @@ struct CourseDetailView: View {
 
     @EnvironmentObject private var sub: Subscription
 
-    var hasFullAccess: Bool { course.isFree || course.price == 0 || sub.isPro }
+    var hasFullAccess: Bool { (course.isFree ?? false) || (course.price ?? 0) == 0 || sub.isPro }
 
     var body: some View {
         ScrollView {

@@ -52,17 +52,20 @@ struct Course: Codable, Identifiable, Hashable {
     let marketingHook: String?
     let coverUrl: String?
     let authorName: String?
-    let price: Int
-    let isFree: Bool
-    let isPublic: Bool
+    let price: Int?
+    let isFree: Bool?
+    let isPublic: Bool?
     let courseLanguage: String?
     let averageRating: Double?
     let studentsCount: Int?
     let sortOrder: Int?
-    let categories: [CourseCategory]
+    let categoriesRaw: [CourseCategory]?
+
+    var categories: [CourseCategory] { categoriesRaw ?? [] }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, description, price, categories
+        case id, title, description, price
+        case categoriesRaw = "categories"
         case marketingHook = "marketing_hook"
         case coverUrl = "cover_url"
         case authorName = "author_name"

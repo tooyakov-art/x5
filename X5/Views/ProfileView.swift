@@ -6,261 +6,337 @@ struct ProfileView: View {
     @EnvironmentObject private var currentUser: CurrentUser
     @Environment(\.dismiss) private var dismiss
 
-    /// When false the toolbar "Done" button is hidden — used when ProfileView is
-    /// embedded as a bottom-tab root rather than presented as a sheet.
     var showsDoneButton: Bool = true
 
-    @State private var deleteStage: DeleteStage = .idle
-    @State private var errorMessage: String?
-    @State private var showingPaywall: Bool = false
-
-    private enum DeleteStage {
-        case idle
-        case firstConfirm
-        case finalConfirm
-        case deleting
-    }
+    @State private var showingPaywall = false
+    @State private var showingSettings = false
 
     var body: some View {
         NavigationStack {
-            List {
-                profileHeaderSection
-
-                if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
-                    Section("Specialist") {
-                        ForEach(cats, id: \.self) { id in
-                            HStack {
-                                Text(HubCategories.label(for: id))
-                                Spacer()
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(.accentColor.opacity(0.7))
-                            }
-                        }
-                        if let inHub = currentUser.profile?.showInHub {
-                            HStack {
-                                Text("Show in Hub")
-                                Spacer()
-                                Text(inHub ? "On" : "Off")
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                }
-
-                if let links = currentUser.profile?.socialLinks {
-                    Section("Social") {
-                        if let v = links.telegram, !v.isEmpty {
-                            LabeledContent("Telegram", value: v)
-                        }
-                        if let v = links.whatsapp, !v.isEmpty {
-                            LabeledContent("WhatsApp", value: v)
-                        }
-                        if let v = links.instagram, !v.isEmpty {
-                            LabeledContent("Instagram", value: v)
-                        }
-                    }
-                }
-
-                Section("Account") {
-                    if let email = currentUser.profile?.email ?? auth.userEmail {
-                        LabeledContent("Email", value: email)
-                    }
-                    if let credits = currentUser.profile?.credits {
-                        LabeledContent("Credits", value: "\(credits)")
-                    }
-                    HStack {
-                        Text("Subscription")
-                        Spacer()
-                        Text(planLabel)
-                            .foregroundColor(currentUser.profile?.isPro == true ? .accentColor : .secondary)
-                    }
-                }
-
-                Section {
-                    if subscription.isPro {
-                        Button("Manage subscription") {
-                            if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
-                                UIApplication.shared.open(url)
-                            }
-                        }
+            ScrollView {
+                VStack(spacing: 22) {
+                    header
+                    statsRow
+                    if currentUser.profile?.isPro == true {
+                        proHero
                     } else {
-                        Button {
-                            showingPaywall = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "sparkles").foregroundColor(.accentColor)
-                                Text("Upgrade to Pro").foregroundColor(.accentColor)
-                            }
-                        }
+                        upgradeCard
+                    }
+                    if let bio = currentUser.profile?.bio, !bio.isEmpty {
+                        BioCard(text: bio)
+                    }
+                    portfolioPlaceholder
+                    socialLinks
+                    if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
+                        specialistCard(cats: cats)
                     }
                 }
-
-                Section {
-                    Button("Sign out") {
-                        Task {
-                            await auth.signOut()
-                            dismiss()
-                        }
-                    }
-                }
-
-                Section {
-                    Button(role: .destructive) {
-                        deleteStage = .firstConfirm
-                    } label: {
-                        if deleteStage == .deleting {
-                            HStack {
-                                ProgressView()
-                                Text("Deleting…")
-                            }
-                        } else {
-                            Text("Delete Account")
-                        }
-                    }
-                    .disabled(deleteStage == .deleting)
-                } header: {
-                    Text("Danger zone")
-                } footer: {
-                    Text(
-                        "This will permanently delete your account and all associated data. This action cannot be undone."
-                    )
-                }
-
-                if let error = errorMessage {
-                    Section {
-                        Text(error).foregroundColor(.red)
-                    }
-                }
-
-                Section {
-                    Link(
-                        "Privacy Policy",
-                        destination: URL(string: "https://tooyakov-art.github.io/x5site/privacy.html")!
-                    )
-                    Link(
-                        "Terms of Service",
-                        destination: URL(string: "https://tooyakov-art.github.io/x5site/terms.html")!
-                    )
-                    Link(
-                        "Contact Support",
-                        destination: URL(string: "mailto:support@x5studio.app")!
-                    )
-                }
-
-                Section {
-                    HStack {
-                        Spacer()
-                        Text("X5 · v1.0.0")
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                    }
-                }
-                .listRowBackground(Color.clear)
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 32)
+                .frame(maxWidth: 640)
+                .frame(maxWidth: .infinity)
             }
+            .background(Color(red: 0.04, green: 0.04, blue: 0.07).ignoresSafeArea())
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    .accessibilityLabel("Settings")
+                }
                 if showsDoneButton {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .topBarLeading) {
                         Button("Done") { dismiss() }
                     }
                 }
             }
-            .confirmationDialog(
-                "Delete account?",
-                isPresented: Binding(
-                    get: { deleteStage == .firstConfirm },
-                    set: { if !$0 { deleteStage = .idle } }
-                ),
-                titleVisibility: .visible
-            ) {
-                Button("Continue", role: .destructive) {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                        deleteStage = .finalConfirm
-                    }
-                }
-                Button("Cancel", role: .cancel) { deleteStage = .idle }
-            } message: {
-                Text(
-                    "This will permanently remove your account and all associated data. You will not be able to recover it."
-                )
-            }
-            .confirmationDialog(
-                "Are you absolutely sure?",
-                isPresented: Binding(
-                    get: { deleteStage == .finalConfirm },
-                    set: { if !$0 { deleteStage = .idle } }
-                ),
-                titleVisibility: .visible
-            ) {
-                Button("Delete forever", role: .destructive) {
-                    Task { await runDelete() }
-                }
-                Button("Cancel", role: .cancel) { deleteStage = .idle }
-            } message: {
-                Text("Once deleted, your account cannot be recovered.")
-            }
+            .sheet(isPresented: $showingSettings) { SettingsView() }
             .sheet(isPresented: $showingPaywall) { PaywallView() }
         }
     }
 
     // MARK: - Header
 
-    @ViewBuilder
-    private var profileHeaderSection: some View {
-        Section {
-            HStack(spacing: 14) {
-                AvatarView(urlString: currentUser.profile?.avatar,
-                           name: currentUser.profile?.name ?? auth.userEmail,
-                           size: 60)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(currentUser.profile?.displayName ?? auth.userEmail ?? "User")
-                        .font(.headline)
-                    HStack(spacing: 6) {
-                        Text(planLabel)
-                            .font(.caption)
-                            .foregroundColor(currentUser.profile?.isPro == true ? .accentColor : .secondary)
-                        if let n = currentUser.profile?.signupNumber {
-                            Text("· #\(n)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
+    private var header: some View {
+        VStack(spacing: 12) {
+            AvatarView(urlString: currentUser.profile?.avatar,
+                       name: currentUser.profile?.name ?? auth.userEmail,
+                       size: 96)
+            VStack(spacing: 4) {
+                Text(currentUser.profile?.displayName ?? auth.userEmail ?? "User")
+                    .font(.system(size: 22, weight: .heavy))
+                    .foregroundColor(.white)
+                if let nick = currentUser.profile?.nickname, !nick.isEmpty {
+                    Text("@\(nick)")
+                        .font(.system(size: 13))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                HStack(spacing: 6) {
+                    Text(planLabel)
+                        .font(.system(size: 10, weight: .heavy))
+                        .tracking(0.8)
+                        .foregroundColor(currentUser.profile?.isPro == true ? .black : .white)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(currentUser.profile?.isPro == true ? Color.accentColor : Color.white.opacity(0.1))
+                        .clipShape(Capsule())
+                    if let n = currentUser.profile?.signupNumber {
+                        Text("#\(n)")
+                            .font(.system(size: 10, weight: .heavy))
+                            .tracking(0.8)
+                            .foregroundColor(.white.opacity(0.6))
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Color.white.opacity(0.06))
+                            .clipShape(Capsule())
                     }
-                    if let nick = currentUser.profile?.nickname, !nick.isEmpty {
-                        Text("@\(nick)")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 4)
+    }
+
+    // MARK: - Stats
+
+    private var statsRow: some View {
+        HStack(spacing: 8) {
+            StatBubble(value: "\(currentUser.profile?.credits ?? 0)", label: "Credits")
+            StatBubble(value: "0", label: "Followers")
+            StatBubble(value: "0", label: "Following")
+        }
+    }
+
+    // MARK: - Pro hero / upgrade card
+
+    private var proHero: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: "sparkles").foregroundColor(.accentColor)
+                Text("X5 Pro · active")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+                Spacer()
+                Button("Manage") {
+                    if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                        UIApplication.shared.open(url)
                     }
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.accentColor)
+            }
+            if let end = currentUser.profile?.subscriptionEndDate {
+                Text("Renews \(formatDate(end))")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.55))
+            }
+        }
+        .padding(14)
+        .background(Color.accentColor.opacity(0.08))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.accentColor.opacity(0.3), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var upgradeCard: some View {
+        Button {
+            showingPaywall = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.black)
+                    .frame(width: 40, height: 40)
+                    .background(Color.accentColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Upgrade to Pro").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
+                    Text("$9.99 / month — 1000 credits + all tools").font(.system(size: 12)).foregroundColor(.white.opacity(0.55))
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundColor(.white.opacity(0.4))
+            }
+            .padding(14)
+            .background(Color.white.opacity(0.05))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.accentColor.opacity(0.3), lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Portfolio placeholder
+
+    private var portfolioPlaceholder: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("PORTFOLIO")
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundColor(.white.opacity(0.45))
+                Spacer()
+                Button {} label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+                .disabled(true)
+            }
+            HStack {
+                Spacer()
+                VStack(spacing: 6) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.system(size: 28, weight: .light))
+                        .foregroundColor(.white.opacity(0.3))
+                    Text("Cases & logos coming soon")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.4))
                 }
                 Spacer()
             }
-            .padding(.vertical, 4)
-            if let bio = currentUser.profile?.bio, !bio.isEmpty {
-                Text(bio).font(.callout).foregroundColor(.secondary)
+            .padding(.vertical, 18)
+            .background(Color.white.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+    }
+
+    // MARK: - Social
+
+    @ViewBuilder
+    private var socialLinks: some View {
+        if let links = currentUser.profile?.socialLinks {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("SOCIAL")
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundColor(.white.opacity(0.45))
+                HStack(spacing: 8) {
+                    if let v = links.telegram, !v.isEmpty {
+                        SocialChip(label: "Telegram", value: v, systemImage: "paperplane.fill") { open(telegram: v) }
+                    }
+                    if let v = links.whatsapp, !v.isEmpty {
+                        SocialChip(label: "WhatsApp", value: v, systemImage: "phone.fill") { open(whatsapp: v) }
+                    }
+                    if let v = links.instagram, !v.isEmpty {
+                        SocialChip(label: "Instagram", value: v, systemImage: "camera.fill") { open(instagram: v) }
+                    }
+                }
             }
         }
     }
+
+    private func specialistCard(cats: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("SPECIALIST")
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundColor(.white.opacity(0.45))
+                Spacer()
+                Text(currentUser.profile?.showInHub == true ? "On Hub" : "Hidden")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(currentUser.profile?.showInHub == true ? .accentColor : .white.opacity(0.5))
+            }
+            HStack(spacing: 6) {
+                ForEach(cats.prefix(3), id: \.self) { id in
+                    Text(HubCategories.label(for: id))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Color.accentColor.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+            }
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    // MARK: - Helpers
 
     private var planLabel: String {
-        if let p = currentUser.profile?.planLabel { return "\(p)\(currentUser.profile?.isPro == true ? " · active" : "")" }
-        return subscription.isPro ? "Pro · active" : "Free"
+        currentUser.profile?.planLabel.uppercased() ?? "FREE"
     }
 
-    private func runDelete() async {
-        deleteStage = .deleting
-        errorMessage = nil
-        do {
-            try await auth.deleteAccount()
-            await MainActor.run {
-                deleteStage = .idle
-                dismiss()
-            }
-        } catch {
-            await MainActor.run {
-                deleteStage = .idle
-                errorMessage = "Delete failed: \(error.localizedDescription)"
-            }
+    private func formatDate(_ iso: String) -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let d = f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return iso }
+        let out = DateFormatter()
+        out.dateStyle = .medium
+        return out.string(from: d)
+    }
+
+    private func open(telegram raw: String) {
+        let user = raw.replacingOccurrences(of: "@", with: "")
+        if let url = URL(string: raw.hasPrefix("http") ? raw : "https://t.me/\(user)") {
+            UIApplication.shared.open(url)
         }
+    }
+    private func open(whatsapp raw: String) {
+        if raw.hasPrefix("http"), let url = URL(string: raw) { UIApplication.shared.open(url); return }
+        let digits = raw.filter("0123456789".contains)
+        if let url = URL(string: "https://wa.me/\(digits)") { UIApplication.shared.open(url) }
+    }
+    private func open(instagram raw: String) {
+        let user = raw.replacingOccurrences(of: "@", with: "")
+        if let url = URL(string: raw.hasPrefix("http") ? raw : "https://instagram.com/\(user)") {
+            UIApplication.shared.open(url)
+        }
+    }
+}
+
+// MARK: - Components
+
+private struct StatBubble: View {
+    let value: String
+    let label: String
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(value).font(.system(size: 16, weight: .bold)).foregroundColor(.white)
+            Text(label.uppercased()).font(.system(size: 9, weight: .heavy)).tracking(0.8).foregroundColor(.white.opacity(0.45))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct BioCard: View {
+    let text: String
+    var body: some View {
+        Text(text)
+            .font(.system(size: 13))
+            .foregroundColor(.white.opacity(0.75))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(Color.white.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct SocialChip: View {
+    let label: String
+    let value: String
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage).font(.system(size: 12, weight: .semibold))
+                Text(label).font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(Color.white.opacity(0.06))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
