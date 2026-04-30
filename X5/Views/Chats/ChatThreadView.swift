@@ -4,6 +4,7 @@ struct ChatThreadView: View {
     let chat: ChatRoom
 
     @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = ChatsService()
     @State private var messages: [ChatMessageRow] = []
     @State private var draft: String = ""
@@ -36,7 +37,7 @@ struct ChatThreadView: View {
             }
 
             HStack(spacing: 10) {
-                TextField("Message", text: $draft, axis: .vertical)
+                TextField(loc.t("chats_message_placeholder"), text: $draft, axis: .vertical)
                     .focused($inputFocused)
                     .padding(.horizontal, 12).padding(.vertical, 10)
                     .background(Color.white.opacity(0.06))
@@ -63,7 +64,7 @@ struct ChatThreadView: View {
                         AvatarView(urlString: other?.avatar, name: other?.displayName, size: 32)
                         VStack(alignment: .leading, spacing: 1) {
                             HStack(spacing: 4) {
-                                Text(other?.displayName ?? "Chat")
+                                Text(other?.displayName ?? loc.t("chats_title"))
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundColor(.white)
                                 if other?.isPro == true {
@@ -81,7 +82,7 @@ struct ChatThreadView: View {
                                     .foregroundColor(.white.opacity(0.5))
                                     .lineLimit(1)
                             } else {
-                                Text("tap to view profile")
+                                Text(loc.t("chats_view_profile"))
                                     .font(.system(size: 11))
                                     .foregroundColor(.white.opacity(0.4))
                             }

@@ -9,6 +9,7 @@ struct X5App: App {
     @StateObject private var brand = BrandProfile()
     @StateObject private var subscription = Subscription()
     @StateObject private var currentUser = CurrentUser()
+    @StateObject private var localization = LocalizationService.shared
 
     var body: some Scene {
         WindowGroup {
@@ -18,6 +19,7 @@ struct X5App: App {
                 .environmentObject(brand)
                 .environmentObject(subscription)
                 .environmentObject(currentUser)
+                .environmentObject(localization)
                 .preferredColorScheme(.dark)
                 .task(id: auth.isAuthenticated) {
                     if auth.isAuthenticated {

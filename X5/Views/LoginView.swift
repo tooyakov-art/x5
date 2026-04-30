@@ -3,6 +3,7 @@ import AuthenticationServices
 
 struct LoginView: View {
     @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var loc: LocalizationService
 
     @State private var mode: Mode = .select
     @State private var email = ""
@@ -47,14 +48,14 @@ struct LoginView: View {
                 .shadow(color: Color(red: 0.16, green: 0.50, blue: 0.95).opacity(0.6), radius: 32, x: 0, y: 0)
 
             Text(mode == .email
-                 ? (isSignUp ? "Create your account" : "Sign in to X5")
-                 : "Welcome to X5")
+                 ? (isSignUp ? loc.t("login_signup") : loc.t("login_signin"))
+                 : loc.t("login_title"))
                 .font(.system(size: 26, weight: .heavy))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
 
             if mode == .select {
-                Text("Marketing studio for creators.\nGenerate, learn, and hire — in one app.")
+                Text(loc.t("login_subtitle"))
                     .font(.system(size: 14))
                     .foregroundColor(.white.opacity(0.55))
                     .multilineTextAlignment(.center)
@@ -94,7 +95,7 @@ struct LoginView: View {
                             .font(.system(size: 18, weight: .heavy))
                             .foregroundColor(.black)
                     }
-                    Text("Continue with Google")
+                    Text(loc.t("login_continue_google"))
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.black)
                 }
@@ -112,7 +113,7 @@ struct LoginView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "envelope")
-                    Text("Continue with Email")
+                    Text(loc.t("login_continue_email"))
                 }
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(.white)
@@ -138,7 +139,7 @@ struct LoginView: View {
 
     private var emailForm: some View {
         VStack(spacing: 12) {
-            TextField("Email", text: $email)
+            TextField(loc.t("login_email"), text: $email)
                 .keyboardType(.emailAddress)
                 .textContentType(.emailAddress)
                 .autocapitalization(.none)
@@ -152,7 +153,7 @@ struct LoginView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .foregroundColor(.white)
 
-            SecureField("Password", text: $password)
+            SecureField(loc.t("login_password"), text: $password)
                 .textContentType(isSignUp ? .newPassword : .password)
                 .focused($focused, equals: .password)
                 .padding(.horizontal, 14).padding(.vertical, 14)
@@ -167,7 +168,7 @@ struct LoginView: View {
             Button(action: submit) {
                 HStack {
                     if loading { ProgressView().tint(.black) }
-                    Text(loading ? "Please wait…" : (isSignUp ? "Create account" : "Sign in"))
+                    Text(loading ? loc.t("btn_loading") : (isSignUp ? loc.t("login_create") : loc.t("login_signin")))
                         .font(.system(size: 16, weight: .bold))
                 }
                 .foregroundColor(.black)
@@ -183,7 +184,7 @@ struct LoginView: View {
                 isSignUp.toggle()
                 errorMessage = nil
             } label: {
-                Text(isSignUp ? "Already have an account? Sign in" : "New here? Create an account")
+                Text(isSignUp ? loc.t("login_have_account") : loc.t("login_new_here"))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.white.opacity(0.6))
             }
@@ -203,7 +204,7 @@ struct LoginView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "chevron.left")
-                    Text("Back")
+                    Text(loc.t("btn_back"))
                 }
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.white.opacity(0.5))

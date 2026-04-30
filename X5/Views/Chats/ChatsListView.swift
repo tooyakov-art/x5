@@ -3,6 +3,7 @@ import SwiftUI
 /// List of all chats for the current user.
 struct ChatsListView: View {
     @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = ChatsService()
     @State private var profiles: [String: UserProfile] = [:]
 
@@ -14,8 +15,8 @@ struct ChatsListView: View {
                 } else if service.chats.isEmpty {
                     EmptyState(
                         systemImage: "bubble.left.and.bubble.right",
-                        title: "No conversations yet",
-                        subtitle: "Tap a specialist in Hub and start a chat."
+                        title: loc.t("chats_empty_title"),
+                        subtitle: loc.t("chats_empty_sub")
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -38,7 +39,7 @@ struct ChatsListView: View {
                 }
             }
             .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
-            .navigationTitle("Chats")
+            .navigationTitle(loc.t("chats_title"))
             .toolbarColorScheme(.dark, for: .navigationBar)
             .task { await reload() }
         }
@@ -62,13 +63,14 @@ private struct ChatRow: View {
     let chat: ChatRoom
     let currentUserId: String
     let other: UserProfile?
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         HStack(spacing: 12) {
             AvatarView(urlString: other?.avatar, name: other?.displayName, size: 44)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(other?.displayName ?? "User")
+                    Text(other?.displayName ?? loc.t("common_user"))
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
                         .lineLimit(1)
@@ -106,8 +108,8 @@ private struct ChatRow: View {
     /// Last message if present, otherwise task title (so the row is never empty).
     private var preview: String {
         if let last = chat.lastMessage, !last.isEmpty { return last }
-        if let task = chat.taskTitle, !task.isEmpty { return "Task: \(task)" }
-        return "(no messages)"
+        if let task = chat.taskTitle, !task.isEmpty { return "\(loc.t("chats_task")) \(task)" }
+        return loc.t("chats_no_messages")
     }
 
     private func formatRelative(_ iso: String) -> String {

@@ -6,11 +6,11 @@ struct HubView: View {
     enum Segment: String, CaseIterable, Identifiable {
         case specialists, tasks
         var id: String { rawValue }
-        var label: String { self == .specialists ? "Specialists" : "Tasks" }
     }
 
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
+    @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = HubService()
     @StateObject private var chats = ChatsService()
     @State private var segment: Segment = .specialists
@@ -24,7 +24,9 @@ struct HubView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 Picker("", selection: $segment) {
-                    ForEach(Segment.allCases) { s in Text(s.label).tag(s) }
+                    ForEach(Segment.allCases) { s in
+                        Text(s == .specialists ? loc.t("hub_specialists") : loc.t("hub_tasks")).tag(s)
+                    }
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
@@ -41,7 +43,7 @@ struct HubView: View {
                 }
             }
             .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
-            .navigationTitle("Hub")
+            .navigationTitle(loc.t("hub_title"))
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -51,7 +53,7 @@ struct HubView: View {
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "plus")
-                                Text("Post").bold()
+                                Text(loc.t("hub_post")).bold()
                             }
                             .font(.system(size: 13, weight: .bold))
                             .foregroundColor(.black)
@@ -63,7 +65,7 @@ struct HubView: View {
                         Button {
                             showingEditProfile = true
                         } label: {
-                            Text("Become a specialist")
+                            Text(loc.t("hub_become_specialist"))
                                 .font(.system(size: 12, weight: .bold))
                                 .foregroundColor(.black)
                                 .padding(.horizontal, 10).padding(.vertical, 5)
@@ -136,8 +138,8 @@ struct HubView: View {
                 }
                 if filteredSpecialists.isEmpty && !service.isLoading {
                     EmptyState(systemImage: "person.crop.circle.badge.questionmark",
-                               title: "No specialists yet",
-                               subtitle: "Check back soon — Hub is filling up.")
+                               title: loc.t("hub_no_specialists"),
+                               subtitle: loc.t("hub_no_specialists_sub"))
                         .padding(.top, 60)
                 }
             }
@@ -163,8 +165,8 @@ struct HubView: View {
                 }
                 if filteredTasks.isEmpty && !service.isLoading {
                     EmptyState(systemImage: "tray",
-                               title: "No open tasks",
-                               subtitle: "When entrepreneurs post tasks, they'll appear here.")
+                               title: loc.t("hub_no_tasks"),
+                               subtitle: loc.t("hub_no_tasks_sub"))
                         .padding(.top, 60)
                 }
             }
@@ -192,11 +194,12 @@ struct HubView: View {
 
 private struct CategoryRail: View {
     @Binding var selected: String?
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                Pill(label: "All", isSelected: selected == nil) { selected = nil }
+                Pill(label: loc.t("hub_all"), isSelected: selected == nil) { selected = nil }
                 ForEach(HubCategories.all) { cat in
                     Pill(label: "\(cat.emoji) \(cat.labelEn)", isSelected: selected == cat.id) {
                         selected = (selected == cat.id) ? nil : cat.id

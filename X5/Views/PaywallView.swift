@@ -5,6 +5,7 @@ struct PaywallView: View {
     @EnvironmentObject private var sub: Subscription
     @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var loc: LocalizationService
     @StateObject private var iap = IAPService()
     @Environment(\.dismiss) private var dismiss
 
@@ -25,7 +26,7 @@ struct PaywallView: View {
                     .frame(maxWidth: .infinity)
                     .multilineTextAlignment(.center)
 
-                Text("Unlock everything for marketers and creators.")
+                Text(loc.t("paywall_desc"))
                     .font(.system(size: 15))
                     .foregroundColor(.white.opacity(0.65))
                     .multilineTextAlignment(.center)
@@ -59,7 +60,7 @@ struct PaywallView: View {
                                 .font(.system(size: 17, weight: .bold))
                                 .foregroundColor(.black)
                             if iap.product != nil {
-                                Text("Cancel anytime in iOS Settings")
+                                Text(loc.t("paywall_cancel_anytime"))
                                     .font(.system(size: 12))
                                     .foregroundColor(.black.opacity(0.6))
                             }
@@ -72,13 +73,13 @@ struct PaywallView: View {
                     .disabled(iap.product == nil || iap.isPurchasing)
 
                     if iap.product == nil && iap.lastError == nil {
-                        Text("Subscription is not available right now. Please try again later.")
+                        Text(loc.t("paywall_unavailable"))
                             .font(.system(size: 11))
                             .foregroundColor(.white.opacity(0.5))
                             .multilineTextAlignment(.center)
                     }
 
-                    Button("Restore purchases") {
+                    Button(loc.t("paywall_restore")) {
                         Task {
                             await iap.restore()
                             if let uid = auth.userId, let token = auth.accessToken {
@@ -130,11 +131,11 @@ struct PaywallView: View {
     }
 
     private var buttonTitle: String {
-        if iap.isPurchasing { return "Processing…" }
+        if iap.isPurchasing { return loc.t("btn_loading") }
         if let p = iap.product {
-            return "Subscribe — \(p.displayPrice) / month"
+            return "\(loc.t("paywall_subscribe")) — \(p.displayPrice) / mo"
         }
-        return "Loading subscription…"
+        return loc.t("paywall_loading")
     }
 }
 

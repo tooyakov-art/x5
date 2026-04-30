@@ -1,0 +1,437 @@
+import Foundation
+import SwiftUI
+
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case ru, en, kk
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .ru: return "Русский"
+        case .en: return "English"
+        case .kk: return "Қазақша"
+        }
+    }
+
+    var flag: String {
+        switch self {
+        case .ru: return "🇷🇺"
+        case .en: return "🇺🇸"
+        case .kk: return "🇰🇿"
+        }
+    }
+}
+
+@MainActor
+final class LocalizationService: ObservableObject {
+    static let shared = LocalizationService()
+
+    @Published private(set) var current: AppLanguage
+
+    private let storageKey = "x5.language"
+
+    init() {
+        let stored = UserDefaults.standard.string(forKey: "x5.language")
+            .flatMap(AppLanguage.init(rawValue:))
+
+        if let stored {
+            self.current = stored
+        } else {
+            // Auto-detect from system locale
+            let code = Locale.current.language.languageCode?.identifier.lowercased() ?? "en"
+            switch code {
+            case "ru": self.current = .ru
+            case "kk", "kz": self.current = .kk
+            default: self.current = .en
+            }
+        }
+    }
+
+    func set(_ language: AppLanguage) {
+        guard language != current else { return }
+        current = language
+        UserDefaults.standard.set(language.rawValue, forKey: storageKey)
+    }
+
+    func t(_ key: String) -> String {
+        Self.dict[current]?[key] ?? Self.dict[.en]?[key] ?? key
+    }
+}
+
+// MARK: - Translation dictionary
+
+extension LocalizationService {
+    static let dict: [AppLanguage: [String: String]] = [
+        .ru: [
+            // Common
+            "btn_save": "Сохранить",
+            "btn_cancel": "Отмена",
+            "btn_back": "Назад",
+            "btn_done": "Готово",
+            "btn_delete": "Удалить",
+            "btn_continue": "Продолжить",
+            "btn_loading": "Загрузка…",
+            "btn_retry": "Попробовать снова",
+            "common_user": "Пользователь",
+
+            // Tabs
+            "tab_home": "Главная",
+            "tab_courses": "Курсы",
+            "tab_chats": "Чаты",
+            "tab_hub": "Hub",
+            "tab_profile": "Профиль",
+
+            // Login
+            "login_title": "Welcome to X5",
+            "login_subtitle": "Маркетинг студия для креаторов.\nСоздавай, учись и нанимай — в одном приложении.",
+            "login_signin": "Войти в X5",
+            "login_signup": "Создать аккаунт",
+            "login_continue_apple": "Continue with Apple",
+            "login_continue_google": "Continue with Google",
+            "login_continue_email": "Continue with Email",
+            "login_email": "Email",
+            "login_password": "Пароль",
+            "login_create": "Создать аккаунт",
+            "login_have_account": "Уже есть аккаунт? Войти",
+            "login_new_here": "Новенький? Создать аккаунт",
+            "login_invalid": "Неверный email или пароль.",
+            "login_already": "Этот email уже зарегистрирован.",
+            "login_password_short": "Пароль должен быть минимум 6 символов.",
+
+            // Settings
+            "settings_title": "Настройки",
+            "settings_account": "Аккаунт",
+            "settings_email": "Email",
+            "settings_subscription": "Подписка",
+            "settings_pro_active": "Pro · активна",
+            "settings_free": "Бесплатно",
+            "settings_language": "Язык",
+            "settings_appearance": "Внешний вид",
+            "settings_face_id": "Face ID",
+            "settings_face_id_sub": "Защитить вход в приложение",
+            "settings_public_profile": "Публичный профиль",
+            "settings_public_profile_sub": "Показывать в Hub",
+            "settings_notifications": "Уведомления",
+            "settings_notifications_sub": "Открыть системные настройки",
+            "settings_clear_cache": "Очистить кэш",
+            "settings_signout": "Выйти",
+            "settings_legal": "Документы",
+            "settings_privacy": "Политика конфиденциальности",
+            "settings_terms": "Условия использования",
+            "settings_support": "Связаться с поддержкой",
+            "settings_danger": "Опасная зона",
+            "settings_delete": "Удалить аккаунт",
+            "settings_delete_footer": "Безвозвратно удалит ваш аккаунт и все связанные данные. Действие нельзя отменить.",
+            "settings_delete_confirm": "Удалить аккаунт?",
+            "settings_delete_confirm_msg": "Это действие необратимо. Будут удалены: профиль, история, кредиты, чаты, курсы и все ваши данные.",
+            "settings_delete_sure": "Точно уверены?",
+            "settings_delete_sure_msg": "После удаления восстановить аккаунт нельзя.",
+            "settings_delete_forever": "Удалить навсегда",
+            "settings_deleting": "Удаляем…",
+            "settings_delete_failed": "Удаление не удалось",
+            "settings_cache_cleared": "Кэш очищен",
+            "settings_choose_language": "Язык приложения",
+
+            // Hub
+            "hub_title": "Hub",
+            "hub_specialists": "Специалисты",
+            "hub_tasks": "Задачи",
+            "hub_post": "Пост",
+            "hub_become_specialist": "Стать специалистом",
+            "hub_no_specialists": "Пока нет специалистов",
+            "hub_no_specialists_sub": "Загляни позже — Hub наполняется.",
+            "hub_no_tasks": "Нет открытых задач",
+            "hub_no_tasks_sub": "Когда предприниматели добавят задачи — они появятся здесь.",
+            "hub_send_message": "Написать сообщение",
+            "hub_all": "Все",
+
+            // Chats
+            "chats_title": "Чаты",
+            "chats_empty_title": "Пока нет переписок",
+            "chats_empty_sub": "Открой Hub и напиши кому-нибудь.",
+            "chats_no_messages": "(нет сообщений)",
+            "chats_task": "Задача:",
+            "chats_message_placeholder": "Сообщение…",
+            "chats_send": "Отправить",
+            "chats_view_profile": "тапни, чтобы открыть профиль",
+            "chats_loading": "Загружаем чаты…",
+
+            // Paywall
+            "paywall_title": "Раскрой потенциал",
+            "paywall_desc": "Доступ ко всем AI-инструментам, премиум-курсам и безлимитным генерациям.",
+            "paywall_active": "X5 Pro активна",
+            "paywall_until": "До",
+            "paywall_subscribe": "Подписаться",
+            "paywall_loading": "Загружаем подписку…",
+            "paywall_unavailable": "Подписка сейчас недоступна. Попробуйте позже.",
+            "paywall_cancel_anytime": "Отменить можно в любой момент в настройках iOS",
+            "paywall_restore": "Восстановить покупки",
+
+            // Profile
+            "profile_title": "Профиль",
+            "profile_edit": "Редактировать профиль",
+            "profile_credits": "Баланс",
+            "profile_buy_credits": "Пополнить",
+            "profile_upgrade": "Улучшить до Pro",
+            "profile_get_verified": "Получить галочку",
+            "profile_portfolio": "Портфолио",
+            "profile_portfolio_empty": "Портфолио пустое",
+            "profile_add_to_portfolio": "Добавить в портфолио",
+            "profile_verified": "Проверенный",
+
+            // Notifications
+            "notif_title": "Уведомления",
+            "notif_empty": "Нет уведомлений",
+
+            // Verified
+            "verified_title": "Получить галочку",
+            "verified_subtitle": "Синяя ☑ рядом с твоим именем",
+            "verified_benefit_1": "Приоритет в Hub — твои карточки выше",
+            "verified_benefit_2": "Индикатор доверия для клиентов",
+            "verified_benefit_3": "Знак того, что ты — настоящий специалист",
+            "verified_subscribe": "Подписаться за 990 ₸/мес",
+            "verified_active": "Галочка активна до",
+        ],
+        .en: [
+            "btn_save": "Save",
+            "btn_cancel": "Cancel",
+            "btn_back": "Back",
+            "btn_done": "Done",
+            "btn_delete": "Delete",
+            "btn_continue": "Continue",
+            "btn_loading": "Loading…",
+            "btn_retry": "Try again",
+            "common_user": "User",
+
+            "tab_home": "Home",
+            "tab_courses": "Courses",
+            "tab_chats": "Chats",
+            "tab_hub": "Hub",
+            "tab_profile": "Profile",
+
+            "login_title": "Welcome to X5",
+            "login_subtitle": "Marketing studio for creators.\nGenerate, learn, and hire — in one app.",
+            "login_signin": "Sign in to X5",
+            "login_signup": "Create your account",
+            "login_continue_apple": "Continue with Apple",
+            "login_continue_google": "Continue with Google",
+            "login_continue_email": "Continue with Email",
+            "login_email": "Email",
+            "login_password": "Password",
+            "login_create": "Create account",
+            "login_have_account": "Already have an account? Sign in",
+            "login_new_here": "New here? Create an account",
+            "login_invalid": "Invalid email or password.",
+            "login_already": "This email is already registered.",
+            "login_password_short": "Password must be at least 6 characters.",
+
+            "settings_title": "Settings",
+            "settings_account": "Account",
+            "settings_email": "Email",
+            "settings_subscription": "Subscription",
+            "settings_pro_active": "Pro · active",
+            "settings_free": "Free",
+            "settings_language": "Language",
+            "settings_appearance": "Appearance",
+            "settings_face_id": "Face ID",
+            "settings_face_id_sub": "Protect app entry",
+            "settings_public_profile": "Public profile",
+            "settings_public_profile_sub": "Show me in Hub",
+            "settings_notifications": "Notifications",
+            "settings_notifications_sub": "Open system settings",
+            "settings_clear_cache": "Clear cache",
+            "settings_signout": "Sign out",
+            "settings_legal": "Legal",
+            "settings_privacy": "Privacy Policy",
+            "settings_terms": "Terms of Service",
+            "settings_support": "Contact support",
+            "settings_danger": "Danger zone",
+            "settings_delete": "Delete account",
+            "settings_delete_footer": "This will permanently delete your account and all associated data. This action cannot be undone.",
+            "settings_delete_confirm": "Delete account?",
+            "settings_delete_confirm_msg": "This will permanently remove your account and all associated data. You will not be able to recover it.",
+            "settings_delete_sure": "Are you absolutely sure?",
+            "settings_delete_sure_msg": "Once deleted, your account cannot be recovered.",
+            "settings_delete_forever": "Delete forever",
+            "settings_deleting": "Deleting…",
+            "settings_delete_failed": "Delete failed",
+            "settings_cache_cleared": "Cache cleared",
+            "settings_choose_language": "App language",
+
+            "hub_title": "Hub",
+            "hub_specialists": "Specialists",
+            "hub_tasks": "Tasks",
+            "hub_post": "Post",
+            "hub_become_specialist": "Become a specialist",
+            "hub_no_specialists": "No specialists yet",
+            "hub_no_specialists_sub": "Check back soon — Hub is filling up.",
+            "hub_no_tasks": "No open tasks",
+            "hub_no_tasks_sub": "When entrepreneurs post tasks, they'll appear here.",
+            "hub_send_message": "Send message",
+            "hub_all": "All",
+
+            "chats_title": "Chats",
+            "chats_empty_title": "No conversations yet",
+            "chats_empty_sub": "Open Hub and reach out to someone.",
+            "chats_no_messages": "(no messages)",
+            "chats_task": "Task:",
+            "chats_message_placeholder": "Message…",
+            "chats_send": "Send",
+            "chats_view_profile": "tap to view profile",
+            "chats_loading": "Loading chats…",
+
+            "paywall_title": "Unlock the potential",
+            "paywall_desc": "Access all AI tools, premium courses, and unlimited generations.",
+            "paywall_active": "X5 Pro Active",
+            "paywall_until": "Until",
+            "paywall_subscribe": "Subscribe",
+            "paywall_loading": "Loading subscription…",
+            "paywall_unavailable": "Subscription is not available right now. Please try again later.",
+            "paywall_cancel_anytime": "Cancel anytime in iOS Settings",
+            "paywall_restore": "Restore purchases",
+
+            "profile_title": "Profile",
+            "profile_edit": "Edit profile",
+            "profile_credits": "Credits",
+            "profile_buy_credits": "Top up",
+            "profile_upgrade": "Upgrade to Pro",
+            "profile_get_verified": "Get verified",
+            "profile_portfolio": "Portfolio",
+            "profile_portfolio_empty": "Portfolio is empty",
+            "profile_add_to_portfolio": "Add to portfolio",
+            "profile_verified": "Verified",
+
+            "notif_title": "Notifications",
+            "notif_empty": "No notifications",
+
+            "verified_title": "Get verified",
+            "verified_subtitle": "A blue ☑ next to your name",
+            "verified_benefit_1": "Priority in Hub — your cards rank higher",
+            "verified_benefit_2": "Trust signal for clients",
+            "verified_benefit_3": "Proof that you're a real specialist",
+            "verified_subscribe": "Subscribe for $1.99/mo",
+            "verified_active": "Verified until",
+        ],
+        .kk: [
+            "btn_save": "Сақтау",
+            "btn_cancel": "Болдырмау",
+            "btn_back": "Артқа",
+            "btn_done": "Дайын",
+            "btn_delete": "Жою",
+            "btn_continue": "Жалғастыру",
+            "btn_loading": "Жүктелуде…",
+            "btn_retry": "Қайта көру",
+            "common_user": "Пайдаланушы",
+
+            "tab_home": "Басты",
+            "tab_courses": "Курстар",
+            "tab_chats": "Чаттар",
+            "tab_hub": "Hub",
+            "tab_profile": "Профиль",
+
+            "login_title": "X5-ке қош келдің",
+            "login_subtitle": "Креаторларға арналған маркетинг студиясы.\nГенерациялау, оқу, жалдау — бір қосымшада.",
+            "login_signin": "X5-ке кіру",
+            "login_signup": "Аккаунт құру",
+            "login_continue_apple": "Apple арқылы кіру",
+            "login_continue_google": "Google арқылы кіру",
+            "login_continue_email": "Email арқылы кіру",
+            "login_email": "Email",
+            "login_password": "Құпиясөз",
+            "login_create": "Аккаунт құру",
+            "login_have_account": "Аккаунтың бар ма? Кіру",
+            "login_new_here": "Жаңасың ба? Аккаунт құр",
+            "login_invalid": "Қате email немесе құпиясөз.",
+            "login_already": "Бұл email тіркелген.",
+            "login_password_short": "Құпиясөз кемінде 6 таңба болуы керек.",
+
+            "settings_title": "Баптаулар",
+            "settings_account": "Аккаунт",
+            "settings_email": "Email",
+            "settings_subscription": "Жазылым",
+            "settings_pro_active": "Pro · белсенді",
+            "settings_free": "Тегін",
+            "settings_language": "Тіл",
+            "settings_appearance": "Көрініс",
+            "settings_face_id": "Face ID",
+            "settings_face_id_sub": "Қосымшаны қорғау",
+            "settings_public_profile": "Публикалық профиль",
+            "settings_public_profile_sub": "Hub-та көрсетілсін",
+            "settings_notifications": "Хабарламалар",
+            "settings_notifications_sub": "Жүйе баптауларын ашу",
+            "settings_clear_cache": "Кэшті тазалау",
+            "settings_signout": "Шығу",
+            "settings_legal": "Құжаттар",
+            "settings_privacy": "Құпиялылық саясаты",
+            "settings_terms": "Қызмет шарттары",
+            "settings_support": "Қолдауға хабарласу",
+            "settings_danger": "Қауіпті аймақ",
+            "settings_delete": "Аккаунтты жою",
+            "settings_delete_footer": "Аккаунт пен барлық деректер біржола өшіріледі. Бұл әрекетті болдырмау мүмкін емес.",
+            "settings_delete_confirm": "Аккаунтты жою керек пе?",
+            "settings_delete_confirm_msg": "Бұл әрекет қайтымсыз. Профиль, тарих, кредиттер, чаттар, курстар — барлығы жойылады.",
+            "settings_delete_sure": "Шынымен сенімдісің бе?",
+            "settings_delete_sure_msg": "Жойылғаннан кейін аккаунтты қалпына келтіруге болмайды.",
+            "settings_delete_forever": "Біржола жою",
+            "settings_deleting": "Жойылуда…",
+            "settings_delete_failed": "Жою сәтсіз",
+            "settings_cache_cleared": "Кэш тазаланды",
+            "settings_choose_language": "Қосымша тілі",
+
+            "hub_title": "Hub",
+            "hub_specialists": "Мамандар",
+            "hub_tasks": "Тапсырмалар",
+            "hub_post": "Жариялау",
+            "hub_become_specialist": "Маман болу",
+            "hub_no_specialists": "Әзірге маман жоқ",
+            "hub_no_specialists_sub": "Кейінірек қара — Hub толып жатыр.",
+            "hub_no_tasks": "Ашық тапсырма жоқ",
+            "hub_no_tasks_sub": "Кәсіпкерлер тапсырма жариялағанда — осында пайда болады.",
+            "hub_send_message": "Хабарлама жазу",
+            "hub_all": "Барлығы",
+
+            "chats_title": "Чаттар",
+            "chats_empty_title": "Әзірге чат жоқ",
+            "chats_empty_sub": "Hub-ты ашып, біреуге жаз.",
+            "chats_no_messages": "(хабарлама жоқ)",
+            "chats_task": "Тапсырма:",
+            "chats_message_placeholder": "Хабарлама…",
+            "chats_send": "Жіберу",
+            "chats_view_profile": "профильді ашу үшін басыңыз",
+            "chats_loading": "Чаттар жүктелуде…",
+
+            "paywall_title": "Әлеуетті аш",
+            "paywall_desc": "Барлық AI құралдарға, премиум курстарға және шексіз генерацияларға қол жетімділік.",
+            "paywall_active": "X5 Pro белсенді",
+            "paywall_until": "Дейін",
+            "paywall_subscribe": "Жазылу",
+            "paywall_loading": "Жазылым жүктелуде…",
+            "paywall_unavailable": "Жазылым қазір қол жетімсіз. Кейінірек көріңіз.",
+            "paywall_cancel_anytime": "Кез келген уақытта iOS баптауларынан тоқтатуға болады",
+            "paywall_restore": "Сатып алуларды қалпына келтіру",
+
+            "profile_title": "Профиль",
+            "profile_edit": "Профильді өзгерту",
+            "profile_credits": "Баланс",
+            "profile_buy_credits": "Толтыру",
+            "profile_upgrade": "Pro-ға жаңарту",
+            "profile_get_verified": "Растау белгісін алу",
+            "profile_portfolio": "Портфолио",
+            "profile_portfolio_empty": "Портфолио бос",
+            "profile_add_to_portfolio": "Портфолиоға қосу",
+            "profile_verified": "Расталған",
+
+            "notif_title": "Хабарламалар",
+            "notif_empty": "Хабарлама жоқ",
+
+            "verified_title": "Растау белгісін алу",
+            "verified_subtitle": "Атың жанындағы көк ☑",
+            "verified_benefit_1": "Hub-та басымдылық — карточкаң жоғары тұрады",
+            "verified_benefit_2": "Клиенттер үшін сенім белгісі",
+            "verified_benefit_3": "Сен нағыз маман екеніңнің дәлелі",
+            "verified_subscribe": "990 ₸/айға жазылу",
+            "verified_active": "Дейін расталған",
+        ]
+    ]
+}
