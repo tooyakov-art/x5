@@ -124,8 +124,9 @@ struct TaskDetailView: View {
         .sheet(isPresented: $showingRespond) {
             RespondTaskView(task: task)
         }
-        .navigationDestination(item: $navigatingChat) { chat in
-            ChatThreadView(chat: chat)
+        .sheet(item: $navigatingChat) { chat in
+            NavigationStack { ChatThreadView(chat: chat) }
+                .preferredColorScheme(.dark)
         }
     }
 

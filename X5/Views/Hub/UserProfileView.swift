@@ -46,8 +46,9 @@ struct UserProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task { await load() }
-        .navigationDestination(item: $navigatingChat) { chat in
-            ChatThreadView(chat: chat)
+        .sheet(item: $navigatingChat) { chat in
+            NavigationStack { ChatThreadView(chat: chat) }
+                .preferredColorScheme(.dark)
         }
     }
 
