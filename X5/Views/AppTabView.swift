@@ -14,7 +14,7 @@ struct AppTabView: View {
             ChatView()
                 .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
 
-            HireView()
+            HubView()
                 .tabItem { Label("Hub", systemImage: "briefcase") }
 
             ProfileView(showsDoneButton: false)
