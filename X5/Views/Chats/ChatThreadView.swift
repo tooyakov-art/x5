@@ -11,6 +11,8 @@ struct ChatThreadView: View {
     @State private var sending: Bool = false
     @State private var other: UserProfile?
     @State private var showingProfile: Bool = false
+    @State private var showingMenu: Bool = false
+    @State private var confirmBlock: Bool = false
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -57,6 +59,29 @@ struct ChatThreadView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        showingProfile = true
+                    } label: {
+                        Label("Открыть профиль", systemImage: "person.crop.circle")
+                    }
+                    Divider()
+                    Button {
+                        report()
+                    } label: {
+                        Label("Пожаловаться", systemImage: "exclamationmark.bubble")
+                    }
+                    Button(role: .destructive) {
+                        confirmBlock = true
+                    } label: {
+                        Label("Заблокировать", systemImage: "hand.raised.slash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundColor(.white.opacity(0.7))
+                }
+            }
             // Telegram-style: avatar + name in nav bar, tappable → opens profile
             ToolbarItem(placement: .principal) {
                 Button { showingProfile = true } label: {
@@ -67,6 +92,9 @@ struct ChatThreadView: View {
                                 Text(other?.displayName ?? loc.t("chats_title"))
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundColor(.white)
+                                if other?.hasActiveVerifiedBadge == true {
+                                    VerifiedChip(size: 11)
+                                }
                                 if other?.isPro == true {
                                     Text("PRO")
                                         .font(.system(size: 8, weight: .heavy))
@@ -96,10 +124,36 @@ struct ChatThreadView: View {
             let otherId = chat.otherParticipantId(currentUser: auth.userId ?? "") ?? ""
             UserProfileView(userId: otherId, fallback: nil)
         }
+        .confirmationDialog(
+            "Заблокировать пользователя?",
+            isPresented: $confirmBlock,
+            titleVisibility: .visible
+        ) {
+            Button("Заблокировать", role: .destructive) { block() }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Сообщения от этого пользователя больше не будут показываться.")
+        }
         .task {
             await reload()
             await loadOther()
         }
+    }
+
+    private func report() {
+        let otherId = chat.otherParticipantId(currentUser: auth.userId ?? "") ?? "unknown"
+        let subject = "Report user \(otherId)"
+        let body = "Hi X5 team,\n\nI'd like to report this user. Please review their content.\n\nUser ID: \(otherId)\nChat ID: \(chat.id)\n"
+        if let s = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+           let b = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+           let url = URL(string: "mailto:support@x5studio.app?subject=\(s)&body=\(b)") {
+            UIApplication.shared.open(url)
+        }
+    }
+
+    private func block() {
+        guard let otherId = chat.otherParticipantId(currentUser: auth.userId ?? "") else { return }
+        BlockList.add(otherId)
     }
 
     private var canSend: Bool {

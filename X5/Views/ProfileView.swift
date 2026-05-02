@@ -10,6 +10,7 @@ struct ProfileView: View {
     var showsDoneButton: Bool = true
 
     @State private var showingPaywall = false
+    @State private var showingVerified = false
     @State private var showingSettings = false
     @State private var showingEdit = false
     @State private var avatarPickerItem: PhotosPickerItem?
@@ -29,7 +30,12 @@ struct ProfileView: View {
                     if let bio = currentUser.profile?.bio, !bio.isEmpty {
                         BioCard(text: bio)
                     }
-                    portfolioPlaceholder
+                    if !(currentUser.profile?.hasActiveVerifiedBadge ?? false) {
+                        verifiedCard
+                    }
+                    if let uid = currentUser.profile?.id {
+                        PortfolioGrid(userId: uid, canEdit: true)
+                    }
                     socialLinks
                     if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
                         specialistCard(cats: cats)
@@ -63,6 +69,7 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showingSettings) { SettingsView() }
             .sheet(isPresented: $showingPaywall) { PaywallView() }
+            .sheet(isPresented: $showingVerified) { VerifiedBadgeView() }
             .sheet(isPresented: $showingEdit) { EditProfileView() }
         }
     }
@@ -93,9 +100,14 @@ struct ProfileView: View {
             .frame(width: 96, height: 96)
 
             VStack(spacing: 4) {
-                Text(currentUser.profile?.displayName ?? auth.userEmail ?? "User")
-                    .font(.system(size: 22, weight: .heavy))
-                    .foregroundColor(.white)
+                HStack(spacing: 6) {
+                    Text(currentUser.profile?.displayName ?? auth.userEmail ?? "User")
+                        .font(.system(size: 22, weight: .heavy))
+                        .foregroundColor(.white)
+                    if currentUser.profile?.hasActiveVerifiedBadge == true {
+                        VerifiedChip(size: 18)
+                    }
+                }
                 if let nick = currentUser.profile?.nickname, !nick.isEmpty {
                     Text("@\(nick)")
                         .font(.system(size: 13))
@@ -222,39 +234,33 @@ struct ProfileView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Portfolio placeholder
+    // MARK: - Verified upsell
 
-    private var portfolioPlaceholder: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("PORTFOLIO")
-                    .font(.system(size: 11, weight: .bold))
-                    .tracking(1.4)
-                    .foregroundColor(.white.opacity(0.45))
-                Spacer()
-                Button {} label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 18))
-                        .foregroundColor(.white.opacity(0.4))
-                }
-                .disabled(true)
-            }
-            HStack {
-                Spacer()
-                VStack(spacing: 6) {
-                    Image(systemName: "photo.on.rectangle.angled")
-                        .font(.system(size: 28, weight: .light))
-                        .foregroundColor(.white.opacity(0.3))
-                    Text("Cases & logos coming soon")
-                        .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.4))
+    private var verifiedCard: some View {
+        Button {
+            showingVerified = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .background(LinearGradient(colors: [Color.accentColor, .blue],
+                                               startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Получить галочку").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
+                    Text("Синяя ☑ рядом с именем — больше доверия и приоритет в Hub")
+                        .font(.system(size: 12)).foregroundColor(.white.opacity(0.55))
                 }
                 Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundColor(.white.opacity(0.4))
             }
-            .padding(.vertical, 18)
-            .background(Color.white.opacity(0.04))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(14)
+            .background(Color.white.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Social

@@ -180,13 +180,15 @@ struct HubView: View {
     }
 
     private var filteredSpecialists: [HubSpecialist] {
-        guard let category else { return service.specialists }
-        return service.specialists.filter { ($0.specialistCategory ?? []).contains(category) }
+        let visible = service.specialists.filter { !BlockList.contains($0.id) }
+        guard let category else { return visible }
+        return visible.filter { ($0.specialistCategory ?? []).contains(category) }
     }
 
     private var filteredTasks: [HubTask] {
-        guard let category else { return service.tasks }
-        return service.tasks.filter { $0.category == category }
+        let visible = service.tasks.filter { !BlockList.contains($0.authorId) }
+        guard let category else { return visible }
+        return visible.filter { $0.category == category }
     }
 }
 
@@ -243,6 +245,9 @@ private struct SpecialistRow: View {
                     Text(person.name ?? person.nickname ?? "User")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
+                    if person.isVerified == true {
+                        VerifiedChip(size: 12)
+                    }
                     if person.plan == "pro" {
                         Text("PRO").font(.system(size: 9, weight: .heavy))
                             .foregroundColor(.black)

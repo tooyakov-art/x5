@@ -12,11 +12,15 @@ struct HubSpecialist: Codable, Identifiable, Hashable {
     let plan: String?
     let services: [String]?
     let socialLinks: SocialLinks?
+    let isVerified: Bool?
+    let verifiedUntil: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name, nickname, avatar, bio, plan, services
         case specialistCategory = "specialist_category"
         case socialLinks = "social_links"
+        case isVerified = "is_verified"
+        case verifiedUntil = "verified_until"
     }
 }
 
@@ -131,7 +135,7 @@ final class HubService: ObservableObject {
         defer { isLoading = false }
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
-            URLQueryItem(name: "select", value: "id,name,nickname,avatar,bio,specialist_category,plan,services,social_links"),
+            URLQueryItem(name: "select", value: "id,name,nickname,avatar,bio,specialist_category,plan,services,social_links,is_verified,verified_until"),
             URLQueryItem(name: "show_in_hub", value: "eq.true"),
             URLQueryItem(name: "is_public", value: "eq.true"),
             URLQueryItem(name: "order", value: "created_at.desc")

@@ -4,8 +4,10 @@ import StoreKit
 @MainActor
 final class IAPService: ObservableObject {
     static let monthlyProductID = "com.x5studio.app.pro.monthly"
+    static let verifiedProductID = "com.x5studio.app.verified.monthly"
 
     @Published private(set) var product: Product?
+    @Published private(set) var verifiedProduct: Product?
     @Published private(set) var isPurchasing: Bool = false
     @Published var lastError: String?
 
@@ -24,11 +26,61 @@ final class IAPService: ObservableObject {
 
     func loadProducts() async {
         do {
-            let products = try await Product.products(for: [Self.monthlyProductID])
-            product = products.first
+            let products = try await Product.products(for: [Self.monthlyProductID, Self.verifiedProductID])
+            product = products.first { $0.id == Self.monthlyProductID }
+            verifiedProduct = products.first { $0.id == Self.verifiedProductID }
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    /// Subscribe to the verified-badge IAP. On success, profiles.is_verified=true,
+    /// verified_until=now+30d.
+    func purchaseVerified() async -> Bool {
+        guard let verifiedProduct else { return false }
+        isPurchasing = true
+        defer { isPurchasing = false }
+        do {
+            let result = try await verifiedProduct.purchase()
+            switch result {
+            case .success(let verification):
+                if case .verified(let transaction) = verification {
+                    await applyVerified(transaction: transaction)
+                    await transaction.finish()
+                    return true
+                }
+                lastError = "Purchase failed verification"
+                return false
+            case .userCancelled: return false
+            case .pending:
+                lastError = "Purchase pending"
+                return false
+            @unknown default: return false
+            }
+        } catch {
+            lastError = error.localizedDescription
+            return false
+        }
+    }
+
+    private func applyVerified(transaction: StoreKit.Transaction) async {
+        guard
+            let userId = UserDefaults.standard.string(forKey: "x5.session.user_id"),
+            let accessToken = UserDefaults.standard.string(forKey: "x5.session.access_token")
+        else { return }
+        let endDate = transaction.expirationDate ?? Calendar.current.date(byAdding: .month, value: 1, to: Date())!
+        let endIso = ISO8601DateFormatter().string(from: endDate)
+
+        var url = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
+        url.queryItems = [URLQueryItem(name: "id", value: "eq.\(userId)")]
+        var patch = URLRequest(url: url.url!)
+        patch.httpMethod = "PATCH"
+        patch.setValue(anonKey, forHTTPHeaderField: "apikey")
+        patch.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        patch.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = ["is_verified": true, "verified_until": endIso]
+        patch.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await URLSession.shared.data(for: patch)
     }
 
     /// Initiates purchase flow. On verified transaction, upgrades the local profile and credits.

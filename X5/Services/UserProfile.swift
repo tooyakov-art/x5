@@ -33,6 +33,8 @@ struct UserProfile: Codable, Equatable, Identifiable {
     var signupNumber: Int?
     var language: String?
     var lastSeen: String?
+    var isVerified: Bool?
+    var verifiedUntil: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name, nickname, email, avatar, bio, services, plan, credits, language
@@ -48,6 +50,8 @@ struct UserProfile: Codable, Equatable, Identifiable {
         case isPublic = "is_public"
         case signupNumber = "signup_number"
         case lastSeen = "last_seen"
+        case isVerified = "is_verified"
+        case verifiedUntil = "verified_until"
     }
 
     var displayName: String {
@@ -66,6 +70,17 @@ struct UserProfile: Codable, Equatable, Identifiable {
     }
 
     var isPro: Bool { plan == "pro" || plan == "black" }
+
+    /// True only if is_verified is set AND the paid period hasn't expired.
+    var hasActiveVerifiedBadge: Bool {
+        guard isVerified == true else { return false }
+        guard let untilStr = verifiedUntil else { return false }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let until = f.date(from: untilStr) ?? ISO8601DateFormatter().date(from: untilStr)
+        guard let until else { return false }
+        return until > Date()
+    }
 }
 
 @MainActor

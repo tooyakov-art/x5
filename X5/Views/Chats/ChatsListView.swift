@@ -21,7 +21,7 @@ struct ChatsListView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List {
-                        ForEach(service.chats) { chat in
+                        ForEach(visibleChats) { chat in
                             let otherId = chat.otherParticipantId(currentUser: auth.userId ?? "") ?? ""
                             NavigationLink {
                                 ChatThreadView(chat: chat)
@@ -42,6 +42,14 @@ struct ChatsListView: View {
             .navigationTitle(loc.t("chats_title"))
             .toolbarColorScheme(.dark, for: .navigationBar)
             .task { await reload() }
+        }
+    }
+
+    private var visibleChats: [ChatRoom] {
+        let me = auth.userId ?? ""
+        return service.chats.filter { chat in
+            guard let otherId = chat.otherParticipantId(currentUser: me) else { return true }
+            return !BlockList.contains(otherId)
         }
     }
 
@@ -74,6 +82,9 @@ private struct ChatRow: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
                         .lineLimit(1)
+                    if other?.hasActiveVerifiedBadge == true {
+                        VerifiedChip(size: 12)
+                    }
                     if other?.isPro == true {
                         Text("PRO")
                             .font(.system(size: 9, weight: .heavy))

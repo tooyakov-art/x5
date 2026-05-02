@@ -34,6 +34,7 @@ struct UserProfileView: View {
                 }
                 categoryChips
                 socialButtons
+                PortfolioGrid(userId: userId, canEdit: false)
                 Spacer(minLength: 24)
             }
             .padding(.horizontal, 16)
@@ -91,9 +92,14 @@ struct UserProfileView: View {
                        name: profile?.name ?? fallback?.name,
                        size: 92)
             VStack(spacing: 4) {
-                Text(profile?.name ?? fallback?.name ?? fallback?.nickname ?? "User")
-                    .font(.system(size: 20, weight: .heavy))
-                    .foregroundColor(.white)
+                HStack(spacing: 6) {
+                    Text(profile?.name ?? fallback?.name ?? fallback?.nickname ?? "User")
+                        .font(.system(size: 20, weight: .heavy))
+                        .foregroundColor(.white)
+                    if (profile?.hasActiveVerifiedBadge ?? (fallback?.isVerified == true)) {
+                        VerifiedChip(size: 16)
+                    }
+                }
                 if let nick = profile?.nickname ?? fallback?.nickname, !nick.isEmpty {
                     Text("@\(nick)")
                         .font(.system(size: 13))
