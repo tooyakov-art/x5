@@ -83,7 +83,7 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    .onChange(of: publicToggle) { _, newValue in
+                    .onChange(of: publicToggle) { newValue in
                         Task { await updatePublic(newValue) }
                     }
 

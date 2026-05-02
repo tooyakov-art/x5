@@ -154,7 +154,7 @@ struct AddPortfolioItemView: View {
                             .frame(maxWidth: .infinity, minHeight: 100)
                         }
                     }
-                    .onChange(of: photoItem) { _, newValue in
+                    .onChange(of: photoItem) { newValue in
                         Task {
                             if let item = newValue,
                                let data = try? await item.loadTransferable(type: Data.self) {
