@@ -90,6 +90,12 @@ final class Auth: ObservableObject {
         // Drop private chat media + in-memory layer so a different user signing
         // in on this device can't see leftovers from the previous session.
         await ImageCache.shared.clearForSignOut()
+        // Per-chat local UI state (archived / muted / hidden) is per-account.
+        ChatsLocalState.reset()
+        // Wipe the per-chat message cache on disk — without this a different
+        // user signing in on the same device could read the previous user's
+        // message history (and signed media URLs) from `Caches/x5-chats/`.
+        ChatsService.clearDiskCache()
         NotificationCenter.default.post(name: .x5UserDidSignOut, object: nil)
     }
 

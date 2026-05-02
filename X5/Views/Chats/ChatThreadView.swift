@@ -197,6 +197,12 @@ struct ChatThreadView: View {
             Text(attachmentError ?? "")
         }
         .task {
+            // Paint cached messages instantly so the chat doesn't appear
+            // blank during the fetch — Telegram-style.
+            let cached = service.cachedMessages(chatId: chat.id)
+            if !cached.isEmpty && messages.isEmpty {
+                messages = cached
+            }
             await reload()
             await loadOther()
         }

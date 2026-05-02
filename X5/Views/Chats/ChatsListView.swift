@@ -6,13 +6,17 @@ struct ChatsListView: View {
     @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = ChatsService()
     @State private var profiles: [String: UserProfile] = [:]
+    /// Bumped to force `visibleChats` recomputation after archive/mute/hide.
+    /// `ChatsLocalState` is a static enum so the view doesn't observe it.
+    @State private var localStateTick: Int = 0
+    @State private var showArchive: Bool = false
 
     var body: some View {
         NavigationStack {
             Group {
                 if service.isLoading && service.chats.isEmpty {
                     ProgressView().tint(.accentColor).frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if service.chats.isEmpty {
+                } else if visibleChats.isEmpty {
                     EmptyState(
                         systemImage: "bubble.left.and.bubble.right",
                         title: loc.t("chats_empty_title"),
@@ -20,23 +24,7 @@ struct ChatsListView: View {
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List {
-                        ForEach(visibleChats) { chat in
-                            let otherId = chat.otherParticipantId(currentUser: auth.userId ?? "") ?? ""
-                            NavigationLink {
-                                ChatThreadView(chat: chat)
-                            } label: {
-                                ChatRow(chat: chat,
-                                        currentUserId: auth.userId ?? "",
-                                        other: profiles[otherId],
-                                        peerId: otherId)
-                            }
-                            .listRowBackground(Color.white.opacity(0.04))
-                        }
-                    }
-                    .scrollContentBackground(.hidden)
-                    .listStyle(.plain)
-                    .refreshable { await reload() }
+                    chatList
                 }
             }
             .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
@@ -46,12 +34,135 @@ struct ChatsListView: View {
         }
     }
 
-    private var visibleChats: [ChatRoom] {
+    @ViewBuilder
+    private var chatList: some View {
+        List {
+            // Archive entry — only when the user actually has archived chats,
+            // mirrors WhatsApp/Telegram pattern.
+            if !archivedChats.isEmpty {
+                Section {
+                    NavigationLink {
+                        ArchivedChatsView(
+                            chats: archivedChats,
+                            profiles: profiles,
+                            currentUserId: auth.userId ?? "",
+                            onChange: { localStateTick &+= 1 }
+                        )
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "archivebox.fill")
+                                .font(.system(size: 18))
+                                .foregroundColor(.white.opacity(0.6))
+                                .frame(width: 44, height: 44)
+                                .background(Color.white.opacity(0.06))
+                                .clipShape(Circle())
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(loc.t("chats_archive"))
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.white)
+                                Text("\(archivedChats.count)")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.white.opacity(0.55))
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .listRowBackground(Color.white.opacity(0.04))
+                }
+            }
+
+            ForEach(visibleChats) { chat in
+                let otherId = chat.otherParticipantId(currentUser: auth.userId ?? "") ?? ""
+                ChatRowLink(
+                    chat: chat,
+                    currentUserId: auth.userId ?? "",
+                    other: profiles[otherId],
+                    peerId: otherId
+                )
+                .listRowBackground(Color.white.opacity(0.04))
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button(role: .destructive) {
+                        ChatsLocalState.hide(chat.id)
+                        localStateTick &+= 1
+                    } label: {
+                        Label(loc.t("chats_delete"), systemImage: "trash")
+                    }
+                    Button {
+                        ChatsLocalState.archive(chat.id)
+                        localStateTick &+= 1
+                    } label: {
+                        Label(loc.t("chats_archive"), systemImage: "archivebox")
+                    }
+                    .tint(.indigo)
+                }
+                .swipeActions(edge: .leading) {
+                    let muted = ChatsLocalState.isMuted(chat.id)
+                    Button {
+                        if muted { ChatsLocalState.unmute(chat.id) }
+                        else { ChatsLocalState.mute(chat.id) }
+                        localStateTick &+= 1
+                    } label: {
+                        Label(
+                            muted ? loc.t("chats_unmute") : loc.t("chats_mute"),
+                            systemImage: muted ? "bell" : "bell.slash"
+                        )
+                    }
+                    .tint(.orange)
+                }
+                .contextMenu {
+                    let muted = ChatsLocalState.isMuted(chat.id)
+                    Button {
+                        if muted { ChatsLocalState.unmute(chat.id) }
+                        else { ChatsLocalState.mute(chat.id) }
+                        localStateTick &+= 1
+                    } label: {
+                        Label(
+                            muted ? loc.t("chats_unmute") : loc.t("chats_mute"),
+                            systemImage: muted ? "bell" : "bell.slash"
+                        )
+                    }
+                    Button {
+                        ChatsLocalState.archive(chat.id)
+                        localStateTick &+= 1
+                    } label: {
+                        Label(loc.t("chats_archive"), systemImage: "archivebox")
+                    }
+                    Button(role: .destructive) {
+                        ChatsLocalState.hide(chat.id)
+                        localStateTick &+= 1
+                    } label: {
+                        Label(loc.t("chats_delete"), systemImage: "trash")
+                    }
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .listStyle(.plain)
+        .refreshable { await reload() }
+        // Reading the tick here makes SwiftUI reread visibleChats / archivedChats
+        // whenever local state mutations bump it.
+        .id(localStateTick)
+    }
+
+    /// Server chats minus blocked peers and minus locally-hidden chats.
+    private var nonBlocked: [ChatRoom] {
         let me = auth.userId ?? ""
         return service.chats.filter { chat in
+            if ChatsLocalState.isHidden(chat.id) { return false }
             guard let otherId = chat.otherParticipantId(currentUser: me) else { return true }
             return !BlockList.contains(otherId)
         }
+    }
+
+    /// Active inbox — excludes archived chats.
+    private var visibleChats: [ChatRoom] {
+        nonBlocked.filter { !ChatsLocalState.isArchived($0.id) }
+    }
+
+    /// Archived bucket shown under the "Архив" entry.
+    private var archivedChats: [ChatRoom] {
+        nonBlocked.filter { ChatsLocalState.isArchived($0.id) }
     }
 
     private func reload() async {
@@ -65,6 +176,86 @@ struct ChatsListView: View {
                 profiles[otherId] = p
             }
         }
+    }
+}
+
+/// Extracted to keep the main list builder readable. `NavigationLink` wrapping
+/// a custom row label needs its own scope so swipeActions / contextMenu attach
+/// cleanly without confusing the gesture system.
+private struct ChatRowLink: View {
+    let chat: ChatRoom
+    let currentUserId: String
+    let other: UserProfile?
+    let peerId: String
+
+    var body: some View {
+        NavigationLink {
+            ChatThreadView(chat: chat)
+        } label: {
+            ChatRow(chat: chat,
+                    currentUserId: currentUserId,
+                    other: other,
+                    peerId: peerId)
+        }
+    }
+}
+
+/// Standalone screen for archived chats. Same row look as the inbox, with
+/// a swipe-action to unarchive (back to inbox) or fully delete.
+private struct ArchivedChatsView: View {
+    let chats: [ChatRoom]
+    let profiles: [String: UserProfile]
+    let currentUserId: String
+    let onChange: () -> Void
+    @EnvironmentObject private var loc: LocalizationService
+    @State private var tick: Int = 0
+
+    var body: some View {
+        Group {
+            if chats.isEmpty || tick < 0 /* never true; tick triggers reread */ {
+                EmptyState(
+                    systemImage: "archivebox",
+                    title: loc.t("chats_archive_empty_title"),
+                    subtitle: loc.t("chats_archive_empty_sub")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(chats.filter { !ChatsLocalState.isHidden($0.id) && ChatsLocalState.isArchived($0.id) }) { chat in
+                        let otherId = chat.otherParticipantId(currentUser: currentUserId) ?? ""
+                        ChatRowLink(chat: chat,
+                                    currentUserId: currentUserId,
+                                    other: profiles[otherId],
+                                    peerId: otherId)
+                            .listRowBackground(Color.white.opacity(0.04))
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    ChatsLocalState.hide(chat.id)
+                                    tick &+= 1
+                                    onChange()
+                                } label: {
+                                    Label(loc.t("chats_delete"), systemImage: "trash")
+                                }
+                                Button {
+                                    ChatsLocalState.unarchive(chat.id)
+                                    tick &+= 1
+                                    onChange()
+                                } label: {
+                                    Label(loc.t("chats_unarchive"), systemImage: "tray.and.arrow.up")
+                                }
+                                .tint(.indigo)
+                            }
+                    }
+                }
+                .scrollContentBackground(.hidden)
+                .listStyle(.plain)
+                .id(tick)
+            }
+        }
+        .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+        .navigationTitle(loc.t("chats_archive"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
     }
 }
 
@@ -103,6 +294,11 @@ private struct ChatRow: View {
                             .background(Color.accentColor)
                             .clipShape(Capsule())
                     }
+                    if ChatsLocalState.isMuted(chat.id) {
+                        Image(systemName: "bell.slash.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
                 }
                 Text(preview)
                     .font(.system(size: 13))
@@ -118,7 +314,7 @@ private struct ChatRow: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(.black)
                         .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(Color.accentColor)
+                        .background(ChatsLocalState.isMuted(chat.id) ? Color.white.opacity(0.25) : Color.accentColor)
                         .clipShape(Capsule())
                 }
             }

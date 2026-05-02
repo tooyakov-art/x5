@@ -75,6 +75,93 @@ final class ChatsService: ObservableObject {
     private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
     private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
 
+    // MARK: - Message cache
+    //
+    // Open-chat lag was "blank screen → spinner → bubbles" because every
+    // ChatThreadView entry hit the network from cold. Cache last fetched
+    // messages in memory + on disk so the UI can paint instantly while we
+    // refetch in the background.
+    private var messageMemoryCache: [String: [ChatMessageRow]] = [:]
+
+    private static func cacheRoot() -> URL {
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        let dir = caches.appendingPathComponent("x5-chats", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            // Belt-and-braces: iOS already excludes Caches/ from iCloud backup
+            // on most devices, but explicitly mark the directory so signed
+            // media URLs and message text never leak into a third-party
+            // backup if Apple changes that default.
+            var url = dir
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? url.setResourceValues(values)
+        }
+        return dir
+    }
+
+    private func messageCacheURL(chatId: String) -> URL {
+        Self.cacheRoot().appendingPathComponent("\(chatId).json")
+    }
+
+    /// Cap on cached chats — older files (by mtime) get pruned past this.
+    /// Keeps Caches/x5-chats/ bounded for chat-heavy users.
+    private static let cacheChatLimit = 50
+
+    /// Wipes everything in `Caches/x5-chats/`. Called from Auth.signOut so
+    /// a different user signing in on the same device can't read the
+    /// previous user's message history off disk.
+    static func clearDiskCache() {
+        let dir = cacheRoot()
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    /// Synchronous read of cached messages — returns memory layer first,
+    /// falls back to disk JSON. Used by views to paint instantly on open.
+    func cachedMessages(chatId: String) -> [ChatMessageRow] {
+        if let mem = messageMemoryCache[chatId] { return mem }
+        let url = messageCacheURL(chatId: chatId)
+        guard let data = try? Data(contentsOf: url),
+              let rows = try? JSONDecoder().decode([ChatMessageRow].self, from: data)
+        else { return [] }
+        messageMemoryCache[chatId] = rows
+        return rows
+    }
+
+    private func persistMessageCache(chatId: String, rows: [ChatMessageRow]) {
+        messageMemoryCache[chatId] = rows
+        let url = messageCacheURL(chatId: chatId)
+        // Detach so disk write doesn't block the actor. Prune-after-write
+        // keeps the directory bounded — captures only the cap so it doesn't
+        // need to call back into the @MainActor instance.
+        let cap = Self.cacheChatLimit
+        Task.detached(priority: .utility) { [rows, url, cap] in
+            guard let data = try? JSONEncoder().encode(rows) else { return }
+            try? data.write(to: url, options: .atomic)
+            Self.pruneDirectoryStatic(cap: cap)
+        }
+    }
+
+    /// Static prune so the disk-write detached task doesn't need to hop back
+    /// to the main actor.
+    private static func pruneDirectoryStatic(cap: Int) {
+        let dir = cacheRoot()
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: .skipsHiddenFiles
+        ) else { return }
+        guard files.count > cap else { return }
+        let sorted = files.sorted { a, b in
+            let ad = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            let bd = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            return ad > bd
+        }
+        for stale in sorted.dropFirst(cap) {
+            try? FileManager.default.removeItem(at: stale)
+        }
+    }
+
     static func chatId(_ a: String, _ b: String) -> String {
         [a, b].sorted().joined(separator: "_")
     }
@@ -223,8 +310,13 @@ final class ChatsService: ObservableObject {
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         guard let (data, http) = await sendAuthed(request, accessToken: accessToken),
-              (200..<300).contains(http.statusCode) else { return [] }
-        return (try? JSONDecoder().decode([ChatMessageRow].self, from: data)) ?? []
+              (200..<300).contains(http.statusCode) else {
+            // Network failed — return whatever's cached so the UI still has bubbles.
+            return cachedMessages(chatId: chatId)
+        }
+        let rows = (try? JSONDecoder().decode([ChatMessageRow].self, from: data)) ?? []
+        persistMessageCache(chatId: chatId, rows: rows)
+        return rows
     }
 
     /// Ensures a chat row exists for the (me, other) pair, optionally tagged with a task.
