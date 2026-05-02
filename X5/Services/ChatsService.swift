@@ -103,7 +103,7 @@ final class ChatsService: ObservableObject {
     /// Pulls the current refresh token from UserDefaults, calls Supabase /token?grant_type=refresh_token,
     /// stores the new tokens back. Returns the new access token or nil.
     private func refreshGlobalToken() async -> String? {
-        guard let refresh = UserDefaults.standard.string(forKey: "x5.session.refresh_token") else { return nil }
+        guard let refresh = Keychain.string(for: "x5.session.refresh_token") else { return nil }
         var c = URLComponents(url: baseURL.appendingPathComponent("auth/v1/token"), resolvingAgainstBaseURL: false)!
         c.queryItems = [URLQueryItem(name: "grant_type", value: "refresh_token")]
         var req = URLRequest(url: c.url!)
@@ -117,9 +117,9 @@ final class ChatsService: ObservableObject {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let access = json["access_token"] as? String
         else { return nil }
-        UserDefaults.standard.set(access, forKey: "x5.session.access_token")
+        Keychain.set(access, for: "x5.session.access_token")
         if let newRefresh = json["refresh_token"] as? String {
-            UserDefaults.standard.set(newRefresh, forKey: "x5.session.refresh_token")
+            Keychain.set(newRefresh, for: "x5.session.refresh_token")
         }
         return access
     }

@@ -11,22 +11,42 @@ final class Auth: ObservableObject {
 
     var accessToken: String? { supabase.accessToken }
 
+    /// Token keys live in the Keychain (encrypted at rest, excluded from iCloud backups).
+    /// User profile keys (id, email) stay in UserDefaults — non-sensitive identifiers.
     private let tokenKey = "x5.session.access_token"
     private let refreshKey = "x5.session.refresh_token"
     private let userIdKey = "x5.session.user_id"
     private let emailKey = "x5.session.email"
+    private let migrationFlag = "x5.session.keychain_migrated_v1"
 
     init() {
+        migrateLegacyTokensToKeychain()
+
         // When SupabaseClient auto-refreshes the JWT (on a 401), persist the new tokens.
         supabase.onSessionRefreshed = { [weak self] session in
             guard let self else { return }
-            let defaults = UserDefaults.standard
-            defaults.set(session.accessToken, forKey: self.tokenKey)
+            Keychain.set(session.accessToken, for: self.tokenKey)
             if let refresh = session.refreshToken {
-                defaults.set(refresh, forKey: self.refreshKey)
+                Keychain.set(refresh, for: self.refreshKey)
             }
         }
         loadStoredSession()
+    }
+
+    /// One-time migration: tokens used to live in UserDefaults (plaintext, included
+    /// in iTunes/iCloud backups). Move them to the Keychain on first run.
+    private func migrateLegacyTokensToKeychain() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: migrationFlag) else { return }
+        if let access = defaults.string(forKey: tokenKey) {
+            Keychain.set(access, for: tokenKey)
+            defaults.removeObject(forKey: tokenKey)
+        }
+        if let refresh = defaults.string(forKey: refreshKey) {
+            Keychain.set(refresh, for: refreshKey)
+            defaults.removeObject(forKey: refreshKey)
+        }
+        defaults.set(true, forKey: migrationFlag)
     }
 
     func signInWithApple(authorization: ASAuthorization) async throws {
@@ -79,22 +99,23 @@ final class Auth: ObservableObject {
 
     private func loadStoredSession() {
         let defaults = UserDefaults.standard
-        guard let token = defaults.string(forKey: tokenKey),
+        guard let token = Keychain.string(for: tokenKey),
               let uid = defaults.string(forKey: userIdKey)
         else {
             return
         }
         supabase.accessToken = token
-        supabase.refreshToken = defaults.string(forKey: refreshKey)
+        supabase.refreshToken = Keychain.string(for: refreshKey)
         userId = uid
         userEmail = defaults.string(forKey: emailKey)
         isAuthenticated = true
     }
 
     private func store(session: SupabaseSession) {
+        Keychain.set(session.accessToken, for: tokenKey)
+        Keychain.set(session.refreshToken, for: refreshKey)
+
         let defaults = UserDefaults.standard
-        defaults.set(session.accessToken, forKey: tokenKey)
-        defaults.set(session.refreshToken, forKey: refreshKey)
         defaults.set(session.user.id, forKey: userIdKey)
         defaults.set(session.user.email, forKey: emailKey)
 
@@ -106,9 +127,9 @@ final class Auth: ObservableObject {
     }
 
     private func clearStorage() {
+        Keychain.delete(tokenKey)
+        Keychain.delete(refreshKey)
         let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: tokenKey)
-        defaults.removeObject(forKey: refreshKey)
         defaults.removeObject(forKey: userIdKey)
         defaults.removeObject(forKey: emailKey)
     }

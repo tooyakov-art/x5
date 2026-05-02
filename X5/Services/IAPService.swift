@@ -114,7 +114,7 @@ final class IAPService: ObservableObject {
     private func applyEntitlement(transaction: StoreKit.Transaction) async {
         guard
             let userId = UserDefaults.standard.string(forKey: "x5.session.user_id"),
-            let accessToken = UserDefaults.standard.string(forKey: "x5.session.access_token")
+            let accessToken = Keychain.string(for: "x5.session.access_token")
         else { return }
 
         let endDate = transaction.expirationDate ?? Calendar.current.date(byAdding: .month, value: 1, to: Date())!

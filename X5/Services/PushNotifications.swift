@@ -57,7 +57,7 @@ final class PushNotifications: NSObject, ObservableObject {
         guard let token = deviceToken else { return }
         guard
             let userId = UserDefaults.standard.string(forKey: "x5.session.user_id"),
-            let accessToken = UserDefaults.standard.string(forKey: "x5.session.access_token"),
+            let accessToken = Keychain.string(for: "x5.session.access_token"),
             !userId.isEmpty,
             lastSyncedUserId != userId
         else { return }
