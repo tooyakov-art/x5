@@ -1,99 +1,78 @@
 import Foundation
-import AuthenticationServices
+import UIKit
+import GoogleSignIn
 
-/// ASWebAuthenticationSession runner for Supabase OAuth providers (Google, etc.).
-/// Opens Supabase /authorize URL, captures the x5://callback redirect with tokens.
+/// Google Sign-In via the official iOS SDK (GIDSignIn) — native sheet, no Safari.
+/// Returns Google idToken; SupabaseClient.signInWithGoogle(idToken:) trades it for a session.
+///
+/// Why native instead of ASWebAuthenticationSession + Supabase /authorize:
+/// - Web flow on iOS hits "access blocked" because our OAuth app is in production but
+///   branding is not Google-verified. ASWebAuthenticationSession hides the
+///   "Advanced → Continue" workaround so users get a hard block.
+/// - GIDSignIn renders Google's own consent UI bypassing the unverified-app check.
 @MainActor
-final class OAuthSession: NSObject, ASWebAuthenticationPresentationContextProviding {
+final class OAuthSession {
     static let shared = OAuthSession()
 
-    private let supabaseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
-    static let redirectScheme = "x5"
-    static let redirectURL = "x5://callback"
+    /// iOS OAuth Client ID (project x5-marketing-app, GCP Auth Platform → Clients → "iOS client 2").
+    /// Type MUST be iOS — Web client IDs do not work with GIDSignIn.
+    /// Public by design: also embedded in Info.plist URL scheme.
+    private let iosClientId = "931639129066-ft7bod2n3ugi4cc3j1l68avcqtq3rv2j.apps.googleusercontent.com"
 
-    /// Returns (accessToken, refreshToken) on success.
-    func startGoogleSignIn() async throws -> (access: String, refresh: String?) {
-        var components = URLComponents(url: supabaseURL.appendingPathComponent("auth/v1/authorize"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "provider", value: "google"),
-            URLQueryItem(name: "redirect_to", value: Self.redirectURL)
-        ]
-        guard let authURL = components.url else { throw OAuthError.badURL }
+    /// Set the configuration once at init. Google's iOS SDK reads this when signIn() is called.
+    private init() {
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: iosClientId)
+    }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            var resumed = false
-            func resumeOnce(_ block: () -> Void) {
-                guard !resumed else { return }
-                resumed = true
-                block()
-            }
-
-            let session = ASWebAuthenticationSession(
-                url: authURL,
-                callbackURLScheme: Self.redirectScheme
-            ) { callbackURL, error in
-                if let error = error as NSError? {
-                    // Cancellation: don't pollute UI with errors
-                    if error.code == ASWebAuthenticationSessionError.canceledLogin.rawValue {
-                        resumeOnce { continuation.resume(throwing: OAuthError.cancelled) }
-                    } else {
-                        resumeOnce { continuation.resume(throwing: error) }
-                    }
-                    return
-                }
-                guard let callbackURL else {
-                    resumeOnce { continuation.resume(throwing: OAuthError.cancelled) }
-                    return
-                }
-                // Supabase puts tokens in fragment (#access_token=...) on success,
-                // or query (?error=...&error_description=...) on failure.
-                let raw = callbackURL.absoluteString
-                var parts: [String: String] = [:]
-                for piece in [raw.components(separatedBy: "#").last,
-                              raw.components(separatedBy: "?").last] {
-                    guard let piece else { continue }
-                    for pair in piece.components(separatedBy: "&") {
-                        let kv = pair.components(separatedBy: "=")
-                        if kv.count == 2 {
-                            parts[kv[0]] = kv[1].removingPercentEncoding ?? kv[1]
-                        }
-                    }
-                }
-                if let access = parts["access_token"] {
-                    resumeOnce { continuation.resume(returning: (access, parts["refresh_token"])) }
-                } else if let err = parts["error_description"] ?? parts["error"] {
-                    resumeOnce {
-                        continuation.resume(throwing: NSError(
-                            domain: "OAuth", code: -1,
-                            userInfo: [NSLocalizedDescriptionKey: err.replacingOccurrences(of: "+", with: " ")]
-                        ))
-                    }
-                } else {
-                    resumeOnce { continuation.resume(throwing: OAuthError.noToken) }
-                }
-            }
-            session.presentationContextProvider = self
-            // ephemeral=true → fresh session every time, avoids Google "browser not supported"
-            // when Safari already has a stale Google session that conflicts with the OAuth flow.
-            session.prefersEphemeralWebBrowserSession = true
-            session.start()
+    /// Triggers Google's native sign-in sheet and returns the idToken.
+    /// Throws OAuthError.cancelled if the user dismisses the sheet,
+    /// OAuthError.noPresenter if the SwiftUI window hierarchy isn't ready.
+    func googleIdToken() async throws -> String {
+        guard let presenter = topViewController() else {
+            throw OAuthError.noPresenter
         }
+        let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: presenter)
+        guard let idToken = result.user.idToken?.tokenString else {
+            throw OAuthError.noToken
+        }
+        return idToken
+    }
+
+    /// Walks the scene → window → root → presented/nav/tab chain to find a presenter.
+    /// SwiftUI apps that use UIApplicationDelegateAdaptor often have a UIHostingController
+    /// wrapped in nav/tab containers — naive presentedViewController traversal misses those.
+    private func topViewController() -> UIViewController? {
+        let root = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow?.rootViewController }
+            .first
+        return resolveTop(root)
+    }
+
+    private func resolveTop(_ vc: UIViewController?) -> UIViewController? {
+        guard let vc else { return nil }
+        if let presented = vc.presentedViewController {
+            return resolveTop(presented)
+        }
+        if let nav = vc as? UINavigationController {
+            return resolveTop(nav.visibleViewController) ?? nav
+        }
+        if let tab = vc as? UITabBarController {
+            return resolveTop(tab.selectedViewController) ?? tab
+        }
+        return vc
     }
 
     enum OAuthError: LocalizedError {
-        case badURL, cancelled, noToken
+        case cancelled
+        case noToken
+        case noPresenter
+
         var errorDescription: String? {
             switch self {
-            case .badURL: return "Bad authorize URL"
             case .cancelled: return "Sign in cancelled"
-            case .noToken: return "No access token returned"
+            case .noToken: return "Google did not return an id token"
+            case .noPresenter: return "Could not find a window to present the Google sheet"
             }
         }
-    }
-
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.keyWindow }
-            .first ?? ASPresentationAnchor()
     }
 }

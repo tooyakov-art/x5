@@ -7,18 +7,28 @@ options:
   groupSortPosition: top
   generateEmptyDirectories: true
 
+packages:
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: "7.1.0"
+
 settings:
   base:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: F8LA8PC4U6
     MARKETING_VERSION: "1.1.0"
-    CURRENT_PROJECT_VERSION: "34"
+    CURRENT_PROJECT_VERSION: "35"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
 targets:
   X5:
     type: application
     platform: iOS
+    dependencies:
+      - package: GoogleSignIn
+        product: GoogleSignIn
+      - package: GoogleSignIn
+        product: GoogleSignInSwift
     sources:
       - path: X5
     resources:
@@ -38,6 +48,10 @@ targets:
           - CFBundleURLName: com.x5studio.app.oauth
             CFBundleURLSchemes:
               - x5
+          # Google Sign-In iOS SDK reversed client ID (matches iOS Client ID in GCP)
+          - CFBundleURLName: com.googleusercontent.apps.931639129066-ft7bod2n3ugi4cc3j1l68avcqtq3rv2j
+            CFBundleURLSchemes:
+              - com.googleusercontent.apps.931639129066-ft7bod2n3ugi4cc3j1l68avcqtq3rv2j
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UILaunchScreen:

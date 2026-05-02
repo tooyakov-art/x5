@@ -62,6 +62,16 @@ final class SupabaseClient {
     }
 
     func signInWithApple(identityToken: String) async throws -> SupabaseSession {
+        try await signInWithIdToken(provider: "apple", idToken: identityToken)
+    }
+
+    /// Trades a Google idToken (from GIDSignIn iOS SDK) for a Supabase session.
+    /// Requires "Skip nonce checks" = ON in Supabase Auth → Google provider.
+    func signInWithGoogle(idToken: String) async throws -> SupabaseSession {
+        try await signInWithIdToken(provider: "google", idToken: idToken)
+    }
+
+    private func signInWithIdToken(provider: String, idToken: String) async throws -> SupabaseSession {
         var components = URLComponents(
             url: baseURL.appendingPathComponent("auth/v1/token"),
             resolvingAgainstBaseURL: false
@@ -74,8 +84,8 @@ final class SupabaseClient {
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
 
         let body: [String: String] = [
-            "provider": "apple",
-            "id_token": identityToken
+            "provider": provider,
+            "id_token": idToken
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

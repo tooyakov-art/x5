@@ -1,4 +1,5 @@
 import SwiftUI
+import GoogleSignIn
 
 @main
 struct X5App: App {
@@ -21,6 +22,10 @@ struct X5App: App {
                 .environmentObject(currentUser)
                 .environmentObject(localization)
                 .preferredColorScheme(.dark)
+                .onOpenURL { url in
+                    // Forward custom-scheme callbacks to the Google Sign-In SDK.
+                    GIDSignIn.sharedInstance.handle(url)
+                }
                 .task(id: auth.isAuthenticated) {
                     if auth.isAuthenticated {
                         PushNotifications.shared.bootstrap()

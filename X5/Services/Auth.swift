@@ -41,25 +41,13 @@ final class Auth: ObservableObject {
         store(session: session)
     }
 
-    /// Google OAuth via Supabase /authorize → x5://callback (handled by OAuthSession).
-    /// On success, fetches the user from Supabase using the access token and stores the session.
+    /// Google Sign-In via the native iOS SDK (GIDSignIn). Trades the Google idToken
+    /// for a Supabase session — same path as Apple Sign-In, no Safari involved.
+    /// Bypasses Google's "unverified app" block that affected ASWebAuthenticationSession.
     func signInWithGoogle() async throws {
-        let tokens = try await OAuthSession.shared.startGoogleSignIn()
-        supabase.accessToken = tokens.access
-        supabase.refreshToken = tokens.refresh
-        let user = try await supabase.fetchUser(accessToken: tokens.access)
-
-        let defaults = UserDefaults.standard
-        defaults.set(tokens.access, forKey: tokenKey)
-        if let refresh = tokens.refresh {
-            defaults.set(refresh, forKey: refreshKey)
-        }
-        defaults.set(user.id, forKey: userIdKey)
-        defaults.set(user.email, forKey: emailKey)
-
-        userId = user.id
-        userEmail = user.email
-        isAuthenticated = true
+        let idToken = try await OAuthSession.shared.googleIdToken()
+        let session = try await supabase.signInWithGoogle(idToken: idToken)
+        store(session: session)
     }
 
     func signInWithEmail(_ email: String, password: String) async throws {
