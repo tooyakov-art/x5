@@ -83,7 +83,7 @@ final class ChatsService: ObservableObject {
     // refetch in the background.
     private var messageMemoryCache: [String: [ChatMessageRow]] = [:]
 
-    private static func cacheRoot() -> URL {
+    nonisolated private static func cacheRoot() -> URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         let dir = caches.appendingPathComponent("x5-chats", isDirectory: true)
         if !FileManager.default.fileExists(atPath: dir.path) {
@@ -111,7 +111,7 @@ final class ChatsService: ObservableObject {
     /// Wipes everything in `Caches/x5-chats/`. Called from Auth.signOut so
     /// a different user signing in on the same device can't read the
     /// previous user's message history off disk.
-    static func clearDiskCache() {
+    nonisolated static func clearDiskCache() {
         let dir = cacheRoot()
         try? FileManager.default.removeItem(at: dir)
     }
@@ -144,7 +144,7 @@ final class ChatsService: ObservableObject {
 
     /// Static prune so the disk-write detached task doesn't need to hop back
     /// to the main actor.
-    private static func pruneDirectoryStatic(cap: Int) {
+    nonisolated private static func pruneDirectoryStatic(cap: Int) {
         let dir = cacheRoot()
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: dir,
