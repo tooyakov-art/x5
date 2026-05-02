@@ -19,6 +19,7 @@ struct HubView: View {
     @State private var showingEditProfile = false
     @State private var openingChatWith: String? = nil
     @State private var startingChat: ChatRoom? = nil
+    @State private var chatError: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -92,16 +93,31 @@ struct HubView: View {
                 NavigationStack { ChatThreadView(chat: chat) }
                     .preferredColorScheme(.dark)
             }
+            .alert("Чат не открылся", isPresented: Binding(
+                get: { chatError != nil },
+                set: { if !$0 { chatError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(chatError ?? "")
+            }
         }
     }
 
     private func startChat(with person: HubSpecialist) {
-        guard let myId = auth.userId, let token = auth.accessToken else { return }
+        guard let myId = auth.userId, let token = auth.accessToken else {
+            chatError = "Сначала войди в аккаунт."
+            return
+        }
         openingChatWith = person.id
         Task {
             let chat = await chats.ensureChat(otherUserId: person.id, currentUserId: myId, taskId: nil, taskTitle: nil, accessToken: token)
             openingChatWith = nil
-            if let chat { startingChat = chat }
+            if let chat {
+                startingChat = chat
+            } else {
+                chatError = chats.error ?? "Не удалось открыть чат. Попробуй ещё раз."
+            }
         }
     }
 

@@ -21,38 +21,61 @@ final class OAuthSession: NSObject, ASWebAuthenticationPresentationContextProvid
         guard let authURL = components.url else { throw OAuthError.badURL }
 
         return try await withCheckedThrowingContinuation { continuation in
+            var resumed = false
+            func resumeOnce(_ block: () -> Void) {
+                guard !resumed else { return }
+                resumed = true
+                block()
+            }
+
             let session = ASWebAuthenticationSession(
                 url: authURL,
                 callbackURLScheme: Self.redirectScheme
             ) { callbackURL, error in
-                if let error {
-                    continuation.resume(throwing: error)
+                if let error = error as NSError? {
+                    // Cancellation: don't pollute UI with errors
+                    if error.code == ASWebAuthenticationSessionError.canceledLogin.rawValue {
+                        resumeOnce { continuation.resume(throwing: OAuthError.cancelled) }
+                    } else {
+                        resumeOnce { continuation.resume(throwing: error) }
+                    }
                     return
                 }
                 guard let callbackURL else {
-                    continuation.resume(throwing: OAuthError.cancelled)
+                    resumeOnce { continuation.resume(throwing: OAuthError.cancelled) }
                     return
                 }
-                // Supabase returns tokens in the URL fragment: x5://callback#access_token=...&refresh_token=...
+                // Supabase puts tokens in fragment (#access_token=...) on success,
+                // or query (?error=...&error_description=...) on failure.
                 let raw = callbackURL.absoluteString
-                let frag = raw.components(separatedBy: "#").last ?? ""
                 var parts: [String: String] = [:]
-                for pair in frag.components(separatedBy: "&") {
-                    let kv = pair.components(separatedBy: "=")
-                    if kv.count == 2 {
-                        parts[kv[0]] = kv[1].removingPercentEncoding ?? kv[1]
+                for piece in [raw.components(separatedBy: "#").last,
+                              raw.components(separatedBy: "?").last] {
+                    guard let piece else { continue }
+                    for pair in piece.components(separatedBy: "&") {
+                        let kv = pair.components(separatedBy: "=")
+                        if kv.count == 2 {
+                            parts[kv[0]] = kv[1].removingPercentEncoding ?? kv[1]
+                        }
                     }
                 }
                 if let access = parts["access_token"] {
-                    continuation.resume(returning: (access, parts["refresh_token"]))
+                    resumeOnce { continuation.resume(returning: (access, parts["refresh_token"])) }
                 } else if let err = parts["error_description"] ?? parts["error"] {
-                    continuation.resume(throwing: NSError(domain: "OAuth", code: -1, userInfo: [NSLocalizedDescriptionKey: err]))
+                    resumeOnce {
+                        continuation.resume(throwing: NSError(
+                            domain: "OAuth", code: -1,
+                            userInfo: [NSLocalizedDescriptionKey: err.replacingOccurrences(of: "+", with: " ")]
+                        ))
+                    }
                 } else {
-                    continuation.resume(throwing: OAuthError.noToken)
+                    resumeOnce { continuation.resume(throwing: OAuthError.noToken) }
                 }
             }
             session.presentationContextProvider = self
-            session.prefersEphemeralWebBrowserSession = false
+            // ephemeral=true → fresh session every time, avoids Google "browser not supported"
+            // when Safari already has a stale Google session that conflicts with the OAuth flow.
+            session.prefersEphemeralWebBrowserSession = true
             session.start()
         }
     }

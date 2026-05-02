@@ -49,10 +49,8 @@ struct ContentView: View {
 
     private func loadProfileIfNeeded() async {
         guard let uid = auth.userId, let token = auth.accessToken else { return }
-        if currentUser.profile?.id != uid {
-            await currentUser.load(userId: uid, accessToken: token)
-        }
-        // Sync Subscription.isPro with the freshly loaded profile (fixes "paid Pro but stayed Free")
+        // Always reload — fixes "paid Pro but stayed Free" if the profile was cached before purchase.
+        await currentUser.load(userId: uid, accessToken: token)
         subscription.sync(from: currentUser.profile)
     }
 }

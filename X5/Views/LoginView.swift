@@ -264,11 +264,11 @@ struct LoginView: View {
         do {
             try await auth.signInWithGoogle()
         } catch {
-            // Cancellation should be silent
             let msg = error.localizedDescription
-            if !msg.localizedCaseInsensitiveContains("cancel") {
-                errorMessage = humanError(error)
-            }
+            // Silent on cancel
+            if msg.localizedCaseInsensitiveContains("cancel") { return }
+            // Real error — show full text so user can debug (provider misconfig, redirect URL, etc.)
+            errorMessage = "Google: \(msg)"
         }
     }
 
