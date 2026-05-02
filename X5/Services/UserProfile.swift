@@ -93,6 +93,10 @@ final class CurrentUser: ObservableObject {
     /// the full struct via the default NotificationCenter would expose PII
     /// (email, credits, push_token) to any in-process observer including
     /// linked third-party SDKs.
+    ///
+    /// Setter also persists the row to UserDefaults so the next launch can
+    /// paint the profile instantly instead of flashing "User"/blank → real
+    /// values once the server roundtrip finishes.
     @Published private(set) var profile: UserProfile? {
         didSet {
             NotificationCenter.default.post(
@@ -100,10 +104,13 @@ final class CurrentUser: ObservableObject {
                 object: nil,
                 userInfo: ["plan": profile?.plan ?? ""]
             )
+            persistCachedProfile()
         }
     }
     @Published private(set) var isLoading: Bool = false
     @Published private(set) var error: String?
+
+    private let cachedProfileKey = "x5.profile.cache"
 
     private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
     private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
@@ -111,10 +118,35 @@ final class CurrentUser: ObservableObject {
     private var observer: NSObjectProtocol?
 
     init() {
+        // Restore the last cached profile synchronously so ProfileView renders
+        // real values on cold launch instead of flashing "User"/empty defaults
+        // for the seconds it takes the server fetch to come back.
+        restoreCachedProfile()
+
         observer = NotificationCenter.default.addObserver(
             forName: .x5UserDidSignOut, object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor in self?.profile = nil }
+        }
+    }
+
+    private func restoreCachedProfile() {
+        guard let data = UserDefaults.standard.data(forKey: cachedProfileKey),
+              let cached = try? JSONDecoder().decode(UserProfile.self, from: data)
+        else { return }
+        // Routing through the setter re-persists the same bytes (no-op write)
+        // and re-broadcasts the cached plan — which is fine: Subscription
+        // syncs to the cached state until the server fetch overrides it,
+        // matching what's painted in the UI.
+        self.profile = cached
+    }
+
+    private func persistCachedProfile() {
+        let defaults = UserDefaults.standard
+        if let profile, let data = try? JSONEncoder().encode(profile) {
+            defaults.set(data, forKey: cachedProfileKey)
+        } else {
+            defaults.removeObject(forKey: cachedProfileKey)
         }
     }
 
