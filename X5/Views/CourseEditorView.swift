@@ -130,9 +130,10 @@ struct CourseEditorView: View {
                 if let data = coverPreviewData, let img = UIImage(data: data) {
                     Image(uiImage: img).resizable().scaledToFill()
                 } else if let url = coverUrl, !url.isEmpty, let u = URL(string: url) {
-                    AsyncImage(url: u) { phase in
-                        if let img = phase.image { img.resizable().scaledToFill() }
-                        else { placeholder }
+                    CachedAsyncImage(url: u) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        placeholder
                     }
                 } else {
                     placeholder

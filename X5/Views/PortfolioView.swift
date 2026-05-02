@@ -87,15 +87,10 @@ private struct PortfolioCell: View {
             ZStack {
                 Color.white.opacity(0.06)
                 if let s = item.mediaUrl, let url = URL(string: s) {
-                    AsyncImage(url: url) { phase in
-                        if let img = phase.image {
-                            img.resizable().scaledToFill()
-                        } else if phase.error != nil {
-                            Image(systemName: "photo")
-                                .foregroundColor(.white.opacity(0.3))
-                        } else {
-                            ProgressView().tint(.white.opacity(0.5))
-                        }
+                    CachedAsyncImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        ProgressView().tint(.white.opacity(0.5))
                     }
                 }
             }

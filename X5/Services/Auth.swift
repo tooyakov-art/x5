@@ -87,6 +87,9 @@ final class Auth: ObservableObject {
         isAuthenticated = false
         userEmail = nil
         userId = nil
+        // Drop private chat media + in-memory layer so a different user signing
+        // in on this device can't see leftovers from the previous session.
+        await ImageCache.shared.clearForSignOut()
         NotificationCenter.default.post(name: .x5UserDidSignOut, object: nil)
     }
 

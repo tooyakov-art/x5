@@ -152,15 +152,12 @@ private struct CourseCard: View {
                 LinearGradient(colors: [Color.purple.opacity(0.6), Color.pink.opacity(0.6)],
                                startPoint: .topLeading, endPoint: .bottomTrailing)
                 if let cover = course.coverUrl, !cover.isEmpty, let url = URL(string: cover) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img):
-                            img.resizable().scaledToFill()
-                        default:
-                            Image(systemName: "graduationcap")
-                                .font(.system(size: 40, weight: .light))
-                                .foregroundColor(.white.opacity(0.7))
-                        }
+                    CachedAsyncImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        Image(systemName: "graduationcap")
+                            .font(.system(size: 40, weight: .light))
+                            .foregroundColor(.white.opacity(0.7))
                     }
                 } else {
                     Image(systemName: "play.circle")
@@ -245,14 +242,12 @@ private struct CourseRow: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Color.accentColor.opacity(0.14))
                 if let cover = course.coverUrl, !cover.isEmpty, let url = URL(string: cover) {
-                    AsyncImage(url: url) { phase in
-                        if let img = phase.image {
-                            img.resizable().scaledToFill()
-                        } else {
-                            Image(systemName: "graduationcap")
-                                .font(.system(size: 22, weight: .semibold))
-                                .foregroundColor(.accentColor)
-                        }
+                    CachedAsyncImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        Image(systemName: "graduationcap")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundColor(.accentColor)
                     }
                 } else {
                     Image(systemName: "graduationcap")
@@ -330,12 +325,10 @@ struct CourseDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 if let cover = course.coverUrl, !cover.isEmpty, let url = URL(string: cover) {
-                    AsyncImage(url: url) { phase in
-                        if let img = phase.image {
-                            img.resizable().scaledToFill()
-                        } else {
-                            Color.white.opacity(0.05)
-                        }
+                    CachedAsyncImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        Color.white.opacity(0.05)
                     }
                     .frame(height: 180)
                     .frame(maxWidth: .infinity)

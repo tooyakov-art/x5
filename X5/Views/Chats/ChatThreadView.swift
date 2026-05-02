@@ -319,14 +319,10 @@ private struct Bubble: View {
     @ViewBuilder
     private var imageBubble: some View {
         if let s = message.mediaUrl, let url = URL(string: s) {
-            AsyncImage(url: url) { phase in
-                if let img = phase.image {
-                    img.resizable().scaledToFill()
-                } else if phase.error != nil {
-                    Color.white.opacity(0.1).overlay(Image(systemName: "photo").foregroundColor(.white.opacity(0.4)))
-                } else {
-                    Color.white.opacity(0.06).overlay(ProgressView().tint(.white.opacity(0.5)))
-                }
+            CachedAsyncImage(url: url) { image in
+                image.resizable().scaledToFill()
+            } placeholder: {
+                Color.white.opacity(0.06).overlay(ProgressView().tint(.white.opacity(0.5)))
             }
             .frame(maxWidth: 240, maxHeight: 320)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))

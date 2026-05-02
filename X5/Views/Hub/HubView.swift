@@ -364,12 +364,10 @@ struct AvatarView: View {
     var body: some View {
         Group {
             if let s = urlString, !s.isEmpty, let url = URL(string: s) {
-                AsyncImage(url: url) { phase in
-                    if let img = phase.image {
-                        img.resizable().scaledToFill()
-                    } else {
-                        placeholder
-                    }
+                CachedAsyncImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    placeholder
                 }
             } else {
                 placeholder

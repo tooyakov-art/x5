@@ -113,6 +113,22 @@ struct SettingsView: View {
                         }
                     }
 
+                    NavigationLink {
+                        CacheView()
+                    } label: {
+                        HStack {
+                            Image(systemName: "internaldrive")
+                                .foregroundColor(.accentColor)
+                                .frame(width: 22)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(loc.t("settings_cache"))
+                                    .foregroundColor(.primary)
+                                Text(loc.t("settings_cache_sub"))
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                        }
+                    }
+
                 }
 
                 // Sign out
