@@ -14,7 +14,6 @@ struct SettingsView: View {
     @State private var errorMessage: String?
     @AppStorage("x5.face_id_enabled") private var faceIDEnabled = false
     @State private var publicToggle: Bool = true
-    @State private var statusMessage: String?
 
     private enum DeleteStage { case idle, firstConfirm, finalConfirm, deleting }
 
@@ -114,21 +113,6 @@ struct SettingsView: View {
                         }
                     }
 
-                    Button {
-                        clearCache()
-                    } label: {
-                        HStack {
-                            Image(systemName: "trash")
-                                .foregroundColor(.accentColor)
-                                .frame(width: 22)
-                            Text(loc.t("settings_clear_cache"))
-                                .foregroundColor(.primary)
-                            Spacer()
-                            if let s = statusMessage {
-                                Text(s).font(.caption).foregroundColor(.secondary)
-                            }
-                        }
-                    }
                 }
 
                 // Sign out
@@ -239,18 +223,6 @@ struct SettingsView: View {
     private func updatePublic(_ value: Bool) async {
         guard let token = auth.accessToken else { return }
         await currentUser.patch("is_public", value: value, accessToken: token)
-    }
-
-    private func clearCache() {
-        URLCache.shared.removeAllCachedResponses()
-        if let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
-            try? FileManager.default.removeItem(at: dir)
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        }
-        statusMessage = loc.t("settings_cache_cleared")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            statusMessage = nil
-        }
     }
 
     private func runDelete() async {

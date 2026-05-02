@@ -1,4 +1,6 @@
 import SwiftUI
+import PhotosUI
+import AVFoundation
 
 struct ChatThreadView: View {
     let chat: ChatRoom
@@ -6,6 +8,7 @@ struct ChatThreadView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = ChatsService()
+    @StateObject private var recorder = AudioRecorder()
     @State private var messages: [ChatMessageRow] = []
     @State private var draft: String = ""
     @State private var sending: Bool = false
@@ -13,6 +16,8 @@ struct ChatThreadView: View {
     @State private var showingProfile: Bool = false
     @State private var showingMenu: Bool = false
     @State private var confirmBlock: Bool = false
+    @State private var photoItem: PhotosPickerItem?
+    @State private var attachmentError: String?
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -38,19 +43,64 @@ struct ChatThreadView: View {
                 }
             }
 
-            HStack(spacing: 10) {
-                TextField(loc.t("chats_message_placeholder"), text: $draft, axis: .vertical)
-                    .focused($inputFocused)
-                    .padding(.horizontal, 12).padding(.vertical, 10)
-                    .background(Color.white.opacity(0.06))
-                    .cornerRadius(20)
-                    .lineLimit(1...4)
-                Button(action: send) {
-                    Image(systemName: sending ? "hourglass" : "arrow.up.circle.fill")
-                        .font(.system(size: 30))
-                        .foregroundColor(canSend ? .accentColor : .white.opacity(0.2))
+            HStack(spacing: 8) {
+                // Attach photo
+                PhotosPicker(selection: $photoItem, matching: .images) {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.55))
+                        .frame(width: 36, height: 36)
                 }
-                .disabled(!canSend || sending)
+
+                if recorder.isRecording {
+                    // Voice recording state
+                    HStack(spacing: 8) {
+                        Circle().fill(.red).frame(width: 8, height: 8)
+                        Text("Запись… отпусти чтобы отправить")
+                            .font(.system(size: 13)).foregroundColor(.white)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    .background(Color.red.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                } else {
+                    TextField(loc.t("chats_message_placeholder"), text: $draft, axis: .vertical)
+                        .focused($inputFocused)
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(20)
+                        .lineLimit(1...4)
+                }
+
+                if canSend {
+                    // Text-send button
+                    Button(action: send) {
+                        Image(systemName: sending ? "hourglass" : "arrow.up.circle.fill")
+                            .font(.system(size: 30))
+                            .foregroundColor(.accentColor)
+                    }
+                    .disabled(sending)
+                } else {
+                    // Press-and-hold mic
+                    Image(systemName: recorder.isRecording ? "mic.circle.fill" : "mic.circle")
+                        .font(.system(size: 30))
+                        .foregroundColor(recorder.isRecording ? .red : .white.opacity(0.6))
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { _ in
+                                    if !recorder.isRecording {
+                                        Task { await recorder.start() }
+                                    }
+                                }
+                                .onEnded { _ in
+                                    if let result = recorder.stop() {
+                                        Task { await sendVoice(result) }
+                                    } else {
+                                        recorder.cancel()
+                                    }
+                                }
+                        )
+                }
             }
             .padding(12)
             .background(Color(red: 0.04, green: 0.05, blue: 0.10))
@@ -134,9 +184,57 @@ struct ChatThreadView: View {
         } message: {
             Text("Сообщения от этого пользователя больше не будут показываться.")
         }
+        .onChange(of: photoItem) { newValue in
+            guard let newValue else { return }
+            Task { await sendPhoto(newValue); photoItem = nil }
+        }
+        .alert("Не отправилось", isPresented: Binding(
+            get: { attachmentError != nil },
+            set: { if !$0 { attachmentError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(attachmentError ?? "")
+        }
         .task {
             await reload()
             await loadOther()
+        }
+    }
+
+    private func sendPhoto(_ item: PhotosPickerItem) async {
+        guard let token = auth.accessToken, let uid = auth.userId else { return }
+        sending = true
+        defer { sending = false }
+        guard let raw = try? await item.loadTransferable(type: Data.self),
+              let img = UIImage(data: raw),
+              let jpeg = img.jpegData(compressionQuality: 0.82) else {
+            attachmentError = "Не удалось прочитать фото."
+            return
+        }
+        guard let url = await service.uploadAttachment(chatId: chat.id, data: jpeg, mime: "image/jpeg", ext: "jpg", accessToken: token) else {
+            attachmentError = service.error ?? "Не удалось загрузить фото."
+            return
+        }
+        if let inserted = await service.sendMedia(chatId: chat.id, currentUserId: uid, type: "image", mediaUrl: url, mime: "image/jpeg", accessToken: token) {
+            messages.append(inserted)
+        } else {
+            attachmentError = service.error ?? "Не удалось отправить фото."
+        }
+    }
+
+    private func sendVoice(_ result: (data: Data, mime: String, ext: String)) async {
+        guard let token = auth.accessToken, let uid = auth.userId else { return }
+        sending = true
+        defer { sending = false }
+        guard let url = await service.uploadAttachment(chatId: chat.id, data: result.data, mime: result.mime, ext: result.ext, accessToken: token) else {
+            attachmentError = service.error ?? "Не удалось загрузить голосовое."
+            return
+        }
+        if let inserted = await service.sendMedia(chatId: chat.id, currentUserId: uid, type: "audio", mediaUrl: url, mime: result.mime, accessToken: token) {
+            messages.append(inserted)
+        } else {
+            attachmentError = service.error ?? "Не удалось отправить голосовое."
         }
     }
 
@@ -196,15 +294,92 @@ private struct Bubble: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 6) {
             if isMine { Spacer(minLength: 40) }
-            VStack(alignment: isMine ? .trailing : .leading, spacing: 2) {
-                Text(message.content ?? "")
-                    .font(.system(size: 14))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(isMine ? Color.accentColor.opacity(0.18) : Color.white.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
+            content
             if !isMine { Spacer(minLength: 40) }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch message.type {
+        case "image":
+            imageBubble
+        case "audio":
+            AudioBubble(url: message.mediaUrl, isMine: isMine)
+        default:
+            Text(message.content ?? "")
+                .font(.system(size: 14))
+                .foregroundColor(.white)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(isMine ? Color.accentColor.opacity(0.22) : Color.white.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    @ViewBuilder
+    private var imageBubble: some View {
+        if let s = message.mediaUrl, let url = URL(string: s) {
+            AsyncImage(url: url) { phase in
+                if let img = phase.image {
+                    img.resizable().scaledToFill()
+                } else if phase.error != nil {
+                    Color.white.opacity(0.1).overlay(Image(systemName: "photo").foregroundColor(.white.opacity(0.4)))
+                } else {
+                    Color.white.opacity(0.06).overlay(ProgressView().tint(.white.opacity(0.5)))
+                }
+            }
+            .frame(maxWidth: 240, maxHeight: 320)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+}
+
+private struct AudioBubble: View {
+    let url: String?
+    let isMine: Bool
+    @State private var player: AVPlayer?
+    @State private var isPlaying = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button {
+                togglePlay()
+            } label: {
+                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundColor(.white)
+            }
+            .buttonStyle(.plain)
+            Text("Голосовое")
+                .font(.system(size: 13))
+                .foregroundColor(.white.opacity(0.85))
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(isMine ? Color.accentColor.opacity(0.22) : Color.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func togglePlay() {
+        guard let s = url, let u = URL(string: s) else { return }
+        if player == nil {
+            try? AVAudioSession.sharedInstance().setCategory(.playback)
+            try? AVAudioSession.sharedInstance().setActive(true)
+            player = AVPlayer(url: u)
+            NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime,
+                object: player?.currentItem,
+                queue: .main
+            ) { _ in
+                isPlaying = false
+                player?.seek(to: .zero)
+            }
+        }
+        if isPlaying {
+            player?.pause()
+            isPlaying = false
+        } else {
+            player?.play()
+            isPlaying = true
         }
     }
 }

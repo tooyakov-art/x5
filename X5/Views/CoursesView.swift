@@ -36,28 +36,47 @@ struct CoursesView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             ForEach(service.courses) { course in
-                                NavigationLink {
-                                    CourseDetailView(course: course, openPaywall: { showingPaywall = true })
-                                } label: {
-                                    CourseCard(course: course, showHiddenBadge: isDev && course.isPublic == false)
-                                }
-                                .buttonStyle(.plain)
-                                .contextMenu {
+                                ZStack(alignment: .topLeading) {
+                                    NavigationLink {
+                                        CourseDetailView(course: course, openPaywall: { showingPaywall = true })
+                                    } label: {
+                                        CourseCard(course: course, showHiddenBadge: isDev && course.isPublic == false)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .contextMenu {
+                                        if isDev {
+                                            Button {
+                                                editorTarget = .edit(course)
+                                            } label: {
+                                                Label("Редактировать", systemImage: "pencil")
+                                            }
+                                            Button(role: .destructive) {
+                                                Task {
+                                                    guard let token = auth.accessToken else { return }
+                                                    _ = await service.deleteCourse(id: course.id, accessToken: token)
+                                                    await service.loadCourses(includeHidden: isDev)
+                                                }
+                                            } label: {
+                                                Label("Удалить", systemImage: "trash")
+                                            }
+                                        }
+                                    }
+
+                                    // Visible edit button for developers (overlay top-left)
                                     if isDev {
                                         Button {
                                             editorTarget = .edit(course)
                                         } label: {
-                                            Label("Редактировать", systemImage: "pencil")
+                                            Image(systemName: "pencil")
+                                                .font(.system(size: 14, weight: .bold))
+                                                .foregroundColor(.black)
+                                                .frame(width: 36, height: 36)
+                                                .background(Color.accentColor)
+                                                .clipShape(Circle())
+                                                .shadow(color: .black.opacity(0.4), radius: 6)
                                         }
-                                        Button(role: .destructive) {
-                                            Task {
-                                                guard let token = auth.accessToken else { return }
-                                                _ = await service.deleteCourse(id: course.id, accessToken: token)
-                                                await service.loadCourses(includeHidden: isDev)
-                                            }
-                                        } label: {
-                                            Label("Удалить", systemImage: "trash")
-                                        }
+                                        .buttonStyle(.plain)
+                                        .padding(12)
                                     }
                                 }
                             }

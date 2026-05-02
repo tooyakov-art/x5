@@ -220,6 +220,71 @@ final class ChatsService: ObservableObject {
         return created
     }
 
+    /// Uploads a binary attachment (image / audio) to Supabase Storage `chat-media` bucket
+    /// and returns the public URL. Caller then sends a message with `media_url`.
+    /// Requires: bucket `chat-media` to exist (public read) in Supabase Storage.
+    func uploadAttachment(chatId: String, data: Data, mime: String, ext: String, accessToken: String) async -> String? {
+        let path = "\(chatId)/\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(6)).\(ext)"
+        let uploadURL = baseURL.appendingPathComponent("storage/v1/object/chat-media/\(path)")
+        var req = URLRequest(url: uploadURL)
+        req.httpMethod = "POST"
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        req.setValue(mime, forHTTPHeaderField: "Content-Type")
+        req.setValue("3600", forHTTPHeaderField: "Cache-Control")
+        req.httpBody = data
+        guard let (_, http) = await sendAuthed(req, accessToken: accessToken),
+              (200..<300).contains(http.statusCode) else {
+            if error == nil { error = "Не удалось загрузить файл. Создай bucket chat-media в Supabase Storage." }
+            return nil
+        }
+        return baseURL.appendingPathComponent("storage/v1/object/public/chat-media/\(path)").absoluteString
+    }
+
+    /// Inserts a message of `type` ("image" / "audio" / "file") with the given media URL.
+    @discardableResult
+    func sendMedia(chatId: String, currentUserId: String, type: String, mediaUrl: String, mime: String, accessToken: String) async -> ChatMessageRow? {
+        error = nil
+        var post = URLRequest(url: baseURL.appendingPathComponent("rest/v1/messages"))
+        post.httpMethod = "POST"
+        post.setValue(anonKey, forHTTPHeaderField: "apikey")
+        post.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        post.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        post.setValue("return=representation", forHTTPHeaderField: "Prefer")
+        let body: [String: AnyEncodable] = [
+            "chat_id": AnyEncodable(chatId),
+            "sender_id": AnyEncodable(currentUserId),
+            "type": AnyEncodable(type),
+            "media_url": AnyEncodable(mediaUrl),
+            "media_mime": AnyEncodable(mime)
+        ]
+        post.httpBody = try? JSONEncoder().encode(body)
+        guard let (data, http) = await sendAuthed(post, accessToken: accessToken),
+              (200..<300).contains(http.statusCode),
+              let rows = try? JSONDecoder().decode([ChatMessageRow].self, from: data),
+              let inserted = rows.first
+        else {
+            if error == nil { error = "Не удалось отправить файл." }
+            return nil
+        }
+        // Bump chat preview
+        let preview = type == "image" ? "📷 Фото" : type == "audio" ? "🎤 Голосовое" : "📎 Файл"
+        var pURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/chats"), resolvingAgainstBaseURL: false)!
+        pURL.queryItems = [URLQueryItem(name: "id", value: "eq.\(chatId)")]
+        var patch = URLRequest(url: pURL.url!)
+        patch.httpMethod = "PATCH"
+        patch.setValue(anonKey, forHTTPHeaderField: "apikey")
+        patch.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        patch.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let bumpBody: [String: AnyEncodable] = [
+            "last_message": AnyEncodable(preview),
+            "last_message_at": AnyEncodable(ISO8601DateFormatter().string(from: Date()))
+        ]
+        patch.httpBody = try? JSONEncoder().encode(bumpBody)
+        _ = await sendAuthed(patch, accessToken: accessToken)
+        return inserted
+    }
+
     /// Sends a text message, then bumps chats.last_message / last_message_at.
     /// Sets `self.error` on failure so the UI can show a real reason instead of a dead spinner.
     @discardableResult

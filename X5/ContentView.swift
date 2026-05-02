@@ -7,6 +7,12 @@ struct ContentView: View {
     @AppStorage("x5.face_id_enabled") private var faceIDEnabled = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var isLocked = false
+    /// Timestamp when the app last went to background — used to re-lock only after a long absence.
+    @State private var backgroundedAt: Date?
+    /// Lock again only after this many seconds in background. Anything shorter = quick task switch.
+    private let relockAfter: TimeInterval = 300 // 5 min
+    /// True after first successful Face ID unlock in this app session.
+    @State private var hasUnlockedThisSession = false
 
     var body: some View {
         ZStack {
@@ -29,13 +35,29 @@ struct ContentView: View {
                     .transition(.opacity)
             }
         }
+        .onChange(of: isLocked) { locked in
+            // Mark unlocked once so we don't re-prompt on every onAppear within this session.
+            if !locked { hasUnlockedThisSession = true }
+        }
         .onAppear {
-            if faceIDEnabled && auth.isAuthenticated { isLocked = true }
+            // Cold launch: lock once. After successful unlock the user won't see Face ID
+            // again unless the app stays in background for `relockAfter` seconds.
+            if faceIDEnabled && auth.isAuthenticated && !hasUnlockedThisSession {
+                isLocked = true
+            }
         }
         .onChange(of: scenePhase) { phase in
-            // Re-lock when app goes to background and biometric protection is on.
-            if phase == .background && faceIDEnabled && auth.isAuthenticated {
-                isLocked = true
+            guard faceIDEnabled, auth.isAuthenticated else { return }
+            switch phase {
+            case .background:
+                backgroundedAt = Date()
+            case .active:
+                // Re-lock only if the app was in background long enough.
+                if let t = backgroundedAt, Date().timeIntervalSince(t) >= relockAfter {
+                    isLocked = true
+                }
+                backgroundedAt = nil
+            default: break
             }
         }
     }

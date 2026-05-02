@@ -12,7 +12,7 @@ settings:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: F8LA8PC4U6
     MARKETING_VERSION: "1.1.0"
-    CURRENT_PROJECT_VERSION: "33"
+    CURRENT_PROJECT_VERSION: "34"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
 targets:
@@ -52,6 +52,8 @@ targets:
         UIUserInterfaceStyle: Dark
         ITSAppUsesNonExemptEncryption: false
         NSFaceIDUsageDescription: "Используется для блокировки X5 — открыть приложение можно только владельцу устройства."
+        NSMicrophoneUsageDescription: "Доступ к микрофону нужен чтобы записывать голосовые сообщения в чатах."
+        NSPhotoLibraryUsageDescription: "Доступ к галерее нужен чтобы прикреплять фото в чатах и портфолио."
         LSApplicationCategoryType: public.app-category.productivity
         NSPrivacyTracking: false
         NSPrivacyAccessedAPITypes:
