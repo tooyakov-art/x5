@@ -30,16 +30,12 @@ final class LocalizationService: ObservableObject {
     @Published private(set) var current: AppLanguage
 
     init() {
-        // Always read from system locale — no in-app override.
-        // To change language: Settings → X5 → Language (system iOS preference).
-        let code = Locale.current.language.languageCode?.identifier.lowercased() ?? "en"
-        switch code {
-        case "ru": self.current = .ru
-        case "kk", "kz": self.current = .kk
-        default: self.current = .en
-        }
+        // Read the user's REAL preferred language from iOS Settings — NOT Locale.current,
+        // which depends on which languages the app advertises. preferredLanguages.first
+        // returns e.g. "ru-KZ" / "kk-Cyrl-KZ" / "en-US" regardless of app localizations.
+        self.current = Self.resolve()
 
-        // React to system locale changes mid-session (rare but possible via system settings).
+        // React to system locale changes mid-session.
         NotificationCenter.default.addObserver(
             forName: NSLocale.currentLocaleDidChangeNotification,
             object: nil,
@@ -49,14 +45,18 @@ final class LocalizationService: ObservableObject {
         }
     }
 
-    private func refreshFromSystem() {
-        let code = Locale.current.language.languageCode?.identifier.lowercased() ?? "en"
-        let next: AppLanguage
+    private static func resolve() -> AppLanguage {
+        let raw = Locale.preferredLanguages.first ?? "en"
+        let code = raw.split(separator: "-").first.map(String.init)?.lowercased() ?? "en"
         switch code {
-        case "ru": next = .ru
-        case "kk", "kz": next = .kk
-        default: next = .en
+        case "ru": return .ru
+        case "kk", "kz": return .kk
+        default: return .en
         }
+    }
+
+    private func refreshFromSystem() {
+        let next = Self.resolve()
         if next != current { current = next }
     }
 
