@@ -12,7 +12,7 @@ settings:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: F8LA8PC4U6
     MARKETING_VERSION: "1.1.0"
-    CURRENT_PROJECT_VERSION: "29"
+    CURRENT_PROJECT_VERSION: "30"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
 targets:
@@ -47,6 +47,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UIUserInterfaceStyle: Dark
         ITSAppUsesNonExemptEncryption: false
+        NSFaceIDUsageDescription: "Используется для блокировки X5 — открыть приложение можно только владельцу устройства."
         LSApplicationCategoryType: public.app-category.productivity
         NSPrivacyTracking: false
         NSPrivacyAccessedAPITypes:

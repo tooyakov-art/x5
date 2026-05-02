@@ -1,8 +1,7 @@
 import SwiftUI
-import StoreKit
 
-/// Sells the blue ☑ verified badge as a 990 ₸/mo subscription
-/// (StoreKit product: com.x5studio.app.verified.monthly).
+/// Sells the blue ☑ verified badge for `IAPService.verifiedCostCredits` credits / 30 days.
+/// Credits come from the Pro subscription (1000/mo) — single store, no separate IAP.
 struct VerifiedBadgeView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
@@ -10,11 +9,16 @@ struct VerifiedBadgeView: View {
     @StateObject private var iap = IAPService()
     @Environment(\.dismiss) private var dismiss
     @State private var showSuccess = false
+    @State private var showPaywall = false
+    @State private var working = false
+    @State private var errorText: String?
+
+    private var credits: Int { currentUser.profile?.credits ?? 0 }
+    private var canAfford: Bool { credits >= IAPService.verifiedCostCredits }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                // Hero
                 ZStack {
                     Circle()
                         .fill(LinearGradient(colors: [Color.accentColor, .blue],
@@ -77,45 +81,67 @@ struct VerifiedBadgeView: View {
             }
             .padding(20)
         }
-        .task { await iap.loadProducts() }
+        .sheet(isPresented: $showPaywall) { PaywallView() }
         .alert("Готово!", isPresented: $showSuccess) {
             Button("OK") { dismiss() }
         } message: {
-            Text("Синяя галочка теперь рядом с твоим именем.")
+            Text("Синяя галочка теперь рядом с твоим именем. Списано \(IAPService.verifiedCostCredits) кредитов.")
         }
     }
 
     private var purchaseBlock: some View {
         VStack(spacing: 10) {
-            Button {
-                Task {
-                    let ok = await iap.purchaseVerified()
-                    if ok {
-                        if let uid = auth.userId, let token = auth.accessToken {
-                            await currentUser.load(userId: uid, accessToken: token)
-                        }
-                        showSuccess = true
-                    }
+            // Cost block
+            HStack(spacing: 8) {
+                Image(systemName: "creditcard.circle.fill")
+                    .foregroundColor(.accentColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(IAPService.verifiedCostCredits) кредитов / 30 дней")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                    Text("Твой баланс: \(credits)")
+                        .font(.system(size: 12))
+                        .foregroundColor(canAfford ? .white.opacity(0.7) : .red.opacity(0.85))
                 }
-            } label: {
-                Text(buttonLabel)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(iap.verifiedProduct != nil && !iap.isPurchasing
-                                ? Color.accentColor : Color.accentColor.opacity(0.5))
-                    .cornerRadius(14)
+                Spacer()
             }
-            .disabled(iap.verifiedProduct == nil || iap.isPurchasing)
+            .padding(14)
+            .background(Color.white.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            if iap.verifiedProduct == nil && iap.lastError == nil {
-                Text(loc.t("paywall_unavailable"))
-                    .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.5))
-                    .multilineTextAlignment(.center)
+            if canAfford {
+                Button {
+                    activate()
+                } label: {
+                    Text(working ? "Списываем…" : "Активировать за \(IAPService.verifiedCostCredits) кредитов")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(working ? Color.accentColor.opacity(0.5) : Color.accentColor)
+                        .cornerRadius(14)
+                }
+                .disabled(working)
+            } else {
+                Button {
+                    showPaywall = true
+                } label: {
+                    VStack(spacing: 4) {
+                        Text("Купить Pro и получить кредиты")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.black)
+                        Text("Pro = +1000 кредитов сразу")
+                            .font(.system(size: 11))
+                            .foregroundColor(.black.opacity(0.7))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.accentColor)
+                    .cornerRadius(14)
+                }
             }
-            if let err = iap.lastError {
+
+            if let err = errorText {
                 Text(err).font(.system(size: 11)).foregroundColor(.red.opacity(0.85))
                     .multilineTextAlignment(.center)
             }
@@ -137,12 +163,19 @@ struct VerifiedBadgeView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private var buttonLabel: String {
-        if iap.isPurchasing { return loc.t("btn_loading") }
-        if let p = iap.verifiedProduct {
-            return "\(loc.t("paywall_subscribe")) — \(p.displayPrice) / mo"
+    private func activate() {
+        guard let token = auth.accessToken else { return }
+        working = true
+        errorText = nil
+        Task {
+            let ok = await iap.activateVerifiedWithCredits(currentUser: currentUser, accessToken: token)
+            working = false
+            if ok {
+                showSuccess = true
+            } else {
+                errorText = iap.lastError ?? "Не удалось активировать. Попробуй позже."
+            }
         }
-        return loc.t("paywall_loading")
     }
 
     private func formatDate(_ iso: String?) -> String {

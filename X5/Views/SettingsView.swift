@@ -12,7 +12,6 @@ struct SettingsView: View {
 
     @State private var deleteStage: DeleteStage = .idle
     @State private var errorMessage: String?
-    @State private var showLanguagePicker = false
     @AppStorage("x5.face_id_enabled") private var faceIDEnabled = false
     @State private var publicToggle: Bool = true
     @State private var statusMessage: String?
@@ -35,25 +34,32 @@ struct SettingsView: View {
                     }
                 }
 
-                // Appearance / language
-                Section(loc.t("settings_appearance")) {
+                // Appearance / language — read-only, follows system iOS language
+                Section {
                     Button {
-                        showLanguagePicker = true
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
                     } label: {
                         HStack {
                             Image(systemName: "globe")
                                 .foregroundColor(.accentColor)
                                 .frame(width: 22)
-                            Text(loc.t("settings_language"))
-                                .foregroundColor(.primary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(loc.t("settings_language"))
+                                    .foregroundColor(.primary)
+                                Text("\(loc.current.flag) \(loc.current.label) · из системы")
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
                             Spacer()
-                            Text("\(loc.current.flag) \(loc.current.label)")
-                                .foregroundColor(.secondary)
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12, weight: .semibold))
+                            Image(systemName: "arrow.up.forward.app")
                                 .foregroundColor(.secondary)
                         }
                     }
+                } header: {
+                    Text(loc.t("settings_appearance"))
+                } footer: {
+                    Text("Язык приложения берётся из языка iPhone. Чтобы сменить — Настройки iOS → X5 → Язык.")
                 }
 
                 // Privacy & app
@@ -185,10 +191,6 @@ struct SettingsView: View {
                     Button(loc.t("btn_done")) { dismiss() }
                 }
             }
-            .sheet(isPresented: $showLanguagePicker) {
-                LanguagePickerView()
-                    .preferredColorScheme(.dark)
-            }
             .confirmationDialog(
                 loc.t("settings_delete_confirm"),
                 isPresented: Binding(
@@ -269,55 +271,4 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - Language picker
-
-struct LanguagePickerView: View {
-    @EnvironmentObject private var loc: LocalizationService
-    @EnvironmentObject private var auth: Auth
-    @EnvironmentObject private var currentUser: CurrentUser
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    ForEach(AppLanguage.allCases) { lang in
-                        Button {
-                            loc.set(lang)
-                            Task {
-                                if let token = auth.accessToken {
-                                    await currentUser.patch("language", value: lang.rawValue, accessToken: token)
-                                }
-                            }
-                            dismiss()
-                        } label: {
-                            HStack(spacing: 14) {
-                                Text(lang.flag).font(.system(size: 28))
-                                Text(lang.label)
-                                    .foregroundColor(.primary)
-                                Spacer()
-                                if loc.current == lang {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.accentColor)
-                                }
-                            }
-                            .padding(.vertical, 4)
-                        }
-                    }
-                } header: {
-                    Text(loc.t("settings_choose_language"))
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(Color(red: 0.04, green: 0.05, blue: 0.10))
-            .navigationTitle(loc.t("settings_language"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(loc.t("btn_done")) { dismiss() }
-                }
-            }
-        }
-    }
-}
+// Language is system-driven only — see LocalizationService for the auto-detect logic.

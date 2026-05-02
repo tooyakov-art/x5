@@ -29,29 +29,35 @@ final class LocalizationService: ObservableObject {
 
     @Published private(set) var current: AppLanguage
 
-    private let storageKey = "x5.language"
-
     init() {
-        let stored = UserDefaults.standard.string(forKey: "x5.language")
-            .flatMap(AppLanguage.init(rawValue:))
+        // Always read from system locale — no in-app override.
+        // To change language: Settings → X5 → Language (system iOS preference).
+        let code = Locale.current.language.languageCode?.identifier.lowercased() ?? "en"
+        switch code {
+        case "ru": self.current = .ru
+        case "kk", "kz": self.current = .kk
+        default: self.current = .en
+        }
 
-        if let stored {
-            self.current = stored
-        } else {
-            // Auto-detect from system locale
-            let code = Locale.current.language.languageCode?.identifier.lowercased() ?? "en"
-            switch code {
-            case "ru": self.current = .ru
-            case "kk", "kz": self.current = .kk
-            default: self.current = .en
-            }
+        // React to system locale changes mid-session (rare but possible via system settings).
+        NotificationCenter.default.addObserver(
+            forName: NSLocale.currentLocaleDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.refreshFromSystem() }
         }
     }
 
-    func set(_ language: AppLanguage) {
-        guard language != current else { return }
-        current = language
-        UserDefaults.standard.set(language.rawValue, forKey: storageKey)
+    private func refreshFromSystem() {
+        let code = Locale.current.language.languageCode?.identifier.lowercased() ?? "en"
+        let next: AppLanguage
+        switch code {
+        case "ru": next = .ru
+        case "kk", "kz": next = .kk
+        default: next = .en
+        }
+        if next != current { current = next }
     }
 
     func t(_ key: String) -> String {

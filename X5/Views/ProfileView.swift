@@ -30,15 +30,21 @@ struct ProfileView: View {
                     if let bio = currentUser.profile?.bio, !bio.isEmpty {
                         BioCard(text: bio)
                     }
-                    if !(currentUser.profile?.hasActiveVerifiedBadge ?? false) {
-                        verifiedCard
+                    // CTA: become a specialist if not yet on Hub
+                    if currentUser.profile?.showInHub != true {
+                        becomeSpecialistCard
                     }
+                    // Portfolio goes BEFORE verified card so the "+ Добавить" button is reachable
                     if let uid = currentUser.profile?.id {
                         PortfolioGrid(userId: uid, canEdit: true)
                     }
                     socialLinks
                     if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
                         specialistCard(cats: cats)
+                    }
+                    // Verified upsell at the bottom — non-blocking
+                    if !(currentUser.profile?.hasActiveVerifiedBadge ?? false) {
+                        verifiedCard
                     }
                 }
                 .padding(.horizontal, 16)
@@ -225,6 +231,40 @@ struct ProfileView: View {
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundColor(.white.opacity(0.4))
+            }
+            .padding(14)
+            .background(Color.white.opacity(0.05))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.accentColor.opacity(0.3), lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Become a specialist
+
+    private var becomeSpecialistCard: some View {
+        Button {
+            showingEdit = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "briefcase.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.black)
+                    .frame(width: 40, height: 40)
+                    .background(Color.accentColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Стать специалистом")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                    Text("Включи публичный профиль — клиенты найдут тебя в Hub и напишут в чат")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.4))
             }
             .padding(14)
             .background(Color.white.opacity(0.05))

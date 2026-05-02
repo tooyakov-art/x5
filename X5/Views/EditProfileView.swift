@@ -25,6 +25,27 @@ struct EditProfileView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section(header: Text("Specialist"),
+                        footer: Text("Включи «Show in Hub» — твой профиль появится в Hub, клиенты смогут написать в чат.").font(.caption)) {
+                    Toggle(isOn: $showInHub) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Show in Hub").bold()
+                            Text("Публичный профиль для клиентов")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                    NavigationLink {
+                        CategoriesPicker(selected: $pickedCategories)
+                    } label: {
+                        HStack {
+                            Text("Categories")
+                            Spacer()
+                            Text(pickedCategories.isEmpty ? "None" : "\(pickedCategories.count) selected")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+
                 Section(header: Text("About")) {
                     TextField("Display name", text: $name)
                         .textInputAutocapitalization(.words)
@@ -36,20 +57,6 @@ struct EditProfileView: View {
                     Text("\(bio.count) / 500")
                         .font(.caption2)
                         .foregroundColor(.secondary)
-                }
-
-                Section(header: Text("Specialist")) {
-                    Toggle("Show in Hub", isOn: $showInHub)
-                    NavigationLink {
-                        CategoriesPicker(selected: $pickedCategories)
-                    } label: {
-                        HStack {
-                            Text("Categories")
-                            Spacer()
-                            Text(pickedCategories.isEmpty ? "None" : "\(pickedCategories.count) selected")
-                                .foregroundColor(.secondary)
-                        }
-                    }
                 }
 
                 Section(header: Text("Social links"),

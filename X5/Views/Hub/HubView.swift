@@ -63,7 +63,8 @@ struct HubView: View {
                         }
                     } else if !(currentUser.profile?.showInHub ?? false) {
                         Button {
-                            showingEditProfile = true
+                            // Open user's own Profile tab — there they edit and toggle "Show in Hub"
+                            NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
                         } label: {
                             Text(loc.t("hub_become_specialist"))
                                 .font(.system(size: 12, weight: .bold))

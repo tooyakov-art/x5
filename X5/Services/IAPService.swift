@@ -4,10 +4,12 @@ import StoreKit
 @MainActor
 final class IAPService: ObservableObject {
     static let monthlyProductID = "com.x5studio.app.pro.monthly"
-    static let verifiedProductID = "com.x5studio.app.verified.monthly"
+
+    /// Cost in credits to activate the verified badge for 30 days.
+    /// Credits are earned via Pro subscription (1000 credits/month).
+    static let verifiedCostCredits: Int = 500
 
     @Published private(set) var product: Product?
-    @Published private(set) var verifiedProduct: Product?
     @Published private(set) var isPurchasing: Bool = false
     @Published var lastError: String?
 
@@ -26,61 +28,31 @@ final class IAPService: ObservableObject {
 
     func loadProducts() async {
         do {
-            let products = try await Product.products(for: [Self.monthlyProductID, Self.verifiedProductID])
+            let products = try await Product.products(for: [Self.monthlyProductID])
             product = products.first { $0.id == Self.monthlyProductID }
-            verifiedProduct = products.first { $0.id == Self.verifiedProductID }
         } catch {
             lastError = error.localizedDescription
         }
     }
 
-    /// Subscribe to the verified-badge IAP. On success, profiles.is_verified=true,
-    /// verified_until=now+30d.
-    func purchaseVerified() async -> Bool {
-        guard let verifiedProduct else { return false }
-        isPurchasing = true
-        defer { isPurchasing = false }
-        do {
-            let result = try await verifiedProduct.purchase()
-            switch result {
-            case .success(let verification):
-                if case .verified(let transaction) = verification {
-                    await applyVerified(transaction: transaction)
-                    await transaction.finish()
-                    return true
-                }
-                lastError = "Purchase failed verification"
-                return false
-            case .userCancelled: return false
-            case .pending:
-                lastError = "Purchase pending"
-                return false
-            @unknown default: return false
-            }
-        } catch {
-            lastError = error.localizedDescription
+    /// Spends `verifiedCostCredits` from the user's balance and activates the verified badge
+    /// for 30 days. Returns false if the user has insufficient credits.
+    func activateVerifiedWithCredits(currentUser: CurrentUser, accessToken: String) async -> Bool {
+        guard let profile = currentUser.profile else { return false }
+        let credits = profile.credits ?? 0
+        guard credits >= Self.verifiedCostCredits else {
+            lastError = "Не хватает кредитов: нужно \(Self.verifiedCostCredits), у тебя \(credits). Купи Pro — получишь 1000 кредитов."
             return false
         }
-    }
-
-    private func applyVerified(transaction: StoreKit.Transaction) async {
-        guard
-            let userId = UserDefaults.standard.string(forKey: "x5.session.user_id"),
-            let accessToken = UserDefaults.standard.string(forKey: "x5.session.access_token")
-        else { return }
-        let endDate = transaction.expirationDate ?? Calendar.current.date(byAdding: .month, value: 1, to: Date())!
-        let endIso = ISO8601DateFormatter().string(from: endDate)
-
-        var url = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
-        url.queryItems = [URLQueryItem(name: "id", value: "eq.\(userId)")]
-        var patch = URLRequest(url: url.url!)
-        patch.httpMethod = "PATCH"
-        patch.setValue(anonKey, forHTTPHeaderField: "apikey")
-        patch.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        patch.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = ["is_verified": true, "verified_until": endIso]
-        patch.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        _ = try? await URLSession.shared.data(for: patch)
+        let endIso = ISO8601DateFormatter().string(
+            from: Calendar.current.date(byAdding: .day, value: 30, to: Date())!
+        )
+        await currentUser.patchMany([
+            "is_verified": AnyEncodable(true),
+            "verified_until": AnyEncodable(endIso),
+            "credits": AnyEncodable(credits - Self.verifiedCostCredits)
+        ], accessToken: accessToken)
+        return true
     }
 
     /// Initiates purchase flow. On verified transaction, upgrades the local profile and credits.
@@ -181,5 +153,12 @@ final class IAPService: ObservableObject {
         ]
         patch.httpBody = try? JSONSerialization.data(withJSONObject: body)
         _ = try? await URLSession.shared.data(for: patch)
+
+        // Notify Subscription so isPro flips immediately without waiting for profile reload
+        NotificationCenter.default.post(name: .x5DidActivatePro, object: nil)
     }
+}
+
+extension Notification.Name {
+    static let x5DidActivatePro = Notification.Name("x5.iap.did_activate_pro")
 }

@@ -12,6 +12,8 @@ final class Subscription: ObservableObject {
     private let migrationKey = "x5.subscription.migrated_v14"
     private var observer: NSObjectProtocol?
 
+    private var proObserver: NSObjectProtocol?
+
     init() {
         // Migration: build 12 had a paywall that locally activated Pro on tap.
         // From build 14 onward, Pro state must come from a real receipt.
@@ -29,10 +31,27 @@ final class Subscription: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in self?.reset() }
         }
+
+        // IAPService posts this after a successful Pro purchase so isPro flips immediately.
+        proObserver = NotificationCenter.default.addObserver(
+            forName: .x5DidActivatePro,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.setPro(true) }
+        }
     }
 
     deinit {
         if let observer { NotificationCenter.default.removeObserver(observer) }
+        if let proObserver { NotificationCenter.default.removeObserver(proObserver) }
+    }
+
+    /// Reactively syncs from a fresh profile load (e.g. on app launch / refresh).
+    func sync(from profile: UserProfile?) {
+        guard let plan = profile?.plan else { return }
+        let pro = plan == "pro" || plan == "black"
+        if pro != isPro { setPro(pro) }
     }
 
     func reset() {
