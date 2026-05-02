@@ -6,9 +6,21 @@ struct CoursesView: View {
     @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = CoursesService()
     @State private var showingPaywall = false
-    @State private var devAlert = false
+    @State private var editorTarget: EditorTarget?
 
     private var isDev: Bool { Roles.isDeveloper(auth.userEmail) }
+
+    /// Sheet payload — `.create` for new course, `.edit(course)` for existing.
+    private enum EditorTarget: Identifiable {
+        case create
+        case edit(Course)
+        var id: String {
+            switch self {
+            case .create: return "_new"
+            case .edit(let c): return c.id
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -27,9 +39,27 @@ struct CoursesView: View {
                                 NavigationLink {
                                     CourseDetailView(course: course, openPaywall: { showingPaywall = true })
                                 } label: {
-                                    CourseCard(course: course)
+                                    CourseCard(course: course, showHiddenBadge: isDev && course.isPublic == false)
                                 }
                                 .buttonStyle(.plain)
+                                .contextMenu {
+                                    if isDev {
+                                        Button {
+                                            editorTarget = .edit(course)
+                                        } label: {
+                                            Label("Редактировать", systemImage: "pencil")
+                                        }
+                                        Button(role: .destructive) {
+                                            Task {
+                                                guard let token = auth.accessToken else { return }
+                                                _ = await service.deleteCourse(id: course.id, accessToken: token)
+                                                await service.loadCourses(includeHidden: isDev)
+                                            }
+                                        } label: {
+                                            Label("Удалить", systemImage: "trash")
+                                        }
+                                    }
+                                }
                             }
                         }
                         .padding(.horizontal, 16)
@@ -48,7 +78,7 @@ struct CoursesView: View {
                 if isDev {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
-                            devAlert = true
+                            editorTarget = .create
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "plus")
@@ -75,12 +105,19 @@ struct CoursesView: View {
                 }
             }
             .sheet(isPresented: $showingPaywall) { PaywallView() }
-            .alert("Course editor", isPresented: $devAlert) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("Создание курсов через iOS — coming soon. Сейчас курсы редактируются в веб-версии х5: tooyakov-art.github.io/x5site")
+            .sheet(item: $editorTarget) { target in
+                switch target {
+                case .create:
+                    CourseEditorView(editing: nil) {
+                        Task { await service.loadCourses(includeHidden: isDev) }
+                    }
+                case .edit(let course):
+                    CourseEditorView(editing: course) {
+                        Task { await service.loadCourses(includeHidden: isDev) }
+                    }
+                }
             }
-            .task { await service.loadCourses() }
+            .task { await service.loadCourses(includeHidden: isDev) }
         }
     }
 }
@@ -88,6 +125,7 @@ struct CoursesView: View {
 /// Big card with cover image taking ~50% of card height — matches web Академия style.
 private struct CourseCard: View {
     let course: Course
+    var showHiddenBadge: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -114,15 +152,25 @@ private struct CourseCard: View {
             .frame(height: 220)
             .clipped()
             .overlay(alignment: .topTrailing) {
-                if !(course.isFree ?? false) && (course.price ?? 0) > 0 {
-                    Text("PRO")
-                        .font(.system(size: 10, weight: .heavy))
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color.accentColor)
-                        .foregroundColor(.black)
-                        .clipShape(Capsule())
-                        .padding(12)
+                HStack(spacing: 6) {
+                    if showHiddenBadge {
+                        Text("DRAFT")
+                            .font(.system(size: 10, weight: .heavy))
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Color.orange)
+                            .foregroundColor(.black)
+                            .clipShape(Capsule())
+                    }
+                    if !(course.isFree ?? false) && (course.price ?? 0) > 0 {
+                        Text("PRO")
+                            .font(.system(size: 10, weight: .heavy))
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Color.accentColor)
+                            .foregroundColor(.black)
+                            .clipShape(Capsule())
+                    }
                 }
+                .padding(12)
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -306,7 +354,7 @@ struct CourseDetailView: View {
                     Button(action: openPaywall) {
                         HStack {
                             Image(systemName: "lock.fill")
-                            Text("Unlock with Pro — \(Subscription.monthlyPrice) / month")
+                            Text("Unlock with Pro")
                         }
                         .font(.system(size: 15, weight: .bold))
                         .foregroundColor(.black)

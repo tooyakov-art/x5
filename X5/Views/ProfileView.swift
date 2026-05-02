@@ -5,6 +5,7 @@ struct ProfileView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var subscription: Subscription
     @EnvironmentObject private var currentUser: CurrentUser
+    @StateObject private var iap = IAPService()
     @Environment(\.dismiss) private var dismiss
 
     var showsDoneButton: Bool = true
@@ -77,6 +78,7 @@ struct ProfileView: View {
             .sheet(isPresented: $showingPaywall) { PaywallView() }
             .sheet(isPresented: $showingVerified) { VerifiedBadgeView() }
             .sheet(isPresented: $showingEdit) { EditProfileView() }
+            .task { await iap.loadProducts() }
         }
     }
 
@@ -227,7 +229,7 @@ struct ProfileView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Upgrade to Pro").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
-                    Text("$9.99 / month — 1000 credits + all tools").font(.system(size: 12)).foregroundColor(.white.opacity(0.55))
+                    Text(upgradeSubtitle).font(.system(size: 12)).foregroundColor(.white.opacity(0.55))
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundColor(.white.opacity(0.4))
@@ -360,6 +362,14 @@ struct ProfileView: View {
 
     private var planLabel: String {
         currentUser.profile?.planLabel.uppercased() ?? "FREE"
+    }
+
+    /// Real subscription price from StoreKit / ASC. Loaded once on appear.
+    private var upgradeSubtitle: String {
+        if let p = iap.product {
+            return "\(p.displayPrice) / month — 1000 credits + all tools"
+        }
+        return "1000 credits + all tools"
     }
 
     private func formatDate(_ iso: String) -> String {
