@@ -28,6 +28,20 @@ struct ChatRoom: Codable, Identifiable, Hashable {
     func unreadCount(for userId: String) -> Int {
         unread?[userId] ?? 0
     }
+
+    /// Immutable copy with backfilled last_message — used when refreshing the chats list.
+    func with(lastMessage: String?, lastMessageAt: String?) -> ChatRoom {
+        ChatRoom(
+            id: id,
+            participants: participants,
+            taskId: taskId,
+            taskTitle: taskTitle,
+            lastMessage: lastMessage ?? self.lastMessage,
+            lastMessageAt: lastMessageAt ?? self.lastMessageAt,
+            unread: unread,
+            createdAt: createdAt
+        )
+    }
 }
 
 struct ChatMessageRow: Codable, Identifiable, Hashable {
@@ -156,7 +170,46 @@ final class ChatsService: ObservableObject {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         guard let (data, http) = await sendAuthed(request, accessToken: accessToken),
               (200..<300).contains(http.statusCode) else { return }
-        chats = (try? JSONDecoder().decode([ChatRoom].self, from: data)) ?? []
+        var rows = (try? JSONDecoder().decode([ChatRoom].self, from: data)) ?? []
+
+        // Backfill last_message for rows where it's null (writes from old buggy builds
+        // that posted messages without bumping the chat row).
+        for (index, chat) in rows.enumerated() {
+            guard chat.lastMessage == nil || chat.lastMessage?.isEmpty == true else { continue }
+            if let recent = await fetchMostRecentMessagePreview(chatId: chat.id, accessToken: accessToken) {
+                rows[index] = chat.with(lastMessage: recent.text, lastMessageAt: recent.at)
+            }
+        }
+        chats = rows
+    }
+
+    /// Returns a 1-line preview + timestamp for the latest message of a chat, or nil.
+    private func fetchMostRecentMessagePreview(chatId: String, accessToken: String) async -> (text: String, at: String)? {
+        var c = URLComponents(url: baseURL.appendingPathComponent("rest/v1/messages"), resolvingAgainstBaseURL: false)!
+        c.queryItems = [
+            URLQueryItem(name: "chat_id", value: "eq.\(chatId)"),
+            URLQueryItem(name: "select", value: "type,content,created_at"),
+            URLQueryItem(name: "order", value: "created_at.desc"),
+            URLQueryItem(name: "limit", value: "1")
+        ]
+        var req = URLRequest(url: c.url!)
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (data, http) = await sendAuthed(req, accessToken: accessToken),
+              (200..<300).contains(http.statusCode),
+              let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+              let row = arr.first
+        else { return nil }
+        let type = row["type"] as? String ?? "text"
+        let at = row["created_at"] as? String ?? ""
+        let preview: String
+        switch type {
+        case "image": preview = "📷 Фото"
+        case "audio": preview = "🎤 Голосовое"
+        case "file":  preview = "📎 Файл"
+        default:      preview = (row["content"] as? String) ?? ""
+        }
+        return (preview, at)
     }
 
     func loadMessages(chatId: String, accessToken: String) async -> [ChatMessageRow] {

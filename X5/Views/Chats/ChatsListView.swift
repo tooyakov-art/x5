@@ -28,7 +28,8 @@ struct ChatsListView: View {
                             } label: {
                                 ChatRow(chat: chat,
                                         currentUserId: auth.userId ?? "",
-                                        other: profiles[otherId])
+                                        other: profiles[otherId],
+                                        peerId: otherId)
                             }
                             .listRowBackground(Color.white.opacity(0.04))
                         }
@@ -71,14 +72,23 @@ private struct ChatRow: View {
     let chat: ChatRoom
     let currentUserId: String
     let other: UserProfile?
+    let peerId: String
     @EnvironmentObject private var loc: LocalizationService
+
+    /// Fallback name when peer profile didn't load — shorter UID prefix
+    /// is more useful than a generic "User" label for distinguishing chats.
+    private var displayName: String {
+        if let p = other?.displayName, !p.isEmpty { return p }
+        if !peerId.isEmpty { return "ID " + String(peerId.prefix(6)) }
+        return loc.t("common_user")
+    }
 
     var body: some View {
         HStack(spacing: 12) {
-            AvatarView(urlString: other?.avatar, name: other?.displayName, size: 44)
+            AvatarView(urlString: other?.avatar, name: other?.displayName ?? peerId, size: 44)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(other?.displayName ?? loc.t("common_user"))
+                    Text(displayName)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
                         .lineLimit(1)
