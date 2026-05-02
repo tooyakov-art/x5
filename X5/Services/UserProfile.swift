@@ -85,7 +85,23 @@ struct UserProfile: Codable, Equatable, Identifiable {
 
 @MainActor
 final class CurrentUser: ObservableObject {
-    @Published private(set) var profile: UserProfile?
+    /// Server-side profile row. Setter posts `.x5ProfileDidUpdate` so dependent
+    /// services (Subscription, etc.) reconcile their local cache to match the
+    /// server — the single source of truth for plan / Pro state.
+    ///
+    /// Notification payload is intentionally narrow (`plan` only). Posting
+    /// the full struct via the default NotificationCenter would expose PII
+    /// (email, credits, push_token) to any in-process observer including
+    /// linked third-party SDKs.
+    @Published private(set) var profile: UserProfile? {
+        didSet {
+            NotificationCenter.default.post(
+                name: .x5ProfileDidUpdate,
+                object: nil,
+                userInfo: ["plan": profile?.plan ?? ""]
+            )
+        }
+    }
     @Published private(set) var isLoading: Bool = false
     @Published private(set) var error: String?
 

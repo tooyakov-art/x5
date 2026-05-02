@@ -105,7 +105,7 @@ struct ChatThreadView: View {
             .padding(12)
             .background(Color(red: 0.04, green: 0.05, blue: 0.10))
         }
-        .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+        .background(ChatBackground())
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {

@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var deleteStage: DeleteStage = .idle
     @State private var errorMessage: String?
     @AppStorage("x5.face_id_enabled") private var faceIDEnabled = false
+    @AppStorage("x5.promo.enabled") private var promoEnabled = true
     @State private var publicToggle: Bool = true
 
     private enum DeleteStage { case idle, firstConfirm, finalConfirm, deleting }
@@ -126,6 +127,26 @@ struct SettingsView: View {
                                 Text(loc.t("settings_cache_sub"))
                                     .font(.caption).foregroundColor(.secondary)
                             }
+                        }
+                    }
+
+                    Toggle(isOn: $promoEnabled) {
+                        HStack {
+                            Image(systemName: "megaphone")
+                                .foregroundColor(.accentColor)
+                                .frame(width: 22)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(loc.t("settings_promo"))
+                                Text(loc.t("settings_promo_sub"))
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .onChange(of: promoEnabled) { newValue in
+                        if newValue {
+                            PushNotifications.shared.schedulePromoLoop()
+                        } else {
+                            PushNotifications.shared.cancelPromoLoop()
                         }
                     }
 

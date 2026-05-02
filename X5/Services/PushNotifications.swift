@@ -7,6 +7,17 @@ import UserNotifications
 final class PushNotifications: NSObject, ObservableObject {
     static let shared = PushNotifications()
 
+    override init() {
+        super.init()
+        // Seed promo toggle to ON for first launch — @AppStorage default in
+        // SettingsView only affects UI binding, the underlying UserDefaults
+        // key stays nil until the user toggles. Without this seed,
+        // schedulePromoLoop() would silently bail on first launch.
+        if UserDefaults.standard.object(forKey: Self.promoEnabledKey) == nil {
+            UserDefaults.standard.set(true, forKey: Self.promoEnabledKey)
+        }
+    }
+
     @Published private(set) var permissionGranted: Bool = false
     @Published private(set) var deviceToken: String?
 
@@ -42,6 +53,80 @@ final class PushNotifications: NSObject, ObservableObject {
 
     func didFailToRegister(error: Error) {
         // No-op: surface to UI later if needed
+    }
+
+    // MARK: - Promo notifications
+    //
+    // Local marketing nudges every 5 minutes — never travel through APNs.
+    // iOS allows at most 64 pending local notifications, so we schedule a
+    // rolling batch covering the next ~hour and refresh on each foreground.
+
+    /// Identifier prefix so we can wipe just our promo notifications without
+    /// touching anything else.
+    private static let promoIDPrefix = "x5.promo."
+
+    /// Toggle key in UserDefaults — UI flips it via @AppStorage.
+    static let promoEnabledKey = "x5.promo.enabled"
+
+    /// Localized headlines + bodies. Cycle through on each scheduled slot.
+    /// Tone: friendly, action-oriented, never aggressive.
+    private static let promoMessages: [(title: String, body: String)] = [
+        ("X5 ✨", "Закинь новый кадр в портфолио — пусть видят твой стиль."),
+        ("Hub 🔥", "В Hub появились задания. Лови, пока не разобрали."),
+        ("Курсы 🎓", "Новые уроки вышли — прокачай навыки."),
+        ("Сторис ✦", "Добавь сторис чтоб подписчики не забыли тебя."),
+        ("Чаты 💬", "Кто-то ищет тебя для проекта. Глянь сообщения."),
+        ("Профиль 🌟", "Подкрути аватар — на яркие профили кликают чаще."),
+        ("Pro 🚀", "Pro даёт безлимит на всё. Посмотри что внутри."),
+        ("X5 ✨", "Покажи новую работу — лента ждёт.")
+    ]
+
+    /// Schedule a rolling batch of 12 future promos, one every 5 minutes.
+    /// Idempotent: cancels any pending promos first.
+    func schedulePromoLoop() {
+        guard UserDefaults.standard.bool(forKey: Self.promoEnabledKey) else { return }
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let settings = await center.notificationSettings()
+            guard settings.authorizationStatus == .authorized
+                  || settings.authorizationStatus == .provisional else { return }
+
+            cancelPromoLoop()
+
+            // 12 slots × 5 min = 60 min ahead. App refreshes the queue on
+            // each foreground so the user always has an hour scheduled.
+            let interval: TimeInterval = 5 * 60
+            for slot in 1...12 {
+                let copy = Self.promoMessages[(slot - 1) % Self.promoMessages.count]
+                let content = UNMutableNotificationContent()
+                content.title = copy.title
+                content.body = copy.body
+                content.sound = .default
+
+                let trigger = UNTimeIntervalNotificationTrigger(
+                    timeInterval: interval * TimeInterval(slot),
+                    repeats: false
+                )
+                let id = "\(Self.promoIDPrefix)\(slot)"
+                let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+                try? await center.add(request)
+            }
+        }
+    }
+
+    /// Removes all pending promo notifications. Call on sign-out or when the
+    /// user disables the toggle. Uses the iOS 16 async API so the closure
+    /// stays inside the @MainActor isolation contract instead of jumping to
+    /// an arbitrary completion-handler queue.
+    func cancelPromoLoop() {
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let requests = await center.pendingNotificationRequests()
+            let ids = requests
+                .map(\.identifier)
+                .filter { $0.hasPrefix(Self.promoIDPrefix) }
+            center.removePendingNotificationRequests(withIdentifiers: ids)
+        }
     }
 
     func currentUserDidChange(userId: String?, accessToken: String?) {

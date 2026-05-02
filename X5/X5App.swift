@@ -12,6 +12,8 @@ struct X5App: App {
     @StateObject private var currentUser = CurrentUser()
     @StateObject private var localization = LocalizationService.shared
 
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -33,6 +35,23 @@ struct X5App: App {
                             userId: auth.userId,
                             accessToken: auth.accessToken
                         )
+                        // Cold launch already starts in `.active`, so the
+                        // scenePhase onChange below would not fire — seed
+                        // the rolling promo queue here.
+                        PushNotifications.shared.schedulePromoLoop()
+                    } else {
+                        // Wipe pending promo notifications when the user signs out
+                        // so a new account on the same device starts clean.
+                        PushNotifications.shared.cancelPromoLoop()
+                    }
+                }
+                .onChange(of: scenePhase) { phase in
+                    // Refresh the promo queue on warm foreground — keeps a
+                    // rolling hour of 5-minute slots scheduled. Slots whose
+                    // fire date already passed are dropped automatically by
+                    // iOS when re-added (idempotent: cancel-then-schedule).
+                    if phase == .active && auth.isAuthenticated {
+                        PushNotifications.shared.schedulePromoLoop()
                     }
                 }
         }
