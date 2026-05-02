@@ -90,6 +90,25 @@ jobs:
         run: |
           /usr/libexec/PlistBuddy -c "Set :provisioningProfiles:${BUNDLE_ID} '${{ steps.profile.outputs.name }}'" ExportOptions.plist
 
+      - name: Write Release.xcconfig with profile name
+        # Per-target signing config applied only to the X5 target via project.yml's
+        # configFiles. Keeps signing flags away from SPM resource bundles
+        # (GoogleSignIn / AppAuth / GTMSessionFetcher) which don't support
+        # provisioning profiles and fail the archive when a profile is forced
+        # globally via xcodebuild CLI overrides.
+        run: |
+          cat > Release.xcconfig <<EOF
+          CODE_SIGN_STYLE = Manual
+          CODE_SIGN_IDENTITY = Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER = ${{ steps.profile.outputs.name }}
+          DEVELOPMENT_TEAM = F8LA8PC4U6
+          OTHER_CODE_SIGN_FLAGS = --keychain $RUNNER_TEMP/build.keychain-db
+          ENABLE_ON_DEMAND_RESOURCES = NO
+          ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO
+          EOF
+          echo "--- Release.xcconfig ---"
+          cat Release.xcconfig
+
       - name: Build & archive
         run: |
           set -euo pipefail
@@ -100,13 +119,6 @@ jobs:
             -destination 'generic/platform=iOS' \
             -sdk iphoneos \
             -archivePath "$ARCHIVE_PATH" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="${{ steps.profile.outputs.name }}" \
-            DEVELOPMENT_TEAM=F8LA8PC4U6 \
-            OTHER_CODE_SIGN_FLAGS="--keychain $RUNNER_TEMP/build.keychain-db" \
-            ENABLE_ON_DEMAND_RESOURCES=NO \
-            ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS=NO \
             archive
 
       - name: Export IPA

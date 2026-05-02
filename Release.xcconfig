@@ -1,0 +1,16 @@
+// Release signing for the X5 app target only.
+//
+// This file is referenced from project.yml under targets.X5.configFiles so
+// these settings apply ONLY to the X5 target — NOT to SPM dependencies like
+// GoogleSignIn / AppAuth / GTMSessionFetcher resource bundles, which don't
+// support provisioning profiles and fail the archive when a profile is set
+// globally on the xcodebuild command line.
+//
+// CI overwrites this file at build time with the actual profile name pulled
+// from the secret-encoded mobileprovision. Keep the placeholder values below
+// safe so local development isn't broken.
+
+CODE_SIGN_STYLE = Automatic
+DEVELOPMENT_TEAM = F8LA8PC4U6
+ENABLE_ON_DEMAND_RESOURCES = NO
+ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO

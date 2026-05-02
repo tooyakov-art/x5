@@ -85,6 +85,8 @@ targets:
         com.apple.developer.applesignin:
           - Default
         aps-environment: production
+    configFiles:
+      Release: Release.xcconfig
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.x5studio.app
