@@ -97,3 +97,12 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: NO
         ENABLE_BITCODE: NO
         SWIFT_OBJC_BRIDGING_HEADER: ""
+      configs:
+        # Manual signing scoped to the X5 target for Release only — keeps SPM
+        # dependencies (GoogleSignIn / AppAuth / GTMSessionFetcher resource
+        # bundles) on Automatic signing where they don't trip on a manual
+        # provisioning profile. Profile NAME is injected via Release.xcconfig
+        # at CI time (it comes from the secret-encoded mobileprovision).
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: Apple Distribution
