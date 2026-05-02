@@ -5,12 +5,16 @@
 // reads recipient's push_token from `profiles`, and sends an APNs push.
 //
 // Required env (set via `supabase secrets set`):
-//   SUPABASE_SERVICE_ROLE   -- service-role key for reading profiles/chats
 //   APNS_KEY_ID             -- the AuthKey ID (e.g. "ABC123XYZ4")
 //   APNS_TEAM_ID            -- Apple Developer team id (e.g. "F8LA8PC4U6")
 //   APNS_BUNDLE_ID          -- "com.x5studio.app"
 //   APNS_PRIVATE_KEY        -- contents of AuthKey_<KEY_ID>.p8 (PEM with -----BEGIN/END PRIVATE KEY-----)
 //   APNS_USE_SANDBOX        -- "1" while testing on TestFlight, "0" for production
+//
+// Auto-injected by the Supabase Edge runtime (we cannot set SUPABASE_*
+// secrets manually — the prefix is reserved):
+//   SUPABASE_SERVICE_ROLE_KEY  -- service-role key for reading profiles/chats
+//   SUPABASE_URL               -- project URL
 //
 // Postgres trigger to install once (run in SQL editor):
 //
@@ -60,7 +64,9 @@ interface ChatRow {
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
 
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE")!;
+  // Supabase reserves the SUPABASE_ prefix for secrets — the runtime
+  // provides SUPABASE_SERVICE_ROLE_KEY automatically.
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(SUPABASE_URL, serviceKey);
 
   const body = (await req.json()) as MessageRow;
