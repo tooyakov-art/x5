@@ -110,7 +110,18 @@ final class IAPService: ObservableObject {
         }
     }
 
-    /// Marks the user as Pro on the server: profiles.plan='pro' + credits += 1000 + subscription_end_date.
+    /// Marks the user as Pro on the server, granting +1000 credits per renewal period.
+    ///
+    /// Idempotent: this method runs from THREE entry points (purchase success,
+    /// `Transaction.updates` listener, manual `restore()`), and StoreKit
+    /// sandbox renews monthly subscriptions every ~5 minutes. Without a guard
+    /// each restore/relaunch/renewal would credit another +1000 — that's the
+    /// bug behind the 6500-credit balance Diaz hit in build 41.
+    ///
+    /// Guard: only credit when the incoming `expirationDate` is later than the
+    /// `subscription_end_date` already stored. A renewal that doesn't extend
+    /// the period (re-delivery of a known transaction) is treated as a no-op
+    /// for credits. Plan/end-date are still refreshed so isPro stays true.
     private func applyEntitlement(transaction: StoreKit.Transaction) async {
         guard
             let userId = UserDefaults.standard.string(forKey: "x5.session.user_id"),
@@ -121,21 +132,48 @@ final class IAPService: ObservableObject {
         let endIso = ISO8601DateFormatter().string(from: endDate)
         let startIso = ISO8601DateFormatter().string(from: transaction.purchaseDate)
 
-        // First: read current credits
+        // Read current credits + last-known subscription_end_date so we can
+        // decide whether this transaction is a NEW period (grant credits) or
+        // a re-delivery of an already-known one (skip credits).
         var currentCredits = 0
+        var storedEndDate: Date? = nil
         var getURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
-        getURL.queryItems = [URLQueryItem(name: "id", value: "eq.\(userId)"), URLQueryItem(name: "select", value: "credits")]
+        getURL.queryItems = [
+            URLQueryItem(name: "id", value: "eq.\(userId)"),
+            URLQueryItem(name: "select", value: "credits,subscription_end_date")
+        ]
         var getReq = URLRequest(url: getURL.url!)
         getReq.setValue(anonKey, forHTTPHeaderField: "apikey")
         getReq.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         if let (data, _) = try? await URLSession.shared.data(for: getReq),
            let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-           let row = arr.first,
-           let c = row["credits"] as? Int {
-            currentCredits = c
+           let row = arr.first {
+            if let c = row["credits"] as? Int { currentCredits = c }
+            if let s = row["subscription_end_date"] as? String {
+                let f = ISO8601DateFormatter()
+                f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                storedEndDate = f.date(from: s) ?? ISO8601DateFormatter().date(from: s)
+            }
         }
 
-        // Patch profile
+        // Treat the transaction as "already credited" if our stored end-date
+        // is at or beyond what this transaction reports. A 60-second slack
+        // absorbs floating-point rounding from the ISO round-trip.
+        let alreadyCredited: Bool = {
+            guard let stored = storedEndDate else { return false }
+            return stored.timeIntervalSince(endDate) >= -60
+        }()
+
+        var body: [String: Any] = [
+            "plan": "pro",
+            "subscription_type": "monthly",
+            "subscription_date": startIso,
+            "subscription_end_date": endIso
+        ]
+        if !alreadyCredited {
+            body["credits"] = currentCredits + 1000
+        }
+
         var patchURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
         patchURL.queryItems = [URLQueryItem(name: "id", value: "eq.\(userId)")]
         var patch = URLRequest(url: patchURL.url!)
@@ -143,14 +181,6 @@ final class IAPService: ObservableObject {
         patch.setValue(anonKey, forHTTPHeaderField: "apikey")
         patch.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         patch.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any] = [
-            "plan": "pro",
-            "subscription_type": "monthly",
-            "subscription_date": startIso,
-            "subscription_end_date": endIso,
-            "credits": currentCredits + 1000
-        ]
         patch.httpBody = try? JSONSerialization.data(withJSONObject: body)
         _ = try? await URLSession.shared.data(for: patch)
 
