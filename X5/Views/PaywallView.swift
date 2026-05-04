@@ -98,12 +98,19 @@ struct PaywallView: View {
                     }
                 }
 
+                Text(loc.t("paywall_subscription_terms"))
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.45))
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 8)
+
                 HStack(spacing: 18) {
-                    Link("Terms", destination: URL(string: "https://tooyakov-art.github.io/x5site/terms.html")!)
-                    Link("Privacy", destination: URL(string: "https://tooyakov-art.github.io/x5site/privacy.html")!)
+                    Link("Terms of Use (EULA)", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+                    Link(loc.t("paywall_privacy_link"), destination: URL(string: "https://tooyakov-art.github.io/x5site/privacy.html")!)
                 }
-                .font(.system(size: 12))
-                .foregroundColor(.white.opacity(0.5))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white.opacity(0.7))
                 .frame(maxWidth: .infinity)
                 .padding(.top, 4)
             }
