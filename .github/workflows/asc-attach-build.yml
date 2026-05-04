@@ -1,0 +1,129 @@
+name: ASC attach TestFlight build to version
+
+# Resolves the most recent processed TestFlight build for X5 Creators
+# and attaches it to the editable AppStoreVersion (1.1.0). Required
+# before Submit for Review — Apple needs to know which binary the
+# reviewer should download.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string"
+        required: true
+        default: "1.1.0"
+      build_number:
+        description: "Specific CFBundleVersion to attach (optional, blank = latest)"
+        required: false
+        default: ""
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BUNDLE_ID: com.x5studio.app
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      VERSION: ${{ inputs.version }}
+      BUILD_NUMBER: ${{ inputs.build_number }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - name: Attach build via ASC API
+        run: |
+          python <<'PY'
+          import os, base64, time, json, sys
+          import jwt, requests
+
+          token = jwt.encode(
+              {
+                  "iss": os.environ["ASC_API_ISSUER_ID"],
+                  "iat": int(time.time()),
+                  "exp": int(time.time()) + 60 * 5,
+                  "aud": "appstoreconnect-v1",
+              },
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          h = {"Authorization": f"Bearer {token}"}
+          base = "https://api.appstoreconnect.apple.com/v1"
+
+          r = requests.get(
+              f"{base}/apps?filter[bundleId]={os.environ['BUNDLE_ID']}",
+              headers=h,
+          )
+          r.raise_for_status()
+          app_id = r.json()["data"][0]["id"]
+
+          # Find the version row.
+          r = requests.get(
+              f"{base}/apps/{app_id}/appStoreVersions",
+              headers=h,
+          )
+          r.raise_for_status()
+          versions = r.json()["data"]
+          version = next(
+              (v for v in versions if v["attributes"]["versionString"] == os.environ["VERSION"]),
+              None
+          )
+          if not version:
+              sys.exit(f"No version {os.environ['VERSION']} on app")
+          version_id = version["id"]
+          print(f"Version {os.environ['VERSION']} -> {version_id} state={version['attributes']['appStoreState']}")
+
+          # List builds. Filter by app, sort newest first.
+          r = requests.get(
+              f"{base}/builds",
+              headers=h,
+              params={
+                  "filter[app]": app_id,
+                  "filter[preReleaseVersion.platform]": "IOS",
+                  "limit": 20,
+                  "sort": "-uploadedDate",
+                  "include": "preReleaseVersion",
+              },
+          )
+          r.raise_for_status()
+          payload = r.json()
+          builds = payload.get("data", [])
+          if not builds:
+              sys.exit("No TestFlight builds found")
+
+          want = os.environ.get("BUILD_NUMBER") or ""
+          print("Available builds (newest first):")
+          chosen = None
+          for b in builds:
+              attr = b["attributes"]
+              num = attr.get("version")
+              state = attr.get("processingState")
+              expired = attr.get("expired")
+              print(f"  - build {num}  state={state}  expired={expired}")
+              if want and num == want and state == "VALID":
+                  chosen = b
+                  break
+              if not want and state == "VALID" and not expired and chosen is None:
+                  chosen = b
+
+          if not chosen:
+              sys.exit("No VALID build to attach")
+
+          build_id = chosen["id"]
+          build_num = chosen["attributes"]["version"]
+          print(f"\nAttaching build {build_num} ({build_id}) to version {version_id}...")
+
+          # Set the build relationship on the AppStoreVersion.
+          r = requests.patch(
+              f"{base}/appStoreVersions/{version_id}/relationships/build",
+              headers={**h, "Content-Type": "application/json"},
+              data=json.dumps({"data": {"type": "builds", "id": build_id}}),
+          )
+          if r.status_code >= 300:
+              print(f"Attach failed: HTTP {r.status_code}")
+              print(r.text)
+              sys.exit(1)
+          print("Attached.")
+          PY
