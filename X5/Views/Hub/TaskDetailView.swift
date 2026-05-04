@@ -5,17 +5,30 @@ struct TaskDetailView: View {
 
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var service = HubService()
     @StateObject private var chats = ChatsService()
     @State private var responses: [TaskResponse] = []
     @State private var showingRespond = false
     @State private var navigatingChat: ChatRoom?
     @State private var accepting: String?
+    @State private var confirmBlock = false
 
     private var isAuthor: Bool { auth.userId == task.authorId }
     private var hasRespondedAlready: Bool {
         guard let me = auth.userId else { return false }
         return responses.contains { $0.specialistId == me }
+    }
+
+    private func reportTask() {
+        let subject = "Report task \(task.id)"
+        let body = "Hi X5 team,\n\nI'd like to report this task. Please review the content.\n\nTask ID: \(task.id)\nAuthor ID: \(task.authorId)\n"
+        let to = "appreview@x5studio.app"
+        let s = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let b = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        if let url = URL(string: "mailto:\(to)?subject=\(s)&body=\(b)") {
+            UIApplication.shared.open(url)
+        }
     }
 
     var body: some View {
@@ -120,6 +133,36 @@ struct TaskDetailView: View {
         .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            if !isAuthor {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            reportTask()
+                        } label: {
+                            Label("Пожаловаться", systemImage: "exclamationmark.bubble")
+                        }
+                        Button(role: .destructive) {
+                            confirmBlock = true
+                        } label: {
+                            Label("Заблокировать автора", systemImage: "hand.raised.slash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                }
+            }
+        }
+        .alert("Заблокировать автора?", isPresented: $confirmBlock) {
+            Button("Отмена", role: .cancel) {}
+            Button("Заблокировать", role: .destructive) {
+                BlockList.add(task.authorId)
+                dismiss()
+            }
+        } message: {
+            Text("Задачи и сообщения этого автора больше не будут показываться.")
+        }
         .task { responses = await service.loadResponses(taskId: task.id) }
         .sheet(isPresented: $showingRespond) {
             RespondTaskView(task: task)

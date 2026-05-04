@@ -8,12 +8,14 @@ struct UserProfileView: View {
     let fallback: HubSpecialist?
 
     @EnvironmentObject private var auth: Auth
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var chats = ChatsService()
 
     @State private var profile: UserProfile?
     @State private var isLoading: Bool = false
     @State private var openingChat: Bool = false
     @State private var navigatingChat: ChatRoom?
+    @State private var confirmBlock = false
 
     private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
     private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
@@ -46,10 +48,51 @@ struct UserProfileView: View {
         .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            if !isMe {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            reportUser()
+                        } label: {
+                            Label("Пожаловаться", systemImage: "exclamationmark.bubble")
+                        }
+                        Button(role: .destructive) {
+                            confirmBlock = true
+                        } label: {
+                            Label("Заблокировать", systemImage: "hand.raised.slash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                }
+            }
+        }
+        .alert("Заблокировать пользователя?", isPresented: $confirmBlock) {
+            Button("Отмена", role: .cancel) {}
+            Button("Заблокировать", role: .destructive) {
+                BlockList.add(userId)
+                dismiss()
+            }
+        } message: {
+            Text("Контент этого пользователя больше не будет показываться.")
+        }
         .task { await load() }
         .sheet(item: $navigatingChat) { chat in
             NavigationStack { ChatThreadView(chat: chat) }
                 .preferredColorScheme(.dark)
+        }
+    }
+
+    private func reportUser() {
+        let subject = "Report user \(userId)"
+        let body = "Hi X5 team,\n\nI'd like to report this user. Please review their content.\n\nUser ID: \(userId)\n"
+        let to = "appreview@x5studio.app"
+        let s = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let b = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        if let url = URL(string: "mailto:\(to)?subject=\(s)&body=\(b)") {
+            UIApplication.shared.open(url)
         }
     }
 
