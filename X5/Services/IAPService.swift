@@ -56,12 +56,23 @@ final class IAPService: ObservableObject {
     }
 
     /// Initiates purchase flow. On verified transaction, upgrades the local profile and credits.
+    /// The current X5 user id is bound to the StoreKit transaction via
+    /// `appAccountToken` so subsequent restore / Transaction.updates events
+    /// can verify the entitlement belongs to *this* user — preventing the
+    /// "log in to a second X5 account on the same Apple ID and inherit Pro
+    /// for free" exploit Diaz hit in build 43.
     func purchaseMonthly() async -> Bool {
         guard let product else { return false }
+        guard let appUserToken = currentUserToken() else {
+            lastError = LocalizationService.shared.t("iap_signin_first")
+            return false
+        }
         isPurchasing = true
         defer { isPurchasing = false }
         do {
-            let result = try await product.purchase()
+            let result = try await product.purchase(options: [
+                .appAccountToken(appUserToken)
+            ])
             switch result {
             case .success(let verification):
                 if case .verified(let transaction) = verification {
@@ -110,6 +121,16 @@ final class IAPService: ObservableObject {
         }
     }
 
+    /// Maps the signed-in X5 user id (Supabase UUID string) into the UUID
+    /// type StoreKit's `appAccountToken` requires. Returns nil if no user is
+    /// signed in OR the stored id can't be parsed as a UUID — in either case
+    /// purchase is blocked rather than silently binding the entitlement to
+    /// a wrong account.
+    private func currentUserToken() -> UUID? {
+        guard let raw = UserDefaults.standard.string(forKey: "x5.session.user_id") else { return nil }
+        return UUID(uuidString: raw)
+    }
+
     /// Marks the user as Pro on the server, granting +1000 credits per renewal period.
     ///
     /// Idempotent: this method runs from THREE entry points (purchase success,
@@ -127,6 +148,22 @@ final class IAPService: ObservableObject {
             let userId = UserDefaults.standard.string(forKey: "x5.session.user_id"),
             let accessToken = Keychain.string(for: "x5.session.access_token")
         else { return }
+
+        // Cross-account guard: an Apple ID can be shared between several X5
+        // accounts on the same device. StoreKit returns the active
+        // subscription regardless of which X5 user is currently signed in,
+        // so without this gate signing into a second X5 account would
+        // silently mark it Pro and credit +1000 for free (build 43 bug).
+        //
+        // We bind appAccountToken at purchase time to the buyer's user id;
+        // here we ignore any transaction whose token doesn't match. Old
+        // pre-fix transactions have a nil token — those we let through so
+        // legit existing subscribers don't lose their Pro on upgrade.
+        if let token = transaction.appAccountToken,
+           let buyerId = UUID(uuidString: userId),
+           token != buyerId {
+            return
+        }
 
         let endDate = transaction.expirationDate ?? Calendar.current.date(byAdding: .month, value: 1, to: Date())!
         let endIso = ISO8601DateFormatter().string(from: endDate)
