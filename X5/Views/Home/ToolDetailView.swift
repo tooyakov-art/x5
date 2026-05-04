@@ -6,6 +6,7 @@ struct ToolDetailView: View {
     let tool: HomeTool
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var loc: LocalizationService
     @State private var notified = false
 
     var body: some View {
@@ -32,7 +33,7 @@ struct ToolDetailView: View {
                         }
                     }
 
-                    Text("STATUS")
+                    Text(loc.t("tool_status"))
                         .font(.system(size: 11, weight: .bold))
                         .tracking(1.4)
                         .foregroundColor(.white.opacity(0.45))
@@ -41,7 +42,7 @@ struct ToolDetailView: View {
                     HStack(spacing: 12) {
                         Image(systemName: "hammer.fill")
                             .foregroundColor(.accentColor)
-                        Text("In development — coming soon")
+                        Text(loc.t("tool_in_dev"))
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(.white)
                     }
@@ -54,7 +55,7 @@ struct ToolDetailView: View {
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                    Text("WHAT IT WILL DO")
+                    Text(loc.t("tool_what_it_does"))
                         .font(.system(size: 11, weight: .bold))
                         .tracking(1.4)
                         .foregroundColor(.white.opacity(0.45))
@@ -70,7 +71,7 @@ struct ToolDetailView: View {
                     } label: {
                         HStack {
                             Image(systemName: notified ? "checkmark.circle.fill" : "bell.fill")
-                            Text(notified ? "We will let you know" : "Notify me when ready")
+                            Text(notified ? loc.t("tool_will_let_you_know") : loc.t("tool_notify_me"))
                         }
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.black)
@@ -94,7 +95,7 @@ struct ToolDetailView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button(loc.t("common_done")) { dismiss() }
                 }
             }
         }
@@ -119,25 +120,9 @@ struct ToolDetailView: View {
     }
 
     private var longDescription: String {
-        switch tool.id {
-        case "photo":          return "Generate marketing-grade product and lifestyle photos from a text prompt. Adjust angle, lighting and style without a studio."
-        case "video_gen":      return "AI video generation (Kling 3.0). Turn a still or a script into a short clip ready for Reels, TikTok and Shorts."
-        case "outfit_swap":    return "Swap outfits on people in any photo while preserving body shape and lighting."
-        case "lipsync":        return "Sync lip movement to any audio track. Voice-overs and dubbing for Reels and ads."
-        case "design":         return "Brand banners, story tiles, ad sets and pitch decks generated to your brand guide."
-        case "voice_tts":      return "Text-to-speech with emotion control. Multiple voices and languages for ads and tutorials."
-        case "whatsapp_bot":   return "Auto-responder for incoming WhatsApp leads. Books, qualifies and routes 24/7."
-        case "instagram":      return "Content plan generator. Get a 14-day Instagram schedule tuned to your niche and tone."
-        case "video_creative": return "Reels and TikTok scripts with hook → tension → CTA structure, ready to film."
-        case "lawyer":         return "Generate vetted contracts, NDAs, service acts and proposals tailored to your business."
-        case "academy":        return "Open the X5 Academy. Tap the Courses tab in the navigation."
-        case "crm":            return "Lightweight CRM for solo founders and small agencies. Pipeline, deals, contacts."
-        case "analytics":      return "Daily KPI digest from your channels: ad spend, ROAS, top creatives, conversion."
-        case "captions":       return "Caption templates with platform-aware length. This one is live today — tap the card to open."
-        case "ai_influencer":  return "Build a consistent virtual influencer character that stays on-model across photos and videos."
-        case "edit_image":     return "Edit any photo with AI: face swap, relight, skin enhance, background change."
-        case "vfx_library":    return "Cinematic transitions and VFX library. Drop a clip in, pick a style."
-        default:               return "More details soon."
-        }
+        let key = "tool_desc_\(tool.id)"
+        let localized = loc.t(key)
+        if localized != key { return localized }
+        return loc.t("tool_desc_default")
     }
 }
