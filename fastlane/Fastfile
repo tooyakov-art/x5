@@ -11,11 +11,19 @@ platform :ios do
     setup_api_key
   end
 
+  # Editable version target. fastlane requires this when no editable
+  # AppStoreVersion exists in ASC yet — otherwise it loops on
+  # "Cannot find edit app store version" and times out (build 43 ASC
+  # upload run hit this).
+  APP_VERSION = "1.1.0"
+
   desc "Push metadata + screenshots, do NOT submit"
   lane :upload do
     deliver(
       api_key_path: KEY_PATH,
       app_identifier: APP_BUNDLE_ID,
+      app_version: APP_VERSION,
+      platform: "ios",
       skip_metadata: false,
       skip_screenshots: false,
       skip_binary_upload: true,
@@ -32,6 +40,8 @@ platform :ios do
     deliver(
       api_key_path: KEY_PATH,
       app_identifier: APP_BUNDLE_ID,
+      app_version: APP_VERSION,
+      platform: "ios",
       skip_metadata: true,
       skip_screenshots: true,
       skip_binary_upload: true,
