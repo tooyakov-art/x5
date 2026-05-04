@@ -113,7 +113,7 @@ struct CoursesView: View {
                 } else if !sub.isPro {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { showingPaywall = true } label: {
-                            Text("Pro")
+                            Text(loc.t("courses_pro_chip"))
                                 .font(.system(size: 13, weight: .bold))
                                 .foregroundColor(.black)
                                 .padding(.horizontal, 12).padding(.vertical, 6)
@@ -170,7 +170,7 @@ private struct CourseCard: View {
             .overlay(alignment: .topTrailing) {
                 HStack(spacing: 6) {
                     if showHiddenBadge {
-                        Text("DRAFT")
+                        Text(loc.t("courses_draft"))
                             .font(.system(size: 10, weight: .heavy))
                             .padding(.horizontal, 8).padding(.vertical, 4)
                             .background(Color.orange)
@@ -178,7 +178,7 @@ private struct CourseCard: View {
                             .clipShape(Capsule())
                     }
                     if !(course.isFree ?? false) && (course.price ?? 0) > 0 {
-                        Text("PRO")
+                        Text(loc.t("courses_pro_chip").uppercased())
                             .font(.system(size: 10, weight: .heavy))
                             .padding(.horizontal, 8).padding(.vertical, 4)
                             .background(Color.accentColor)
@@ -265,7 +265,7 @@ private struct CourseRow: View {
                         .foregroundColor(.white)
                         .lineLimit(2)
                     if !(course.isFree ?? false) && (course.price ?? 0) > 0 {
-                        Text("PRO")
+                        Text(loc.t("courses_pro_chip").uppercased())
                             .font(.system(size: 9, weight: .heavy))
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(Color.accentColor)
@@ -280,7 +280,7 @@ private struct CourseRow: View {
                         .lineLimit(2)
                 }
                 HStack(spacing: 8) {
-                    Text("\(course.totalLessons) lessons")
+                    Text("\(course.totalLessons) \(loc.t("courses_lessons_word"))")
                         .font(.system(size: 11))
                         .foregroundColor(.white.opacity(0.4))
                     if !course.totalDurationLabel.isEmpty {
@@ -366,7 +366,7 @@ struct CourseDetailView: View {
                     Button(action: openPaywall) {
                         HStack {
                             Image(systemName: "lock.fill")
-                            Text("Unlock with Pro")
+                            Text(loc.t("courses_unlock_pro"))
                         }
                         .font(.system(size: 15, weight: .bold))
                         .foregroundColor(.black)
@@ -377,7 +377,7 @@ struct CourseDetailView: View {
                     }
                 }
 
-                Text("LESSONS")
+                Text(loc.t("courses_lessons_section"))
                     .font(.system(size: 11, weight: .bold))
                     .tracking(1.4)
                     .foregroundColor(.white.opacity(0.45))
@@ -497,7 +497,7 @@ private struct LessonRow: View {
                         Text(d).font(.system(size: 11)).foregroundColor(.white.opacity(0.4))
                     }
                     if lesson.freePreview {
-                        Text("FREE PREVIEW")
+                        Text(loc.t("courses_free_preview"))
                             .font(.system(size: 9, weight: .heavy))
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(Color.green.opacity(0.18))
@@ -529,7 +529,7 @@ private struct ErrorState: View {
             Image(systemName: "wifi.slash")
                 .font(.system(size: 38, weight: .light))
                 .foregroundColor(.white.opacity(0.6))
-            Text("Could not load courses")
+            Text(loc.t("courses_load_failed"))
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(.white)
             Text(message)
