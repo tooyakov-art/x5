@@ -12,6 +12,7 @@ on:
           - upload
           - submit_for_review
           - ship
+          - reject_pending
 
 jobs:
   ship:

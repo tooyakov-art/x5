@@ -35,6 +35,42 @@ platform :ios do
     )
   end
 
+  # ASC has an old `1.0` version stuck in PENDING_DEVELOPER_RELEASE
+  # (the caption-studio era approval). It blocks creating 1.1.0 with
+  # 'You cannot create a new version of the App in the current state'.
+  # This lane uses Spaceship's developer-reject (the API action exposed
+  # in the UI as "Reject This Version") to free the slot. After this
+  # runs successfully, `lane :upload` can create 1.1.0 fresh.
+  desc "Developer-reject the currently-pending version so a new one can be created"
+  lane :reject_pending do
+    require "spaceship"
+    Spaceship::ConnectAPI.token = Spaceship::ConnectAPI::Token.create_from_hash(
+      key_id:    ENV["ASC_API_KEY_ID"],
+      issuer_id: ENV["ASC_API_ISSUER_ID"],
+      key:       Base64.decode64(ENV["ASC_API_KEY_BASE64"])
+    )
+    app = Spaceship::ConnectAPI::App.find(APP_BUNDLE_ID)
+    version, _ = app.get_edit_app_store_version(platform: "IOS"), nil
+    pending = app.get_app_store_versions(filter: { platform: "IOS" }).find do |v|
+      ["PENDING_DEVELOPER_RELEASE", "READY_FOR_SALE", "PROCESSING_FOR_APP_STORE"].include?(v.app_store_state)
+    end
+    if pending.nil?
+      UI.message("No pending version to reject.")
+      next
+    end
+    UI.message("Rejecting version #{pending.version_string} (#{pending.app_store_state})...")
+    pending.create_app_store_version_release_request rescue nil  # noop unless allowed
+    # The actual reject lives on AppStoreReviewSubmission for newer flow:
+    submission = pending.app_store_version_submission rescue nil
+    if submission
+      submission.delete!
+      UI.success("Removed AppStoreVersionSubmission for #{pending.version_string}.")
+    else
+      pending.developer_reject!
+      UI.success("Developer-rejected #{pending.version_string}.")
+    end
+  end
+
   desc "Submit current version for review"
   lane :submit_for_review do
     deliver(
