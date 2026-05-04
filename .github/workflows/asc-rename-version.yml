@@ -1,0 +1,97 @@
+name: ASC rename app version
+
+# Rename the existing editable AppStoreVersion (currently 1.0
+# DEVELOPER_REJECTED, but editable) to 1.1.0 so fastlane deliver can
+# upload metadata + screenshots into it. POST /v1/appStoreVersions
+# refuses to create a new version for an app whose only existing
+# version is DEVELOPER_REJECTED — but PATCH lets us change the
+# versionString in place.
+on:
+  workflow_dispatch:
+    inputs:
+      from_version:
+        description: "Existing version to rename"
+        required: true
+        default: "1.0"
+      to_version:
+        description: "New version string"
+        required: true
+        default: "1.1.0"
+
+jobs:
+  rename:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BUNDLE_ID: com.x5studio.app
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      FROM: ${{ inputs.from_version }}
+      TO: ${{ inputs.to_version }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - name: Rename via ASC API
+        run: |
+          python <<'PY'
+          import os, base64, time, json, sys
+          import jwt, requests
+
+          token = jwt.encode(
+              {
+                  "iss": os.environ["ASC_API_ISSUER_ID"],
+                  "iat": int(time.time()),
+                  "exp": int(time.time()) + 60 * 5,
+                  "aud": "appstoreconnect-v1",
+              },
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          h = {"Authorization": f"Bearer {token}"}
+
+          r = requests.get(
+              f"https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]={os.environ['BUNDLE_ID']}",
+              headers=h,
+          )
+          r.raise_for_status()
+          app_id = r.json()["data"][0]["id"]
+
+          r = requests.get(
+              f"https://api.appstoreconnect.apple.com/v1/apps/{app_id}/appStoreVersions",
+              headers=h,
+          )
+          r.raise_for_status()
+          versions = r.json()["data"]
+          target = next(
+              (v for v in versions if v["attributes"]["versionString"] == os.environ["FROM"]),
+              None
+          )
+          if not target:
+              sys.exit(f"No version {os.environ['FROM']} on app")
+
+          version_id = target["id"]
+          state = target["attributes"]["appStoreState"]
+          print(f"Renaming version {version_id} ({os.environ['FROM']}, state={state}) -> {os.environ['TO']}")
+
+          r = requests.patch(
+              f"https://api.appstoreconnect.apple.com/v1/appStoreVersions/{version_id}",
+              headers={**h, "Content-Type": "application/json"},
+              data=json.dumps({
+                  "data": {
+                      "id": version_id,
+                      "type": "appStoreVersions",
+                      "attributes": {"versionString": os.environ["TO"]}
+                  }
+              }),
+          )
+          if r.status_code >= 300:
+              print(f"Rename failed: HTTP {r.status_code}")
+              print(r.text)
+              sys.exit(1)
+          new = r.json()["data"]["attributes"]
+          print(f"Renamed -> {new['versionString']}  state={new['appStoreState']}")
+          PY
