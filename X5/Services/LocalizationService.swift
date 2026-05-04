@@ -102,6 +102,10 @@ extension LocalizationService {
             "tool_what_it_does": "ЧТО БУДЕТ ДЕЛАТЬ",
             "task_section": "Задача",
             "task_budget_category": "Бюджет и категория",
+            "task_budget": "Бюджет",
+            "task_your_message": "Твоё сообщение",
+            "task_response_footer": "Когда автор примет твой отклик, откроется приватный чат.",
+            "task_send": "Отправить",
             "iap_signin_first": "Сначала войди в аккаунт",
 
             // Tabs
@@ -286,6 +290,10 @@ extension LocalizationService {
             "tool_what_it_does": "WHAT IT WILL DO",
             "task_section": "Task",
             "task_budget_category": "Budget & category",
+            "task_budget": "Budget",
+            "task_your_message": "Your message",
+            "task_response_footer": "When the author accepts your response, a private chat opens.",
+            "task_send": "Send",
             "iap_signin_first": "Sign in first",
 
             "tab_home": "Home",
@@ -461,6 +469,10 @@ extension LocalizationService {
             "tool_what_it_does": "НЕ ІСТЕЙДІ",
             "task_section": "Тапсырма",
             "task_budget_category": "Бюджет және санат",
+            "task_budget": "Бюджет",
+            "task_your_message": "Хабарламаң",
+            "task_response_footer": "Автор жауапты қабылдағанда жеке чат ашылады.",
+            "task_send": "Жіберу",
             "iap_signin_first": "Алдымен кіріңіз",
 
             "tab_home": "Басты",

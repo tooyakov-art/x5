@@ -4,7 +4,9 @@ main areas: Hub (open tasks from clients), Chats, Portfolio and Courses.
 
 DEMO ACCOUNT
 Use the credentials in the Apple Demo Account fields. The account has a
-small portfolio, an open chat, and a sample course unlocked.
+small portfolio (3 sample items) and a public profile already set up.
+Chats start empty — to test the chat flow, send yourself a Hub task
+proposal from the demo account; once accepted, a chat opens.
 
 QUICK TEST FLOW
 1. Sign in with Apple, Google, or the demo email + password.

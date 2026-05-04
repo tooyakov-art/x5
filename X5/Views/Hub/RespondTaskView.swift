@@ -6,6 +6,7 @@ struct RespondTaskView: View {
 
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
+    @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
 
     @State private var message: String = ""
@@ -19,40 +20,40 @@ struct RespondTaskView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("Task")) {
+                Section(header: Text(loc.t("task_section"))) {
                     Text(task.title).font(.headline)
                     if let budget = task.budget, !budget.isEmpty {
                         HStack {
-                            Text("Budget"); Spacer()
+                            Text(loc.t("task_budget")); Spacer()
                             Text(budget).foregroundColor(.accentColor).bold()
                         }
                     }
                 }
-                Section(header: Text("Your message")) {
-                    TextField("How can you help with this?", text: $message, axis: .vertical)
+                Section(header: Text(loc.t("task_your_message"))) {
+                    TextField("Чем можешь помочь?", text: $message, axis: .vertical)
                         .lineLimit(3...8)
                 }
                 if let err = errorMessage {
                     Section { Text(err).foregroundColor(.red) }
                 }
-                Section(footer: Text("After the author accepts your response, a private chat will open automatically.")) {
+                Section(footer: Text(loc.t("task_response_footer"))) {
                     EmptyView()
                 }
             }
             .scrollContentBackground(.hidden)
             .background(Color(red: 0.04, green: 0.05, blue: 0.10))
-            .navigationTitle("Respond")
+            .navigationTitle("Отклик")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(loc.t("btn_cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         Task { await submit() }
                     } label: {
-                        if saving { ProgressView() } else { Text("Send").bold() }
+                        if saving { ProgressView() } else { Text(loc.t("task_send")).bold() }
                     }
                     .disabled(saving || message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }

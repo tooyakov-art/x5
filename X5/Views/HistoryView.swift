@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HistoryView: View {
     @EnvironmentObject private var history: CaptionHistory
+    @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -12,10 +13,10 @@ struct HistoryView: View {
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.system(size: 48, weight: .light))
                             .foregroundColor(.accentColor)
-                        Text("No history yet")
+                        Text(loc.t("history_empty_title"))
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundColor(.white)
-                        Text("Generated captions appear here.")
+                        Text(loc.t("history_empty_sub"))
                             .font(.system(size: 14))
                             .foregroundColor(.white.opacity(0.55))
                     }

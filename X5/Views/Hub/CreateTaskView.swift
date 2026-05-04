@@ -3,6 +3,7 @@ import SwiftUI
 struct CreateTaskView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
+    @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
 
     var onCreated: () -> Void = {}
@@ -21,20 +22,20 @@ struct CreateTaskView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("Task")) {
-                    TextField("Title", text: $title)
-                    TextField("Description", text: $description, axis: .vertical).lineLimit(3...8)
+                Section(header: Text(loc.t("task_section"))) {
+                    TextField("Заголовок", text: $title)
+                    TextField("Описание", text: $description, axis: .vertical).lineLimit(3...8)
                 }
-                Section(header: Text("Budget & category")) {
-                    TextField("Budget (e.g. 50 000 ₸)", text: $budget)
-                    Picker("Category", selection: $category) {
+                Section(header: Text(loc.t("task_budget_category"))) {
+                    TextField("Бюджет (например 50 000 ₸)", text: $budget)
+                    Picker("Категория", selection: $category) {
                         ForEach(HubCategories.all) { cat in
                             Text("\(cat.emoji)  \(cat.labelEn)").tag(cat.id)
                         }
                     }
-                    Toggle("Set deadline", isOn: $hasDeadline)
+                    Toggle("Срок", isOn: $hasDeadline)
                     if hasDeadline {
-                        DatePicker("Deadline", selection: $deadline, displayedComponents: .date)
+                        DatePicker("Срок", selection: $deadline, displayedComponents: .date)
                     }
                 }
                 if let err = errorMessage {
@@ -43,18 +44,18 @@ struct CreateTaskView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color(red: 0.04, green: 0.05, blue: 0.10))
-            .navigationTitle("Post a task")
+            .navigationTitle("Новая задача")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(loc.t("btn_cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         Task { await submit() }
                     } label: {
-                        if saving { ProgressView() } else { Text("Post").bold() }
+                        if saving { ProgressView() } else { Text(loc.t("common_post")).bold() }
                     }
                     .disabled(saving || !canSubmit)
                 }

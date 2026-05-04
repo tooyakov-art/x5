@@ -3,19 +3,30 @@ import SwiftUI
 /// AI generation hub — banner carousel + 14 tool cards.
 /// Mirrors the web HomeView. All tools open ToolDetailView (Coming soon),
 /// except 'captions' which navigates to the live caption templates feature.
+///
+/// The tool grid is hidden for non-developer accounts so Apple Review
+/// doesn't see "In development — coming soon" placeholders (Guideline 2.1
+/// rejects previews of unfinished features). Developer accounts in
+/// `Roles.swift` keep the grid for in-app QA.
 struct HomeView: View {
+    @EnvironmentObject private var auth: Auth
+
     @State private var bannerIndex: Int = 0
     @State private var openTool: HomeTool?
     @State private var openCaptions: Bool = false
     @State private var showingNotifications: Bool = false
+
+    private var showsTools: Bool { Roles.isDeveloper(auth.userEmail) }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     bannerCarousel
-                    sectionHeader("AI Tools")
-                    toolGrid
+                    if showsTools {
+                        sectionHeader("AI Tools")
+                        toolGrid
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
@@ -53,6 +64,10 @@ struct HomeView: View {
             TabView(selection: $bannerIndex) {
                 ForEach(Array(HomeContent.banners.enumerated()), id: \.element.id) { idx, banner in
                     HomeBannerCard(banner: banner) {
+                        // Same gate as toolGrid — non-developer taps on a
+                        // banner are no-ops so Apple Review never lands on
+                        // a "Coming soon" page.
+                        guard showsTools else { return }
                         if let tool = HomeContent.tools.first(where: { $0.id == banner.toolID }) {
                             openTool = tool
                         }
