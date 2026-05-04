@@ -1,1 +1,1 @@
-Initial release: platform-aware caption templates with three tones, brand voice profile, history, share sheet and Sign in with Apple.
+First public release. Hub for creator work, chats with photos / voice / search / pin / mute, portfolio, courses, multi-language UI (Russian / English / Kazakh), Sign in with Apple / Google / email, push notifications.

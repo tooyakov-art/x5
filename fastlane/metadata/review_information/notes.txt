@@ -1,14 +1,41 @@
-Sign in with Apple is required because the app saves caption history per Apple ID and supports in-app account deletion (Guideline 5.1.1(v)).
+X5 is a marketplace for creators (photographers, designers, video editors,
+copywriters, SMM managers) in Kazakhstan and Central Asia. The app has four
+main areas: Hub (open tasks from clients), Chats, Portfolio and Courses.
 
-To test:
-1. Tap "Sign in with Apple" → choose any account.
-2. Type a topic (e.g. "opening a coffee shop").
-3. Pick a tone (Friendly / Pro / Funny) and a platform (Instagram / X / LinkedIn / TikTok).
-4. Tap "Generate" — five captions appear, each with character + hashtag counter, copy and share buttons.
-5. Toolbar (top-left): clock icon → caption history. Sparkles icon → Brand voice profile (optional, persists per device).
-6. Toolbar (top-right): person icon → Profile → Sign out OR Delete Account.
-7. Delete Account flow: two confirmations → Supabase RPC removes the auth user → app returns to login.
+DEMO ACCOUNT
+Use the credentials in the Apple Demo Account fields. The account has a
+small portfolio, an open chat, and a sample course unlocked.
 
-All caption text is generated locally on the device using deterministic templates. The app does not call any third-party AI service.
+QUICK TEST FLOW
+1. Sign in with Apple, Google, or the demo email + password.
+2. The Home tab shows the Hub — tap any task card to view details and
+   send a proposal.
+3. The Chats tab shows existing conversations. Open a chat to test:
+   - Send text, photos (paperclip → Photos), voice (long-press microphone)
+   - Long-press a bubble → Copy
+   - Top-right menu → Search, Mute, Pin, Open profile, Report, Block
+   - Swipe left on a chat row → Delete; swipe right → Pin / Mute
+4. The Portfolio tab shows the public profile. Tap "Edit" to add a
+   portfolio entry (image + caption).
+5. The Courses tab lists creator-published courses. Open a course → tap
+   any lesson → reading or video plays inline.
+6. Settings (gear icon on profile) → Cache, Promo notifications toggle,
+   Face ID lock, Sign out, Delete account.
 
-If you have any questions, please email support@x5studio.app.
+UGC SAFETY (Guideline 1.2)
+- Every chat user can be Blocked or Reported from the chat header menu.
+- Hub task authors can be Blocked from their profile.
+- Account deletion in Settings is two-step and removes auth + profile.
+
+PUSH NOTIFICATIONS
+APNs token is registered after Sign-in. A Postgres trigger calls the
+send-message-push Edge Function on new messages. To test: open the app
+on a second device with a different account, send a message — first
+device gets a push.
+
+PRIVACY
+Sign in with Apple is offered alongside Google and email — Guideline
+4.8 satisfied. No third-party trackers, no ads. Authentication and
+profile/chat storage are on Supabase.
+
+If anything is unclear: support@x5studio.app.
