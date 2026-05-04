@@ -1,0 +1,124 @@
+name: ASC create app version
+
+# Diagnose-and-fix workflow that mints an editable AppStoreVersion in App
+# Store Connect when fastlane's `deliver` can't (Apple's API rejects
+# `/data/relationships/app` because the app has no editable version yet).
+#
+# Looks up the app id by bundle id, lists existing versions, then creates
+# `1.1.0` (NEW) for iOS if it isn't already there. Logs everything so we
+# can also use this to debug "what state is the app in" without touching
+# the Apple ID password flow.
+#
+# Run manually:
+#   gh workflow run asc-create-version.yml -f version=1.1.0
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string to create (e.g. 1.1.0)"
+        required: true
+        default: "1.1.0"
+      platform:
+        description: "Platform (IOS / MAC_OS / TV_OS)"
+        required: true
+        default: "IOS"
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BUNDLE_ID: com.x5studio.app
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      VERSION_STRING: ${{ inputs.version }}
+      PLATFORM: ${{ inputs.platform }}
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install pyjwt[crypto] requests
+
+      - name: Mint version via ASC API
+        run: |
+          python <<'PY'
+          import os, base64, time, json, sys
+          import jwt, requests
+
+          key_id    = os.environ["ASC_API_KEY_ID"]
+          issuer_id = os.environ["ASC_API_ISSUER_ID"]
+          key_pem   = base64.b64decode(os.environ["ASC_API_KEY_BASE64"])
+          bundle_id = os.environ["BUNDLE_ID"]
+          version   = os.environ["VERSION_STRING"]
+          platform  = os.environ["PLATFORM"]
+
+          token = jwt.encode(
+              {
+                  "iss": issuer_id,
+                  "iat": int(time.time()),
+                  "exp": int(time.time()) + 60 * 5,
+                  "aud": "appstoreconnect-v1",
+              },
+              key_pem,
+              algorithm="ES256",
+              headers={"kid": key_id, "typ": "JWT"},
+          )
+          h = {"Authorization": f"Bearer {token}"}
+
+          # Resolve app id by bundle id.
+          r = requests.get(
+              f"https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]={bundle_id}",
+              headers=h,
+          )
+          r.raise_for_status()
+          apps = r.json().get("data", [])
+          if not apps:
+              sys.exit(f"No ASC app for bundleId {bundle_id}")
+          app = apps[0]
+          app_id = app["id"]
+          print(f"App: {app['attributes']['name']}  id={app_id}")
+
+          # List existing versions so we know whether to skip the create.
+          r = requests.get(
+              f"https://api.appstoreconnect.apple.com/v1/apps/{app_id}/appStoreVersions",
+              headers=h,
+          )
+          r.raise_for_status()
+          existing = r.json().get("data", [])
+          print(f"Existing versions ({len(existing)}):")
+          for v in existing:
+              a = v["attributes"]
+              print(f"  - {a.get('versionString')}  state={a.get('appStoreState')}  platform={a.get('platform')}")
+              if a.get("versionString") == version and a.get("platform") == platform:
+                  print(f"\n{version} already exists for {platform} — nothing to do.")
+                  sys.exit(0)
+
+          # Create.
+          payload = {
+              "data": {
+                  "type": "appStoreVersions",
+                  "attributes": {
+                      "platform": platform,
+                      "versionString": version,
+                  },
+                  "relationships": {
+                      "app": {"data": {"type": "apps", "id": app_id}}
+                  },
+              }
+          }
+          r = requests.post(
+              "https://api.appstoreconnect.apple.com/v1/appStoreVersions",
+              headers={**h, "Content-Type": "application/json"},
+              data=json.dumps(payload),
+          )
+          if r.status_code >= 300:
+              print(f"Create failed: HTTP {r.status_code}")
+              print(r.text)
+              sys.exit(1)
+          created = r.json().get("data", {})
+          print(f"\nCreated version {created.get('id')} state={created.get('attributes',{}).get('appStoreState')}")
+          PY
