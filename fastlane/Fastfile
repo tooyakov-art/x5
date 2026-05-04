@@ -43,19 +43,30 @@ platform :ios do
   # runs successfully, `lane :upload` can create 1.1.0 fresh.
   desc "Developer-reject the currently-pending version so a new one can be created"
   lane :reject_pending do
-    deliver(
-      api_key_path: KEY_PATH,
-      app_identifier: APP_BUNDLE_ID,
-      platform: "ios",
-      reject_if_possible: true,
-      skip_metadata: true,
-      skip_screenshots: true,
-      skip_binary_upload: true,
-      submit_for_review: false,
-      automatic_release: false,
-      run_precheck_before_submit: false,
-      force: true
+    require "spaceship"
+    Spaceship::ConnectAPI.token = Spaceship::ConnectAPI::Token.create(
+      key_id:    ENV["ASC_API_KEY_ID"],
+      issuer_id: ENV["ASC_API_ISSUER_ID"],
+      key:       Base64.decode64(ENV["ASC_API_KEY_BASE64"])
     )
+
+    app = Spaceship::ConnectAPI::App.find(APP_BUNDLE_ID)
+    UI.message("App: #{app.name} (#{app.id})")
+
+    versions = app.get_app_store_versions(filter: { platform: "IOS" })
+    pending = versions.find do |v|
+      ["PENDING_DEVELOPER_RELEASE", "READY_FOR_SALE", "PENDING_APPLE_RELEASE"].include?(v.app_store_state)
+    end
+
+    if pending.nil?
+      UI.message("No pending version to reject; current versions:")
+      versions.each { |v| UI.message("  - #{v.version_string} (#{v.app_store_state})") }
+      next
+    end
+
+    UI.message("Developer-rejecting #{pending.version_string} (#{pending.app_store_state})...")
+    pending.developer_reject!
+    UI.success("Rejected.")
   end
 
   desc "Submit current version for review"
