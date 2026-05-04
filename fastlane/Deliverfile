@@ -4,10 +4,9 @@ team_id "F8LA8PC4U6"
 # Push the rewritten metadata in fastlane/metadata/* up to ASC.
 skip_metadata false
 
-# Hold off on screenshots until fresh ones are captured for the actual
-# X5 marketplace UI. Old caption-studio screenshots in fastlane/screenshots
-# would trip Guideline 2.3.1 (metadata mismatch) on Apple Review.
-skip_screenshots true
+# Push the 7 iPhone 6.9 screenshots Diaz captured against the X5
+# marketplace UI. Old caption-studio leftovers were wiped before staging.
+skip_screenshots false
 
 # Misc
 force true

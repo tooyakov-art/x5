@@ -39,3 +39,4 @@ secrets.local
 
 .secrets/
 supabase/.temp/
+.scripts/screens_inbox/
