@@ -38,3 +38,4 @@ node_modules/
 secrets.local
 
 .secrets/
+supabase/.temp/

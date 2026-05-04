@@ -40,7 +40,13 @@ actor ImageCache {
 
     /// In-memory layer to avoid re-reading from disk during scroll.
     /// Cost is set per insertion (bytesPerRow * height) so totalCostLimit actually bounds memory.
-    private let memory: NSCache<NSString, UIImage> = {
+    ///
+    /// `nonisolated` so views can peek synchronously on `init` and seed
+    /// their `@State` with a hot image before the first render — avoids the
+    /// "blank placeholder for one frame" flicker when leaving and returning
+    /// to a chat. NSCache is documented thread-safe; only this property and
+    /// the static `keyFor(_:)` are nonisolated.
+    nonisolated let memory: NSCache<NSString, UIImage> = {
         let c = NSCache<NSString, UIImage>()
         c.totalCostLimit = 64 * 1024 * 1024 // 64 MB raw pixels
         return c
@@ -62,6 +68,15 @@ actor ImageCache {
     }
 
     // MARK: - Public
+
+    /// Synchronous peek into the in-memory layer. Returns nil if the URL
+    /// hasn't been resolved yet OR was evicted by NSCache pressure. Use from
+    /// view initialisers to seed `@State` and skip the async hop on warm
+    /// re-entry — never replaces `image(for:)` since this never fetches.
+    nonisolated func peekMemory(for url: URL) -> UIImage? {
+        let key = Self.keyFor(url: url)
+        return memory.object(forKey: key as NSString)
+    }
 
     /// Returns image for URL, downloading if needed. Categorisation is automatic.
     /// Concurrent calls for the same URL share a single fetch (no duplicate downloads).

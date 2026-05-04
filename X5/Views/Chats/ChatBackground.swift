@@ -1,46 +1,80 @@
 import SwiftUI
 
-/// Telegram-inspired chat backdrop: subtle SF Symbols scattered in a
-/// repeating diagonal grid over the dark app surface. Pure SwiftUI Canvas —
-/// no asset bundle, no PNG, scales to any device size, dark-mode native.
+/// Telegram-inspired chat backdrop. Two layers:
 ///
-/// Visible characters are drawn at ~6% opacity so they read as texture, not
-/// content, and never compete with messages.
+/// 1. Multi-stop angular/radial gradient — dark navy → deep purple → teal
+///    accent. Mimics the depth Telegram dark wallpapers have without an
+///    asset bundle.
+/// 2. Canvas pattern overlay drawn at two scales (large sparse + small
+///    dense) so it feels generative instead of a tiled grid.
+///
+/// Pure SwiftUI Canvas, no PNG, scales to any device, dark-mode native.
 struct ChatBackground: View {
-    /// Base solid color matches `Color(red: 0.04, green: 0.05, blue: 0.10)`
-    /// used elsewhere in the app for the dark surface.
-    private let surface = Color(red: 0.04, green: 0.05, blue: 0.10)
-
-    /// Symbols rotated through the grid. Light, friendly, not branded —
-    /// chat / creative / messaging / love / work motifs that match X5.
+    /// Symbols rotated through both pattern passes. Light, friendly,
+    /// chat / creative motifs that match X5.
     private let glyphs: [String] = [
-        "✦", "✧", "✩", "✪", "❀", "❁", "❃", "❋",
-        "♡", "✿", "❄︎", "✺", "❂", "✻", "❉"
+        "✦", "✧", "✩", "❀", "❁", "❃", "❋",
+        "♡", "✿", "❄︎", "✺", "❂", "✻", "❉", "✱"
     ]
 
-    /// Cell size in points. Smaller = denser pattern.
-    private let cellSize: CGFloat = 48
-
     var body: some View {
+        ZStack {
+            // Layer 1 — gradient base. Two overlapping radial pools give the
+            // "Telegram dark wallpaper" depth that a single linear gradient
+            // can't reach.
+            Color(red: 0.05, green: 0.06, blue: 0.13)
+                .ignoresSafeArea()
+            RadialGradient(
+                colors: [
+                    Color(red: 0.18, green: 0.14, blue: 0.36).opacity(0.55),
+                    Color.clear
+                ],
+                center: .topLeading,
+                startRadius: 0,
+                endRadius: 520
+            )
+            .ignoresSafeArea()
+            RadialGradient(
+                colors: [
+                    Color(red: 0.10, green: 0.30, blue: 0.40).opacity(0.45),
+                    Color.clear
+                ],
+                center: .bottomTrailing,
+                startRadius: 0,
+                endRadius: 560
+            )
+            .ignoresSafeArea()
+
+            // Layer 2 — sparse large glyphs.
+            patternCanvas(cellSize: 96, fontSize: 30, opacity: 0.05, salt: 1)
+                .ignoresSafeArea()
+            // Layer 3 — denser small glyphs, offset to break the grid feel.
+            patternCanvas(cellSize: 44, fontSize: 16, opacity: 0.07, salt: 7)
+                .ignoresSafeArea()
+        }
+        .accessibilityHidden(true)
+    }
+
+    /// One pattern pass. Deterministic per (row, col, salt) so the layers
+    /// look stable across redraws but distinct from each other.
+    private func patternCanvas(cellSize: CGFloat, fontSize: CGFloat,
+                               opacity: Double, salt: Int) -> some View {
         Canvas { context, size in
             let cols = Int(ceil(size.width / cellSize)) + 1
             let rows = Int(ceil(size.height / cellSize)) + 2
 
             for row in 0..<rows {
                 for col in 0..<cols {
-                    // Stagger every other row by half a cell — diagonal feel.
                     let xOffset: CGFloat = (row % 2 == 0) ? 0 : cellSize / 2
                     let x = CGFloat(col) * cellSize + xOffset
                     let y = CGFloat(row) * cellSize
 
-                    // Deterministic glyph + rotation per (row,col) — pattern
-                    // looks generative but is stable across redraws.
-                    let glyphIndex = (row * 7 + col * 3) % glyphs.count
-                    let rotation = Double((row * 17 + col * 11) % 360)
+                    let glyphIndex = (row * 7 + col * 3 + salt) % glyphs.count
+                    let rotation = Double((row * 17 + col * 11 + salt * 23) % 360)
 
                     let text = Text(glyphs[glyphIndex])
-                        .font(.system(size: 22, weight: .light))
-                        .foregroundColor(.white.opacity(0.07))
+                        .font(.system(size: fontSize, weight: .light))
+                        .foregroundColor(.white.opacity(opacity))
 
                     context.drawLayer { layer in
                         layer.translateBy(x: x, y: y)
@@ -50,8 +84,5 @@ struct ChatBackground: View {
                 }
             }
         }
-        .background(surface)
-        .ignoresSafeArea()
-        .accessibilityHidden(true)
     }
 }

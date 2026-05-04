@@ -12,6 +12,7 @@ enum ChatsLocalState {
     private static let archivedKey = "x5.chats.archived_ids"
     private static let mutedKey = "x5.chats.muted_ids"
     private static let hiddenKey = "x5.chats.hidden_ids"
+    private static let pinnedKey = "x5.chats.pinned_ids"
 
     // MARK: - Archived (folded into a separate "Архив" section)
 
@@ -26,6 +27,13 @@ enum ChatsLocalState {
     static func isMuted(_ id: String) -> Bool { muted.contains(id) }
     static func mute(_ id: String) { insert(id, key: mutedKey) }
     static func unmute(_ id: String) { remove(id, key: mutedKey) }
+
+    // MARK: - Pinned (sticks to top of chat list, ahead of recent activity)
+
+    static var pinned: Set<String> { read(pinnedKey) }
+    static func isPinned(_ id: String) -> Bool { pinned.contains(id) }
+    static func pin(_ id: String) { insert(id, key: pinnedKey) }
+    static func unpin(_ id: String) { remove(id, key: pinnedKey) }
 
     // MARK: - Hidden ("deleted" client-side — the row is filtered out)
 
@@ -47,6 +55,7 @@ enum ChatsLocalState {
         d.removeObject(forKey: archivedKey)
         d.removeObject(forKey: mutedKey)
         d.removeObject(forKey: hiddenKey)
+        d.removeObject(forKey: pinnedKey)
     }
 
     // MARK: - Internals

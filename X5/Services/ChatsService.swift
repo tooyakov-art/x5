@@ -75,6 +75,39 @@ final class ChatsService: ObservableObject {
     private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
     private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
 
+    // MARK: - Peer profile cache
+    //
+    // Avoids the "avatar reloads on every chat re-entry" UX issue. Without
+    // this, ChatThreadView.task fires loadPublicProfile each time the view
+    // appears; a freshly-decoded UserProfile carries a re-signed avatar URL
+    // whose query string differs slightly between calls, busting the
+    // CachedAsyncImage URL key even though ImageCache has the bytes on disk.
+    //
+    // TTL is short (10 min) so muted/blocked/Pro state changes still
+    // propagate within a session without forcing a full sign-out.
+    private struct CachedPeer { let profile: UserProfile; let at: Date }
+    private var peerCache: [String: CachedPeer] = [:]
+    private let peerCacheTTL: TimeInterval = 600
+
+    /// Synchronous read for views that need a peer's profile at frame 1
+    /// (e.g. ChatThreadView header on cold-launch nav). Returns nil if the
+    /// row isn't cached or has expired — caller should kick off an async
+    /// loadPublicProfile in that case.
+    func cachedPeer(_ userId: String) -> UserProfile? {
+        guard let entry = peerCache[userId] else { return nil }
+        if Date().timeIntervalSince(entry.at) > peerCacheTTL {
+            peerCache.removeValue(forKey: userId)
+            return nil
+        }
+        return entry.profile
+    }
+
+    /// Drop the cached peer (used after sign-out or when stale data is
+    /// known to be wrong, e.g. after the user blocks someone).
+    func invalidatePeer(_ userId: String) {
+        peerCache.removeValue(forKey: userId)
+    }
+
     // MARK: - Message cache
     //
     // Open-chat lag was "blank screen → spinner → bubbles" because every
@@ -226,7 +259,11 @@ final class ChatsService: ObservableObject {
     }
 
     /// Load minimal public profile for any user by ID (used in chat header / row).
+    /// Result is memoised in `peerCache` for `peerCacheTTL` so re-entering the
+    /// same chat doesn't refetch — and, more importantly, doesn't hand a new
+    /// signed avatar URL to CachedAsyncImage which would bust its cache key.
     func loadPublicProfile(userId: String, accessToken: String) async -> UserProfile? {
+        if let cached = cachedPeer(userId) { return cached }
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "id", value: "eq.\(userId)"),
@@ -239,7 +276,11 @@ final class ChatsService: ObservableObject {
               (200..<300).contains(http.statusCode),
               let rows = try? JSONDecoder().decode([UserProfile].self, from: data)
         else { return nil }
-        return rows.first
+        if let row = rows.first {
+            peerCache[userId] = CachedPeer(profile: row, at: Date())
+            return row
+        }
+        return nil
     }
 
     func loadChats(currentUserId: String, accessToken: String) async {

@@ -19,13 +19,42 @@ struct ChatThreadView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var attachmentError: String?
     @FocusState private var inputFocused: Bool
+    @State private var searchActive: Bool = false
+    @State private var searchQuery: String = ""
+    /// Bumped when ChatsLocalState mutations happen via the header menu so the
+    /// view rereads `isMuted/isPinned` for icon toggles without observing.
+    @State private var chatStateTick: Int = 0
 
     var body: some View {
         VStack(spacing: 0) {
+            if searchActive {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.white.opacity(0.5))
+                    TextField(loc.t("chats_search_placeholder"), text: $searchQuery)
+                        .textFieldStyle(.plain)
+                        .foregroundColor(.white)
+                    if !searchQuery.isEmpty {
+                        Button { searchQuery = "" } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.white.opacity(0.4))
+                        }
+                    }
+                    Button {
+                        searchActive = false
+                        searchQuery = ""
+                    } label: {
+                        Text(loc.t("btn_done")).foregroundColor(.accentColor)
+                    }
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Color.white.opacity(0.06))
+            }
+
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(messages) { msg in
+                        ForEach(visibleMessages) { msg in
                             Bubble(message: msg, isMine: msg.senderId == auth.userId)
                                 .id(msg.id)
                         }
@@ -111,6 +140,35 @@ struct ChatThreadView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button {
+                        searchActive.toggle()
+                        if !searchActive { searchQuery = "" }
+                    } label: {
+                        Label(loc.t("chats_search_placeholder"), systemImage: "magnifyingglass")
+                    }
+                    let muted = ChatsLocalState.isMuted(chat.id)
+                    Button {
+                        if muted { ChatsLocalState.unmute(chat.id) }
+                        else { ChatsLocalState.mute(chat.id) }
+                        chatStateTick &+= 1
+                    } label: {
+                        Label(
+                            muted ? loc.t("chats_unmute") : loc.t("chats_mute"),
+                            systemImage: muted ? "bell" : "bell.slash"
+                        )
+                    }
+                    let pinned = ChatsLocalState.isPinned(chat.id)
+                    Button {
+                        if pinned { ChatsLocalState.unpin(chat.id) }
+                        else { ChatsLocalState.pin(chat.id) }
+                        chatStateTick &+= 1
+                    } label: {
+                        Label(
+                            pinned ? loc.t("chats_unpin") : loc.t("chats_pin"),
+                            systemImage: pinned ? "pin.slash" : "pin"
+                        )
+                    }
+                    Divider()
                     Button {
                         showingProfile = true
                     } label: {
@@ -277,6 +335,18 @@ struct ChatThreadView: View {
         other = await service.loadPublicProfile(userId: otherId, accessToken: token)
     }
 
+    /// Active filter applied to `messages` for rendering. Filtering happens at
+    /// render time only — the underlying array stays intact so scroll/auto-
+    /// scroll behaviour and message identity are unaffected when the search
+    /// box closes.
+    private var visibleMessages: [ChatMessageRow] {
+        let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard searchActive, !q.isEmpty else { return messages }
+        return messages.filter { msg in
+            (msg.content ?? "").localizedCaseInsensitiveContains(q)
+        }
+    }
+
     private func send() {
         guard let token = auth.accessToken, let uid = auth.userId else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -296,11 +366,23 @@ struct ChatThreadView: View {
 private struct Bubble: View {
     let message: ChatMessageRow
     let isMine: Bool
+    var onCopy: (() -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 6) {
             if isMine { Spacer(minLength: 40) }
             content
+                .contextMenu {
+                    if let text = message.content, !text.isEmpty,
+                       message.type != "image", message.type != "audio" {
+                        Button {
+                            UIPasteboard.general.string = text
+                            onCopy?()
+                        } label: {
+                            Label("Копировать", systemImage: "doc.on.doc")
+                        }
+                    }
+                }
             if !isMine { Spacer(minLength: 40) }
         }
     }
@@ -313,13 +395,46 @@ private struct Bubble: View {
         case "audio":
             AudioBubble(url: message.mediaUrl, isMine: isMine)
         default:
-            Text(message.content ?? "")
-                .font(.system(size: 14))
-                .foregroundColor(.white)
-                .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(isMine ? Color.accentColor.opacity(0.22) : Color.white.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(message.content ?? "")
+                    .font(.system(size: 14))
+                    .foregroundColor(.white)
+                if let stamp = formattedTimestamp {
+                    Text(stamp)
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(isMine ? Color.accentColor.opacity(0.22) : Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
+    }
+
+    /// Short relative-time label rendered inside text bubbles.
+    /// Today → `HH:mm`. Yesterday → `Вчера HH:mm`. Older → `dd.MM`.
+    private var formattedTimestamp: String? {
+        guard let iso = message.createdAt, !iso.isEmpty else { return nil }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return nil }
+        let cal = Calendar.current
+        let now = Date()
+        let timeFmt = DateFormatter()
+        timeFmt.locale = .current
+        timeFmt.dateFormat = "HH:mm"
+        if cal.isDateInToday(date) {
+            return timeFmt.string(from: date)
+        }
+        if cal.isDateInYesterday(date) {
+            return "Вчера " + timeFmt.string(from: date)
+        }
+        let dayFmt = DateFormatter()
+        dayFmt.locale = .current
+        dayFmt.dateFormat = (cal.component(.year, from: date) == cal.component(.year, from: now))
+            ? "dd.MM"
+            : "dd.MM.yy"
+        return dayFmt.string(from: date)
     }
 
     @ViewBuilder

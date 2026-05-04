@@ -97,6 +97,18 @@ struct ChatsListView: View {
                     .tint(.indigo)
                 }
                 .swipeActions(edge: .leading) {
+                    let pinned = ChatsLocalState.isPinned(chat.id)
+                    Button {
+                        if pinned { ChatsLocalState.unpin(chat.id) }
+                        else { ChatsLocalState.pin(chat.id) }
+                        localStateTick &+= 1
+                    } label: {
+                        Label(
+                            pinned ? loc.t("chats_unpin") : loc.t("chats_pin"),
+                            systemImage: pinned ? "pin.slash" : "pin"
+                        )
+                    }
+                    .tint(.blue)
                     let muted = ChatsLocalState.isMuted(chat.id)
                     Button {
                         if muted { ChatsLocalState.unmute(chat.id) }
@@ -111,6 +123,17 @@ struct ChatsListView: View {
                     .tint(.orange)
                 }
                 .contextMenu {
+                    let pinned = ChatsLocalState.isPinned(chat.id)
+                    Button {
+                        if pinned { ChatsLocalState.unpin(chat.id) }
+                        else { ChatsLocalState.pin(chat.id) }
+                        localStateTick &+= 1
+                    } label: {
+                        Label(
+                            pinned ? loc.t("chats_unpin") : loc.t("chats_pin"),
+                            systemImage: pinned ? "pin.slash" : "pin"
+                        )
+                    }
                     let muted = ChatsLocalState.isMuted(chat.id)
                     Button {
                         if muted { ChatsLocalState.unmute(chat.id) }
@@ -155,9 +178,13 @@ struct ChatsListView: View {
         }
     }
 
-    /// Active inbox — excludes archived chats.
+    /// Active inbox — excludes archived chats. Pinned chats float to the top
+    /// in their original recency order, regular chats follow underneath.
     private var visibleChats: [ChatRoom] {
-        nonBlocked.filter { !ChatsLocalState.isArchived($0.id) }
+        let inbox = nonBlocked.filter { !ChatsLocalState.isArchived($0.id) }
+        let pinned = inbox.filter { ChatsLocalState.isPinned($0.id) }
+        let regular = inbox.filter { !ChatsLocalState.isPinned($0.id) }
+        return pinned + regular
     }
 
     /// Archived bucket shown under the "Архив" entry.
@@ -293,6 +320,12 @@ private struct ChatRow: View {
                             .padding(.horizontal, 5).padding(.vertical, 1.5)
                             .background(Color.accentColor)
                             .clipShape(Capsule())
+                    }
+                    if ChatsLocalState.isPinned(chat.id) {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.55))
+                            .rotationEffect(.degrees(45))
                     }
                     if ChatsLocalState.isMuted(chat.id) {
                         Image(systemName: "bell.slash.fill")
