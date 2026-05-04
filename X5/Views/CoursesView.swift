@@ -145,6 +145,7 @@ struct CoursesView: View {
 private struct CourseCard: View {
     let course: Course
     var showHiddenBadge: Bool = false
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -235,6 +236,7 @@ private struct CourseCard: View {
 
 private struct CourseRow: View {
     let course: Course
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         HStack(spacing: 14) {
@@ -318,6 +320,7 @@ struct CourseDetailView: View {
     var openPaywall: () -> Void
 
     @EnvironmentObject private var sub: Subscription
+    @EnvironmentObject private var loc: LocalizationService
 
     var hasFullAccess: Bool { (course.isFree ?? false) || (course.price ?? 0) == 0 || sub.isPro }
 
@@ -459,6 +462,7 @@ private struct LessonRow: View {
     let lesson: CourseLesson
     let hasFullAccess: Bool
     let openPaywall: () -> Void
+    @EnvironmentObject private var loc: LocalizationService
 
     var canPlay: Bool { hasFullAccess || lesson.freePreview }
     var hasVideo: Bool { lesson.playableURL != nil }
@@ -523,6 +527,7 @@ private struct LessonRow: View {
 private struct ErrorState: View {
     let message: String
     let retry: () -> Void
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         VStack(spacing: 14) {
