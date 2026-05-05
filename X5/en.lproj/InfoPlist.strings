@@ -1,0 +1,3 @@
+"NSFaceIDUsageDescription" = "Used to lock X5 — only the device owner can open the app.";
+"NSMicrophoneUsageDescription" = "Microphone access is needed to record voice messages in chats.";
+"NSPhotoLibraryUsageDescription" = "Photo library access is needed to attach photos in chats and portfolio.";
