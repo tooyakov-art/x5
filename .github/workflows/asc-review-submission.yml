@@ -71,7 +71,7 @@ jobs:
               print(f"  {s['id']}  state={attr.get('state')}  submittedDate={attr.get('submittedDate')}")
 
           if action == "list":
-              return
+              raise SystemExit(0)
 
           # Find the open one.
           target = None
