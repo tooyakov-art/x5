@@ -64,11 +64,17 @@ jobs:
               },
           )
           r.raise_for_status()
-          subs = r.json().get("data", [])
+          payload = r.json()
+          subs = payload.get("data", [])
+          included = {(i["type"], i["id"]): i for i in payload.get("included", [])}
           print(f"Review submissions: {len(subs)}")
           for s in subs:
               attr = s["attributes"]
               print(f"  {s['id']}  state={attr.get('state')}  submittedDate={attr.get('submittedDate')}")
+              for item_ref in s.get("relationships", {}).get("items", {}).get("data", []) or []:
+                  item = included.get((item_ref["type"], item_ref["id"]))
+                  if item:
+                      print(f"     item: type={item['type']} id={item['id']} attrs={item.get('attributes', {})}")
 
           if action == "list":
               raise SystemExit(0)
