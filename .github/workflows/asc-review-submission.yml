@@ -1,0 +1,140 @@
+name: ASC manage review submissions
+
+# Lists / submits / deletes review submissions for the app. fastlane bailed
+# with "A review submission is already in progress" — this gives us direct
+# control over the ReviewSubmission entity to inspect and finalize it.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to do"
+        required: true
+        type: choice
+        default: "list"
+        options:
+          - list
+          - submit
+          - cancel
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      BUNDLE_ID: com.x5studio.app
+      ACTION: ${{ inputs.action }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - name: Manage review submission
+        run: |
+          python <<'PY'
+          import os, base64, time, json, sys
+          import jwt, requests
+
+          token = jwt.encode(
+              {"iss": os.environ["ASC_API_ISSUER_ID"], "iat": int(time.time()),
+               "exp": int(time.time()) + 300, "aud": "appstoreconnect-v1"},
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          h = {"Authorization": f"Bearer {token}"}
+          base = "https://api.appstoreconnect.apple.com/v1"
+          action = os.environ["ACTION"]
+
+          r = requests.get(f"{base}/apps?filter[bundleId]={os.environ['BUNDLE_ID']}", headers=h)
+          r.raise_for_status()
+          app_id = r.json()["data"][0]["id"]
+          print(f"App: {app_id}")
+
+          # All review submissions for IOS.
+          r = requests.get(
+              f"{base}/reviewSubmissions",
+              headers=h,
+              params={
+                  "filter[app]": app_id,
+                  "filter[platform]": "IOS",
+                  "include": "items",
+              },
+          )
+          r.raise_for_status()
+          subs = r.json().get("data", [])
+          print(f"Review submissions: {len(subs)}")
+          for s in subs:
+              attr = s["attributes"]
+              print(f"  {s['id']}  state={attr.get('state')}  submittedDate={attr.get('submittedDate')}")
+
+          if action == "list":
+              return
+
+          # Find the open one.
+          target = None
+          for s in subs:
+              state = s["attributes"].get("state")
+              if state in ("READY_FOR_REVIEW", "WAITING_FOR_REVIEW"):
+                  continue
+              if state in ("COMPLETING", "IN_REVIEW", "UNRESOLVED_ISSUES", "COMPLETE"):
+                  continue
+              target = s
+              break
+
+          if target is None:
+              # Try the first non-completed one.
+              for s in subs:
+                  if s["attributes"].get("state") != "COMPLETE":
+                      target = s
+                      break
+
+          if not target:
+              sys.exit("No open submission found")
+
+          tid = target["id"]
+          state = target["attributes"]["state"]
+          print(f"\nTarget: {tid}  state={state}")
+
+          if action == "submit":
+              if state == "READY_FOR_REVIEW":
+                  print("Submitting (state -> WAITING_FOR_REVIEW)...")
+                  r = requests.patch(
+                      f"{base}/reviewSubmissions/{tid}",
+                      headers={**h, "Content-Type": "application/json"},
+                      json={"data": {"type": "reviewSubmissions", "id": tid,
+                                     "attributes": {"submitted": True}}},
+                  )
+                  if r.status_code >= 300:
+                      print(f"HTTP {r.status_code}: {r.text}")
+                      sys.exit(1)
+                  print("Submitted.")
+              else:
+                  print(f"State {state} - attempting submit anyway...")
+                  r = requests.patch(
+                      f"{base}/reviewSubmissions/{tid}",
+                      headers={**h, "Content-Type": "application/json"},
+                      json={"data": {"type": "reviewSubmissions", "id": tid,
+                                     "attributes": {"submitted": True}}},
+                  )
+                  print(f"HTTP {r.status_code}: {r.text[:300]}")
+
+          elif action == "cancel":
+              print(f"Cancelling submission {tid}...")
+              r = requests.delete(f"{base}/reviewSubmissions/{tid}", headers=h)
+              if r.status_code >= 300:
+                  print(f"HTTP {r.status_code}: {r.text}")
+                  sys.exit(1)
+              print("Cancelled.")
+
+          # Re-list.
+          r = requests.get(
+              f"{base}/reviewSubmissions",
+              headers=h,
+              params={"filter[app]": app_id, "filter[platform]": "IOS"},
+          )
+          for s in r.json().get("data", []):
+              print(f"  {s['id']}  state={s['attributes'].get('state')}")
+          PY
