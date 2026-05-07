@@ -1,0 +1,136 @@
+name: ASC create new review submission and submit
+
+# Old submission is in UNRESOLVED_ISSUES (Apple-rejected build 48), so we
+# can't reuse it. This workflow creates a fresh ReviewSubmission, attaches
+# the current app version + the X5 Pro Monthly subscription as items, and
+# flips submitted=true. Replaces fastlane's submit_for_review which fails
+# because Spaceship doesn't see open submissions correctly.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string"
+        required: true
+        default: "1.1.0"
+      subscription_id:
+        description: "Subscription Apple ID to include"
+        required: false
+        default: "6765650866"
+
+jobs:
+  resubmit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      BUNDLE_ID: com.x5studio.app
+      VERSION: ${{ inputs.version }}
+      SUB_ID: ${{ inputs.subscription_id }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - name: Resubmit
+        run: |
+          python <<'PY'
+          import os, base64, time, sys
+          import jwt, requests
+
+          token = jwt.encode(
+              {"iss": os.environ["ASC_API_ISSUER_ID"], "iat": int(time.time()),
+               "exp": int(time.time()) + 300, "aud": "appstoreconnect-v1"},
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          h = {"Authorization": f"Bearer {token}"}
+          base = "https://api.appstoreconnect.apple.com/v1"
+
+          r = requests.get(f"{base}/apps?filter[bundleId]={os.environ['BUNDLE_ID']}", headers=h)
+          r.raise_for_status()
+          app_id = r.json()["data"][0]["id"]
+          print(f"App: {app_id}")
+
+          r = requests.get(f"{base}/apps/{app_id}/appStoreVersions", headers=h)
+          r.raise_for_status()
+          version_id = next(
+              (v["id"] for v in r.json()["data"]
+               if v["attributes"]["versionString"] == os.environ["VERSION"]),
+              None
+          )
+          if not version_id:
+              sys.exit(f"No version {os.environ['VERSION']}")
+          print(f"Version {os.environ['VERSION']}: {version_id}")
+
+          # 1. Create ReviewSubmission.
+          r = requests.post(
+              f"{base}/reviewSubmissions",
+              headers={**h, "Content-Type": "application/json"},
+              json={"data": {
+                  "type": "reviewSubmissions",
+                  "attributes": {"platform": "IOS"},
+                  "relationships": {
+                      "app": {"data": {"type": "apps", "id": app_id}}
+                  }
+              }},
+          )
+          if r.status_code >= 300:
+              print(f"Create submission HTTP {r.status_code}: {r.text}")
+              sys.exit(1)
+          sub_id = r.json()["data"]["id"]
+          print(f"Created ReviewSubmission: {sub_id}")
+
+          # 2. Add app version item.
+          r = requests.post(
+              f"{base}/reviewSubmissionItems",
+              headers={**h, "Content-Type": "application/json"},
+              json={"data": {
+                  "type": "reviewSubmissionItems",
+                  "relationships": {
+                      "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": sub_id}},
+                      "appStoreVersion": {"data": {"type": "appStoreVersions", "id": version_id}},
+                  }
+              }},
+          )
+          if r.status_code >= 300:
+              print(f"Add app item HTTP {r.status_code}: {r.text}")
+              sys.exit(1)
+          print(f"Added app version item")
+
+          # 3. Add subscription item.
+          sub_pid = os.environ.get("SUB_ID", "").strip()
+          if sub_pid:
+              r = requests.post(
+                  f"{base}/reviewSubmissionItems",
+                  headers={**h, "Content-Type": "application/json"},
+                  json={"data": {
+                      "type": "reviewSubmissionItems",
+                      "relationships": {
+                          "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": sub_id}},
+                          "subscription": {"data": {"type": "subscriptions", "id": sub_pid}},
+                      }
+                  }},
+              )
+              if r.status_code >= 300:
+                  print(f"Add subscription item HTTP {r.status_code}: {r.text}")
+                  sys.exit(1)
+              print(f"Added subscription item: {sub_pid}")
+
+          # 4. Submit.
+          r = requests.patch(
+              f"{base}/reviewSubmissions/{sub_id}",
+              headers={**h, "Content-Type": "application/json"},
+              json={"data": {
+                  "type": "reviewSubmissions",
+                  "id": sub_id,
+                  "attributes": {"submitted": True}
+              }},
+          )
+          if r.status_code >= 300:
+              print(f"Submit HTTP {r.status_code}: {r.text}")
+              sys.exit(1)
+          print(f"State after submit: {r.json()['data']['attributes'].get('state')}")
+          PY
