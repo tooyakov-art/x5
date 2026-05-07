@@ -1,0 +1,146 @@
+name: ASC upload IAP review screenshot
+
+# Uploads a review screenshot to a subscription product so it can be
+# submitted for review. Implements the 3-step asset upload protocol:
+#   POST   /v1/subscriptionAppStoreReviewScreenshots   (reservation)
+#   PUT    <upload-url>                                (file bytes)
+#   PATCH  /v1/subscriptionAppStoreReviewScreenshots/{id}  (mark uploaded)
+#
+# After this runs, the subscription's review screenshot status flips to
+# "Ready" and the IAP can be attached to a version submission.
+on:
+  workflow_dispatch:
+    inputs:
+      subscription_id:
+        description: "Subscription product Apple ID (e.g. 6765650866 for X5 Pro Monthly)"
+        required: true
+        default: "6765650866"
+      screenshot_path:
+        description: "Path inside repo to screenshot file"
+        required: true
+        default: "fastlane/iap-screenshots/x5-pro-monthly.jpg"
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      SUBSCRIPTION_ID: ${{ inputs.subscription_id }}
+      SCREENSHOT_PATH: ${{ inputs.screenshot_path }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - name: Upload screenshot via ASC API
+        run: |
+          python <<'PY'
+          import os, base64, time, hashlib, mimetypes, sys
+          import jwt, requests
+
+          token = jwt.encode(
+              {
+                  "iss": os.environ["ASC_API_ISSUER_ID"],
+                  "iat": int(time.time()),
+                  "exp": int(time.time()) + 60 * 5,
+                  "aud": "appstoreconnect-v1",
+              },
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          h = {"Authorization": f"Bearer {token}"}
+          base = "https://api.appstoreconnect.apple.com/v1"
+
+          sub_id = os.environ["SUBSCRIPTION_ID"]
+          path = os.environ["SCREENSHOT_PATH"]
+          if not os.path.exists(path):
+              sys.exit(f"File not found: {path}")
+
+          with open(path, "rb") as f:
+              data = f.read()
+          size = len(data)
+          checksum = hashlib.md5(data).hexdigest()
+          filename = os.path.basename(path)
+          mime = mimetypes.guess_type(filename)[0] or "image/jpeg"
+          print(f"File: {filename}  size={size}  md5={checksum}  mime={mime}")
+
+          # Step 1: reservation.
+          payload = {
+              "data": {
+                  "type": "subscriptionAppStoreReviewScreenshots",
+                  "attributes": {
+                      "fileName": filename,
+                      "fileSize": size,
+                  },
+                  "relationships": {
+                      "subscription": {
+                          "data": {"type": "subscriptions", "id": sub_id}
+                      }
+                  },
+              }
+          }
+          r = requests.post(
+              f"{base}/subscriptionAppStoreReviewScreenshots",
+              headers={**h, "Content-Type": "application/json"},
+              json=payload,
+          )
+          if r.status_code >= 300:
+              print(f"Reservation failed HTTP {r.status_code}")
+              print(r.text)
+              sys.exit(1)
+          obj = r.json()["data"]
+          asset_id = obj["id"]
+          ops = obj["attributes"]["uploadOperations"]
+          print(f"Reservation: id={asset_id}  ops={len(ops)}")
+
+          # Step 2: upload bytes per operation slice.
+          for op in ops:
+              start = op["offset"]
+              length = op["length"]
+              chunk = data[start : start + length]
+              up_headers = {hh["name"]: hh["value"] for hh in op["requestHeaders"]}
+              up = requests.request(
+                  op["method"], op["url"], headers=up_headers, data=chunk
+              )
+              if up.status_code >= 300:
+                  print(f"Chunk upload failed HTTP {up.status_code}")
+                  print(up.text)
+                  sys.exit(1)
+              print(f"  uploaded chunk offset={start} length={length}")
+
+          # Step 3: commit.
+          commit = {
+              "data": {
+                  "type": "subscriptionAppStoreReviewScreenshots",
+                  "id": asset_id,
+                  "attributes": {
+                      "uploaded": True,
+                      "sourceFileChecksum": checksum,
+                  },
+              }
+          }
+          r = requests.patch(
+              f"{base}/subscriptionAppStoreReviewScreenshots/{asset_id}",
+              headers={**h, "Content-Type": "application/json"},
+              json=commit,
+          )
+          if r.status_code >= 300:
+              print(f"Commit failed HTTP {r.status_code}")
+              print(r.text)
+              sys.exit(1)
+          print("Committed.")
+
+          # Verify state.
+          r = requests.get(
+              f"{base}/subscriptionAppStoreReviewScreenshots/{asset_id}",
+              headers=h,
+          )
+          if r.status_code < 300:
+              attr = r.json()["data"]["attributes"]
+              print(f"State: assetDeliveryState={attr.get('assetDeliveryState')}")
+          PY
