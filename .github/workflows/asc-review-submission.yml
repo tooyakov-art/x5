@@ -15,6 +15,8 @@ on:
           - list
           - submit
           - cancel
+          - delete_rejected_items
+          - cancel_ready
 
 jobs:
   run:
@@ -77,6 +79,24 @@ jobs:
                       print(f"     item: type={item['type']} id={item['id']} attrs={item.get('attributes', {})}")
 
           if action == "list":
+              raise SystemExit(0)
+
+          if action == "delete_rejected_items":
+              for s in subs:
+                  for item_ref in s.get("relationships", {}).get("items", {}).get("data", []) or []:
+                      item = included.get((item_ref["type"], item_ref["id"]))
+                      if item and item.get("attributes", {}).get("state") == "REJECTED":
+                          iid = item["id"]
+                          rd = requests.delete(f"{base}/reviewSubmissionItems/{iid}", headers=h)
+                          print(f"DELETE item {iid} HTTP {rd.status_code}: {rd.text[:200]}")
+              raise SystemExit(0)
+
+          if action == "cancel_ready":
+              for s in subs:
+                  if s["attributes"].get("state") == "READY_FOR_REVIEW":
+                      sid = s["id"]
+                      rd = requests.delete(f"{base}/reviewSubmissions/{sid}", headers=h)
+                      print(f"DELETE READY submission {sid} HTTP {rd.status_code}: {rd.text[:200]}")
               raise SystemExit(0)
 
           # Find the open one.
