@@ -28,19 +28,20 @@ final class PortfolioService: ObservableObject {
     @Published private(set) var isLoading: Bool = false
     @Published private(set) var error: String?
 
-    private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
-    private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
+    private var baseURL: URL { X5Config.supabaseBaseURL }
+    private var anonKey: String { X5Config.supabaseAnonKey }
 
     func load(userId: String, accessToken: String) async {
         isLoading = true
         defer { isLoading = false }
-        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/portfolio_items"), resolvingAgainstBaseURL: false)!
+        guard var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/portfolio_items"), resolvingAgainstBaseURL: false) else { return }
         components.queryItems = [
             URLQueryItem(name: "user_id", value: "eq.\(userId)"),
             URLQueryItem(name: "select", value: "*"),
             URLQueryItem(name: "order", value: "sort_order.asc,created_at.desc")
         ]
-        var request = URLRequest(url: components.url!)
+        guard let reqURL = components.url else { return }
+        var request = URLRequest(url: reqURL)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         guard let (data, _) = try? await URLSession.shared.data(for: request) else { return }
@@ -99,9 +100,10 @@ final class PortfolioService: ObservableObject {
     }
 
     func delete(itemId: String, accessToken: String) async {
-        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/portfolio_items"), resolvingAgainstBaseURL: false)!
+        guard var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/portfolio_items"), resolvingAgainstBaseURL: false) else { return }
         components.queryItems = [URLQueryItem(name: "id", value: "eq.\(itemId)")]
-        var request = URLRequest(url: components.url!)
+        guard let reqURL = components.url else { return }
+        var request = URLRequest(url: reqURL)
         request.httpMethod = "DELETE"
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")

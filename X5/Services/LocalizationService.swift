@@ -373,6 +373,9 @@ extension LocalizationService {
 
             // IAP errors
             "iap_invalid_url": "Не удалось сформировать ссылку покупки.",
+
+            // Settings extra
+            "settings_manage_subscription": "Управление подпиской",
         ],
         .en: [
             "btn_save": "Save",
@@ -668,6 +671,9 @@ extension LocalizationService {
 
             // IAP errors
             "iap_invalid_url": "Could not build purchase URL.",
+
+            // Settings extra
+            "settings_manage_subscription": "Manage subscription",
         ],
         .kk: [
             "btn_save": "Сақтау",
@@ -963,6 +969,9 @@ extension LocalizationService {
 
             // IAP errors
             "iap_invalid_url": "Сатып алу сілтемесін жасай алмадық.",
+
+            // Settings extra
+            "settings_manage_subscription": "Жазылымды басқару",
         ]
     ]
 }

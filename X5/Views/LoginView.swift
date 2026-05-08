@@ -215,11 +215,13 @@ struct LoginView: View {
 
     private var legalBlock: some View {
         HStack(spacing: 14) {
-            Link("Privacy Policy",
-                 destination: URL(string: "https://tooyakov-art.github.io/x5site/privacy.html")!)
+            if let privacyURL = URL(string: "https://tooyakov-art.github.io/x5site/privacy.html") {
+                Link("Privacy Policy", destination: privacyURL)
+            }
             Text("·")
-            Link("Terms",
-                 destination: URL(string: "https://tooyakov-art.github.io/x5site/terms.html")!)
+            if let termsURL = URL(string: "https://tooyakov-art.github.io/x5site/terms.html") {
+                Link("Terms", destination: termsURL)
+            }
         }
         .font(.system(size: 12))
         .foregroundColor(.white.opacity(0.5))
