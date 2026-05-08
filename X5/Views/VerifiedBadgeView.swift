@@ -59,8 +59,12 @@ struct VerifiedBadgeView: View {
                 }
 
                 HStack(spacing: 18) {
-                    Link("Terms", destination: URL(string: "https://tooyakov-art.github.io/x5site/terms.html")!)
-                    Link("Privacy", destination: URL(string: "https://tooyakov-art.github.io/x5site/privacy.html")!)
+                    if let termsURL = URL(string: "https://tooyakov-art.github.io/x5site/terms.html") {
+                        Link("Terms", destination: termsURL)
+                    }
+                    if let privacyURL = URL(string: "https://tooyakov-art.github.io/x5site/privacy.html") {
+                        Link("Privacy", destination: privacyURL)
+                    }
                 }
                 .font(.system(size: 12))
                 .foregroundColor(.white.opacity(0.5))

@@ -32,6 +32,22 @@ struct SettingsView: View {
                         Text(subscription.isPro ? loc.t("settings_pro_active") : loc.t("settings_free"))
                             .foregroundColor(subscription.isPro ? .accentColor : .secondary)
                     }
+                    Button {
+                        if let url = URL(string: "itms-apps://apps.apple.com/account/subscriptions") {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: "creditcard")
+                                .foregroundColor(.accentColor)
+                                .frame(width: 22)
+                            Text(loc.t("settings_manage_subscription"))
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "arrow.up.forward.app")
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 }
 
                 // Appearance / language — read-only, follows system iOS language
@@ -188,9 +204,15 @@ struct SettingsView: View {
 
                 // Legal
                 Section(loc.t("settings_legal")) {
-                    Link(loc.t("settings_privacy"), destination: URL(string: "https://tooyakov-art.github.io/x5site/privacy.html")!)
-                    Link(loc.t("settings_terms"), destination: URL(string: "https://tooyakov-art.github.io/x5site/terms.html")!)
-                    Link(loc.t("settings_support"), destination: URL(string: "mailto:support@x5studio.app")!)
+                    if let privacyURL = URL(string: "https://tooyakov-art.github.io/x5site/privacy.html") {
+                        Link(loc.t("settings_privacy"), destination: privacyURL)
+                    }
+                    if let termsURL = URL(string: "https://tooyakov-art.github.io/x5site/terms.html") {
+                        Link(loc.t("settings_terms"), destination: termsURL)
+                    }
+                    if let supportURL = URL(string: "mailto:support@x5studio.app") {
+                        Link(loc.t("settings_support"), destination: supportURL)
+                    }
                 }
 
                 Section {
