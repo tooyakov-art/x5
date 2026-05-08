@@ -20,7 +20,7 @@ struct PaywallView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 24)
 
-                Text("X5 Pro")
+                Text(loc.t("paywall_title"))
                     .font(.system(size: 32, weight: .heavy))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
@@ -33,11 +33,11 @@ struct PaywallView: View {
                     .frame(maxWidth: .infinity)
 
                 VStack(alignment: .leading, spacing: 14) {
-                    Feature(text: "1000 credits added on subscribe")
-                    Feature(text: "All AI tools (image, video, lipsync, design)")
-                    Feature(text: "Full courses library")
-                    Feature(text: "Hire vetted marketers in Hub")
-                    Feature(text: "Priority support")
+                    Feature(text: loc.t("paywall_feat_credits"))
+                    Feature(text: loc.t("paywall_feat_tools"))
+                    Feature(text: loc.t("paywall_feat_courses"))
+                    Feature(text: loc.t("paywall_feat_hub"))
+                    Feature(text: loc.t("paywall_feat_support"))
                 }
                 .padding(20)
                 .background(Color.white.opacity(0.05))
@@ -106,8 +106,12 @@ struct PaywallView: View {
                     .padding(.top, 8)
 
                 HStack(spacing: 18) {
-                    Link("Terms of Use (EULA)", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
-                    Link(loc.t("paywall_privacy_link"), destination: URL(string: "https://tooyakov-art.github.io/x5site/privacy.html")!)
+                    if let eulaURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
+                        Link(loc.t("paywall_terms_link"), destination: eulaURL)
+                    }
+                    if let privacyURL = URL(string: "https://tooyakov-art.github.io/x5site/privacy.html") {
+                        Link(loc.t("paywall_privacy_link"), destination: privacyURL)
+                    }
                 }
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.white.opacity(0.7))
@@ -130,10 +134,10 @@ struct PaywallView: View {
             .padding(20)
         }
         .task { await iap.loadProducts() }
-        .alert("Welcome to Pro!", isPresented: $showSuccess) {
-            Button("Continue") { dismiss() }
+        .alert(loc.t("paywall_welcome_pro"), isPresented: $showSuccess) {
+            Button(loc.t("paywall_continue")) { dismiss() }
         } message: {
-            Text("1000 credits have been added to your balance.")
+            Text(loc.t("paywall_credits_added"))
         }
     }
 

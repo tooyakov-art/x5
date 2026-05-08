@@ -4,6 +4,7 @@ struct MainView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var history: CaptionHistory
     @EnvironmentObject private var brand: BrandProfile
+    @EnvironmentObject private var loc: LocalizationService
 
     @State private var topic: String = ""
     @State private var tone: Tone = .friendly
@@ -48,13 +49,13 @@ struct MainView: View {
                     }
                     .pickerStyle(.segmented)
 
-                    Text("Target length: \(platform.recommendedLength) chars")
+                    Text("\(loc.t("main_target_length")): \(platform.recommendedLength)")
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.45))
                         .padding(.top, -6)
 
                     Button(action: generate) {
-                        Text("Generate")
+                        Text(loc.t("main_generate"))
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(.black)
                             .frame(maxWidth: .infinity)

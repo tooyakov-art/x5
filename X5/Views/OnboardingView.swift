@@ -5,6 +5,7 @@ import SwiftUI
 struct OnboardingView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
+    @EnvironmentObject private var loc: LocalizationService
 
     @State private var role: Role?
     @State private var pickedCategories: Set<String> = []
@@ -56,11 +57,11 @@ struct OnboardingView: View {
                 .foregroundColor(.white)
                 .shadow(color: Color(red: 0.16, green: 0.50, blue: 0.95).opacity(0.5), radius: 24)
 
-            Text("Tell us who you are")
+            Text(loc.t("onb_title"))
                 .font(.system(size: 24, weight: .heavy))
                 .foregroundColor(.white)
 
-            Text("This helps us tailor your experience and what you see in Hub.")
+            Text(loc.t("onb_subtitle"))
                 .font(.system(size: 13))
                 .foregroundColor(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
@@ -71,12 +72,12 @@ struct OnboardingView: View {
     private var rolePicker: some View {
         VStack(spacing: 12) {
             roleCard(.specialist,
-                     title: "I'm a specialist",
-                     subtitle: "I sell my skills (marketer, designer, dev, copywriter, etc.)",
+                     title: loc.t("onb_role_specialist"),
+                     subtitle: loc.t("onb_role_specialist_sub"),
                      systemImage: "person.crop.square.fill")
             roleCard(.entrepreneur,
-                     title: "I'm an entrepreneur",
-                     subtitle: "I run a business and want to hire specialists",
+                     title: loc.t("onb_role_entrepreneur"),
+                     subtitle: loc.t("onb_role_entrepreneur_sub"),
                      systemImage: "briefcase.fill")
         }
     }
@@ -113,7 +114,7 @@ struct OnboardingView: View {
     private var categoriesPicker: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Pick up to 3 categories")
+                Text(loc.t("onb_pick_categories"))
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.white)
                 Spacer()
@@ -149,10 +150,10 @@ struct OnboardingView: View {
 
     private var bioField: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Short bio (optional)")
+            Text(loc.t("onb_bio_label"))
                 .font(.system(size: 12, weight: .bold))
                 .foregroundColor(.white.opacity(0.6))
-            TextField("e.g. 7y in performance marketing for SaaS", text: $bio, axis: .vertical)
+            TextField(loc.t("onb_bio_placeholder"), text: $bio, axis: .vertical)
                 .lineLimit(2...4)
                 .padding(12)
                 .background(Color.white.opacity(0.06))
@@ -162,7 +163,7 @@ struct OnboardingView: View {
     }
 
     private var entrepreneurNote: some View {
-        Text("You'll be able to post tasks in Hub and chat with specialists right after.")
+        Text(loc.t("onb_entrepreneur_note"))
             .font(.system(size: 13))
             .foregroundColor(.white.opacity(0.6))
             .padding(14)
@@ -174,7 +175,7 @@ struct OnboardingView: View {
         Button(action: submit) {
             HStack {
                 if saving { ProgressView().tint(.black) }
-                Text(saving ? "Saving…" : "Continue")
+                Text(saving ? loc.t("onb_saving") : loc.t("onb_continue"))
                     .font(.system(size: 16, weight: .bold))
             }
             .foregroundColor(.black)
@@ -221,11 +222,16 @@ struct OnboardingView: View {
 
     private func patchProfile(role: Role, token: String) async throws {
         guard let userId = auth.userId else { return }
-        let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
-        let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
-        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
+        let baseURL = X5Config.supabaseBaseURL
+        let anonKey = X5Config.supabaseAnonKey
+        guard var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false) else {
+            throw NSError(domain: "Onboarding", code: -1, userInfo: [NSLocalizedDescriptionKey: loc.t("onb_save_failed")])
+        }
         components.queryItems = [URLQueryItem(name: "id", value: "eq.\(userId)")]
-        var request = URLRequest(url: components.url!)
+        guard let url = components.url else {
+            throw NSError(domain: "Onboarding", code: -1, userInfo: [NSLocalizedDescriptionKey: loc.t("onb_save_failed")])
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -242,7 +248,7 @@ struct OnboardingView: View {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (_, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw NSError(domain: "Onboarding", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "Could not save your role."])
+            throw NSError(domain: "Onboarding", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: loc.t("onb_save_failed")])
         }
     }
 }

@@ -289,6 +289,90 @@ extension LocalizationService {
             "verified_benefit_3": "Знак того, что ты — настоящий специалист",
             "verified_subscribe": "Подписаться за 990 ₸/мес",
             "verified_active": "Галочка активна до",
+
+            // App lock
+            "app_lock_unlock_title": "Разблокируй X5",
+            "app_lock_button": "Разблокировать",
+            "app_lock_checking": "Проверяем…",
+            "app_lock_unavailable": "Биометрия недоступна на устройстве. Отключи Face ID в настройках X5.",
+            "app_lock_reason": "Доступ к X5",
+            "app_lock_failed": "Не удалось разблокировать",
+            "app_lock_passcode_fallback": "Введи код-пароль",
+
+            // Notifications
+            "notif_empty_desc": "Когда кто-то ответит на твою задачу, примет твоё предложение или напишет в чат — появится здесь.",
+
+            // Hub report/block
+            "hub_report_user": "Пожаловаться",
+            "hub_block_user": "Заблокировать",
+            "hub_block_author": "Заблокировать автора",
+            "hub_block_user_title": "Заблокировать пользователя?",
+            "hub_block_author_title": "Заблокировать автора?",
+            "hub_block_user_message": "Контент этого пользователя больше не будет показываться.",
+            "hub_block_author_message": "Задачи и сообщения этого автора больше не будут показываться.",
+            "hub_open_profile": "Открыть профиль",
+
+            // Hub task detail
+            "hub_anonymous": "Анонимно",
+            "hub_specialist": "Специалист",
+            "hub_deadline": "Дедлайн",
+            "hub_responses_label": "ОТКЛИКИ",
+            "hub_no_responses": "Откликов пока нет.",
+            "hub_author_notice": "Это твоя задача — отклики выше, можешь принять одного.",
+            "hub_response_sent": "Твой отклик отправлен. Ждём, пока автор примет.",
+            "hub_task_closed": "Задача закрыта для новых откликов.",
+            "hub_respond_to_task": "Откликнуться",
+            "hub_accepted": "ПРИНЯТ",
+
+            // User profile
+            "user_open": "Opening…",
+            "user_send_message": "Написать сообщение",
+
+            // Main view
+            "main_target_length": "Целевая длина",
+            "main_generate": "Сгенерировать",
+            "main_short": "Коротко",
+            "main_medium": "Средне",
+            "main_long": "Длинно",
+
+            // Profile / common
+            "profile_title": "Профиль",
+
+            // Onboarding
+            "onb_title": "Расскажи о себе",
+            "onb_subtitle": "Это поможет настроить опыт и то, что ты увидишь в Hub.",
+            "onb_role_specialist": "Я специалист",
+            "onb_role_specialist_sub": "Продаю свои навыки (маркетолог, дизайнер, разработчик, копирайтер и т.д.)",
+            "onb_role_entrepreneur": "Я предприниматель",
+            "onb_role_entrepreneur_sub": "Веду бизнес и хочу нанимать специалистов",
+            "onb_pick_categories": "Выбери до 3 категорий",
+            "onb_bio_label": "Короткое био (по желанию)",
+            "onb_bio_placeholder": "напр. 7 лет в performance-маркетинге для SaaS",
+            "onb_entrepreneur_note": "Ты сможешь публиковать задачи в Hub и сразу писать специалистам.",
+            "onb_continue": "Продолжить",
+            "onb_saving": "Сохраняем…",
+            "onb_save_failed": "Не удалось сохранить роль.",
+
+            // Paywall extra
+            "paywall_title": "X5 Pro",
+            "paywall_feat_credits": "1000 кредитов при подписке",
+            "paywall_feat_tools": "Все ИИ-инструменты (фото, видео, lipsync, дизайн)",
+            "paywall_feat_courses": "Полная библиотека курсов",
+            "paywall_feat_hub": "Найм проверенных маркетологов в Hub",
+            "paywall_feat_support": "Приоритетная поддержка",
+            "paywall_terms_link": "Условия использования (EULA)",
+            "paywall_welcome_pro": "Добро пожаловать в Pro!",
+            "paywall_credits_added": "1000 кредитов начислено на твой баланс.",
+            "paywall_continue": "Продолжить",
+
+            // Courses extra
+            "courses_create_btn": "Создать",
+
+            // Common
+            "common_anonymous": "Анонимно",
+
+            // IAP errors
+            "iap_invalid_url": "Не удалось сформировать ссылку покупки.",
         ],
         .en: [
             "btn_save": "Save",
@@ -500,6 +584,90 @@ extension LocalizationService {
             "verified_benefit_3": "Proof that you're a real specialist",
             "verified_subscribe": "Subscribe for $1.99/mo",
             "verified_active": "Verified until",
+
+            // App lock
+            "app_lock_unlock_title": "Unlock X5",
+            "app_lock_button": "Unlock",
+            "app_lock_checking": "Checking…",
+            "app_lock_unavailable": "Biometry unavailable on this device. Disable Face ID in X5 settings.",
+            "app_lock_reason": "Access X5",
+            "app_lock_failed": "Could not unlock",
+            "app_lock_passcode_fallback": "Enter passcode",
+
+            // Notifications
+            "notif_empty_desc": "When someone replies to your task, accepts your offer or sends a chat message, it will appear here.",
+
+            // Hub report/block
+            "hub_report_user": "Report",
+            "hub_block_user": "Block",
+            "hub_block_author": "Block author",
+            "hub_block_user_title": "Block user?",
+            "hub_block_author_title": "Block author?",
+            "hub_block_user_message": "This user's content will no longer be shown.",
+            "hub_block_author_message": "Tasks and messages from this author will no longer be shown.",
+            "hub_open_profile": "Open profile",
+
+            // Hub task detail
+            "hub_anonymous": "Anonymous",
+            "hub_specialist": "Specialist",
+            "hub_deadline": "Deadline",
+            "hub_responses_label": "RESPONSES",
+            "hub_no_responses": "No responses yet.",
+            "hub_author_notice": "This is your task — you'll see responses above and can accept one.",
+            "hub_response_sent": "Your response is sent. Wait for the author to accept it.",
+            "hub_task_closed": "This task is closed for new responses.",
+            "hub_respond_to_task": "Respond to task",
+            "hub_accepted": "ACCEPTED",
+
+            // User profile
+            "user_open": "Opening…",
+            "user_send_message": "Send message",
+
+            // Main view
+            "main_target_length": "Target length",
+            "main_generate": "Generate",
+            "main_short": "Short",
+            "main_medium": "Medium",
+            "main_long": "Long",
+
+            // Profile / common
+            "profile_title": "Profile",
+
+            // Onboarding
+            "onb_title": "Tell us who you are",
+            "onb_subtitle": "This helps us tailor your experience and what you see in Hub.",
+            "onb_role_specialist": "I'm a specialist",
+            "onb_role_specialist_sub": "I sell my skills (marketer, designer, dev, copywriter, etc.)",
+            "onb_role_entrepreneur": "I'm an entrepreneur",
+            "onb_role_entrepreneur_sub": "I run a business and want to hire specialists",
+            "onb_pick_categories": "Pick up to 3 categories",
+            "onb_bio_label": "Short bio (optional)",
+            "onb_bio_placeholder": "e.g. 7y in performance marketing for SaaS",
+            "onb_entrepreneur_note": "You'll be able to post tasks in Hub and chat with specialists right after.",
+            "onb_continue": "Continue",
+            "onb_saving": "Saving…",
+            "onb_save_failed": "Could not save your role.",
+
+            // Paywall extra
+            "paywall_title": "X5 Pro",
+            "paywall_feat_credits": "1000 credits added on subscribe",
+            "paywall_feat_tools": "All AI tools (image, video, lipsync, design)",
+            "paywall_feat_courses": "Full courses library",
+            "paywall_feat_hub": "Hire vetted marketers in Hub",
+            "paywall_feat_support": "Priority support",
+            "paywall_terms_link": "Terms of Use (EULA)",
+            "paywall_welcome_pro": "Welcome to Pro!",
+            "paywall_credits_added": "1000 credits have been added to your balance.",
+            "paywall_continue": "Continue",
+
+            // Courses extra
+            "courses_create_btn": "Create",
+
+            // Common
+            "common_anonymous": "Anonymous",
+
+            // IAP errors
+            "iap_invalid_url": "Could not build purchase URL.",
         ],
         .kk: [
             "btn_save": "Сақтау",
@@ -711,6 +879,90 @@ extension LocalizationService {
             "verified_benefit_3": "Сен нағыз маман екеніңнің дәлелі",
             "verified_subscribe": "990 ₸/айға жазылу",
             "verified_active": "Дейін расталған",
+
+            // App lock
+            "app_lock_unlock_title": "X5-ті ашу",
+            "app_lock_button": "Ашу",
+            "app_lock_checking": "Тексеру…",
+            "app_lock_unavailable": "Биометрия қол жетімсіз. X5 параметрлерінде Face ID өшіріңіз.",
+            "app_lock_reason": "X5-ке кіру",
+            "app_lock_failed": "Аша алмадық",
+            "app_lock_passcode_fallback": "Құпиясөзді еңгіз",
+
+            // Notifications
+            "notif_empty_desc": "Біреу тапсырмаңа жауап берсе, ұсынысыңды қабылдаса немесе чатқа жазса — осында пайда болады.",
+
+            // Hub report/block
+            "hub_report_user": "Шағымдану",
+            "hub_block_user": "Блоктау",
+            "hub_block_author": "Авторды блоктау",
+            "hub_block_user_title": "Қолданушыны блоктау?",
+            "hub_block_author_title": "Авторды блоктау?",
+            "hub_block_user_message": "Бұл қолданушының контенті бұдан былай көрсетілмейді.",
+            "hub_block_author_message": "Бұл автордың тапсырмалары мен хабарлары бұдан былай көрсетілмейді.",
+            "hub_open_profile": "Профильді ашу",
+
+            // Hub task detail
+            "hub_anonymous": "Анонимді",
+            "hub_specialist": "Маман",
+            "hub_deadline": "Мерзімі",
+            "hub_responses_label": "ЖАУАПТАР",
+            "hub_no_responses": "Әлі жауап жоқ.",
+            "hub_author_notice": "Бұл — сенің тапсырмаң. Жауаптар жоғарыда, біреуін қабылдай аласың.",
+            "hub_response_sent": "Жауабың жіберілді. Автор қабылдағанша күт.",
+            "hub_task_closed": "Бұл тапсырма жаңа жауаптар үшін жабық.",
+            "hub_respond_to_task": "Жауап беру",
+            "hub_accepted": "ҚАБЫЛДАНДЫ",
+
+            // User profile
+            "user_open": "Ашу…",
+            "user_send_message": "Хабарлама жазу",
+
+            // Main view
+            "main_target_length": "Қажетті ұзындық",
+            "main_generate": "Генерациялау",
+            "main_short": "Қысқа",
+            "main_medium": "Орташа",
+            "main_long": "Ұзақ",
+
+            // Profile / common
+            "profile_title": "Профиль",
+
+            // Onboarding
+            "onb_title": "Өзің туралы айтып бер",
+            "onb_subtitle": "Бұл тәжірибеңді және Hub-та көретін нәрсені баптауға көмектеседі.",
+            "onb_role_specialist": "Мен маманмын",
+            "onb_role_specialist_sub": "Дағдыларымды сатамын (маркетолог, дизайнер, әзірлеуші, копирайтер және т.б.)",
+            "onb_role_entrepreneur": "Мен кәсіпкермін",
+            "onb_role_entrepreneur_sub": "Бизнес жүргіземін, мамандарды жалдағым келеді",
+            "onb_pick_categories": "3-тен аспайтын санат таңда",
+            "onb_bio_label": "Қысқа био (қалауыңша)",
+            "onb_bio_placeholder": "мысалы, SaaS-ке 7 жыл performance-маркетинг",
+            "onb_entrepreneur_note": "Hub-та тапсырмалар жариялап, мамандармен бірден чатта сөйлесе аласың.",
+            "onb_continue": "Жалғастыру",
+            "onb_saving": "Сақтау…",
+            "onb_save_failed": "Рөлді сақтау сәтсіз.",
+
+            // Paywall extra
+            "paywall_title": "X5 Pro",
+            "paywall_feat_credits": "Жазылған кезде 1000 кредит қосылады",
+            "paywall_feat_tools": "Барлық ИИ-құралдар (фото, видео, lipsync, дизайн)",
+            "paywall_feat_courses": "Курстар кітапханасы толық",
+            "paywall_feat_hub": "Hub-та расталған маркетологтарды жалдау",
+            "paywall_feat_support": "Басым қолдау",
+            "paywall_terms_link": "Қолдану шарттары (EULA)",
+            "paywall_welcome_pro": "Pro-ға қош келдің!",
+            "paywall_credits_added": "Балансыңа 1000 кредит қосылды.",
+            "paywall_continue": "Жалғастыру",
+
+            // Courses extra
+            "courses_create_btn": "Жасау",
+
+            // Common
+            "common_anonymous": "Анонимді",
+
+            // IAP errors
+            "iap_invalid_url": "Сатып алу сілтемесін жасай алмадық.",
         ]
     ]
 }

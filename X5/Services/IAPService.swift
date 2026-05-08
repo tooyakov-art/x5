@@ -15,8 +15,8 @@ final class IAPService: ObservableObject {
 
     private var updatesTask: Task<Void, Never>?
 
-    private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
-    private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
+    private var baseURL: URL { X5Config.supabaseBaseURL }
+    private var anonKey: String { X5Config.supabaseAnonKey }
 
     init() {
         startTransactionListener()
@@ -45,7 +45,7 @@ final class IAPService: ObservableObject {
             return false
         }
         let endIso = ISO8601DateFormatter().string(
-            from: Calendar.current.date(byAdding: .day, value: 30, to: Date())!
+            from: Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date().addingTimeInterval(30 * 24 * 3600)
         )
         await currentUser.patchMany([
             "is_verified": AnyEncodable(true),
@@ -165,7 +165,9 @@ final class IAPService: ObservableObject {
             return
         }
 
-        let endDate = transaction.expirationDate ?? Calendar.current.date(byAdding: .month, value: 1, to: Date())!
+        let endDate = transaction.expirationDate
+            ?? Calendar.current.date(byAdding: .month, value: 1, to: Date())
+            ?? Date().addingTimeInterval(30 * 24 * 3600)
         let endIso = ISO8601DateFormatter().string(from: endDate)
         let startIso = ISO8601DateFormatter().string(from: transaction.purchaseDate)
 
@@ -174,12 +176,15 @@ final class IAPService: ObservableObject {
         // a re-delivery of an already-known one (skip credits).
         var currentCredits = 0
         var storedEndDate: Date? = nil
-        var getURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
+        guard var getURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false) else {
+            return
+        }
         getURL.queryItems = [
             URLQueryItem(name: "id", value: "eq.\(userId)"),
             URLQueryItem(name: "select", value: "credits,subscription_end_date")
         ]
-        var getReq = URLRequest(url: getURL.url!)
+        guard let getReqURL = getURL.url else { return }
+        var getReq = URLRequest(url: getReqURL)
         getReq.setValue(anonKey, forHTTPHeaderField: "apikey")
         getReq.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         if let (data, _) = try? await URLSession.shared.data(for: getReq),
@@ -211,9 +216,12 @@ final class IAPService: ObservableObject {
             body["credits"] = currentCredits + 1000
         }
 
-        var patchURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
+        guard var patchURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false) else {
+            return
+        }
         patchURL.queryItems = [URLQueryItem(name: "id", value: "eq.\(userId)")]
-        var patch = URLRequest(url: patchURL.url!)
+        guard let patchReqURL = patchURL.url else { return }
+        var patch = URLRequest(url: patchReqURL)
         patch.httpMethod = "PATCH"
         patch.setValue(anonKey, forHTTPHeaderField: "apikey")
         patch.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")

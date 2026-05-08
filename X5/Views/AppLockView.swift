@@ -5,6 +5,7 @@ import LocalAuthentication
 /// Triggered on every cold launch and on resume from background.
 struct AppLockView: View {
     @Binding var isLocked: Bool
+    @EnvironmentObject private var loc: LocalizationService
     @State private var failureMessage: String?
     @State private var attempting = false
 
@@ -24,7 +25,7 @@ struct AppLockView: View {
                     .font(.system(size: 64, weight: .light))
                     .foregroundColor(.accentColor)
 
-                Text("Разблокируй X5")
+                Text(loc.t("app_lock_unlock_title"))
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(.white)
 
@@ -44,7 +45,7 @@ struct AppLockView: View {
                     HStack(spacing: 8) {
                         if attempting { ProgressView().tint(.black) }
                         Image(systemName: "faceid")
-                        Text(attempting ? "Проверяем…" : "Разблокировать")
+                        Text(attempting ? loc.t("app_lock_checking") : loc.t("app_lock_button"))
                     }
                     .font(.system(size: 16, weight: .bold))
                     .foregroundColor(.black)
@@ -67,20 +68,20 @@ struct AppLockView: View {
         attempting = true
         failureMessage = nil
         let context = LAContext()
-        context.localizedFallbackTitle = "Введи код-пароль"
+        context.localizedFallbackTitle = loc.t("app_lock_passcode_fallback")
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
             attempting = false
-            failureMessage = "Биометрия недоступна на устройстве. Отключи Face ID в настройках X5."
+            failureMessage = loc.t("app_lock_unavailable")
             return
         }
-        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Доступ к X5") { ok, err in
+        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: loc.t("app_lock_reason")) { ok, err in
             DispatchQueue.main.async {
                 attempting = false
                 if ok {
                     withAnimation(.easeInOut(duration: 0.2)) { isLocked = false }
                 } else {
-                    failureMessage = (err as NSError?)?.localizedDescription ?? "Не удалось разблокировать"
+                    failureMessage = (err as NSError?)?.localizedDescription ?? loc.t("app_lock_failed")
                 }
             }
         }
