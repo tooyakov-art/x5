@@ -5,6 +5,7 @@ struct ProfileView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var subscription: Subscription
     @EnvironmentObject private var currentUser: CurrentUser
+    @EnvironmentObject private var loc: LocalizationService
     @StateObject private var iap = IAPService()
     @Environment(\.dismiss) private var dismiss
 
@@ -55,7 +56,7 @@ struct ProfileView: View {
                 .frame(maxWidth: .infinity)
             }
             .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
-            .navigationTitle("Profile")
+            .navigationTitle(loc.t("profile_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
@@ -70,7 +71,7 @@ struct ProfileView: View {
                 }
                 if showsDoneButton {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("Done") { dismiss() }
+                        Button(loc.t("btn_done")) { dismiss() }
                     }
                 }
             }

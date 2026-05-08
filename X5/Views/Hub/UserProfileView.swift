@@ -8,6 +8,7 @@ struct UserProfileView: View {
     let fallback: HubSpecialist?
 
     @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
     @StateObject private var chats = ChatsService()
 
@@ -17,8 +18,8 @@ struct UserProfileView: View {
     @State private var navigatingChat: ChatRoom?
     @State private var confirmBlock = false
 
-    private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
-    private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
+    private var baseURL: URL { X5Config.supabaseBaseURL }
+    private var anonKey: String { X5Config.supabaseAnonKey }
 
     var body: some View {
         ScrollView {
@@ -55,12 +56,12 @@ struct UserProfileView: View {
                         Button {
                             reportUser()
                         } label: {
-                            Label("Пожаловаться", systemImage: "exclamationmark.bubble")
+                            Label(loc.t("hub_report_user"), systemImage: "exclamationmark.bubble")
                         }
                         Button(role: .destructive) {
                             confirmBlock = true
                         } label: {
-                            Label("Заблокировать", systemImage: "hand.raised.slash")
+                            Label(loc.t("hub_block_user"), systemImage: "hand.raised.slash")
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
@@ -69,14 +70,14 @@ struct UserProfileView: View {
                 }
             }
         }
-        .alert("Заблокировать пользователя?", isPresented: $confirmBlock) {
-            Button("Отмена", role: .cancel) {}
-            Button("Заблокировать", role: .destructive) {
+        .alert(loc.t("hub_block_user_title"), isPresented: $confirmBlock) {
+            Button(loc.t("btn_cancel"), role: .cancel) {}
+            Button(loc.t("hub_block_user"), role: .destructive) {
                 BlockList.add(userId)
                 dismiss()
             }
         } message: {
-            Text("Контент этого пользователя больше не будет показываться.")
+            Text(loc.t("hub_block_user_message"))
         }
         .task { await load() }
         .sheet(item: $navigatingChat) { chat in
@@ -106,7 +107,7 @@ struct UserProfileView: View {
                 } else {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
                 }
-                Text(openingChat ? "Opening…" : "Send message")
+                Text(openingChat ? loc.t("user_open") : loc.t("user_send_message"))
             }
             .font(.system(size: 15, weight: .bold))
             .foregroundColor(.black)

@@ -5,6 +5,7 @@ struct TaskDetailView: View {
 
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
+    @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
     @StateObject private var service = HubService()
     @StateObject private var chats = ChatsService()
@@ -63,7 +64,7 @@ struct TaskDetailView: View {
                 HStack(spacing: 10) {
                     AvatarView(urlString: task.authorAvatar, name: task.authorName, size: 36)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(task.authorName ?? "Anonymous")
+                        Text(task.authorName ?? loc.t("hub_anonymous"))
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.white)
                         if let company = task.companyName, !company.isEmpty {
@@ -73,20 +74,20 @@ struct TaskDetailView: View {
                     Spacer()
                     if let deadline = task.deadline, !deadline.isEmpty {
                         VStack(alignment: .trailing, spacing: 2) {
-                            Text("Deadline").font(.system(size: 9, weight: .heavy)).tracking(1.0).foregroundColor(.white.opacity(0.45))
+                            Text(loc.t("hub_deadline").uppercased()).font(.system(size: 9, weight: .heavy)).tracking(1.0).foregroundColor(.white.opacity(0.45))
                             Text(formatDate(deadline)).font(.system(size: 12, weight: .semibold)).foregroundColor(.white)
                         }
                     }
                 }
 
-                Text("RESPONSES (\(responses.count))")
+                Text("\(loc.t("hub_responses_label")) (\(responses.count))")
                     .font(.system(size: 10, weight: .heavy))
                     .tracking(1.4)
                     .foregroundColor(.white.opacity(0.45))
                     .padding(.top, 8)
 
                 if responses.isEmpty {
-                    Text("No responses yet.")
+                    Text(loc.t("hub_no_responses"))
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.5))
                 } else {
@@ -94,12 +95,12 @@ struct TaskDetailView: View {
                 }
 
                 if isAuthor {
-                    Text("This is your task — you'll see responses above and can accept one.")
+                    Text(loc.t("hub_author_notice"))
                         .font(.system(size: 11))
                         .foregroundColor(.white.opacity(0.45))
                         .padding(.top, 8)
                 } else if hasRespondedAlready {
-                    Text("Your response is sent. Wait for the author to accept it.")
+                    Text(loc.t("hub_response_sent"))
                         .font(.system(size: 12))
                         .foregroundColor(.accentColor.opacity(0.85))
                         .padding(.top, 8)
@@ -107,7 +108,7 @@ struct TaskDetailView: View {
                     Button {
                         showingRespond = true
                     } label: {
-                        Text("Respond to task")
+                        Text(loc.t("hub_respond_to_task"))
                             .font(.system(size: 16, weight: .bold))
                             .foregroundColor(.black)
                             .frame(maxWidth: .infinity)
@@ -118,7 +119,7 @@ struct TaskDetailView: View {
                     .buttonStyle(.plain)
                     .padding(.top, 8)
                 } else {
-                    Text("This task is closed for new responses.")
+                    Text(loc.t("hub_task_closed"))
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.5))
                         .padding(.top, 8)
@@ -140,12 +141,12 @@ struct TaskDetailView: View {
                         Button {
                             reportTask()
                         } label: {
-                            Label("Пожаловаться", systemImage: "exclamationmark.bubble")
+                            Label(loc.t("hub_report_user"), systemImage: "exclamationmark.bubble")
                         }
                         Button(role: .destructive) {
                             confirmBlock = true
                         } label: {
-                            Label("Заблокировать автора", systemImage: "hand.raised.slash")
+                            Label(loc.t("hub_block_author"), systemImage: "hand.raised.slash")
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
@@ -154,14 +155,14 @@ struct TaskDetailView: View {
                 }
             }
         }
-        .alert("Заблокировать автора?", isPresented: $confirmBlock) {
-            Button("Отмена", role: .cancel) {}
-            Button("Заблокировать", role: .destructive) {
+        .alert(loc.t("hub_block_author_title"), isPresented: $confirmBlock) {
+            Button(loc.t("btn_cancel"), role: .cancel) {}
+            Button(loc.t("hub_block_user"), role: .destructive) {
                 BlockList.add(task.authorId)
                 dismiss()
             }
         } message: {
-            Text("Задачи и сообщения этого автора больше не будут показываться.")
+            Text(loc.t("hub_block_author_message"))
         }
         .task { responses = await service.loadResponses(taskId: task.id) }
         .sheet(isPresented: $showingRespond) {
@@ -180,11 +181,11 @@ struct TaskDetailView: View {
                 AvatarView(urlString: r.specialistAvatar, name: r.specialistName, size: 32)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(r.specialistName ?? "Specialist")
+                        Text(r.specialistName ?? loc.t("hub_specialist"))
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.white)
                         if r.status == "accepted" {
-                            Text("ACCEPTED")
+                            Text(loc.t("hub_accepted"))
                                 .font(.system(size: 9, weight: .heavy))
                                 .padding(.horizontal, 5).padding(.vertical, 2)
                                 .background(Color.accentColor)

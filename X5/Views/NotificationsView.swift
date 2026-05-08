@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct NotificationsView: View {
+    @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -11,22 +12,22 @@ struct NotificationsView: View {
                     Image(systemName: "bell")
                         .font(.system(size: 38, weight: .light))
                         .foregroundColor(.white.opacity(0.4))
-                    Text("No notifications yet")
+                    Text(loc.t("notif_empty"))
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.white)
-                    Text("When someone replies to your task, accepts your offer or sends a chat message, it will appear here.")
+                    Text(loc.t("notif_empty_desc"))
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.5))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
                 }
             }
-            .navigationTitle("Notifications")
+            .navigationTitle(loc.t("notif_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button(loc.t("btn_done")) { dismiss() }
                 }
             }
         }

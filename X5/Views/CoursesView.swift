@@ -101,7 +101,7 @@ struct CoursesView: View {
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "plus")
-                                Text("Создать").bold()
+                                Text(loc.t("courses_create_btn")).bold()
                             }
                             .font(.system(size: 13, weight: .bold))
                             .foregroundColor(.black)
