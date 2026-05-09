@@ -1,32 +1,49 @@
 import SwiftUI
 
-/// AI generation hub — banner carousel + 14 tool cards.
-/// Mirrors the web HomeView. All tools open ToolDetailView (Coming soon),
-/// except 'captions' which navigates to the live caption templates feature.
+/// AI generation hub — banner carousel + tool cards.
 ///
-/// The tool grid is hidden for non-developer accounts so Apple Review
-/// doesn't see "In development — coming soon" placeholders (Guideline 2.1
-/// rejects previews of unfinished features). Developer accounts in
-/// `Roles.swift` keep the grid for in-app QA.
+/// Apple Review build 50 was rejected (Guideline 2.1a) because the Home
+/// tab "fetched no contents" on iPad — that was the showsTools/showsBanners
+/// gate hiding everything from non-developer accounts and leaving an empty
+/// screen.
+///
+/// Build 53 fix: ALWAYS show a populated Home. Non-developer accounts
+/// (incl. Apple's appreview tester) see only the live tools (Captions
+/// templates, Academy). Developer accounts still see the full grid with
+/// in-development tools for QA.
 struct HomeView: View {
     @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var loc: LocalizationService
 
     @State private var bannerIndex: Int = 0
     @State private var openTool: HomeTool?
     @State private var openCaptions: Bool = false
     @State private var showingNotifications: Bool = false
 
-    private var showsTools: Bool { Roles.isDeveloper(auth.userEmail) }
+    private var isDeveloper: Bool { Roles.isDeveloper(auth.userEmail) }
+    /// Apple-safe live tool IDs — these have working functionality.
+    private static let liveToolIDs: Set<String> = ["captions", "academy"]
+    private var visibleTools: [HomeTool] {
+        if isDeveloper { return HomeContent.tools }
+        return HomeContent.tools.filter { Self.liveToolIDs.contains($0.id) }
+    }
+    private var visibleBanners: [HomeBanner] {
+        if isDeveloper { return HomeContent.banners }
+        // Non-developer: hide all banners (each one points at an
+        // in-development tool, so the tap would dead-end on a Coming
+        // Soon screen and Apple rejects that as Guideline 2.1).
+        return []
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    bannerCarousel
-                    if showsTools {
-                        sectionHeader("AI Tools")
-                        toolGrid
+                    if !visibleBanners.isEmpty {
+                        bannerCarousel
                     }
+                    sectionHeader(isDeveloper ? "AI Tools" : "Live now")
+                    toolGrid
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
@@ -62,12 +79,8 @@ struct HomeView: View {
     private var bannerCarousel: some View {
         VStack(spacing: 8) {
             TabView(selection: $bannerIndex) {
-                ForEach(Array(HomeContent.banners.enumerated()), id: \.element.id) { idx, banner in
+                ForEach(Array(visibleBanners.enumerated()), id: \.element.id) { idx, banner in
                     HomeBannerCard(banner: banner) {
-                        // Same gate as toolGrid — non-developer taps on a
-                        // banner are no-ops so Apple Review never lands on
-                        // a "Coming soon" page.
-                        guard showsTools else { return }
                         if let tool = HomeContent.tools.first(where: { $0.id == banner.toolID }) {
                             openTool = tool
                         }
@@ -79,7 +92,7 @@ struct HomeView: View {
             .frame(height: 180)
 
             HStack(spacing: 6) {
-                ForEach(0..<HomeContent.banners.count, id: \.self) { i in
+                ForEach(0..<visibleBanners.count, id: \.self) { i in
                     Capsule()
                         .fill(i == bannerIndex ? Color.accentColor : Color.white.opacity(0.18))
                         .frame(width: i == bannerIndex ? 18 : 6, height: 6)
@@ -91,10 +104,13 @@ struct HomeView: View {
 
     private var toolGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            ForEach(HomeContent.tools) { tool in
+            ForEach(visibleTools) { tool in
                 Button {
                     if tool.id == "captions" {
                         openCaptions = true
+                    } else if tool.id == "academy" {
+                        // Live: deep-link to Courses tab via NotificationCenter.
+                        NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "courses"])
                     } else {
                         openTool = tool
                     }
