@@ -64,7 +64,7 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(loc.t("settings_language"))
                                     .foregroundColor(.primary)
-                                Text("\(loc.current.flag) \(loc.current.label) · \(loc.t("settings_lang_from_system"))")
+                                Text("\(loc.current.flag) \(loc.current.label) · из системы")
                                     .font(.caption).foregroundColor(.secondary)
                             }
                             Spacer()

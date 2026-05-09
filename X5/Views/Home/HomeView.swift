@@ -39,16 +39,11 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    if isDeveloper {
-                        // Developer-only: full QA grid with in-development tools.
-                        if !visibleBanners.isEmpty {
-                            bannerCarousel
-                        }
-                        sectionHeader("AI Tools")
-                        toolGrid
-                    } else {
-                        welcomeCard
+                    if !visibleBanners.isEmpty {
+                        bannerCarousel
                     }
+                    sectionHeader(isDeveloper ? "AI Tools" : "Live now")
+                    toolGrid
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
@@ -70,18 +65,13 @@ struct HomeView: View {
             }
             .sheet(item: $openTool) { tool in
                 ToolDetailView(tool: tool)
-                    .environmentObject(loc)
-                    .environmentObject(auth)
             }
             .sheet(isPresented: $openCaptions) {
                 NavigationStack { MainView() }
                     .preferredColorScheme(.dark)
-                    .environmentObject(loc)
-                    .environmentObject(auth)
             }
             .sheet(isPresented: $showingNotifications) {
                 NotificationsView()
-                    .environmentObject(loc)
             }
         }
     }
@@ -109,61 +99,6 @@ struct HomeView: View {
                         .animation(.easeInOut(duration: 0.2), value: bannerIndex)
                 }
             }
-        }
-    }
-
-    private var welcomeCard: some View {
-        VStack(spacing: 24) {
-            Spacer(minLength: 60)
-            Image(systemName: "sparkles")
-                .font(.system(size: 56, weight: .light))
-                .foregroundColor(.accentColor)
-            VStack(spacing: 12) {
-                Text(loc.t("home_welcome_title"))
-                    .font(.system(size: 28, weight: .heavy))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                Text(loc.t("home_welcome_subtitle"))
-                    .font(.system(size: 15))
-                    .foregroundColor(.white.opacity(0.65))
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 8)
-            }
-            VStack(alignment: .leading, spacing: 14) {
-                welcomeRow(icon: "briefcase.fill", title: loc.t("tab_hub"),
-                           subtitle: loc.t("home_welcome_hub"))
-                welcomeRow(icon: "bubble.left.and.bubble.right.fill", title: loc.t("tab_chats"),
-                           subtitle: loc.t("home_welcome_chats"))
-                welcomeRow(icon: "graduationcap.fill", title: loc.t("tab_courses"),
-                           subtitle: loc.t("home_welcome_courses"))
-                welcomeRow(icon: "person.crop.circle.fill", title: loc.t("tab_profile"),
-                           subtitle: loc.t("home_welcome_profile"))
-            }
-            .padding(20)
-            .background(Color.white.opacity(0.04))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            Spacer(minLength: 40)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func welcomeRow(icon: String, title: String, subtitle: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(.accentColor)
-                .frame(width: 28, height: 28)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.white)
-                Text(subtitle)
-                    .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.6))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
         }
     }
 

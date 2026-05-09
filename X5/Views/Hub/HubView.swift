@@ -93,7 +93,7 @@ struct HubView: View {
                 NavigationStack { ChatThreadView(chat: chat) }
                     .preferredColorScheme(.dark)
             }
-            .alert(loc.t("hub_chat_failed"), isPresented: Binding(
+            .alert("Чат не открылся", isPresented: Binding(
                 get: { chatError != nil },
                 set: { if !$0 { chatError = nil } }
             )) {
@@ -106,7 +106,7 @@ struct HubView: View {
 
     private func startChat(with person: HubSpecialist) {
         guard let myId = auth.userId, let token = auth.accessToken else {
-            chatError = loc.t("iap_signin_first")
+            chatError = "Сначала войди в аккаунт."
             return
         }
         openingChatWith = person.id
@@ -116,7 +116,7 @@ struct HubView: View {
             if let chat {
                 startingChat = chat
             } else {
-                chatError = chats.error ?? loc.t("hub_chat_failed_retry")
+                chatError = chats.error ?? "Не удалось открыть чат. Попробуй ещё раз."
             }
         }
     }
