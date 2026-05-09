@@ -445,7 +445,8 @@ private struct Bubble: View {
             } placeholder: {
                 Color.white.opacity(0.06).overlay(ProgressView().tint(.white.opacity(0.5)))
             }
-            .frame(maxWidth: 240, maxHeight: 320)
+            .frame(maxWidth: 360, maxHeight: 480)
+            .aspectRatio(3/4, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
     }

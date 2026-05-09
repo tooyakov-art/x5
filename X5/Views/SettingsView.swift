@@ -75,7 +75,7 @@ struct SettingsView: View {
                 } header: {
                     Text(loc.t("settings_appearance"))
                 } footer: {
-                    Text("Язык приложения берётся из языка iPhone. Чтобы сменить — Настройки iOS → X5 → Язык.")
+                    Text(loc.t("settings_language_footer"))
                 }
 
                 // Privacy & app
