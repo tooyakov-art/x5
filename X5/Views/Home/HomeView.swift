@@ -28,11 +28,11 @@ struct HomeView: View {
         return HomeContent.tools.filter { Self.liveToolIDs.contains($0.id) }
     }
     private var visibleBanners: [HomeBanner] {
-        if isDeveloper { return HomeContent.banners }
-        // Non-developer: hide all banners (each one points at an
-        // in-development tool, so the tap would dead-end on a Coming
-        // Soon screen and Apple rejects that as Guideline 2.1).
-        return []
+        // Banners hidden for everyone — Apple flagged the AI-generated
+        // face imagery as objectionable content (Guideline 1.1.1) and
+        // banners deep-link to in-development tools anyway. Developer
+        // accounts can still QA the tool grid below.
+        []
     }
 
     var body: some View {
