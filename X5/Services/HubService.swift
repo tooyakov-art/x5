@@ -127,8 +127,8 @@ final class HubService: ObservableObject {
     @Published private(set) var isLoading: Bool = false
     @Published private(set) var error: String?
 
-    private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
-    private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
+    private let baseURL = X5Config.supabaseBaseURL
+    private let anonKey = X5Config.supabaseAnonKey
 
     func loadSpecialists() async {
         isLoading = true

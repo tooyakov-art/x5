@@ -18,8 +18,8 @@ struct SupabaseSession: Decodable {
 }
 
 final class SupabaseClient {
-    private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
-    private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
+    private let baseURL = X5Config.supabaseBaseURL
+    private let anonKey = X5Config.supabaseAnonKey
 
     var accessToken: String?
     var refreshToken: String?
