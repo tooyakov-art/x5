@@ -74,8 +74,7 @@ jobs:
               sets = r.json()["data"]
               for s in sets:
                   display = s["attributes"].get("screenshotDisplayType")
-                  if display != "APP_IPHONE_69":
-                      continue
+                  print(f"  set: id={s['id']} display={display}")
                   set_id = s["id"]
                   # Get screenshots in this set, ordered.
                   r = requests.get(
