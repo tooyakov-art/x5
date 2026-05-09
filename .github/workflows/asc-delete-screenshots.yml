@@ -1,0 +1,96 @@
+name: ASC delete app store screenshots
+
+# Removes specific App Store screenshots from a version's iPhone display
+# variant. Used to drop the "Coming Soon" tool-detail and Face Swap
+# banner shots that Apple flagged as 2.3.1 misleading + 1.1.1
+# objectionable content.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string"
+        required: true
+        default: "1.1.0"
+      indexes_to_delete:
+        description: "Comma-separated 1-based positions in iPhone 6.9 set to delete"
+        required: true
+        default: "1,7"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      BUNDLE_ID: com.x5studio.app
+      VERSION: ${{ inputs.version }}
+      INDEXES: ${{ inputs.indexes_to_delete }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - name: Delete screenshots
+        run: |
+          python <<'PY'
+          import os, base64, time, sys
+          import jwt, requests
+
+          token = jwt.encode(
+              {"iss": os.environ["ASC_API_ISSUER_ID"], "iat": int(time.time()),
+               "exp": int(time.time()) + 300, "aud": "appstoreconnect-v1"},
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          h = {"Authorization": f"Bearer {token}"}
+          base = "https://api.appstoreconnect.apple.com/v1"
+          targets = [int(x.strip()) for x in os.environ["INDEXES"].split(",") if x.strip()]
+
+          r = requests.get(f"{base}/apps?filter[bundleId]={os.environ['BUNDLE_ID']}", headers=h)
+          app_id = r.json()["data"][0]["id"]
+          r = requests.get(f"{base}/apps/{app_id}/appStoreVersions", headers=h)
+          version_id = next(
+              (v["id"] for v in r.json()["data"]
+               if v["attributes"]["versionString"] == os.environ["VERSION"]),
+              None
+          )
+          if not version_id:
+              sys.exit(f"No version {os.environ['VERSION']}")
+          print(f"Version {os.environ['VERSION']}: {version_id}")
+
+          # Get version localizations.
+          r = requests.get(f"{base}/appStoreVersions/{version_id}/appStoreVersionLocalizations", headers=h)
+          locs = r.json()["data"]
+          print(f"Localizations: {len(locs)}")
+
+          for loc in locs:
+              loc_id = loc["id"]
+              loc_name = loc["attributes"].get("locale")
+              # Get screenshot sets for this localization.
+              r = requests.get(f"{base}/appStoreVersionLocalizations/{loc_id}/appScreenshotSets", headers=h)
+              sets = r.json()["data"]
+              for s in sets:
+                  display = s["attributes"].get("screenshotDisplayType")
+                  if display != "APP_IPHONE_69":
+                      continue
+                  set_id = s["id"]
+                  # Get screenshots in this set, ordered.
+                  r = requests.get(
+                      f"{base}/appScreenshotSets/{set_id}/appScreenshots",
+                      headers=h,
+                      params={"limit": 50},
+                  )
+                  shots = r.json()["data"]
+                  # Apple returns them sorted by id; we need order-by-position.
+                  # Sort by fileName (matches '_1', '_2', ... pattern from fastlane).
+                  shots_sorted = sorted(shots, key=lambda x: x["attributes"].get("fileName", ""))
+                  print(f"\n{loc_name} {display}: {len(shots_sorted)} screenshots")
+                  for i, sh in enumerate(shots_sorted, start=1):
+                      print(f"  {i}. id={sh['id']} file={sh['attributes'].get('fileName')}")
+                      if i in targets:
+                          dr = requests.delete(f"{base}/appScreenshots/{sh['id']}", headers=h)
+                          print(f"      DELETE → HTTP {dr.status_code}")
+          PY
