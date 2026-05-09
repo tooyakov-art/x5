@@ -455,6 +455,7 @@ private struct Bubble: View {
 private struct AudioBubble: View {
     let url: String?
     let isMine: Bool
+    @EnvironmentObject private var loc: LocalizationService
     @State private var player: AVPlayer?
     @State private var isPlaying = false
 
