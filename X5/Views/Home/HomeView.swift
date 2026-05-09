@@ -70,13 +70,18 @@ struct HomeView: View {
             }
             .sheet(item: $openTool) { tool in
                 ToolDetailView(tool: tool)
+                    .environmentObject(loc)
+                    .environmentObject(auth)
             }
             .sheet(isPresented: $openCaptions) {
                 NavigationStack { MainView() }
                     .preferredColorScheme(.dark)
+                    .environmentObject(loc)
+                    .environmentObject(auth)
             }
             .sheet(isPresented: $showingNotifications) {
                 NotificationsView()
+                    .environmentObject(loc)
             }
         }
     }
