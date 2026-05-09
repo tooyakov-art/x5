@@ -1,43 +1,76 @@
-X5 is a marketplace for creators (photographers, designers, video editors,
-copywriters, SMM managers) in Kazakhstan and Central Asia. The app has four
-main areas: Hub (open tasks from clients), Chats, Portfolio and Courses.
+X5 Creators is a marketplace and messaging app for creators (photographers,
+designers, video editors, copywriters, SMM managers) and clients in
+Kazakhstan and Central Asia. The app has four main areas: Hub (open tasks
+from clients), Chats, Portfolio and Courses.
+
+REVIEWER ANSWERS TO PREVIOUS REJECTION
+
+(1) Face Data — Guideline 2.1
+The app does not collect, store, transmit or process face data. Apple's
+LocalAuthentication framework is used only for an optional App Lock that
+the user can enable in Settings. Apple's Secure Enclave handles biometric
+matching on device; the app receives only a Boolean success/fail result
+and no biometric data. See privacy policy section "Why we ask for
+permissions → Face ID":
+https://tooyakov-art.github.io/x5site/privacy.html
+
+(2) Objectionable Content — Guideline 1.1.1
+The Home banners and tool grid that previously contained AI-generated
+faces and a battle scene have been removed in this build. The Home tab
+now shows only working tools (Captions, Academy). No imagery referencing
+race, religion, gender, violence or related themes remains in the app
+or in the App Store screenshots.
+
+(3) IAP not submitted — Guideline 2.1(b)
+X5 Pro Monthly subscription is included as an item in this submission.
+A review screenshot of the paywall has been uploaded to the subscription
+product.
+
+(4) Home tab "fetched no contents" on iPad — Guideline 2.1(a)
+Fixed. The previous gate that hid the tool grid for non-developer
+accounts is removed; live tools now display directly to all users.
 
 DEMO ACCOUNT
 Use the credentials in the Apple Demo Account fields. The account has a
-small portfolio (3 sample items) and a public profile already set up.
-Chats start empty — to test the chat flow, send yourself a Hub task
-proposal from the demo account; once accepted, a chat opens.
+small portfolio (3 sample items), 100 free credits, and a public profile
+already set up. There is one existing chat with sample messages; you can
+also open another account on a second device to test sending messages.
 
 QUICK TEST FLOW
 1. Sign in with Apple, Google, or the demo email + password.
-2. The Home tab shows the Hub — tap any task card to view details and
-   send a proposal.
-3. The Chats tab shows existing conversations. Open a chat to test:
-   - Send text, photos (paperclip → Photos), voice (long-press microphone)
-   - Long-press a bubble → Copy
-   - Top-right menu → Search, Mute, Pin, Open profile, Report, Block
-   - Swipe left on a chat row → Delete; swipe right → Pin / Mute
-4. The Portfolio tab shows the public profile. Tap "Edit" to add a
-   portfolio entry (image + caption).
-5. The Courses tab lists creator-published courses. Open a course → tap
-   any lesson → reading or video plays inline.
-6. Settings (gear icon on profile) → Cache, Promo notifications toggle,
-   Face ID lock, Sign out, Delete account.
+2. Home tab — Captions opens the live caption template tool; Academy
+   deep-links to the Courses tab.
+3. Hub tab — browse tasks, tap one, send a proposal.
+4. Chats tab — open the existing demo conversation; send text, attach a
+   photo (paperclip → Photos), record a voice message (long-press mic).
+   Top-right menu → Open profile, Report, Block. Swipe a row → Pin/Mute,
+   or Delete.
+5. Portfolio tab (Profile → Portfolio) — tap "+" to add a portfolio entry.
+6. Courses tab — "AI для бизнеса" is free; tap to open and play any lesson.
+7. Profile → Settings (gear icon) → Face ID lock, Promo notifications,
+   Cache, Sign out, Delete account.
 
 UGC SAFETY (Guideline 1.2)
 - Every chat user can be Blocked or Reported from the chat header menu.
-- Hub task authors can be Blocked from their profile.
-- Account deletion in Settings is two-step and removes auth + profile.
+- Hub task authors can be Blocked from their profile or Reported.
+- Reports open an email to our moderation team and are reviewed within
+  24 hours.
+- Account deletion in Settings is two-step and removes auth, profile,
+  portfolio, tasks and messages permanently.
+
+SUBSCRIPTION (Guideline 3.1.2)
+X5 Pro is an auto-renewing monthly subscription at $9.99/month. The
+paywall (Profile → Upgrade to Pro) shows: subscription length, price,
+auto-renewal terms, Apple's Standard EULA link, and a Privacy Policy
+link. Restore Purchases and Manage Subscription buttons are present.
 
 PUSH NOTIFICATIONS
-APNs token is registered after Sign-in. A Postgres trigger calls the
-send-message-push Edge Function on new messages. To test: open the app
-on a second device with a different account, send a message — first
-device gets a push.
+APNs is used to deliver new-message and accepted-proposal alerts. Permission
+is requested only after the user signs in.
 
 PRIVACY
-Sign in with Apple is offered alongside Google and email — Guideline
-4.8 satisfied. No third-party trackers, no ads. Authentication and
-profile/chat storage are on Supabase.
+Sign in with Apple is offered alongside Google and email (Guideline 4.8).
+No third-party trackers, no ads, no analytics SDKs. The app does not use
+App Tracking Transparency.
 
 If anything is unclear: support@x5studio.app.

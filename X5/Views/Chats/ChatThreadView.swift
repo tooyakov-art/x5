@@ -85,7 +85,7 @@ struct ChatThreadView: View {
                     // Voice recording state
                     HStack(spacing: 8) {
                         Circle().fill(.red).frame(width: 8, height: 8)
-                        Text("Запись… отпусти чтобы отправить")
+                        Text(loc.t("chat_recording_hint"))
                             .font(.system(size: 13)).foregroundColor(.white)
                         Spacer()
                     }
@@ -172,18 +172,18 @@ struct ChatThreadView: View {
                     Button {
                         showingProfile = true
                     } label: {
-                        Label("Открыть профиль", systemImage: "person.crop.circle")
+                        Label(loc.t("chat_open_profile"), systemImage: "person.crop.circle")
                     }
                     Divider()
                     Button {
                         report()
                     } label: {
-                        Label("Пожаловаться", systemImage: "exclamationmark.bubble")
+                        Label(loc.t("chat_report_user"), systemImage: "exclamationmark.bubble")
                     }
                     Button(role: .destructive) {
                         confirmBlock = true
                     } label: {
-                        Label("Заблокировать", systemImage: "hand.raised.slash")
+                        Label(loc.t("chat_block_user"), systemImage: "hand.raised.slash")
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -233,14 +233,14 @@ struct ChatThreadView: View {
             UserProfileView(userId: otherId, fallback: nil)
         }
         .confirmationDialog(
-            "Заблокировать пользователя?",
+            loc.t("chat_block_title"),
             isPresented: $confirmBlock,
             titleVisibility: .visible
         ) {
-            Button("Заблокировать", role: .destructive) { block() }
-            Button("Отмена", role: .cancel) {}
+            Button(loc.t("chat_block_confirm"), role: .destructive) { block() }
+            Button(loc.t("common_cancel"), role: .cancel) {}
         } message: {
-            Text("Сообщения от этого пользователя больше не будут показываться.")
+            Text(loc.t("chat_block_message"))
         }
         .onChange(of: photoItem) { newValue in
             guard let newValue else { return }
@@ -467,7 +467,7 @@ private struct AudioBubble: View {
                     .foregroundColor(.white)
             }
             .buttonStyle(.plain)
-            Text("Голосовое")
+            Text(loc.t("chat_voice_message"))
                 .font(.system(size: 13))
                 .foregroundColor(.white.opacity(0.85))
         }

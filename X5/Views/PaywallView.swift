@@ -125,6 +125,8 @@ struct PaywallView: View {
         }
         .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
         .preferredColorScheme(.dark)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
         .overlay(alignment: .topTrailing) {
             Button { dismiss() } label: {
                 Image(systemName: "xmark.circle.fill")
