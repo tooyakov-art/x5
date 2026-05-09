@@ -23,10 +23,16 @@ struct CourseLesson: Codable, Identifiable, Hashable {
     var freePreview: Bool { isFreePreview ?? false }
 
     /// Best playable URL (mp4 / HLS) — falls back to youtube if available.
+    /// Validates scheme to https/http only — drops javascript:, data:, file: etc.
     var playableURL: URL? {
-        if let v = videoUrl, !v.isEmpty, let url = URL(string: v) { return url }
-        if let y = youtubeUrl, !y.isEmpty, let url = URL(string: y) { return url }
-        return nil
+        let safe: (String?) -> URL? = { raw in
+            guard let s = raw, !s.isEmpty, let url = URL(string: s),
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "https" || scheme == "http"
+            else { return nil }
+            return url
+        }
+        return safe(videoUrl) ?? safe(youtubeUrl)
     }
 }
 

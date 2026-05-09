@@ -27,11 +27,11 @@ struct EditProfileView: View {
         NavigationStack {
             Form {
                 Section(header: Text(loc.t("edit_specialist")),
-                        footer: Text("Включи «Показывать в Hub» — твой профиль появится в Hub, клиенты смогут написать в чат.").font(.caption)) {
+                        footer: Text(loc.t("edit_hub_footer")).font(.caption)) {
                     Toggle(isOn: $showInHub) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(loc.t("edit_show_in_hub")).bold()
-                            Text("Публичный профиль для клиентов")
+                            Text(loc.t("edit_public_profile"))
                                 .font(.caption).foregroundColor(.secondary)
                         }
                     }
@@ -48,12 +48,12 @@ struct EditProfileView: View {
                 }
 
                 Section(header: Text(loc.t("edit_about_section"))) {
-                    TextField("Имя", text: $name)
+                    TextField(loc.t("edit_name_placeholder"), text: $name)
                         .textInputAutocapitalization(.words)
-                    TextField("Никнейм (a-z 0-9 _)", text: $nickname)
+                    TextField(loc.t("edit_nickname_placeholder"), text: $nickname)
                         .autocapitalization(.none)
                         .textInputAutocapitalization(.never)
-                    TextField("Кратко о себе", text: $bio, axis: .vertical)
+                    TextField(loc.t("edit_bio_placeholder"), text: $bio, axis: .vertical)
                         .lineLimit(2...5)
                     Text("\(bio.count) / 500")
                         .font(.caption2)
@@ -61,7 +61,7 @@ struct EditProfileView: View {
                 }
 
                 Section(header: Text(loc.t("edit_social")),
-                        footer: Text("Эти ссылки увидят клиенты в твоём профиле в Hub.").font(.caption)) {
+                        footer: Text(loc.t("edit_social_footer")).font(.caption)) {
                     socialRow(icon: "camera.aperture", color: Color(red: 0.91, green: 0.27, blue: 0.55),
                               name: "Instagram", text: $instagram, placeholder: "@username")
                     socialRow(icon: "paperplane.fill", color: Color(red: 0.16, green: 0.55, blue: 0.93),
@@ -84,7 +84,7 @@ struct EditProfileView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color(red: 0.04, green: 0.05, blue: 0.10))
-            .navigationTitle("Профиль")
+            .navigationTitle(loc.t("edit_profile"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
@@ -222,7 +222,7 @@ private struct CategoriesPicker: View {
         }
         .scrollContentBackground(.hidden)
         .background(Color(red: 0.04, green: 0.05, blue: 0.10))
-        .navigationTitle("Categories")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
     }
