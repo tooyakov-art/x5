@@ -257,10 +257,10 @@ struct ProfileView: View {
                     .background(Color.accentColor)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Стать специалистом")
+                    Text(loc.t("profile_become_specialist"))
                         .font(.system(size: 15, weight: .bold))
                         .foregroundColor(.white)
-                    Text("Включи публичный профиль — клиенты найдут тебя в Hub и напишут в чат")
+                    Text(loc.t("profile_become_specialist_sub"))
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.55))
                 }
@@ -292,8 +292,8 @@ struct ProfileView: View {
                                                startPoint: .topLeading, endPoint: .bottomTrailing))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Получить галочку").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
-                    Text("Синяя ☑ рядом с именем — больше доверия и приоритет в Hub")
+                    Text(loc.t("profile_get_verified")).font(.system(size: 15, weight: .bold)).foregroundColor(.white)
+                    Text(loc.t("profile_get_verified_sub"))
                         .font(.system(size: 12)).foregroundColor(.white.opacity(0.55))
                 }
                 Spacer()

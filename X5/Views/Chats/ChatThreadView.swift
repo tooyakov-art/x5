@@ -18,6 +18,7 @@ struct ChatThreadView: View {
     @State private var confirmBlock: Bool = false
     @State private var photoItem: PhotosPickerItem?
     @State private var attachmentError: String?
+    @State private var micDeniedAlert: Bool = false
     @FocusState private var inputFocused: Bool
     @State private var searchActive: Bool = false
     @State private var searchQuery: String = ""
@@ -246,13 +247,21 @@ struct ChatThreadView: View {
             guard let newValue else { return }
             Task { await sendPhoto(newValue); photoItem = nil }
         }
-        .alert("Не отправилось", isPresented: Binding(
+        .alert(loc.t("chat_send_failed"), isPresented: Binding(
             get: { attachmentError != nil },
             set: { if !$0 { attachmentError = nil } }
         )) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(attachmentError ?? "")
+        }
+        .alert(loc.t("chat_mic_denied_title"), isPresented: $micDeniedAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(loc.t("chat_mic_denied_message"))
+        }
+        .onChange(of: recorder.permissionDenied) { newValue in
+            if newValue { micDeniedAlert = true }
         }
         .task {
             // Paint cached messages instantly so the chat doesn't appear
@@ -379,7 +388,7 @@ private struct Bubble: View {
                             UIPasteboard.general.string = text
                             onCopy?()
                         } label: {
-                            Label("Копировать", systemImage: "doc.on.doc")
+                            Label(loc.t("chats_msg_copy"), systemImage: "doc.on.doc")
                         }
                     }
                 }

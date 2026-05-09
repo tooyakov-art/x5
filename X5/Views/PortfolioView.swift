@@ -7,6 +7,7 @@ struct PortfolioGrid: View {
     let canEdit: Bool
 
     @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = PortfolioService()
     @State private var showingAdd = false
 
@@ -17,7 +18,7 @@ struct PortfolioGrid: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Портфолио")
+                Text(loc.t("portfolio_title"))
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.white)
                 Spacer()
@@ -27,7 +28,7 @@ struct PortfolioGrid: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "plus")
-                            Text("Добавить")
+                            Text(loc.t("common_add"))
                         }
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.accentColor)
@@ -40,7 +41,7 @@ struct PortfolioGrid: View {
                     Image(systemName: "photo.stack")
                         .font(.system(size: 28, weight: .light))
                         .foregroundColor(.white.opacity(0.4))
-                    Text(canEdit ? "Загрузи свои работы" : "Портфолио пустое")
+                    Text(canEdit ? loc.t("portfolio_empty_self") : loc.t("portfolio_empty_other"))
                         .font(.system(size: 13))
                         .foregroundColor(.white.opacity(0.5))
                 }
@@ -80,6 +81,7 @@ private struct PortfolioCell: View {
     let canEdit: Bool
     let onDelete: () -> Void
 
+    @EnvironmentObject private var loc: LocalizationService
     @State private var confirmDelete = false
 
     var body: some View {
@@ -110,9 +112,9 @@ private struct PortfolioCell: View {
                 .padding(6)
             }
         }
-        .confirmationDialog("Удалить из портфолио?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Удалить", role: .destructive) { onDelete() }
-            Button("Отмена", role: .cancel) {}
+        .confirmationDialog(loc.t("portfolio_delete_title"), isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button(loc.t("common_delete"), role: .destructive) { onDelete() }
+            Button(loc.t("common_cancel"), role: .cancel) {}
         }
     }
 }
@@ -123,6 +125,7 @@ struct AddPortfolioItemView: View {
     let onSave: (Data, String?, String?) async -> Bool
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var loc: LocalizationService
     @State private var photoItem: PhotosPickerItem?
     @State private var imageData: Data?
     @State private var title: String = ""
@@ -144,7 +147,7 @@ struct AddPortfolioItemView: View {
                         } else {
                             HStack {
                                 Image(systemName: "photo.on.rectangle.angled")
-                                Text("Выбрать фото")
+                                Text(loc.t("portfolio_pick_photo"))
                             }
                             .frame(maxWidth: .infinity, minHeight: 100)
                         }
@@ -159,9 +162,9 @@ struct AddPortfolioItemView: View {
                     }
                 }
 
-                Section("Описание") {
-                    TextField("Название (опц.)", text: $title)
-                    TextField("Кейс / описание (опц.)", text: $description, axis: .vertical)
+                Section(loc.t("portfolio_description_section")) {
+                    TextField(loc.t("portfolio_title_optional"), text: $title)
+                    TextField(loc.t("portfolio_desc_optional"), text: $description, axis: .vertical)
                         .lineLimit(2...5)
                 }
 
@@ -171,18 +174,18 @@ struct AddPortfolioItemView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color(red: 0.04, green: 0.05, blue: 0.10))
-            .navigationTitle("Добавить в портфолио")
+            .navigationTitle(loc.t("portfolio_add_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") { dismiss() }
+                    Button(loc.t("common_cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         Task { await save() }
                     } label: {
-                        if saving { ProgressView() } else { Text("Сохранить").bold() }
+                        if saving { ProgressView() } else { Text(loc.t("common_save")).bold() }
                     }
                     .disabled(saving || imageData == nil)
                 }
@@ -201,7 +204,7 @@ struct AddPortfolioItemView: View {
         if ok {
             dismiss()
         } else {
-            errorText = "Не удалось сохранить. Попробуй ещё раз."
+            errorText = loc.t("portfolio_save_failed")
         }
     }
 

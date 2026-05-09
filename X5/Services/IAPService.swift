@@ -41,7 +41,7 @@ final class IAPService: ObservableObject {
         guard let profile = currentUser.profile else { return false }
         let credits = profile.credits ?? 0
         guard credits >= Self.verifiedCostCredits else {
-            lastError = "Не хватает кредитов: нужно \(Self.verifiedCostCredits), у тебя \(credits). Купи Pro — получишь 1000 кредитов."
+            lastError = String(format: LocalizationService.shared.t("iap_not_enough_credits"), Self.verifiedCostCredits, credits)
             return false
         }
         let endIso = ISO8601DateFormatter().string(
