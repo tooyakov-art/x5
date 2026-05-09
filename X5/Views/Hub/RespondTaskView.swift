@@ -30,7 +30,7 @@ struct RespondTaskView: View {
                     }
                 }
                 Section(header: Text(loc.t("task_your_message"))) {
-                    TextField("Чем можешь помочь?", text: $message, axis: .vertical)
+                    TextField(loc.t("task_response_placeholder"), text: $message, axis: .vertical)
                         .lineLimit(3...8)
                 }
                 if let err = errorMessage {
@@ -42,7 +42,7 @@ struct RespondTaskView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color(red: 0.04, green: 0.05, blue: 0.10))
-            .navigationTitle("Отклик")
+            .navigationTitle(loc.t("task_response_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
@@ -80,7 +80,7 @@ struct RespondTaskView: View {
             accessToken: token
         )
         if resp == nil {
-            errorMessage = "Could not send your response."
+            errorMessage = loc.t("task_response_failed")
             return
         }
         // Open a chat with the task author tagged with this task

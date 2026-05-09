@@ -379,7 +379,7 @@ private struct Bubble: View {
                             UIPasteboard.general.string = text
                             onCopy?()
                         } label: {
-                            Label("Копировать", systemImage: "doc.on.doc")
+                            Label(loc.t("chats_msg_copy"), systemImage: "doc.on.doc")
                         }
                     }
                 }

@@ -23,19 +23,19 @@ struct CreateTaskView: View {
         NavigationStack {
             Form {
                 Section(header: Text(loc.t("task_section"))) {
-                    TextField("Заголовок", text: $title)
-                    TextField("Описание", text: $description, axis: .vertical).lineLimit(3...8)
+                    TextField(loc.t("task_title_placeholder"), text: $title)
+                    TextField(loc.t("task_desc_placeholder"), text: $description, axis: .vertical).lineLimit(3...8)
                 }
                 Section(header: Text(loc.t("task_budget_category"))) {
-                    TextField("Бюджет (например 50 000 ₸)", text: $budget)
-                    Picker("Категория", selection: $category) {
+                    TextField(loc.t("task_budget_placeholder"), text: $budget)
+                    Picker(loc.t("task_category"), selection: $category) {
                         ForEach(HubCategories.all) { cat in
                             Text("\(cat.emoji)  \(cat.labelEn)").tag(cat.id)
                         }
                     }
-                    Toggle("Срок", isOn: $hasDeadline)
+                    Toggle(loc.t("task_deadline"), isOn: $hasDeadline)
                     if hasDeadline {
-                        DatePicker("Срок", selection: $deadline, displayedComponents: .date)
+                        DatePicker(loc.t("task_deadline"), selection: $deadline, displayedComponents: .date)
                     }
                 }
                 if let err = errorMessage {
@@ -44,7 +44,7 @@ struct CreateTaskView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color(red: 0.04, green: 0.05, blue: 0.10))
-            .navigationTitle("Новая задача")
+            .navigationTitle(loc.t("task_new"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
@@ -90,7 +90,7 @@ struct CreateTaskView: View {
             onCreated()
             dismiss()
         } else {
-            errorMessage = "Could not post the task. Please try again."
+            errorMessage = loc.t("task_post_failed")
         }
     }
 }

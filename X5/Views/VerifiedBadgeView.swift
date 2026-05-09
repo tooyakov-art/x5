@@ -86,10 +86,10 @@ struct VerifiedBadgeView: View {
             .padding(20)
         }
         .sheet(isPresented: $showPaywall) { PaywallView() }
-        .alert("Готово!", isPresented: $showSuccess) {
+        .alert(loc.t("common_done"), isPresented: $showSuccess) {
             Button("OK") { dismiss() }
         } message: {
-            Text("Синяя галочка теперь рядом с твоим именем. Списано \(IAPService.verifiedCostCredits) кредитов.")
+            Text(String(format: loc.t("verified_activated_message"), IAPService.verifiedCostCredits))
         }
     }
 
@@ -100,10 +100,10 @@ struct VerifiedBadgeView: View {
                 Image(systemName: "creditcard.circle.fill")
                     .foregroundColor(.accentColor)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(IAPService.verifiedCostCredits) кредитов / 30 дней")
+                    Text(String(format: loc.t("verified_cost_label"), IAPService.verifiedCostCredits))
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
-                    Text("Твой баланс: \(credits)")
+                    Text(String(format: loc.t("verified_balance"), credits))
                         .font(.system(size: 12))
                         .foregroundColor(canAfford ? .white.opacity(0.7) : .red.opacity(0.85))
                 }
@@ -117,7 +117,7 @@ struct VerifiedBadgeView: View {
                 Button {
                     activate()
                 } label: {
-                    Text(working ? "Списываем…" : "Активировать за \(IAPService.verifiedCostCredits) кредитов")
+                    Text(working ? loc.t("verified_activating") : String(format: loc.t("verified_activate_for"), IAPService.verifiedCostCredits))
                         .font(.system(size: 17, weight: .bold))
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
@@ -131,10 +131,10 @@ struct VerifiedBadgeView: View {
                     showPaywall = true
                 } label: {
                     VStack(spacing: 4) {
-                        Text("Купить Pro и получить кредиты")
+                        Text(loc.t("verified_buy_pro_to_get_credits"))
                             .font(.system(size: 16, weight: .bold))
                             .foregroundColor(.black)
-                        Text("Pro = +1000 кредитов сразу")
+                        Text(loc.t("verified_pro_credits_hint"))
                             .font(.system(size: 11))
                             .foregroundColor(.black.opacity(0.7))
                     }
@@ -177,7 +177,7 @@ struct VerifiedBadgeView: View {
             if ok {
                 showSuccess = true
             } else {
-                errorText = iap.lastError ?? "Не удалось активировать. Попробуй позже."
+                errorText = iap.lastError ?? loc.t("verified_activate_failed")
             }
         }
     }
