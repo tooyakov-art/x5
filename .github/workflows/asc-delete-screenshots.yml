@@ -75,6 +75,8 @@ jobs:
               for s in sets:
                   display = s["attributes"].get("screenshotDisplayType")
                   print(f"  set: id={s['id']} display={display}")
+                  if display not in ("APP_IPHONE_67", "APP_IPHONE_69"):
+                      continue
                   set_id = s["id"]
                   # Get screenshots in this set, ordered.
                   r = requests.get(
