@@ -376,6 +376,7 @@ private struct Bubble: View {
     let message: ChatMessageRow
     let isMine: Bool
     var onCopy: (() -> Void)? = nil
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 6) {
