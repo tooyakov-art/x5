@@ -1,0 +1,116 @@
+name: ASC check TestFlight status
+
+# Inspect TestFlight beta state for builds — internal testers, beta groups,
+# export compliance, build availability. Diagnoses why a build isn't
+# showing up for testers despite state=VALID.
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "Build number to inspect"
+        required: true
+        default: "64"
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      BUNDLE_ID: com.x5studio.app
+      BUILD_NUMBER: ${{ inputs.build_number }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - name: Check TF status
+        run: |
+          python <<'PY'
+          import os, base64, time, json, sys
+          import jwt, requests
+
+          token = jwt.encode(
+              {"iss": os.environ["ASC_API_ISSUER_ID"], "iat": int(time.time()),
+               "exp": int(time.time()) + 600, "aud": "appstoreconnect-v1"},
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          h = {"Authorization": f"Bearer {token}"}
+          base = "https://api.appstoreconnect.apple.com/v1"
+
+          r = requests.get(f"{base}/apps?filter[bundleId]={os.environ['BUNDLE_ID']}", headers=h)
+          app_id = r.json()["data"][0]["id"]
+          print(f"App: {app_id}")
+
+          want = os.environ["BUILD_NUMBER"]
+
+          # 1. Get build with full TF metadata
+          r = requests.get(
+              f"{base}/apps/{app_id}/builds?limit=200&include=betaBuildLocalizations,buildBetaDetail,betaGroups,betaAppReviewSubmission",
+              headers=h
+          )
+          r.raise_for_status()
+          payload = r.json()
+          included = {(i["type"], i["id"]): i for i in payload.get("included", [])}
+
+          build = next((b for b in payload["data"]
+                       if b["attributes"]["version"] == want), None)
+          if not build:
+              sys.exit(f"Build {want} not found")
+
+          attrs = build["attributes"]
+          print(f"\n=== Build {want} ===")
+          print(f"  id: {build['id']}")
+          for k in ["processingState", "uploadedDate", "expired", "minOsVersion",
+                    "buildAudienceType", "iconAssetToken", "version"]:
+              print(f"  {k}: {attrs.get(k)}")
+
+          # 2. Buildy beta detail (export compliance, internal/external state)
+          rels = build.get("relationships", {})
+          print(f"\n=== buildBetaDetail ===")
+          bbd_ref = rels.get("buildBetaDetail", {}).get("data")
+          if bbd_ref:
+              bbd = included.get((bbd_ref["type"], bbd_ref["id"]))
+              if bbd:
+                  for k, v in bbd.get("attributes", {}).items():
+                      print(f"  {k}: {v}")
+          else:
+              print("  (no buildBetaDetail relationship)")
+
+          # 3. Direct fetch buildBetaDetail
+          rb = requests.get(f"{base}/builds/{build['id']}/buildBetaDetail", headers=h)
+          if rb.status_code == 200:
+              bd = rb.json().get("data")
+              if bd:
+                  print(f"\n=== buildBetaDetail (direct) ===")
+                  for k, v in bd.get("attributes", {}).items():
+                      print(f"  {k}: {v}")
+
+          # 4. Beta groups assigned to this build
+          rg = requests.get(f"{base}/builds/{build['id']}/individualTesters", headers=h)
+          if rg.status_code == 200:
+              testers = rg.json().get("data", [])
+              print(f"\n=== Individual testers on build: {len(testers)} ===")
+              for t in testers[:5]:
+                  print(f"  {t.get('attributes', {}).get('email', '?')}")
+
+          # 5. App-level beta groups
+          rb = requests.get(f"{base}/apps/{app_id}/betaGroups?limit=20", headers=h)
+          if rb.status_code == 200:
+              groups = rb.json().get("data", [])
+              print(f"\n=== Beta groups on app: {len(groups)} ===")
+              for g in groups:
+                  ga = g.get("attributes", {})
+                  print(f"  {g['id']}  name={ga.get('name')}  isInternal={ga.get('isInternalGroup')}  publicLink={ga.get('publicLinkEnabled')}")
+                  # List builds in this group
+                  rgb = requests.get(f"{base}/betaGroups/{g['id']}/builds?limit=5&sort=-uploadedDate", headers=h)
+                  if rgb.status_code == 200:
+                      gbuilds = rgb.json().get("data", [])
+                      for gb in gbuilds[:3]:
+                          ga2 = gb.get("attributes", {})
+                          print(f"    - build {ga2.get('version')} state={ga2.get('processingState')}")
+          PY
