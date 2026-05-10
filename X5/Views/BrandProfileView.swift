@@ -2,7 +2,7 @@ import SwiftUI
 
 struct BrandProfileView: View {
     @EnvironmentObject private var brand: BrandProfile
-    @EnvironmentObject private var loc: LocalizationService
+    private let loc = LocalizationService.shared
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {

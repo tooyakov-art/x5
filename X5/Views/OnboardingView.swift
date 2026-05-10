@@ -5,7 +5,7 @@ import SwiftUI
 struct OnboardingView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
-    @EnvironmentObject private var loc: LocalizationService
+    private let loc = LocalizationService.shared
 
     @State private var role: Role?
     @State private var pickedCategories: Set<String> = []

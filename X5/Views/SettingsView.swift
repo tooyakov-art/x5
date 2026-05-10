@@ -7,7 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var subscription: Subscription
     @EnvironmentObject private var currentUser: CurrentUser
-    @EnvironmentObject private var loc: LocalizationService
+    private let loc = LocalizationService.shared
     @Environment(\.dismiss) private var dismiss
 
     @State private var deleteStage: DeleteStage = .idle

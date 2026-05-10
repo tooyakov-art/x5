@@ -4,7 +4,7 @@ struct MainView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var history: CaptionHistory
     @EnvironmentObject private var brand: BrandProfile
-    @EnvironmentObject private var loc: LocalizationService
+    private let loc = LocalizationService.shared
 
     @State private var topic: String = ""
     @State private var tone: Tone = .friendly

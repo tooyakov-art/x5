@@ -6,7 +6,7 @@ struct ChatThreadView: View {
     let chat: ChatRoom
 
     @EnvironmentObject private var auth: Auth
-    @EnvironmentObject private var loc: LocalizationService
+    private let loc = LocalizationService.shared
     @StateObject private var service = ChatsService()
     @StateObject private var recorder = AudioRecorder()
     @State private var messages: [ChatMessageRow] = []
@@ -455,7 +455,7 @@ private struct Bubble: View {
 private struct AudioBubble: View {
     let url: String?
     let isMine: Bool
-    @EnvironmentObject private var loc: LocalizationService
+    private let loc = LocalizationService.shared
     @State private var player: AVPlayer?
     @State private var isPlaying = false
 
