@@ -2,8 +2,8 @@ import SwiftUI
 import AuthenticationServices
 
 struct LoginView: View {
-    @EnvironmentObject private var auth: Auth
-    @EnvironmentObject private var loc: LocalizationService
+    @ObservedObject private var auth = Auth.shared
+    private let loc = LocalizationService.shared
 
     @State private var mode: Mode = .select
     @State private var email = ""

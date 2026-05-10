@@ -3,6 +3,8 @@ import AuthenticationServices
 
 @MainActor
 final class Auth: ObservableObject {
+    static let shared = Auth()
+
     @Published private(set) var isAuthenticated: Bool = false
     @Published private(set) var userEmail: String?
     @Published private(set) var userId: String?

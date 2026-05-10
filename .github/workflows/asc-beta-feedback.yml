@@ -1,0 +1,91 @@
+name: ASC fetch beta feedback
+
+# Fetch beta tester feedback (screenshots + crash logs) submitted via
+# TestFlight's "Send Beta Feedback" feature. Each feedback entry can
+# include a screenshot, device info, and a crash log.
+on:
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      BUNDLE_ID: com.x5studio.app
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - name: Fetch feedback
+        run: |
+          python <<'PY'
+          import os, base64, time, json, sys
+          import jwt, requests
+
+          token = jwt.encode(
+              {"iss": os.environ["ASC_API_ISSUER_ID"], "iat": int(time.time()),
+               "exp": int(time.time()) + 600, "aud": "appstoreconnect-v1"},
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          h = {"Authorization": f"Bearer {token}"}
+          base = "https://api.appstoreconnect.apple.com/v1"
+
+          r = requests.get(f"{base}/apps?filter[bundleId]={os.environ['BUNDLE_ID']}", headers=h)
+          r.raise_for_status()
+          app_id = r.json()["data"][0]["id"]
+          print(f"App: {app_id}")
+
+          # Try multiple endpoints for crash + feedback data
+          endpoints = [
+              ("betaFeedbackCrashSubmissions", {"filter[app]": app_id, "limit": 50, "sort": "-createdDate"}),
+              ("betaFeedbackScreenshotSubmissions", {"filter[app]": app_id, "limit": 50, "sort": "-createdDate"}),
+              ("betaTesterUsages", {"filter[app]": app_id, "limit": 20}),
+          ]
+          for ep, params in endpoints:
+              print(f"\n=== {ep} ===")
+              r = requests.get(f"{base}/{ep}", headers=h, params=params)
+              if r.status_code != 200:
+                  print(f"HTTP {r.status_code}: {r.text[:500]}")
+                  continue
+              data = r.json()
+              items = data.get("data", [])
+              print(f"Found {len(items)} item(s)")
+              for it in items[:10]:
+                  print(f"\n  id={it['id']}")
+                  attrs = it.get("attributes", {})
+                  for k, v in attrs.items():
+                      if isinstance(v, str) and len(v) > 200:
+                          v = v[:200] + "..."
+                      print(f"    {k}: {v}")
+                  rels = it.get("relationships", {})
+                  for k, v in rels.items():
+                      d = v.get("data")
+                      if d:
+                          print(f"    rel[{k}]: {d}")
+
+                  # If this is a crash, fetch the full crash log file
+                  if ep == "betaFeedbackCrashSubmissions":
+                      sub_id = it["id"]
+                      rc = requests.get(f"{base}/betaFeedbackCrashSubmissions/{sub_id}/crashLog", headers=h)
+                      if rc.status_code == 200:
+                          d = rc.json().get("data")
+                          if d:
+                              attrs = d.get("attributes", {})
+                              url = attrs.get("downloadUrl")
+                              if url:
+                                  print(f"    crash log url: {url}")
+                                  rdl = requests.get(url)
+                                  if rdl.status_code == 200:
+                                      content = rdl.text[:10000]
+                                      print(f"    --- crash log content ---")
+                                      print(content)
+                                      print(f"    --- end ---")
+                      else:
+                          print(f"    crashLog fetch HTTP {rc.status_code}: {rc.text[:200]}")
+          PY

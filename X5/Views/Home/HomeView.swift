@@ -12,8 +12,8 @@ import SwiftUI
 /// templates, Academy). Developer accounts still see the full grid with
 /// in-development tools for QA.
 struct HomeView: View {
-    @EnvironmentObject private var auth: Auth
-    @EnvironmentObject private var loc: LocalizationService
+    @ObservedObject private var auth = Auth.shared
+    private let loc = LocalizationService.shared
 
     @State private var bannerIndex: Int = 0
     @State private var openTool: HomeTool?

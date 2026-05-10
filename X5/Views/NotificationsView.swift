@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct NotificationsView: View {
-    @EnvironmentObject private var loc: LocalizationService
+    private let loc = LocalizationService.shared
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
