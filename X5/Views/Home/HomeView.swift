@@ -141,10 +141,7 @@ private struct HomeBannerCard: View {
                 LinearGradient(colors: [banner.gradientStart, banner.gradientEnd],
                                startPoint: .topLeading, endPoint: .bottomTrailing)
 
-                if let url = banner.videoURL {
-                    LoopingVideo(url: url)
-                        .opacity(0.85)
-                }
+                // Build 64: LoopingVideo disabled — suspected AVPlayer crash on iOS 26.5 beta.
 
                 LinearGradient(
                     colors: [Color.black.opacity(0), Color.black.opacity(0.65)],
@@ -182,10 +179,7 @@ private struct HomeToolCard: View {
                 LinearGradient(colors: [tool.gradientStart, tool.gradientEnd],
                                startPoint: .topLeading, endPoint: .bottomTrailing)
 
-                if let url = tool.videoURL {
-                    LoopingVideo(url: url)
-                        .opacity(0.78)
-                }
+                // Build 64: LoopingVideo disabled — suspected AVPlayer crash on iOS 26.5 beta.
 
                 LinearGradient(colors: [Color.black.opacity(0), Color.black.opacity(0.7)],
                                startPoint: .center, endPoint: .bottom)
@@ -200,13 +194,11 @@ private struct HomeToolCard: View {
                 }
                 .padding(12)
 
-                if tool.videoURL == nil {
-                    Image(systemName: tool.icon)
-                        .font(.system(size: 32, weight: .light))
-                        .foregroundColor(.white.opacity(0.45))
-                        .padding(.bottom, 60)
-                        .padding(.leading, 12)
-                }
+                Image(systemName: tool.icon)
+                    .font(.system(size: 32, weight: .light))
+                    .foregroundColor(.white.opacity(0.45))
+                    .padding(.bottom, 60)
+                    .padding(.leading, 12)
             }
             .aspectRatio(1.0, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
