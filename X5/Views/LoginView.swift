@@ -3,7 +3,7 @@ import AuthenticationServices
 
 struct LoginView: View {
     @EnvironmentObject private var auth: Auth
-    @EnvironmentObject private var loc: LocalizationService
+    private let loc = LocalizationService.shared
 
     @State private var mode: Mode = .select
     @State private var email = ""

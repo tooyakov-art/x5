@@ -6,7 +6,7 @@ struct RespondTaskView: View {
 
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
-    @EnvironmentObject private var loc: LocalizationService
+    private let loc = LocalizationService.shared
     @Environment(\.dismiss) private var dismiss
 
     @State private var message: String = ""
