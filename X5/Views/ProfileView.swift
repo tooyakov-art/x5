@@ -2,9 +2,9 @@ import SwiftUI
 import PhotosUI
 
 struct ProfileView: View {
-    @EnvironmentObject private var auth: Auth
-    @EnvironmentObject private var subscription: Subscription
-    @EnvironmentObject private var currentUser: CurrentUser
+    @ObservedObject private var auth = Auth.shared
+    @ObservedObject private var subscription = Subscription.shared
+    @ObservedObject private var currentUser = CurrentUser.shared
     private let loc = LocalizationService.shared
     @StateObject private var iap = IAPService()
     @Environment(\.dismiss) private var dismiss

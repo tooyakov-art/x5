@@ -9,6 +9,8 @@ extension Notification.Name {
 
 @MainActor
 final class Subscription: ObservableObject {
+    static let shared = Subscription()
+
     @Published private(set) var isPro: Bool = false
 
     private let key = "x5.subscription.is_pro"

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// List of all chats for the current user.
 struct ChatsListView: View {
-    @EnvironmentObject private var auth: Auth
+    @ObservedObject private var auth = Auth.shared
     private let loc = LocalizationService.shared
     @StateObject private var service = ChatsService()
     @State private var profiles: [String: UserProfile] = [:]

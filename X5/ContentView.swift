@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject private var auth: Auth
-    @EnvironmentObject private var currentUser: CurrentUser
-    @EnvironmentObject private var subscription: Subscription
+    @ObservedObject private var auth = Auth.shared
+    @ObservedObject private var currentUser = CurrentUser.shared
+    @ObservedObject private var subscription = Subscription.shared
     @AppStorage("x5.face_id_enabled") private var faceIDEnabled = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var isLocked = false

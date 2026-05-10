@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct CreateTaskView: View {
-    @EnvironmentObject private var auth: Auth
-    @EnvironmentObject private var currentUser: CurrentUser
+    @ObservedObject private var auth = Auth.shared
+    @ObservedObject private var currentUser = CurrentUser.shared
     private let loc = LocalizationService.shared
     @Environment(\.dismiss) private var dismiss
 

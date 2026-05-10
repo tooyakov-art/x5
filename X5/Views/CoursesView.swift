@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct CoursesView: View {
-    @EnvironmentObject private var sub: Subscription
-    @EnvironmentObject private var auth: Auth
+    @ObservedObject private var sub = Subscription.shared
+    @ObservedObject private var auth = Auth.shared
     private let loc = LocalizationService.shared
     @StateObject private var service = CoursesService()
     @State private var showingPaywall = false
@@ -319,7 +319,7 @@ struct CourseDetailView: View {
     let course: Course
     var openPaywall: () -> Void
 
-    @EnvironmentObject private var sub: Subscription
+    @ObservedObject private var sub = Subscription.shared
     private let loc = LocalizationService.shared
 
     var hasFullAccess: Bool { (course.isFree ?? false) || (course.price ?? 0) == 0 || sub.isPro }

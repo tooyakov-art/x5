@@ -5,7 +5,7 @@ import AVFoundation
 struct ChatThreadView: View {
     let chat: ChatRoom
 
-    @EnvironmentObject private var auth: Auth
+    @ObservedObject private var auth = Auth.shared
     private let loc = LocalizationService.shared
     @StateObject private var service = ChatsService()
     @StateObject private var recorder = AudioRecorder()

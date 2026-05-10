@@ -5,7 +5,7 @@ import PhotosUI
 /// long-pressing a row (edit). Lets developers tweak title/description/price/visibility
 /// and upload a cover image. Lessons editor is a separate (later) iteration.
 struct CourseEditorView: View {
-    @EnvironmentObject private var auth: Auth
+    @ObservedObject private var auth = Auth.shared
     @Environment(\.dismiss) private var dismiss
     @StateObject private var service = CoursesService()
 

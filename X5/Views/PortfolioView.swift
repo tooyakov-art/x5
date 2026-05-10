@@ -6,7 +6,7 @@ struct PortfolioGrid: View {
     let userId: String
     let canEdit: Bool
 
-    @EnvironmentObject private var auth: Auth
+    @ObservedObject private var auth = Auth.shared
     @StateObject private var service = PortfolioService()
     @State private var showingAdd = false
 
