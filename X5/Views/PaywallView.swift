@@ -2,10 +2,10 @@ import SwiftUI
 import StoreKit
 
 struct PaywallView: View {
-    @ObservedObject private var sub = Subscription.shared
-    @ObservedObject private var currentUser = CurrentUser.shared
-    @ObservedObject private var auth = Auth.shared
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var sub: Subscription
+    @EnvironmentObject private var currentUser: CurrentUser
+    @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var loc: LocalizationService
     @StateObject private var iap = IAPService()
     @Environment(\.dismiss) private var dismiss
 

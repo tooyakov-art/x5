@@ -3,9 +3,9 @@ import SwiftUI
 /// Sells the blue ☑ verified badge for `IAPService.verifiedCostCredits` credits / 30 days.
 /// Credits come from the Pro subscription (1000/mo) — single store, no separate IAP.
 struct VerifiedBadgeView: View {
-    @ObservedObject private var auth = Auth.shared
-    @ObservedObject private var currentUser = CurrentUser.shared
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var currentUser: CurrentUser
+    @EnvironmentObject private var loc: LocalizationService
     @StateObject private var iap = IAPService()
     @Environment(\.dismiss) private var dismiss
     @State private var showSuccess = false

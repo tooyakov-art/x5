@@ -5,7 +5,7 @@ import LocalAuthentication
 /// Triggered on every cold launch and on resume from background.
 struct AppLockView: View {
     @Binding var isLocked: Bool
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var loc: LocalizationService
     @State private var failureMessage: String?
     @State private var attempting = false
 

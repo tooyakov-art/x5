@@ -4,10 +4,10 @@ import UIKit
 /// Settings sheet — split out of ProfileView. Contains account actions, language picker,
 /// Face ID toggle, public profile toggle, system links, version.
 struct SettingsView: View {
-    @ObservedObject private var auth = Auth.shared
-    @ObservedObject private var subscription = Subscription.shared
-    @ObservedObject private var currentUser = CurrentUser.shared
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var subscription: Subscription
+    @EnvironmentObject private var currentUser: CurrentUser
+    @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
 
     @State private var deleteStage: DeleteStage = .idle

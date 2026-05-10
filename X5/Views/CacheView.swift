@@ -4,7 +4,7 @@ import SwiftUI
 /// Lists each cache category with its on-disk size, lets the user multi-select,
 /// then deletes only the selected categories.
 struct CacheView: View {
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
 
     @State private var sizes: [ImageCache.Category: Int64] = [:]

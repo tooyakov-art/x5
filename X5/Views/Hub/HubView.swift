@@ -8,9 +8,9 @@ struct HubView: View {
         var id: String { rawValue }
     }
 
-    @ObservedObject private var auth = Auth.shared
-    @ObservedObject private var currentUser = CurrentUser.shared
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var currentUser: CurrentUser
+    @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = HubService()
     @StateObject private var chats = ChatsService()
     @State private var segment: Segment = .specialists
@@ -213,7 +213,7 @@ struct HubView: View {
 
 private struct CategoryRail: View {
     @Binding var selected: String?
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {

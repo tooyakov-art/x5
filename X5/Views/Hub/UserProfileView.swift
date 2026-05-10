@@ -7,8 +7,8 @@ struct UserProfileView: View {
     /// Optional already-fetched specialist row to render instantly.
     let fallback: HubSpecialist?
 
-    @ObservedObject private var auth = Auth.shared
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
     @StateObject private var chats = ChatsService()
 

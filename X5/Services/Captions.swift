@@ -130,8 +130,6 @@ struct CaptionHistoryItem: Codable, Identifiable {
 
 @MainActor
 final class CaptionHistory: ObservableObject {
-    static let shared = CaptionHistory()
-
     @Published private(set) var items: [CaptionHistoryItem] = []
 
     private let key = "x5.caption.history.v1"

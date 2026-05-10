@@ -3,9 +3,9 @@ import SwiftUI
 /// Mandatory after first sign in: pick a role, optionally categories.
 /// Writes user_role + specialist_category[] + show_in_hub to profiles.
 struct OnboardingView: View {
-    @ObservedObject private var auth = Auth.shared
-    @ObservedObject private var currentUser = CurrentUser.shared
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var currentUser: CurrentUser
+    @EnvironmentObject private var loc: LocalizationService
 
     @State private var role: Role?
     @State private var pickedCategories: Set<String> = []

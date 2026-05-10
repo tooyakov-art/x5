@@ -6,7 +6,7 @@ struct ToolDetailView: View {
     let tool: HomeTool
 
     @Environment(\.dismiss) private var dismiss
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var loc: LocalizationService
     @State private var notified = false
 
     var body: some View {
