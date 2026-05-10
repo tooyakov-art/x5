@@ -85,6 +85,8 @@ struct UserProfile: Codable, Equatable, Identifiable {
 
 @MainActor
 final class CurrentUser: ObservableObject {
+    static let shared = CurrentUser()
+
     /// Server-side profile row. Setter posts `.x5ProfileDidUpdate` so dependent
     /// services (Subscription, etc.) reconcile their local cache to match the
     /// server — the single source of truth for plan / Pro state.

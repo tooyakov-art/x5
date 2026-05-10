@@ -3,8 +3,8 @@ import SwiftUI
 struct TaskDetailView: View {
     let task: HubTask
 
-    @EnvironmentObject private var auth: Auth
-    @EnvironmentObject private var currentUser: CurrentUser
+    @ObservedObject private var auth = Auth.shared
+    @ObservedObject private var currentUser = CurrentUser.shared
     private let loc = LocalizationService.shared
     @Environment(\.dismiss) private var dismiss
     @StateObject private var service = HubService()

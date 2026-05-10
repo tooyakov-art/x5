@@ -8,8 +8,8 @@ struct HubView: View {
         var id: String { rawValue }
     }
 
-    @EnvironmentObject private var auth: Auth
-    @EnvironmentObject private var currentUser: CurrentUser
+    @ObservedObject private var auth = Auth.shared
+    @ObservedObject private var currentUser = CurrentUser.shared
     private let loc = LocalizationService.shared
     @StateObject private var service = HubService()
     @StateObject private var chats = ChatsService()

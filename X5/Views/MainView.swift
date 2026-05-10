@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct MainView: View {
-    @EnvironmentObject private var auth: Auth
-    @EnvironmentObject private var history: CaptionHistory
-    @EnvironmentObject private var brand: BrandProfile
+    @ObservedObject private var auth = Auth.shared
+    @ObservedObject private var history = CaptionHistory.shared
+    @ObservedObject private var brand = BrandProfile.shared
     private let loc = LocalizationService.shared
 
     @State private var topic: String = ""

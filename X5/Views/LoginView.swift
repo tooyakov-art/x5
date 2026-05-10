@@ -2,7 +2,7 @@ import SwiftUI
 import AuthenticationServices
 
 struct LoginView: View {
-    @EnvironmentObject private var auth: Auth
+    @ObservedObject private var auth = Auth.shared
     private let loc = LocalizationService.shared
 
     @State private var mode: Mode = .select
