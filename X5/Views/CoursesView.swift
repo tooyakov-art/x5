@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct CoursesView: View {
-    @ObservedObject private var sub = Subscription.shared
-    @ObservedObject private var auth = Auth.shared
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var sub: Subscription
+    @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = CoursesService()
     @State private var showingPaywall = false
     @State private var editorTarget: EditorTarget?
@@ -145,7 +145,7 @@ struct CoursesView: View {
 private struct CourseCard: View {
     let course: Course
     var showHiddenBadge: Bool = false
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -236,7 +236,7 @@ private struct CourseCard: View {
 
 private struct CourseRow: View {
     let course: Course
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         HStack(spacing: 14) {
@@ -319,8 +319,8 @@ struct CourseDetailView: View {
     let course: Course
     var openPaywall: () -> Void
 
-    @ObservedObject private var sub = Subscription.shared
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var sub: Subscription
+    @EnvironmentObject private var loc: LocalizationService
 
     var hasFullAccess: Bool { (course.isFree ?? false) || (course.price ?? 0) == 0 || sub.isPro }
 
@@ -462,7 +462,7 @@ private struct LessonRow: View {
     let lesson: CourseLesson
     let hasFullAccess: Bool
     let openPaywall: () -> Void
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var loc: LocalizationService
 
     var canPlay: Bool { hasFullAccess || lesson.freePreview }
     var hasVideo: Bool { lesson.playableURL != nil }
@@ -527,7 +527,7 @@ private struct LessonRow: View {
 private struct ErrorState: View {
     let message: String
     let retry: () -> Void
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         VStack(spacing: 14) {

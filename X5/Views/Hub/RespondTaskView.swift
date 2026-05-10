@@ -4,9 +4,9 @@ import SwiftUI
 struct RespondTaskView: View {
     let task: HubTask
 
-    @ObservedObject private var auth = Auth.shared
-    @ObservedObject private var currentUser = CurrentUser.shared
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var currentUser: CurrentUser
+    @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
 
     @State private var message: String = ""

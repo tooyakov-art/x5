@@ -12,8 +12,6 @@ struct BrandProfileData: Codable, Equatable {
 
 @MainActor
 final class BrandProfile: ObservableObject {
-    static let shared = BrandProfile()
-
     @Published var data: BrandProfileData = .empty {
         didSet { save() }
     }

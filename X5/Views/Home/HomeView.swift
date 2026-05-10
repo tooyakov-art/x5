@@ -12,8 +12,8 @@ import SwiftUI
 /// templates, Academy). Developer accounts still see the full grid with
 /// in-development tools for QA.
 struct HomeView: View {
-    @ObservedObject private var auth = Auth.shared
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var loc: LocalizationService
 
     @State private var bannerIndex: Int = 0
     @State private var openTool: HomeTool?
@@ -141,7 +141,10 @@ private struct HomeBannerCard: View {
                 LinearGradient(colors: [banner.gradientStart, banner.gradientEnd],
                                startPoint: .topLeading, endPoint: .bottomTrailing)
 
-                // Build 64: LoopingVideo disabled — suspected AVPlayer crash on iOS 26.5 beta.
+                if let url = banner.videoURL {
+                    LoopingVideo(url: url)
+                        .opacity(0.85)
+                }
 
                 LinearGradient(
                     colors: [Color.black.opacity(0), Color.black.opacity(0.65)],
@@ -179,7 +182,10 @@ private struct HomeToolCard: View {
                 LinearGradient(colors: [tool.gradientStart, tool.gradientEnd],
                                startPoint: .topLeading, endPoint: .bottomTrailing)
 
-                // Build 64: LoopingVideo disabled — suspected AVPlayer crash on iOS 26.5 beta.
+                if let url = tool.videoURL {
+                    LoopingVideo(url: url)
+                        .opacity(0.78)
+                }
 
                 LinearGradient(colors: [Color.black.opacity(0), Color.black.opacity(0.7)],
                                startPoint: .center, endPoint: .bottom)
@@ -194,11 +200,13 @@ private struct HomeToolCard: View {
                 }
                 .padding(12)
 
-                Image(systemName: tool.icon)
-                    .font(.system(size: 32, weight: .light))
-                    .foregroundColor(.white.opacity(0.45))
-                    .padding(.bottom, 60)
-                    .padding(.leading, 12)
+                if tool.videoURL == nil {
+                    Image(systemName: tool.icon)
+                        .font(.system(size: 32, weight: .light))
+                        .foregroundColor(.white.opacity(0.45))
+                        .padding(.bottom, 60)
+                        .padding(.leading, 12)
+                }
             }
             .aspectRatio(1.0, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))

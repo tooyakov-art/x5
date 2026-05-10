@@ -5,11 +5,11 @@ import GoogleSignIn
 struct X5App: App {
     @UIApplicationDelegateAdaptor(X5AppDelegate.self) private var appDelegate
 
-    @StateObject private var auth = Auth.shared
-    @StateObject private var history = CaptionHistory.shared
-    @StateObject private var brand = BrandProfile.shared
-    @StateObject private var subscription = Subscription.shared
-    @StateObject private var currentUser = CurrentUser.shared
+    @StateObject private var auth = Auth()
+    @StateObject private var history = CaptionHistory()
+    @StateObject private var brand = BrandProfile()
+    @StateObject private var subscription = Subscription()
+    @StateObject private var currentUser = CurrentUser()
     @StateObject private var localization = LocalizationService.shared
 
     @Environment(\.scenePhase) private var scenePhase

@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct HistoryView: View {
-    @ObservedObject private var history = CaptionHistory.shared
-    private let loc = LocalizationService.shared
+    @EnvironmentObject private var history: CaptionHistory
+    @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
