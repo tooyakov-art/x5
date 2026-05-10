@@ -13,7 +13,7 @@ import SwiftUI
 /// in-development tools for QA.
 struct HomeView: View {
     @EnvironmentObject private var auth: Auth
-    @EnvironmentObject private var loc: LocalizationService
+    private let loc = LocalizationService.shared
 
     @State private var bannerIndex: Int = 0
     @State private var openTool: HomeTool?

@@ -5,7 +5,7 @@ struct PaywallView: View {
     @EnvironmentObject private var sub: Subscription
     @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var auth: Auth
-    @EnvironmentObject private var loc: LocalizationService
+    private let loc = LocalizationService.shared
     @StateObject private var iap = IAPService()
     @Environment(\.dismiss) private var dismiss
 

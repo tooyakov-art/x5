@@ -8,7 +8,7 @@ struct UserProfileView: View {
     let fallback: HubSpecialist?
 
     @EnvironmentObject private var auth: Auth
-    @EnvironmentObject private var loc: LocalizationService
+    private let loc = LocalizationService.shared
     @Environment(\.dismiss) private var dismiss
     @StateObject private var chats = ChatsService()
 

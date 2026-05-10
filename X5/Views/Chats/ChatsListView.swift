@@ -3,7 +3,7 @@ import SwiftUI
 /// List of all chats for the current user.
 struct ChatsListView: View {
     @EnvironmentObject private var auth: Auth
-    @EnvironmentObject private var loc: LocalizationService
+    private let loc = LocalizationService.shared
     @StateObject private var service = ChatsService()
     @State private var profiles: [String: UserProfile] = [:]
     /// Bumped to force `visibleChats` recomputation after archive/mute/hide.
@@ -234,7 +234,7 @@ private struct ArchivedChatsView: View {
     let profiles: [String: UserProfile]
     let currentUserId: String
     let onChange: () -> Void
-    @EnvironmentObject private var loc: LocalizationService
+    private let loc = LocalizationService.shared
     @State private var tick: Int = 0
 
     var body: some View {
@@ -291,7 +291,7 @@ private struct ChatRow: View {
     let currentUserId: String
     let other: UserProfile?
     let peerId: String
-    @EnvironmentObject private var loc: LocalizationService
+    private let loc = LocalizationService.shared
 
     /// Fallback name when peer profile didn't load — shorter UID prefix
     /// is more useful than a generic "User" label for distinguishing chats.
