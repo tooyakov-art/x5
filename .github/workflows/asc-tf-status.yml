@@ -48,14 +48,11 @@ jobs:
 
           want = os.environ["BUILD_NUMBER"]
 
-          # 1. Get build with full TF metadata
-          r = requests.get(
-              f"{base}/apps/{app_id}/builds?limit=200&include=betaBuildLocalizations,buildBetaDetail,betaGroups,betaAppReviewSubmission",
-              headers=h
-          )
+          # 1. Get build (no includes — some are forbidden by API)
+          r = requests.get(f"{base}/apps/{app_id}/builds?limit=200", headers=h)
           r.raise_for_status()
           payload = r.json()
-          included = {(i["type"], i["id"]): i for i in payload.get("included", [])}
+          included = {}
 
           build = next((b for b in payload["data"]
                        if b["attributes"]["version"] == want), None)
