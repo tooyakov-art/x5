@@ -1,0 +1,121 @@
+name: ASC fetch crash diagnostics
+
+# Pull aggregated crash signatures and diagnostic logs from Apple's
+# App Store Connect for a specific build. Useful when we don't have
+# direct access to a Mac/iPhone for crash log retrieval.
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "Build number to fetch crashes for"
+        required: true
+        default: "63"
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      BUNDLE_ID: com.x5studio.app
+      BUILD_NUMBER: ${{ inputs.build_number }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - name: Fetch diagnostics
+        run: |
+          python <<'PY'
+          import os, base64, time, json, sys
+          import jwt, requests
+
+          token = jwt.encode(
+              {"iss": os.environ["ASC_API_ISSUER_ID"], "iat": int(time.time()),
+               "exp": int(time.time()) + 600, "aud": "appstoreconnect-v1"},
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          h = {"Authorization": f"Bearer {token}"}
+          base = "https://api.appstoreconnect.apple.com/v1"
+
+          # 1. Find app
+          r = requests.get(f"{base}/apps?filter[bundleId]={os.environ['BUNDLE_ID']}", headers=h)
+          r.raise_for_status()
+          app_id = r.json()["data"][0]["id"]
+          print(f"App: {app_id}")
+
+          # 2. Find build
+          r = requests.get(f"{base}/apps/{app_id}/builds?limit=200", headers=h)
+          r.raise_for_status()
+          want = os.environ["BUILD_NUMBER"]
+          build = next((b for b in r.json()["data"]
+                       if b["attributes"]["version"] == want), None)
+          if not build:
+              sys.exit(f"Build {want} not found")
+          build_id = build["id"]
+          print(f"Build {want} -> {build_id}")
+          print(f"  state={build['attributes'].get('processingState')}")
+          print(f"  uploadedDate={build['attributes'].get('uploadedDate')}")
+
+          # 3. List diagnostic signatures (aggregated crash patterns)
+          print("\n=== Diagnostic Signatures ===")
+          r = requests.get(
+              f"{base}/builds/{build_id}/diagnosticSignatures",
+              headers=h,
+              params={"limit": 50}
+          )
+          if r.status_code != 200:
+              print(f"HTTP {r.status_code}: {r.text[:500]}")
+          else:
+              data = r.json().get("data", [])
+              print(f"Found {len(data)} diagnostic signature(s)")
+              for sig in data:
+                  attr = sig["attributes"]
+                  sig_id = sig["id"]
+                  print(f"\n  Signature {sig_id}")
+                  print(f"    diagnosticType: {attr.get('diagnosticType')}")
+                  print(f"    signature: {attr.get('signature')}")
+                  print(f"    weight: {attr.get('weight')}")
+
+                  # Fetch logs for this signature
+                  rl = requests.get(
+                      f"{base}/diagnosticSignatures/{sig_id}/logs",
+                      headers=h,
+                      params={"limit": 5}
+                  )
+                  if rl.status_code == 200:
+                      logs = rl.json().get("data", [])
+                      print(f"    {len(logs)} log(s)")
+                      for log in logs[:3]:
+                          la = log.get("attributes", {})
+                          url = la.get("url")
+                          if url:
+                              print(f"      log url: {url}")
+                              # Try to fetch the log content
+                              rc = requests.get(url)
+                              if rc.status_code == 200:
+                                  body = rc.text[:8000]
+                                  print(f"      --- log content ({len(rc.text)} bytes) ---")
+                                  print(body)
+                                  print(f"      --- end ---")
+                  else:
+                      print(f"    logs fetch HTTP {rl.status_code}: {rl.text[:200]}")
+
+          # 4. Also try power/disk events / metrics endpoint
+          # (not all builds expose these — best effort)
+          for endpoint in ["perfPowerMetrics"]:
+              print(f"\n=== {endpoint} ===")
+              r = requests.get(
+                  f"{base}/builds/{build_id}/{endpoint}",
+                  headers=h,
+                  params={"limit": 10}
+              )
+              if r.status_code == 200:
+                  print(json.dumps(r.json(), indent=2)[:2000])
+              else:
+                  print(f"HTTP {r.status_code}: {r.text[:200]}")
+          PY
