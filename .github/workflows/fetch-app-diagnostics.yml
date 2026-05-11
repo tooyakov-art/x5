@@ -1,0 +1,66 @@
+name: Fetch app diagnostics from Supabase
+
+# Pull recent app_diagnostics rows from Supabase. Used to inspect what
+# device info / crash traces the iOS client (build 67+) has reported.
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "Filter by build number (blank = last 50 rows)"
+        required: false
+        default: ""
+      event:
+        description: "Filter by event (e.g. crash, launch, home_tool_tap)"
+        required: false
+        default: ""
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      SUPABASE_URL: https://afwznqjpshybmqhlewmy.supabase.co
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      BUILD: ${{ inputs.build_number }}
+      EVENT: ${{ inputs.event }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install requests
+      - name: Fetch
+        run: |
+          python <<'PY'
+          import os, json, requests
+          base = os.environ["SUPABASE_URL"]
+          key = os.environ["SUPABASE_SERVICE_KEY"]
+          headers = {"apikey": key, "Authorization": f"Bearer {key}"}
+          params = {
+              "select": "id,created_at,build_number,app_version,os_version,device_model,event,kind,summary,stack",
+              "order": "created_at.desc",
+              "limit": 50,
+          }
+          if os.environ.get("BUILD"):
+              params["build_number"] = f"eq.{os.environ['BUILD']}"
+          if os.environ.get("EVENT"):
+              params["event"] = f"eq.{os.environ['EVENT']}"
+          r = requests.get(f"{base}/rest/v1/app_diagnostics", headers=headers, params=params)
+          print(f"HTTP {r.status_code}")
+          if r.status_code != 200:
+              print(r.text[:1000]); raise SystemExit(1)
+          rows = r.json()
+          print(f"\nReturned {len(rows)} row(s)\n")
+          for row in rows:
+              ts = row.get("created_at", "")[:19]
+              ev = row.get("event")
+              build = row.get("build_number")
+              osv = row.get("os_version")
+              dev = row.get("device_model")
+              summary = row.get("summary") or row.get("kind") or ""
+              print(f"{ts}  build={build}  ios={osv}  dev={dev}  event={ev}  {summary}")
+              if row.get("stack"):
+                  print("    --- stack ---")
+                  for line in row["stack"].splitlines()[:30]:
+                      print(f"    {line}")
+                  print("    --- end ---")
+          PY
