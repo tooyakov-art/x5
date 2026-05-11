@@ -35,23 +35,26 @@ enum DiagnosticLogger {
     // MARK: - Crash handlers
 
     private static func installHandlers() {
+        // C function pointers (@convention(c)) cannot capture context, so we
+        // inline the persist logic instead of calling `persistPending(...)`.
+        // Signal handlers (SIGSEGV etc) are intentionally NOT installed — the
+        // signal context is async-signal-safe-only, and Foundation/JSON calls
+        // would deadlock there. NSSetUncaughtExceptionHandler covers Swift
+        // exceptions and ObjC NSExceptions, which is the bulk of crashes.
         NSSetUncaughtExceptionHandler { exc in
             let trace = exc.callStackSymbols.joined(separator: "\n")
             let reason = exc.reason ?? "<no reason>"
             let name = exc.name.rawValue
-            persistPending(kind: "ns_exception",
-                           summary: "\(name): \(reason)",
-                           stack: trace)
-        }
-        for sig in [SIGABRT, SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGPIPE, SIGTRAP] {
-            signal(sig) { rawSig in
-                let symbols = Thread.callStackSymbols.joined(separator: "\n")
-                persistPending(kind: "signal_\(rawSig)",
-                               summary: "signal \(rawSig)",
-                               stack: symbols)
-                // Re-raise default so the OS still crashes the app cleanly.
-                signal(rawSig, SIG_DFL)
-                raise(rawSig)
+            let info: [String: Any] = [
+                "event": "crash",
+                "kind": "ns_exception",
+                "summary": "\(name): \(reason)",
+                "stack": String(trace.prefix(8000)),
+                "ts": ISO8601DateFormatter().string(from: Date())
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: info) {
+                UserDefaults.standard.set(data, forKey: "x5.diag.pending_crash_v1")
+                UserDefaults.standard.synchronize()
             }
         }
     }
