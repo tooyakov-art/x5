@@ -5,16 +5,15 @@ import GoogleSignIn
 struct X5App: App {
     @UIApplicationDelegateAdaptor(X5AppDelegate.self) private var appDelegate
 
-    // Build 67: explicitly bind to the .shared singletons (build 56/61 baseline
-    // was using `Auth()` etc which creates a SECOND instance — different from
-    // the `.shared` that ContentView/HomeView etc. read. Two parallel object
-    // graphs on iOS 26 SwiftUI looked correlated with the every-button-tap
-    // crash report. Aligning everyone on `.shared` eliminates that.
-    @StateObject private var auth = Auth.shared
-    @StateObject private var history = CaptionHistory.shared
-    @StateObject private var brand = BrandProfile.shared
-    @StateObject private var subscription = Subscription.shared
-    @StateObject private var currentUser = CurrentUser.shared
+    // Build 67: baseline kept — these services don't have `static let shared`
+    // in 56/61 codebase (that was a build 63 nuclear refactor we rolled back).
+    // The `@StateObject = NewInstance()` pattern is fine since ContentView /
+    // HomeView read these via @EnvironmentObject, not via `.shared`.
+    @StateObject private var auth = Auth()
+    @StateObject private var history = CaptionHistory()
+    @StateObject private var brand = BrandProfile()
+    @StateObject private var subscription = Subscription()
+    @StateObject private var currentUser = CurrentUser()
     @StateObject private var localization = LocalizationService.shared
 
     @Environment(\.scenePhase) private var scenePhase
