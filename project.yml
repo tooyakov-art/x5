@@ -17,7 +17,7 @@ settings:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: F8LA8PC4U6
     MARKETING_VERSION: "1.1.0"
-    CURRENT_PROJECT_VERSION: "68"
+    CURRENT_PROJECT_VERSION: "69"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
 targets:
@@ -36,6 +36,7 @@ targets:
       - path: X5/en.lproj
       - path: X5/ru.lproj
       - path: X5/kk.lproj
+      - path: X5/PrivacyInfo.xcprivacy
     info:
       path: X5/Info.plist
       properties:
@@ -67,16 +68,6 @@ targets:
         NSMicrophoneUsageDescription: "Microphone access is needed to record voice messages in chats."
         NSPhotoLibraryUsageDescription: "Photo library access is needed to attach photos in chats and portfolio."
         LSApplicationCategoryType: public.app-category.productivity
-        NSPrivacyTracking: false
-        NSPrivacyAccessedAPITypes:
-          - NSPrivacyAccessedAPIType: NSPrivacyAccessedAPICategoryUserDefaults
-            NSPrivacyAccessedAPITypeReasons: ["CA92.1"]
-          - NSPrivacyAccessedAPIType: NSPrivacyAccessedAPICategoryFileTimestamp
-            NSPrivacyAccessedAPITypeReasons: ["C617.1"]
-          - NSPrivacyAccessedAPIType: NSPrivacyAccessedAPICategorySystemBootTime
-            NSPrivacyAccessedAPITypeReasons: ["35F9.1"]
-          - NSPrivacyAccessedAPIType: NSPrivacyAccessedAPICategoryDiskSpace
-            NSPrivacyAccessedAPITypeReasons: ["E174.1"]
     entitlements:
       path: X5/X5.entitlements
       properties:

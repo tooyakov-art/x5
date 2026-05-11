@@ -1,76 +1,71 @@
-X5 Creators is a marketplace and messaging app for creators (photographers,
-designers, video editors, copywriters, SMM managers) and clients in
-Kazakhstan and Central Asia. The app has four main areas: Hub (open tasks
-from clients), Chats, Portfolio and Courses.
+X5 Creators is a marketplace and messaging app for creators and clients in
+Kazakhstan and Central Asia. The app includes Hub, Chats, Portfolio, Courses
+and Profile.
 
 REVIEWER ANSWERS TO PREVIOUS REJECTION
 
-(1) Face Data — Guideline 2.1
+(1) Face Data - Guideline 2.1
 The app does not collect, store, transmit or process face data. Apple's
-LocalAuthentication framework is used only for an optional App Lock that
-the user can enable in Settings. Apple's Secure Enclave handles biometric
-matching on device; the app receives only a Boolean success/fail result
-and no biometric data. See privacy policy section "Why we ask for
-permissions → Face ID":
+LocalAuthentication framework is used only for optional App Lock in Settings.
+Apple handles biometric matching on device; X5 receives only a Boolean
+success/fail result and no biometric data. The privacy policy explains this
+under "Why we ask for permissions":
 https://tooyakov-art.github.io/x5site/privacy.html
 
-(2) Objectionable Content — Guideline 1.1.1
-The Home banners and tool grid that previously contained AI-generated
-faces and a battle scene have been removed in this build. The Home tab
-now shows only working tools (Captions, Academy). No imagery referencing
-race, religion, gender, violence or related themes remains in the app
-or in the App Store screenshots.
+(2) Objectionable Content - Guideline 1.1.1
+The previous AI-face and battle-style promotional screens are not part of this
+submission. Store screenshots now show only review-safe marketplace, chat,
+portfolio, course and profile flows. The app does not include content that
+targets race, religion, gender, violence or protected groups.
 
-(3) IAP not submitted — Guideline 2.1(b)
-X5 Pro Monthly subscription is included as an item in this submission.
-A review screenshot of the paywall has been uploaded to the subscription
-product.
+(3) IAP not submitted - Guideline 2.1(b)
+X5 Pro Monthly is the only paid subscription product used by this submission.
+The paywall is available from Profile -> Upgrade to Pro. A paywall review
+screenshot has been uploaded to the subscription product.
 
-(4) Home tab "fetched no contents" on iPad — Guideline 2.1(a)
-Fixed. The previous gate that hid the tool grid for non-developer
-accounts is removed; live tools now display directly to all users.
+(4) Home tab "fetched no contents" on iPad - Guideline 2.1(a)
+Fixed. The previous gate that hid content for non-developer accounts is
+removed; live tools and app sections display directly to all users.
 
 DEMO ACCOUNT
-Use the credentials in the Apple Demo Account fields. The account has a
-small portfolio (3 sample items), 100 free credits, and a public profile
-already set up. There is one existing chat with sample messages; you can
-also open another account on a second device to test sending messages.
+Use the credentials in the Apple Demo Account fields. The account has a small
+portfolio, free credits and a public profile already set up. There is one
+existing chat with sample messages.
 
 QUICK TEST FLOW
 1. Sign in with Apple, Google, or the demo email + password.
-2. Home tab — Captions opens the live caption template tool; Academy
-   deep-links to the Courses tab.
-3. Hub tab — browse tasks, tap one, send a proposal.
-4. Chats tab — open the existing demo conversation; send text, attach a
-   photo (paperclip → Photos), record a voice message (long-press mic).
-   Top-right menu → Open profile, Report, Block. Swipe a row → Pin/Mute,
-   or Delete.
-5. Portfolio tab (Profile → Portfolio) — tap "+" to add a portfolio entry.
-6. Courses tab — "AI для бизнеса" is free; tap to open and play any lesson.
-7. Profile → Settings (gear icon) → Face ID lock, Promo notifications,
-   Cache, Sign out, Delete account.
+2. Hub tab - browse tasks, tap one, send a proposal.
+3. Chats tab - open the demo conversation; send text, attach a photo
+   (paperclip -> Photos), record a voice message (long-press mic). Top-right
+   menu -> Open profile, Report, Block. Swipe a row -> Pin, Mute or Delete.
+4. Portfolio - open Profile -> Portfolio and tap "+" to add a portfolio item.
+5. Courses tab - open the free course and play any lesson.
+6. Profile -> Settings - Face ID lock, notifications, cache, sign out and
+   Delete Account.
+7. Profile -> Upgrade to Pro - verify subscription terms, Restore Purchases
+   and Manage Subscription controls.
 
-UGC SAFETY (Guideline 1.2)
-- Every chat user can be Blocked or Reported from the chat header menu.
-- Hub task authors can be Blocked from their profile or Reported.
-- Reports open an email to our moderation team and are reviewed within
+UGC SAFETY - Guideline 1.2
+- Every chat user can be blocked or reported from the chat header menu.
+- Hub task authors can be blocked from profile or reported.
+- Reports open an email to the moderation team and are reviewed within
   24 hours.
 - Account deletion in Settings is two-step and removes auth, profile,
   portfolio, tasks and messages permanently.
 
-SUBSCRIPTION (Guideline 3.1.2)
-X5 Pro is an auto-renewing monthly subscription at $9.99/month. The
-paywall (Profile → Upgrade to Pro) shows: subscription length, price,
-auto-renewal terms, Apple's Standard EULA link, and a Privacy Policy
-link. Restore Purchases and Manage Subscription buttons are present.
+SUBSCRIPTION - Guideline 3.1.2
+X5 Pro is an optional auto-renewing monthly subscription at $9.99/month. The
+paywall shows subscription length, price, auto-renewal terms, Apple's Standard
+EULA link, a Privacy Policy link, Restore Purchases and Manage Subscription.
 
 PUSH NOTIFICATIONS
-APNs is used to deliver new-message and accepted-proposal alerts. Permission
-is requested only after the user signs in.
+APNs is used to deliver new-message and accepted-proposal alerts. Permission is
+requested only after the user signs in.
 
 PRIVACY
-Sign in with Apple is offered alongside Google and email (Guideline 4.8).
-No third-party trackers, no ads, no analytics SDKs. The app does not use
-App Tracking Transparency.
+Sign in with Apple is offered alongside Google and email. X5 does not use
+tracking, ads or third-party advertising SDKs. The privacy policy accurately
+lists photos, microphone, notifications, profile, chat and portfolio data:
+https://tooyakov-art.github.io/x5site/privacy.html
 
 If anything is unclear: support@x5studio.app.

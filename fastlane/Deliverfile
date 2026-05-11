@@ -4,8 +4,8 @@ team_id "F8LA8PC4U6"
 # Push the rewritten metadata in fastlane/metadata/* up to ASC.
 skip_metadata false
 
-# Push the 7 iPhone 6.9 screenshots Diaz captured against the X5
-# marketplace UI. Old caption-studio leftovers were wiped before staging.
+# Push iPhone 6.9 screenshots captured against the X5 marketplace UI.
+# Keep only review-safe screens that match the submitted build.
 skip_screenshots false
 
 # Misc
