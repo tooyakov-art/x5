@@ -15,6 +15,7 @@ struct AppTabView: View {
             HomeView()
                 .tabItem { Label("Home", systemImage: "house") }
                 .tag(0)
+                .onAppear { DiagnosticLogger.log(event: "home_appeared") }
 
             CoursesView()
                 .tabItem { Label("CourseUP", systemImage: "graduationcap") }
@@ -33,6 +34,10 @@ struct AppTabView: View {
                 .tag(4)
         }
         .tint(.accentColor)
+        .onChange(of: selectedTab) { newValue in
+            DiagnosticLogger.log(event: "tab_switched",
+                                 extra: ["tab": String(newValue)])
+        }
         .onReceive(NotificationCenter.default.publisher(for: .x5SwitchTab)) { note in
             guard let key = note.userInfo?["tab"] as? String else { return }
             switch key {

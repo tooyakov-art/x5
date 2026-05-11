@@ -106,6 +106,8 @@ struct HomeView: View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
             ForEach(visibleTools) { tool in
                 Button {
+                    DiagnosticLogger.log(event: "home_tool_tap",
+                                         extra: ["tool_id": tool.id])
                     if tool.id == "captions" {
                         openCaptions = true
                     } else if tool.id == "academy" {
