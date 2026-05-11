@@ -125,13 +125,37 @@ jobs:
           print(f"\nTarget: {tid}  state={state}")
 
           if action == "submit":
+              # App Store Connect now requires the appStoreVersionForReview
+              # relationship on the ReviewSubmission itself. Older workflows
+              # that only created reviewSubmissionItems leave READY_FOR_REVIEW
+              # submissions empty and PATCH submitted=true fails with:
+              # "appStoreVersionForReview relationship required".
+              r = requests.get(f"{base}/apps/{app_id}/appStoreVersions", headers=h)
+              r.raise_for_status()
+              version_id = next(
+                  (v["id"] for v in r.json()["data"]
+                   if v["attributes"].get("versionString") == "1.1.0"
+                   and v["attributes"].get("platform") == "IOS"),
+                  None,
+              )
+              if not version_id:
+                  sys.exit("No iOS appStoreVersion 1.1.0 found")
+              submit_payload = {"data": {
+                  "type": "reviewSubmissions",
+                  "id": tid,
+                  "attributes": {"submitted": True},
+                  "relationships": {
+                      "appStoreVersionForReview": {
+                          "data": {"type": "appStoreVersions", "id": version_id}
+                      }
+                  },
+              }}
               if state == "READY_FOR_REVIEW":
                   print("Submitting (state -> WAITING_FOR_REVIEW)...")
                   r = requests.patch(
                       f"{base}/reviewSubmissions/{tid}",
                       headers={**h, "Content-Type": "application/json"},
-                      json={"data": {"type": "reviewSubmissions", "id": tid,
-                                     "attributes": {"submitted": True}}},
+                      json=submit_payload,
                   )
                   if r.status_code >= 300:
                       print(f"HTTP {r.status_code}: {r.text}")
@@ -142,8 +166,7 @@ jobs:
                   r = requests.patch(
                       f"{base}/reviewSubmissions/{tid}",
                       headers={**h, "Content-Type": "application/json"},
-                      json={"data": {"type": "reviewSubmissions", "id": tid,
-                                     "attributes": {"submitted": True}}},
+                      json=submit_payload,
                   )
                   print(f"HTTP {r.status_code}: {r.text[:300]}")
 
