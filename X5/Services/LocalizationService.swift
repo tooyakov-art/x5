@@ -269,8 +269,8 @@ extension LocalizationService {
             "chats_view_profile": "тапни, чтобы открыть профиль",
             "chats_loading": "Загружаем чаты…",
 
-            // Paywall
-            "paywall_title": "Раскрой потенциал",
+            // Paywall (paywall_title is defined again below with "X5 Pro" — Swift dictionary literal dedup;
+            // iOS 26.5 beta Swift runtime trap-s on duplicate keys, so we keep only one entry.)
             "paywall_desc": "Доступ ко всем AI-инструментам, премиум-курсам и безлимитным генерациям.",
             "paywall_active": "X5 Pro активна",
             "paywall_until": "До",
@@ -351,9 +351,6 @@ extension LocalizationService {
             "main_short": "Коротко",
             "main_medium": "Средне",
             "main_long": "Длинно",
-
-            // Profile / common
-            "profile_title": "Профиль",
 
             // Onboarding
             "onb_title": "Расскажи о себе",
@@ -588,7 +585,8 @@ extension LocalizationService {
             "chats_view_profile": "tap to view profile",
             "chats_loading": "Loading chats…",
 
-            "paywall_title": "Unlock the potential",
+            // paywall_title is defined again below with "X5 Pro" — kept single to avoid
+            // Swift duplicate-key dictionary trap on iOS 26.5 beta.
             "paywall_desc": "Access all AI tools, premium courses, and unlimited generations.",
             "paywall_active": "X5 Pro Active",
             "paywall_until": "Until",
@@ -666,9 +664,6 @@ extension LocalizationService {
             "main_short": "Short",
             "main_medium": "Medium",
             "main_long": "Long",
-
-            // Profile / common
-            "profile_title": "Profile",
 
             // Onboarding
             "onb_title": "Tell us who you are",
@@ -903,7 +898,8 @@ extension LocalizationService {
             "chats_view_profile": "профильді ашу үшін басыңыз",
             "chats_loading": "Чаттар жүктелуде…",
 
-            "paywall_title": "Әлеуетті аш",
+            // paywall_title is defined again below with "X5 Pro" — kept single to avoid
+            // Swift duplicate-key dictionary trap on iOS 26.5 beta.
             "paywall_desc": "Барлық AI құралдарға, премиум курстарға және шексіз генерацияларға қол жетімділік.",
             "paywall_active": "X5 Pro белсенді",
             "paywall_until": "Дейін",
@@ -981,9 +977,6 @@ extension LocalizationService {
             "main_short": "Қысқа",
             "main_medium": "Орташа",
             "main_long": "Ұзақ",
-
-            // Profile / common
-            "profile_title": "Профиль",
 
             // Onboarding
             "onb_title": "Өзің туралы айтып бер",
