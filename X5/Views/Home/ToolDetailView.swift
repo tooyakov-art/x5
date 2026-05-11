@@ -106,14 +106,10 @@ struct ToolDetailView: View {
         ZStack {
             LinearGradient(colors: [tool.gradientStart, tool.gradientEnd],
                            startPoint: .topLeading, endPoint: .bottomTrailing)
-            if let url = tool.videoURL {
-                LoopingVideo(url: url)
-                    .opacity(0.85)
-            } else {
-                Image(systemName: tool.icon)
-                    .font(.system(size: 64, weight: .light))
-                    .foregroundColor(.white.opacity(0.55))
-            }
+            // Build 66: LoopingVideo disabled — AVPlayer crash on iOS 26 stable.
+            Image(systemName: tool.icon)
+                .font(.system(size: 64, weight: .light))
+                .foregroundColor(.white.opacity(0.55))
         }
         .frame(height: 200)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
