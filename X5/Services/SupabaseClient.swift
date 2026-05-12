@@ -144,6 +144,21 @@ final class SupabaseClient {
         }
     }
 
+    func generateImage(prompt: String) async throws -> GeneratedImage {
+        let body = try JSONSerialization.data(withJSONObject: ["prompt": prompt])
+        let data = try await runAuthed { token in
+            let url = self.baseURL.appendingPathComponent("functions/v1/generate-image")
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(self.anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.httpBody = body
+            return request
+        }
+        return try JSONDecoder().decode(GeneratedImage.self, from: data)
+    }
+
     // MARK: - Auth-aware request runner with auto-refresh on 401
 
     @discardableResult
@@ -175,6 +190,11 @@ final class SupabaseClient {
             throw SupabaseError.serverError(status: http.statusCode, body: body)
         }
     }
+}
+
+struct GeneratedImage: Decodable {
+    let imageBase64: String
+    let prompt: String
 }
 
 enum SupabaseError: LocalizedError {

@@ -18,6 +18,7 @@ struct HomeView: View {
     @State private var bannerIndex: Int = 0
     @State private var openTool: HomeTool?
     @State private var openCaptions: Bool = false
+    @State private var openImageGenerator: Bool = false
     @State private var showingNotifications: Bool = false
 
     private var isDeveloper: Bool { Roles.isDeveloper(auth.userEmail) }
@@ -70,6 +71,10 @@ struct HomeView: View {
                 NavigationStack { MainView() }
                     .preferredColorScheme(.dark)
             }
+            .sheet(isPresented: $openImageGenerator) {
+                ImageGeneratorView()
+                    .preferredColorScheme(.dark)
+            }
             .sheet(isPresented: $showingNotifications) {
                 NotificationsView()
             }
@@ -110,6 +115,8 @@ struct HomeView: View {
                                          extra: ["tool_id": tool.id])
                     if tool.id == "captions" {
                         openCaptions = true
+                    } else if tool.id == "photo" {
+                        openImageGenerator = true
                     } else if tool.id == "academy" {
                         // Live: deep-link to Courses tab via NotificationCenter.
                         NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "courses"])
