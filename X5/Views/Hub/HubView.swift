@@ -235,19 +235,58 @@ private struct HubBackdrop: View {
             ], startPoint: .top, endPoint: .bottom)
             .ignoresSafeArea()
 
-            RadialGradient(colors: [
-                Color.accentColor.opacity(0.22),
-                Color.clear
-            ], center: .topTrailing, startRadius: 10, endRadius: 260)
-            .ignoresSafeArea()
-            .blur(radius: 18)
+            HubAbstractPattern()
+                .ignoresSafeArea()
+                .blur(radius: 10)
 
-            RadialGradient(colors: [
-                Color(red: 0.08, green: 0.62, blue: 0.48).opacity(0.16),
-                Color.clear
-            ], center: .bottomLeading, startRadius: 20, endRadius: 320)
+            LinearGradient(colors: [
+                Color.accentColor.opacity(0.16),
+                Color.clear,
+                Color(red: 0.14, green: 0.28, blue: 0.42).opacity(0.18)
+            ], startPoint: .topTrailing, endPoint: .bottomLeading)
             .ignoresSafeArea()
-            .blur(radius: 24)
+        }
+    }
+}
+
+private struct HubAbstractPattern: View {
+    var body: some View {
+        ZStack {
+            ForEach(0..<7, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(patternColor(i))
+                    .frame(width: CGFloat(170 + i * 34), height: CGFloat(34 + (i % 3) * 12))
+                    .rotationEffect(.degrees(i.isMultiple(of: 2) ? -22 : 18))
+                    .offset(x: CGFloat(-170 + i * 64), y: CGFloat(-260 + i * 88))
+            }
+
+            VStack(spacing: 18) {
+                ForEach(0..<9, id: \.self) { row in
+                    HStack(spacing: 18) {
+                        ForEach(0..<5, id: \.self) { col in
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(Color.white.opacity((row + col).isMultiple(of: 2) ? 0.045 : 0.022), lineWidth: 1)
+                                .frame(width: 54, height: 54)
+                        }
+                    }
+                }
+            }
+            .rotationEffect(.degrees(-11))
+            .offset(x: 34, y: 40)
+        }
+        .opacity(0.95)
+    }
+
+    private func patternColor(_ index: Int) -> Color {
+        switch index % 4 {
+        case 0:
+            return Color.accentColor.opacity(0.24)
+        case 1:
+            return Color(red: 0.10, green: 0.43, blue: 0.58).opacity(0.25)
+        case 2:
+            return Color.white.opacity(0.10)
+        default:
+            return Color(red: 0.34, green: 0.18, blue: 0.52).opacity(0.18)
         }
     }
 }
@@ -283,10 +322,10 @@ private struct BlurPill: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(isSelected ? .black : .white.opacity(0.88))
                 .padding(.horizontal, 12).padding(.vertical, 7)
-                .background(isSelected ? Color.accentColor.opacity(0.92) : Color.white.opacity(0.08))
                 .background(.ultraThinMaterial)
+                .background(isSelected ? Color.accentColor.opacity(0.86) : Color.white.opacity(0.06))
                 .overlay(
-                    Capsule().stroke(isSelected ? Color.accentColor.opacity(0.55) : Color.white.opacity(0.10), lineWidth: 1)
+                    Capsule().stroke(isSelected ? Color.accentColor.opacity(0.70) : Color.white.opacity(0.18), lineWidth: 1)
                 )
                 .clipShape(Capsule())
         }
