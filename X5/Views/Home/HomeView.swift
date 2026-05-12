@@ -23,7 +23,7 @@ struct HomeView: View {
 
     private var isDeveloper: Bool { Roles.isDeveloper(auth.userEmail) }
     /// Apple-safe live tool IDs — these have working functionality.
-    private static let liveToolIDs: Set<String> = ["captions", "academy"]
+    private static let liveToolIDs: Set<String> = ["photo", "captions", "academy"]
     private var visibleTools: [HomeTool] {
         if isDeveloper { return HomeContent.tools }
         return HomeContent.tools.filter { Self.liveToolIDs.contains($0.id) }

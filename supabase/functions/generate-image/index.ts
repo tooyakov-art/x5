@@ -26,6 +26,10 @@ Deno.serve(async (req) => {
   if (!auth.startsWith("Bearer ")) {
     return json({ error: "not_authenticated" }, 401);
   }
+  const user = await verifyUser(auth);
+  if (!user?.id) {
+    return json({ error: "not_authenticated" }, 401);
+  }
 
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) {
@@ -88,6 +92,21 @@ Deno.serve(async (req) => {
     prompt,
   }, 200);
 });
+
+async function verifyUser(authorization: string): Promise<{ id: string } | null> {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!supabaseUrl || !anonKey) return null;
+
+  const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: {
+      "Authorization": authorization,
+      "apikey": anonKey,
+    },
+  });
+  if (!res.ok) return null;
+  return await res.json().catch(() => null);
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
