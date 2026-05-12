@@ -295,6 +295,9 @@ struct SettingsView: View {
             }
         } catch {
             await MainActor.run {
+                DiagnosticLogger.log(event: "delete_account_failed", extra: [
+                    "summary": error.localizedDescription
+                ])
                 deleteStage = .idle
                 errorMessage = "\(loc.t("settings_delete_failed")): \(error.localizedDescription)"
             }

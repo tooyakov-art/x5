@@ -1,15 +1,5 @@
--- X5: account deletion RPC.
--- Required by App Store Guideline 5.1.1(v).
---
--- HOW TO APPLY:
---   1. Open Supabase Dashboard -> SQL Editor on project afwznqjpshybmqhlewmy
---   2. Paste this entire file and click Run
---   3. Verify:
---        select proname from pg_proc where proname = 'delete_own_account';
---
--- The project schema has changed several times. This function is deliberately
--- defensive: missing optional tables/columns and uuid-vs-text owner columns
--- must not break account deletion.
+-- Harden account deletion for App Store Guideline 5.1.1(v).
+-- Handles optional tables/columns and uuid/text owner id variants.
 
 create or replace function public.x5_delete_eq_if_exists(
   p_table_name text,
@@ -63,7 +53,6 @@ begin
     raise exception 'not authenticated';
   end if;
 
-  -- Child rows first. Keep this broad so old/new schema variants both work.
   perform public.x5_delete_eq_if_exists('messages', 'sender_id', uid);
   perform public.x5_delete_eq_if_exists('task_responses', 'specialist_id', uid);
   perform public.x5_delete_eq_if_exists('task_responses', 'client_id', uid);
@@ -103,7 +92,6 @@ begin
         end;
   end;
 
-  -- Profile after children, auth user last.
   perform public.x5_delete_eq_if_exists('profiles', 'id', uid);
 
   delete from auth.users where id = uid;
