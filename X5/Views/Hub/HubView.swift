@@ -21,20 +21,19 @@ struct HubView: View {
     @State private var startingChat: ChatRoom? = nil
     @State private var chatError: String? = nil
 
+    private let hubBackground = Color(red: 0.025, green: 0.03, blue: 0.07)
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("", selection: $segment) {
-                    ForEach(Segment.allCases) { s in
-                        Text(s == .specialists ? loc.t("hub_specialists") : loc.t("hub_tasks")).tag(s)
-                    }
-                }
-                .pickerStyle(.segmented)
+                HubSegmentedControl(segment: $segment,
+                                    specialistsTitle: loc.t("hub_specialists"),
+                                    tasksTitle: loc.t("hub_tasks"))
                 .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
 
-                CategoryRail(selected: $category)
+                CategoryGrid(selected: $category)
 
                 Group {
                     switch segment {
@@ -43,7 +42,7 @@ struct HubView: View {
                     }
                 }
             }
-            .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+            .background(HubBackdrop(base: hubBackground))
             .navigationTitle(loc.t("hub_title"))
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
@@ -59,7 +58,8 @@ struct HubView: View {
                             .font(.system(size: 13, weight: .bold))
                             .foregroundColor(.black)
                             .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(Color.accentColor)
+                            .background(LinearGradient(colors: [Color.accentColor, Color(red: 0.62, green: 1.0, blue: 0.18)],
+                                                       startPoint: .topLeading, endPoint: .bottomTrailing))
                             .clipShape(Capsule())
                         }
                     } else if !(currentUser.profile?.showInHub ?? false) {
@@ -71,7 +71,8 @@ struct HubView: View {
                                 .font(.system(size: 12, weight: .bold))
                                 .foregroundColor(.black)
                                 .padding(.horizontal, 10).padding(.vertical, 5)
-                                .background(Color.accentColor)
+                                .background(LinearGradient(colors: [Color.accentColor, Color(red: 0.62, green: 1.0, blue: 0.18)],
+                                                           startPoint: .topLeading, endPoint: .bottomTrailing))
                                 .clipShape(Capsule())
                         }
                     }
@@ -146,7 +147,10 @@ struct HubView: View {
                                 }
                             }
                             .frame(width: 44, height: 44)
-                            .background(Color.accentColor.opacity(0.12))
+                            .background(.ultraThinMaterial)
+                            .overlay(
+                                Circle().stroke(Color.accentColor.opacity(0.28), lineWidth: 1)
+                            )
                             .clipShape(Circle())
                         }
                         .buttonStyle(.plain)
@@ -209,41 +213,232 @@ struct HubView: View {
     }
 }
 
-// MARK: - Category rail
+// MARK: - Header controls
 
-private struct CategoryRail: View {
-    @Binding var selected: String?
-    @EnvironmentObject private var loc: LocalizationService
+private struct HubBackdrop: View {
+    let base: Color
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                Pill(label: loc.t("hub_all"), isSelected: selected == nil) { selected = nil }
-                ForEach(HubCategories.all) { cat in
-                    Pill(label: "\(cat.emoji) \(cat.labelEn)", isSelected: selected == cat.id) {
-                        selected = (selected == cat.id) ? nil : cat.id
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
+        ZStack {
+            base.ignoresSafeArea()
+            LinearGradient(colors: [
+                Color(red: 0.08, green: 0.10, blue: 0.18).opacity(0.85),
+                Color.clear,
+                Color.black.opacity(0.20)
+            ], startPoint: .top, endPoint: .bottom)
+            .ignoresSafeArea()
+
+            RadialGradient(colors: [
+                Color.accentColor.opacity(0.22),
+                Color.clear
+            ], center: .topTrailing, startRadius: 10, endRadius: 260)
+            .ignoresSafeArea()
+            .blur(radius: 18)
+
+            RadialGradient(colors: [
+                Color(red: 0.08, green: 0.62, blue: 0.48).opacity(0.16),
+                Color.clear
+            ], center: .bottomLeading, startRadius: 20, endRadius: 320)
+            .ignoresSafeArea()
+            .blur(radius: 24)
         }
     }
 }
 
-private struct Pill: View {
-    let label: String
-    let isSelected: Bool
+private struct HubSegmentedControl: View {
+    @Binding var segment: HubView.Segment
+    let specialistsTitle: String
+    let tasksTitle: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            segmentButton(.specialists, title: specialistsTitle, icon: "person.2.fill")
+            segmentButton(.tasks, title: tasksTitle, icon: "briefcase.fill")
+        }
+        .padding(4)
+        .background(.ultraThinMaterial)
+        .clipShape(Capsule())
+        .overlay(
+            Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    private func segmentButton(_ value: HubView.Segment, title: String, icon: String) -> some View {
+        let selected = segment == value
+        return Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                segment = value
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .bold))
+                Text(title)
+                    .font(.system(size: 13, weight: .heavy))
+            }
+            .foregroundColor(selected ? .black : .white.opacity(0.62))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 9)
+            .background(
+                Group {
+                    if selected {
+                        LinearGradient(colors: [Color.accentColor, Color(red: 0.68, green: 1.0, blue: 0.20)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing)
+                    } else {
+                        Color.clear
+                    }
+                }
+            )
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct CategoryGrid: View {
+    @Binding var selected: String?
+    @EnvironmentObject private var loc: LocalizationService
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 8),
+        GridItem(.flexible(), spacing: 8),
+        GridItem(.flexible(), spacing: 8)
+    ]
+
+    private var featured: [HubCategory] {
+        Array(HubCategories.all.prefix(6))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("CATEGORIES")
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(1.2)
+                    .foregroundColor(.white.opacity(0.42))
+                Spacer()
+                Button {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                        selected = nil
+                    }
+                } label: {
+                    Text(loc.t("hub_all"))
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(selected == nil ? .black : .white.opacity(0.70))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(selected == nil ? Color.accentColor : Color.white.opacity(0.08))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(featured) { cat in
+                    CategoryTile(category: cat, selected: selected == cat.id) {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                            selected = (selected == cat.id) ? nil : cat.id
+                        }
+                    }
+                }
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(HubCategories.all.dropFirst(6)) { cat in
+                        CompactCategoryPill(category: cat, selected: selected == cat.id) {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                selected = (selected == cat.id) ? nil : cat.id
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .padding(12)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+        .padding(.horizontal, 16)
+        .padding(.bottom, 4)
+    }
+}
+
+private struct CategoryTile: View {
+    let category: HubCategory
+    let selected: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(label)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(isSelected ? .black : .white.opacity(0.85))
-                .padding(.horizontal, 12).padding(.vertical, 7)
-                .background(isSelected ? Color.accentColor : Color.white.opacity(0.06))
-                .clipShape(Capsule())
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(selected ? Color.black.opacity(0.18) : Color.white.opacity(0.07))
+                        .frame(width: 34, height: 34)
+                    Text(category.emoji)
+                        .font(.system(size: 20))
+                }
+
+                Text(category.labelEn)
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundColor(selected ? .black : .white.opacity(0.88))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.75)
+                    .frame(height: 28)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 92)
+            .background(
+                ZStack {
+                    LinearGradient(colors: selected ? [
+                        Color.accentColor,
+                        Color(red: 0.70, green: 1.0, blue: 0.22)
+                    ] : [
+                        Color.white.opacity(0.085),
+                        Color.white.opacity(0.035)
+                    ], startPoint: .topLeading, endPoint: .bottomTrailing)
+
+                    if !selected {
+                        LinearGradient(colors: [
+                            Color(red: 0.12, green: 0.18, blue: 0.28).opacity(0.45),
+                            Color(red: 0.20, green: 0.07, blue: 0.18).opacity(0.25)
+                        ], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    }
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(selected ? Color.accentColor.opacity(0.65) : Color.white.opacity(0.08), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct CompactCategoryPill: View {
+    let category: HubCategory
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(category.emoji)
+                Text(category.labelEn)
+            }
+            .font(.system(size: 11, weight: .bold))
+            .foregroundColor(selected ? .black : .white.opacity(0.78))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(selected ? Color.accentColor : Color.white.opacity(0.08))
+            .clipShape(Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -289,7 +484,17 @@ private struct SpecialistRow: View {
                 .foregroundColor(.white.opacity(0.3))
         }
         .padding(12)
-        .background(Color.white.opacity(0.05))
+        .background(.ultraThinMaterial)
+        .background(
+            LinearGradient(colors: [
+                Color.white.opacity(0.09),
+                Color.white.opacity(0.025)
+            ], startPoint: .topLeading, endPoint: .bottomTrailing)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
@@ -340,7 +545,17 @@ private struct TaskRow: View {
             }
         }
         .padding(12)
-        .background(Color.white.opacity(0.05))
+        .background(.ultraThinMaterial)
+        .background(
+            LinearGradient(colors: [
+                Color.white.opacity(0.09),
+                Color.white.opacity(0.025)
+            ], startPoint: .topLeading, endPoint: .bottomTrailing)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
