@@ -222,7 +222,13 @@ private struct GlassTile: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(.ultraThinMaterial)
-            .background(isSelected ? HubStyle.cyan.opacity(0.13) : HubStyle.glassGradient)
+            .background {
+                if isSelected {
+                    HubStyle.cyan.opacity(0.13)
+                } else {
+                    HubStyle.glassGradient
+                }
+            }
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(isSelected ? HubStyle.cyan.opacity(0.62) : HubStyle.stroke, lineWidth: 1)
