@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 extension Notification.Name {
     /// Posted with `userInfo: ["tab": "profile"]` to programmatically switch tabs from anywhere.
@@ -9,6 +10,28 @@ extension Notification.Name {
 /// Home / Courses / Chats / Hub / Profile.
 struct AppTabView: View {
     @State private var selectedTab: Int = 0
+
+    init() {
+        let appearance = UITabBarAppearance()
+        appearance.configureWithTransparentBackground()
+        appearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
+        appearance.backgroundColor = UIColor.black.withAlphaComponent(0.22)
+
+        let selectedColor = UIColor(Color.accentColor)
+        let normalColor = UIColor.white.withAlphaComponent(0.55)
+        let itemAppearance = UITabBarItemAppearance()
+        itemAppearance.normal.iconColor = normalColor
+        itemAppearance.normal.titleTextAttributes = [.foregroundColor: normalColor]
+        itemAppearance.selected.iconColor = selectedColor
+        itemAppearance.selected.titleTextAttributes = [.foregroundColor: selectedColor]
+
+        appearance.stackedLayoutAppearance = itemAppearance
+        appearance.inlineLayoutAppearance = itemAppearance
+        appearance.compactInlineLayoutAppearance = itemAppearance
+
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
