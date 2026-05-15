@@ -41,7 +41,6 @@ private struct X5TypographyModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .font(.system(.body, design: .rounded))
-            .fontDesign(.rounded)
     }
 }
 
