@@ -11,6 +11,18 @@ final class Auth: ObservableObject {
 
     var accessToken: String? { supabase.accessToken }
 
+    func freshAccessToken() async -> String? {
+        guard supabase.accessToken != nil else { return nil }
+        if supabase.refreshToken != nil {
+            do {
+                _ = try await supabase.refreshSession()
+            } catch {
+                return nil
+            }
+        }
+        return supabase.accessToken
+    }
+
     /// Token keys live in the Keychain (encrypted at rest, excluded from iCloud backups).
     /// User profile keys (id, email) stay in UserDefaults — non-sensitive identifiers.
     private let tokenKey = "x5.session.access_token"

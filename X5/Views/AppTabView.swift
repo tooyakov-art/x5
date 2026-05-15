@@ -17,7 +17,7 @@ struct AppTabView: View {
         appearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
         appearance.backgroundColor = UIColor.black.withAlphaComponent(0.22)
 
-        let selectedColor = UIColor.white
+        let selectedColor = UIColor(red: 0.22, green: 0.78, blue: 1.0, alpha: 1.0)
         let normalColor = UIColor.white.withAlphaComponent(0.55)
         let itemAppearance = UITabBarItemAppearance()
         itemAppearance.normal.iconColor = normalColor
@@ -56,7 +56,7 @@ struct AppTabView: View {
                 .tabItem { Label("Profile", systemImage: "person.crop.circle") }
                 .tag(4)
         }
-        .tint(.white)
+        .tint(Color(red: 0.22, green: 0.78, blue: 1.0))
         .onChange(of: selectedTab) { newValue in
             DiagnosticLogger.log(event: "tab_switched",
                                  extra: ["tab": String(newValue)])

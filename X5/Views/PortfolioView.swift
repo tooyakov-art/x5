@@ -69,8 +69,9 @@ struct PortfolioGrid: View {
         }
         .sheet(isPresented: $showingAdd) {
             AddPortfolioItemView { jpeg, title, desc in
-                guard let token = auth.accessToken else { return false }
-                return await service.addImage(jpegData: jpeg, userId: userId, title: title, description: desc, accessToken: token)
+                guard let token = await auth.freshAccessToken() else { return "Sign in first." }
+                let ok = await service.addImage(jpegData: jpeg, userId: userId, title: title, description: desc, accessToken: token)
+                return ok ? nil : (service.error ?? "Server rejected the photo.")
             }
             .preferredColorScheme(.dark)
         }
@@ -120,7 +121,7 @@ private struct PortfolioCell: View {
 // MARK: - Add item
 
 struct AddPortfolioItemView: View {
-    let onSave: (Data, String?, String?) async -> Bool
+    let onSave: (Data, String?, String?) async -> String?
 
     @Environment(\.dismiss) private var dismiss
     @State private var photoItem: PhotosPickerItem?
@@ -196,12 +197,12 @@ struct AddPortfolioItemView: View {
         defer { saving = false }
         let titleTrim = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let descTrim = description.trimmingCharacters(in: .whitespacesAndNewlines)
-        let ok = await onSave(data, titleTrim.isEmpty ? nil : titleTrim,
-                              descTrim.isEmpty ? nil : descTrim)
-        if ok {
+        let error = await onSave(data, titleTrim.isEmpty ? nil : titleTrim,
+                                 descTrim.isEmpty ? nil : descTrim)
+        if error == nil {
             dismiss()
         } else {
-            errorText = "Не удалось сохранить. Проверь доступ к фото и попробуй другое изображение."
+            errorText = error
         }
     }
 

@@ -99,7 +99,7 @@ struct ProfileView: View {
     private var header: some View {
         ZStack(alignment: .bottom) {
             ProfilePortrait(urlString: currentUser.profile?.avatar,
-                            name: currentUser.profile?.name ?? auth.userEmail)
+                            name: profileDisplayName)
 
             LinearGradient(colors: [
                 .clear,
@@ -110,7 +110,7 @@ struct ProfileView: View {
             VStack(spacing: 12) {
                 VStack(spacing: 4) {
                     HStack(spacing: 7) {
-                        Text(currentUser.profile?.displayName ?? auth.userEmail ?? "User")
+                        Text(profileDisplayName)
                             .font(.system(size: 30, weight: .heavy, design: .rounded))
                             .foregroundColor(.white)
                             .lineLimit(1)
@@ -172,7 +172,7 @@ struct ProfileView: View {
             }
             .padding(16)
         }
-        .frame(height: min(UIScreen.main.bounds.height * 0.72, 620))
+        .frame(height: min(UIScreen.main.bounds.height * 0.80, 700))
         .frame(maxWidth: .infinity)
         .ignoresSafeArea(edges: .top)
         .onChange(of: avatarPickerItem) { newItem in
@@ -182,7 +182,7 @@ struct ProfileView: View {
     }
 
     private func uploadAvatar(_ item: PhotosPickerItem) async {
-        guard let token = auth.accessToken else {
+        guard let token = await auth.freshAccessToken() else {
             uploadError = "Сначала войди в аккаунт."
             return
         }
@@ -195,7 +195,7 @@ struct ProfileView: View {
             avatarPickerItem = nil
             return
         }
-        let url = await currentUser.uploadAvatar(jpeg, accessToken: token)
+        let url = await currentUser.uploadAvatar(jpeg, userId: auth.userId, accessToken: token)
         if url == nil {
             uploadError = currentUser.error ?? "Сервер не принял фото. Попробуй другое изображение."
         }
@@ -391,6 +391,20 @@ struct ProfileView: View {
         currentUser.profile?.planLabel.uppercased() ?? "FREE"
     }
 
+    private var profileDisplayName: String {
+        if let name = currentUser.profile?.name, !name.isEmpty { return name }
+        if let nickname = currentUser.profile?.nickname, !nickname.isEmpty { return nickname }
+        if let email = currentUser.profile?.email, !email.isEmpty { return login(from: email) }
+        if let email = auth.userEmail, !email.isEmpty { return login(from: email) }
+        return "X5"
+    }
+
+    private func login(from email: String) -> String {
+        let raw = email.split(separator: "@").first.map(String.init) ?? ""
+        let allowed = raw.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "." }
+        return allowed.isEmpty ? "x5_user" : allowed
+    }
+
     /// Real subscription price from StoreKit / ASC. Loaded once on appear.
     private var upgradeSubtitle: String {
         if let p = iap.product {
@@ -466,13 +480,13 @@ struct ProfilePortrait: View {
 
     var body: some View {
         ZStack {
-            portrait
+            backgroundPortrait
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .scaleEffect(1.02)
                 .blur(radius: 18)
                 .opacity(0.54)
 
-            portrait
+            foregroundPortrait
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .saturation(1.05)
                 .contrast(1.04)
@@ -481,12 +495,27 @@ struct ProfilePortrait: View {
     }
 
     @ViewBuilder
-    private var portrait: some View {
+    private var backgroundPortrait: some View {
         if let raw = urlString, !raw.isEmpty, let url = URL(string: raw) {
             CachedAsyncImage(url: url) { image in
                 image
                     .resizable()
                     .scaledToFill()
+            } placeholder: {
+                placeholder
+            }
+        } else {
+            placeholder
+        }
+    }
+
+    @ViewBuilder
+    private var foregroundPortrait: some View {
+        if let raw = urlString, !raw.isEmpty, let url = URL(string: raw) {
+            CachedAsyncImage(url: url) { image in
+                image
+                    .resizable()
+                    .scaledToFit()
             } placeholder: {
                 placeholder
             }

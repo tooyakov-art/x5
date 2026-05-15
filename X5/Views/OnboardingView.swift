@@ -207,7 +207,7 @@ struct OnboardingView: View {
             do {
                 try await patchProfile(role: role, token: token)
                 if let uid = auth.userId {
-                    await currentUser.load(userId: uid, accessToken: token)
+                    await currentUser.load(userId: uid, accessToken: token, email: auth.userEmail)
                 }
             } catch {
                 errorMessage = error.localizedDescription

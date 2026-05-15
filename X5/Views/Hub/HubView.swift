@@ -324,41 +324,15 @@ private struct HubSegmentedControl: View {
     let tasksTitle: String
 
     var body: some View {
-        HStack(spacing: 4) {
-            segmentButton(.specialists, title: specialistsTitle)
-            segmentButton(.tasks, title: tasksTitle)
+        Picker("", selection: $selected) {
+            Text(specialistsTitle).tag(HubView.Segment.specialists)
+            Text(tasksTitle).tag(HubView.Segment.tasks)
         }
-        .padding(5)
+        .pickerStyle(.segmented)
+        .tint(HubPalette.cyan)
+        .colorScheme(.dark)
+        .padding(6)
         .hubGlass(cornerRadius: 16, accent: Color.white.opacity(0.14))
-    }
-
-    private func segmentButton(_ segment: HubView.Segment, title: String) -> some View {
-        Button {
-            selected = segment
-        } label: {
-            Text(title)
-                .font(.system(size: 14, weight: .heavy, design: .rounded))
-                .foregroundColor(selected == segment ? .white : .white.opacity(0.58))
-                .frame(maxWidth: .infinity)
-                .frame(height: 40)
-                .background(
-                    Group {
-                        if selected == segment {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(.ultraThinMaterial)
-                                .overlay(Color.white.opacity(0.08))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
-                                )
-                        } else {
-                            Color.clear
-                        }
-                    }
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-        .buttonStyle(.plain)
     }
 }
 

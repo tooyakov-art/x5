@@ -23,7 +23,7 @@ struct PaywallView: View {
                             let ok = await iap.purchaseMonthly()
                             if ok {
                                 if let uid = auth.userId, let token = auth.accessToken {
-                                    await currentUser.load(userId: uid, accessToken: token)
+                                    await currentUser.load(userId: uid, accessToken: token, email: auth.userEmail)
                                 }
                                 showSuccess = true
                             }
@@ -57,7 +57,7 @@ struct PaywallView: View {
                         Task {
                             await iap.restore()
                             if let uid = auth.userId, let token = auth.accessToken {
-                                await currentUser.load(userId: uid, accessToken: token)
+                                await currentUser.load(userId: uid, accessToken: token, email: auth.userEmail)
                             }
                         }
                     }
