@@ -13,7 +13,6 @@ struct HubView: View {
     @StateObject private var service = HubService()
     @StateObject private var chats = ChatsService()
     @State private var segment: Segment = .specialists
-    @State private var category: String? = nil
     @State private var showingPostTask = false
     @State private var showingEditProfile = false
     @State private var openingChatWith: String? = nil
@@ -41,13 +40,6 @@ struct HubView: View {
                             .tracking(1.2)
 
                         categoryGrid
-
-                        switch segment {
-                        case .specialists:
-                            specialistsList
-                        case .tasks:
-                            tasksList
-                        }
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 18)
@@ -142,104 +134,25 @@ struct HubView: View {
 
         return LazyVGrid(columns: columns, spacing: 8) {
             ForEach(HubCategories.all) { cat in
-                HubCategoryCard(
-                    title: cat.labelEn,
-                    systemImage: categoryIcon(for: cat.id),
-                    count: categoryCount(for: cat.id),
-                    isSelected: category == cat.id
-                ) {
-                    category = (category == cat.id) ? nil : cat.id
-                }
-            }
-        }
-    }
-
-    private var specialistsList: some View {
-        LazyVStack(alignment: .leading, spacing: 10) {
-            HubListHeader(
-                title: category.map { HubCategories.label(for: $0) } ?? loc.t("hub_specialists"),
-                isFiltered: category != nil
-            ) {
-                category = nil
-            }
-
-            ForEach(filteredSpecialists) { person in
-                HStack(spacing: 8) {
-                    NavigationLink {
-                        UserProfileView(userId: person.id, fallback: person)
-                    } label: {
-                        SpecialistRow(person: person)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        startChat(with: person)
-                    } label: {
-                        Group {
-                            if openingChatWith == person.id {
-                                ProgressView().tint(.white)
-                            } else {
-                                Image(systemName: "message.fill")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(.white)
-                            }
-                        }
-                        .frame(width: 46, height: 46)
-                        .hubGlass(cornerRadius: 18, accent: HubPalette.cyan.opacity(0.36))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(openingChatWith != nil)
-                }
-            }
-
-            if filteredSpecialists.isEmpty && !service.isLoading {
-                EmptyState(systemImage: "person.crop.circle.badge.questionmark",
-                           title: loc.t("hub_no_specialists"),
-                           subtitle: loc.t("hub_no_specialists_sub"))
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 26)
-            }
-        }
-    }
-
-    private var tasksList: some View {
-        LazyVStack(alignment: .leading, spacing: 10) {
-            HubListHeader(
-                title: category.map { HubCategories.label(for: $0) } ?? loc.t("hub_tasks"),
-                isFiltered: category != nil
-            ) {
-                category = nil
-            }
-
-            ForEach(filteredTasks) { task in
                 NavigationLink {
-                    TaskDetailView(task: task)
+                    HubCategoryDetailView(
+                        segment: segment,
+                        category: cat,
+                        specialists: specialists(for: cat.id),
+                        tasks: tasks(for: cat.id),
+                        openingChatWith: $openingChatWith,
+                        startChat: { person in startChat(with: person) }
+                    )
                 } label: {
-                    TaskRow(task: task)
+                    HubCategoryCard(
+                        title: cat.labelEn,
+                        systemImage: categoryIcon(for: cat.id),
+                        count: categoryCount(for: cat.id)
+                    )
                 }
                 .buttonStyle(.plain)
             }
-
-            if filteredTasks.isEmpty && !service.isLoading {
-                EmptyState(systemImage: "tray",
-                           title: loc.t("hub_no_tasks"),
-                           subtitle: loc.t("hub_no_tasks_sub"))
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 26)
-            }
         }
-    }
-
-    private var filteredSpecialists: [HubSpecialist] {
-        let visible = service.specialists.filter { !BlockList.contains($0.id) }
-        guard let category else { return visible }
-        return visible.filter { ($0.specialistCategory ?? []).contains(category) }
-    }
-
-    private var filteredTasks: [HubTask] {
-        let visible = service.tasks.filter { !BlockList.contains($0.authorId) }
-        guard let category else { return visible }
-        return visible.filter { $0.category == category }
     }
 
     private func startChat(with person: HubSpecialist) {
@@ -262,16 +175,22 @@ struct HubView: View {
     private func categoryCount(for id: String) -> Int {
         switch segment {
         case .specialists:
-            return service.specialists
-                .filter { !BlockList.contains($0.id) }
-                .filter { ($0.specialistCategory ?? []).contains(id) }
-                .count
+            return specialists(for: id).count
         case .tasks:
-            return service.tasks
-                .filter { !BlockList.contains($0.authorId) }
-                .filter { $0.category == id }
-                .count
+            return tasks(for: id).count
         }
+    }
+
+    private func specialists(for id: String) -> [HubSpecialist] {
+        service.specialists
+            .filter { !BlockList.contains($0.id) }
+            .filter { ($0.specialistCategory ?? []).contains(id) }
+    }
+
+    private func tasks(for id: String) -> [HubTask] {
+        service.tasks
+            .filter { !BlockList.contains($0.authorId) }
+            .filter { $0.category == id }
     }
 
     private func categoryIcon(for id: String) -> String {
@@ -419,16 +338,19 @@ private struct HubSegmentedControl: View {
         } label: {
             Text(title)
                 .font(.system(size: 14, weight: .heavy, design: .rounded))
-                .foregroundColor(selected == segment ? .black : .white.opacity(0.58))
+                .foregroundColor(selected == segment ? .white : .white.opacity(0.58))
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
                 .background(
                     Group {
                         if selected == segment {
-                            LinearGradient(colors: [
-                                Color.white.opacity(0.94),
-                                HubPalette.cyan.opacity(0.88)
-                            ], startPoint: .topLeading, endPoint: .bottomTrailing)
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                                .overlay(Color.white.opacity(0.08))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                                )
                         } else {
                             Color.clear
                         }
@@ -444,47 +366,30 @@ private struct HubCategoryCard: View {
     let title: String
     let systemImage: String
     let count: Int
-    let isSelected: Bool
-    let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundColor(isSelected ? .black : HubPalette.silver)
-                    .frame(height: 26)
+        VStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundColor(HubPalette.silver)
+                .frame(height: 26)
 
-                Text(title)
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    .foregroundColor(isSelected ? .black : .white.opacity(0.88))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.74)
-                    .frame(maxWidth: .infinity, minHeight: 30)
+            Text(title)
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(.white.opacity(0.90))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.74)
+                .frame(maxWidth: .infinity, minHeight: 30)
 
-                Text("\(count)")
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
-                    .foregroundColor(isSelected ? .black.opacity(0.62) : HubPalette.cyan.opacity(count > 0 ? 0.88 : 0.28))
-                    .opacity(count > 0 ? 1 : 0)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 96)
-            .background(
-                Group {
-                    if isSelected {
-                        LinearGradient(colors: [
-                            Color.white.opacity(0.96),
-                            HubPalette.cyan.opacity(0.86)
-                        ], startPoint: .topLeading, endPoint: .bottomTrailing)
-                    } else {
-                        Color.clear
-                    }
-                }
-            )
-            .hubGlass(cornerRadius: 14, accent: isSelected ? HubPalette.cyan.opacity(0.62) : Color.white.opacity(0.13))
+            Text("\(count)")
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .foregroundColor(HubPalette.cyan.opacity(count > 0 ? 0.88 : 0.28))
+                .opacity(count > 0 ? 1 : 0)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .frame(height: 106)
+        .hubGlass(cornerRadius: 16, accent: Color.white.opacity(0.13))
     }
 }
 
@@ -515,6 +420,139 @@ private struct HubListHeader: View {
             }
         }
         .padding(.top, 4)
+    }
+}
+
+private struct HubCategoryDetailView: View {
+    let segment: HubView.Segment
+    let category: HubCategory
+    let specialists: [HubSpecialist]
+    let tasks: [HubTask]
+    @Binding var openingChatWith: String?
+    let startChat: (HubSpecialist) -> Void
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    Image(systemName: icon)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 50, height: 50)
+                        .hubGlass(cornerRadius: 18, accent: Color.white.opacity(0.12))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(category.labelEn)
+                            .font(.system(size: 28, weight: .heavy, design: .rounded))
+                            .foregroundColor(.white)
+                        Text(segment == .specialists ? "Specialists" : "Tasks")
+                            .font(.system(size: 12, weight: .heavy, design: .rounded))
+                            .foregroundColor(.white.opacity(0.48))
+                            .tracking(1.1)
+                    }
+                }
+                .padding(.bottom, 10)
+
+                switch segment {
+                case .specialists:
+                    specialistsContent
+                case .tasks:
+                    tasksContent
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 18)
+            .padding(.bottom, 34)
+            .frame(maxWidth: 640)
+            .frame(maxWidth: .infinity)
+        }
+        .background(HubBackdrop())
+        .navigationTitle(category.labelEn)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+    }
+
+    private var specialistsContent: some View {
+        Group {
+            ForEach(specialists) { person in
+                HStack(spacing: 8) {
+                    NavigationLink {
+                        UserProfileView(userId: person.id, fallback: person)
+                    } label: {
+                        SpecialistRow(person: person)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        startChat(person)
+                    } label: {
+                        Group {
+                            if openingChatWith == person.id {
+                                ProgressView().tint(.white)
+                            } else {
+                                Image(systemName: "message.fill")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        .frame(width: 46, height: 46)
+                        .hubGlass(cornerRadius: 18, accent: Color.white.opacity(0.14))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(openingChatWith != nil)
+                }
+            }
+
+            if specialists.isEmpty {
+                EmptyState(systemImage: "person.crop.circle.badge.questionmark",
+                           title: "No specialists",
+                           subtitle: "This category is empty.")
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 42)
+            }
+        }
+    }
+
+    private var tasksContent: some View {
+        Group {
+            ForEach(tasks) { task in
+                NavigationLink {
+                    TaskDetailView(task: task)
+                } label: {
+                    TaskRow(task: task)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if tasks.isEmpty {
+                EmptyState(systemImage: "tray",
+                           title: "No tasks",
+                           subtitle: "This category is empty.")
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 42)
+            }
+        }
+    }
+
+    private var icon: String {
+        switch category.id {
+        case "marketing": return "megaphone.fill"
+        case "smm": return "iphone"
+        case "targeting": return "scope"
+        case "seo": return "magnifyingglass"
+        case "sales": return "dollarsign.circle.fill"
+        case "design": return "paintpalette.fill"
+        case "ui_ux": return "ruler.fill"
+        case "motion": return "sparkles"
+        case "3d": return "cube.transparent.fill"
+        case "web_dev": return "globe"
+        case "mobile_dev": return "apps.iphone"
+        case "bot_dev": return "cpu.fill"
+        case "ai_ml": return "brain.head.profile"
+        case "gamedev": return "gamecontroller.fill"
+        case "ugc": return "video.fill"
+        default: return "square.grid.2x2.fill"
+        }
     }
 }
 

@@ -16,9 +16,9 @@ struct X5GlassSurface: ViewModifier {
             .background(.ultraThinMaterial)
             .background(
                 LinearGradient(colors: [
-                    Color.white.opacity(0.18),
-                    X5Theme.blue.opacity(0.16),
-                    Color.black.opacity(0.28)
+                    Color.white.opacity(0.15),
+                    Color.white.opacity(0.05),
+                    Color.black.opacity(0.36)
                 ], startPoint: .topLeading, endPoint: .bottomTrailing)
             )
             .overlay(alignment: .topLeading) {
