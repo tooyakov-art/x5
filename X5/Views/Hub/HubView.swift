@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Hub bottom tab: specialists marketplace and open tasks.
 struct HubView: View {
@@ -15,9 +16,22 @@ struct HubView: View {
     @State private var segment: Segment = .specialists
     @State private var showingPostTask = false
     @State private var showingEditProfile = false
+    @State private var showingNotifications = false
     @State private var openingChatWith: String? = nil
     @State private var startingChat: ChatRoom? = nil
     @State private var chatError: String? = nil
+
+    init() {
+        UISegmentedControl.appearance().selectedSegmentTintColor = UIColor.systemBlue
+        UISegmentedControl.appearance().setTitleTextAttributes([
+            .foregroundColor: UIColor.white,
+            .font: UIFont.systemFont(ofSize: 14, weight: .semibold)
+        ], for: .selected)
+        UISegmentedControl.appearance().setTitleTextAttributes([
+            .foregroundColor: UIColor.white.withAlphaComponent(0.78),
+            .font: UIFont.systemFont(ofSize: 14, weight: .semibold)
+        ], for: .normal)
+    }
 
     var body: some View {
         NavigationStack {
@@ -66,6 +80,9 @@ struct HubView: View {
             .sheet(isPresented: $showingEditProfile) {
                 EditProfileView()
             }
+            .sheet(isPresented: $showingNotifications) {
+                NotificationsView()
+            }
             .sheet(item: $startingChat) { chat in
                 NavigationStack { ChatThreadView(chat: chat) }
                     .preferredColorScheme(.dark)
@@ -100,32 +117,31 @@ struct HubView: View {
                 showingPostTask = true
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 48, height: 48)
-                    .hubGlass(cornerRadius: 18, accent: HubPalette.cyan.opacity(0.38))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.circle)
+            .controlSize(.large)
+            .tint(.blue)
         } else if !(currentUser.profile?.showInHub ?? false) {
             Button {
                 NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
             } label: {
                 Image(systemName: "person.badge.plus")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 48, height: 48)
-                    .hubGlass(cornerRadius: 18, accent: HubPalette.cyan.opacity(0.38))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.circle)
+            .controlSize(.large)
+            .tint(.blue)
         } else {
-            Button {} label: {
+            Button {
+                showingNotifications = true
+            } label: {
                 Image(systemName: "bell")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(.white.opacity(0.86))
-                    .frame(width: 48, height: 48)
-                    .hubGlass(cornerRadius: 18, accent: Color.white.opacity(0.16))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.circle)
+            .controlSize(.large)
+            .tint(.blue)
         }
     }
 
@@ -156,12 +172,17 @@ struct HubView: View {
     }
 
     private func startChat(with person: HubSpecialist) {
-        guard let myId = auth.userId, let token = auth.accessToken else {
+        guard let myId = auth.userId else {
             chatError = "Sign in first."
             return
         }
         openingChatWith = person.id
         Task {
+            guard let token = await auth.freshAccessToken() else {
+                openingChatWith = nil
+                chatError = "Sign in first."
+                return
+            }
             let chat = await chats.ensureChat(otherUserId: person.id, currentUserId: myId, taskId: nil, taskTitle: nil, accessToken: token)
             openingChatWith = nil
             if let chat {
@@ -230,7 +251,7 @@ struct HubView: View {
 // MARK: - Background
 
 private enum HubPalette {
-    static let cyan = Color(red: 0.22, green: 0.86, blue: 1.0)
+    static let cyan = Color(red: 0.0, green: 0.478, blue: 1.0)
     static let silver = Color(red: 0.78, green: 0.82, blue: 0.88)
     static let panel = Color(red: 0.045, green: 0.05, blue: 0.075)
 }
@@ -278,35 +299,24 @@ private struct HubGlassModifier: ViewModifier {
             .background(.ultraThinMaterial)
             .background(
                 LinearGradient(colors: [
-                    Color.white.opacity(0.17),
-                    HubPalette.panel.opacity(0.50),
-                    Color.white.opacity(0.045)
+                    Color.white.opacity(0.10),
+                    HubPalette.panel.opacity(0.34),
+                    Color.black.opacity(0.18)
                 ], startPoint: .topLeading, endPoint: .bottomTrailing)
             )
-            .overlay(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(
-                        RadialGradient(colors: [
-                            Color.white.opacity(0.34),
-                            Color.white.opacity(0.05),
-                            Color.clear
-                        ], center: .topLeading, startRadius: 2, endRadius: 90)
-                    )
-                    .blendMode(.screen)
-            }
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(
                         LinearGradient(colors: [
-                            Color.white.opacity(0.34),
-                            accent,
-                            Color.white.opacity(0.08)
+                            Color.white.opacity(0.22),
+                            accent.opacity(0.70),
+                            Color.white.opacity(0.06)
                         ], startPoint: .topLeading, endPoint: .bottomTrailing),
                         lineWidth: 1
                     )
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .shadow(color: accent.opacity(0.18), radius: 18, x: 0, y: 10)
+            .shadow(color: Color.black.opacity(0.22), radius: 14, x: 0, y: 9)
     }
 }
 
@@ -331,8 +341,7 @@ private struct HubSegmentedControl: View {
         .pickerStyle(.segmented)
         .tint(HubPalette.cyan)
         .colorScheme(.dark)
-        .padding(6)
-        .hubGlass(cornerRadius: 16, accent: Color.white.opacity(0.14))
+        .frame(height: 44)
     }
 }
 

@@ -71,7 +71,7 @@ struct CreateTaskView: View {
     }
 
     private func submit() async {
-        guard let uid = auth.userId, let token = auth.accessToken else { return }
+        guard let uid = auth.userId, let token = await auth.freshAccessToken() else { return }
         saving = true
         defer { saving = false }
         let inserted = await hub.createTask(
