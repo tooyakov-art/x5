@@ -33,7 +33,8 @@ struct UserProfileView: View {
                         .font(.system(size: 13))
                         .foregroundColor(.white.opacity(0.7))
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 4)
+                        .padding(14)
+                        .profilePanel(cornerRadius: 18)
                 }
                 categoryChips
                 socialButtons
@@ -46,7 +47,7 @@ struct UserProfileView: View {
             .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)
         }
-        .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+        .background(ProfileAmbientBackground().ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
@@ -113,8 +114,9 @@ struct UserProfileView: View {
             .foregroundColor(.black)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(Color.accentColor)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(Color.white)
+            .clipShape(Capsule())
+            .shadow(color: .white.opacity(0.14), radius: 18, x: 0, y: 10)
         }
         .buttonStyle(.plain)
         .disabled(openingChat || auth.accessToken == nil)
@@ -131,35 +133,44 @@ struct UserProfileView: View {
     }
 
     private var header: some View {
-        VStack(spacing: 12) {
-            AvatarView(urlString: profile?.avatar ?? fallback?.avatar,
-                       name: profile?.name ?? fallback?.name,
-                       size: 92)
-            VStack(spacing: 4) {
-                HStack(spacing: 6) {
+        ZStack(alignment: .bottom) {
+            ProfilePortrait(urlString: profile?.avatar ?? fallback?.avatar,
+                            name: profile?.name ?? fallback?.name)
+
+            LinearGradient(colors: [
+                .clear,
+                Color.black.opacity(0.18),
+                Color.black.opacity(0.84)
+            ], startPoint: .center, endPoint: .bottom)
+
+            VStack(spacing: 10) {
+                HStack(spacing: 7) {
                     Text(profile?.name ?? fallback?.name ?? fallback?.nickname ?? "User")
-                        .font(.system(size: 20, weight: .heavy))
+                        .font(.system(size: 29, weight: .heavy, design: .rounded))
                         .foregroundColor(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
                     if (profile?.hasActiveVerifiedBadge ?? (fallback?.isVerified == true)) {
-                        VerifiedChip(size: 16)
+                        VerifiedChip(size: 19)
                     }
                 }
                 if let nick = profile?.nickname ?? fallback?.nickname, !nick.isEmpty {
                     Text("@\(nick)")
-                        .font(.system(size: 13))
-                        .foregroundColor(.white.opacity(0.5))
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.66))
                 }
                 if (profile?.plan ?? fallback?.plan) == "pro" {
-                    Text("PRO")
-                        .font(.system(size: 10, weight: .heavy))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Color.accentColor)
-                        .clipShape(Capsule())
+                    HeroPill(text: "PRO", highlighted: true)
                 }
             }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 24)
         }
+        .frame(height: 430)
         .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 34, style: .continuous).stroke(Color.white.opacity(0.10), lineWidth: 1))
+        .shadow(color: Color.cyan.opacity(0.14), radius: 30, x: 0, y: 18)
     }
 
     @ViewBuilder
@@ -182,6 +193,8 @@ struct UserProfileView: View {
                     }
                 }
             }
+            .padding(14)
+            .profilePanel(cornerRadius: 18)
         }
     }
 
@@ -212,6 +225,8 @@ struct UserProfileView: View {
                     }
                 }
             }
+            .padding(14)
+            .profilePanel(cornerRadius: 18)
         }
     }
 
@@ -261,8 +276,9 @@ private struct SocialLink: View {
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(.white)
                 .frame(width: 40, height: 40)
-                .background(Color.white.opacity(0.08))
+                .background(.ultraThinMaterial)
                 .clipShape(Circle())
+                .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .disabled(url == nil)

@@ -55,7 +55,7 @@ struct ProfileView: View {
                 .frame(maxWidth: 640)
                 .frame(maxWidth: .infinity)
             }
-            .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+            .background(ProfileAmbientBackground().ignoresSafeArea())
             .navigationTitle(loc.t("profile_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -86,79 +86,90 @@ struct ProfileView: View {
     // MARK: - Header
 
     private var header: some View {
-        VStack(spacing: 12) {
-            ZStack(alignment: .bottomTrailing) {
-                AvatarView(urlString: currentUser.profile?.avatar,
-                           name: currentUser.profile?.name ?? auth.userEmail,
-                           size: 96)
-                if uploadingAvatar {
-                    Circle().fill(Color.black.opacity(0.5)).frame(width: 96, height: 96)
-                    ProgressView().tint(.white)
-                }
-                PhotosPicker(selection: $avatarPickerItem, matching: .images) {
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.black)
-                        .frame(width: 30, height: 30)
-                        .background(Color.accentColor)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Color(red: 0.04, green: 0.05, blue: 0.10), lineWidth: 3))
-                }
-                .disabled(uploadingAvatar)
-            }
-            .frame(width: 96, height: 96)
+        ZStack(alignment: .bottom) {
+            ProfilePortrait(urlString: currentUser.profile?.avatar,
+                            name: currentUser.profile?.name ?? auth.userEmail)
 
-            VStack(spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(currentUser.profile?.displayName ?? auth.userEmail ?? "User")
-                        .font(.system(size: 22, weight: .heavy))
-                        .foregroundColor(.white)
-                    if currentUser.profile?.hasActiveVerifiedBadge == true {
-                        VerifiedChip(size: 18)
+            LinearGradient(colors: [
+                .clear,
+                Color.black.opacity(0.18),
+                Color.black.opacity(0.82)
+            ], startPoint: .center, endPoint: .bottom)
+
+            VStack(spacing: 12) {
+                VStack(spacing: 4) {
+                    HStack(spacing: 7) {
+                        Text(currentUser.profile?.displayName ?? auth.userEmail ?? "User")
+                            .font(.system(size: 30, weight: .heavy, design: .rounded))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.78)
+                        if currentUser.profile?.hasActiveVerifiedBadge == true {
+                            VerifiedChip(size: 19)
+                        }
+                    }
+                    if let nick = currentUser.profile?.nickname, !nick.isEmpty {
+                        Text("@\(nick)")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.66))
                     }
                 }
-                if let nick = currentUser.profile?.nickname, !nick.isEmpty {
-                    Text("@\(nick)")
-                        .font(.system(size: 13))
-                        .foregroundColor(.white.opacity(0.5))
+
+                Button {
+                    showingEdit = true
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: "pencil")
+                        Text("Edit profile")
+                    }
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.white)
+                    .clipShape(Capsule())
+                    .shadow(color: .white.opacity(0.16), radius: 18, x: 0, y: 10)
                 }
-                HStack(spacing: 6) {
-                    Text(planLabel)
-                        .font(.system(size: 10, weight: .heavy))
-                        .tracking(0.8)
-                        .foregroundColor(currentUser.profile?.isPro == true ? .black : .white)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(currentUser.profile?.isPro == true ? Color.accentColor : Color.white.opacity(0.1))
-                        .clipShape(Capsule())
+                .buttonStyle(.plain)
+
+                HStack(spacing: 8) {
+                    HeroPill(text: planLabel, highlighted: currentUser.profile?.isPro == true)
                     if let n = currentUser.profile?.signupNumber {
-                        Text("#\(n)")
-                            .font(.system(size: 10, weight: .heavy))
-                            .tracking(0.8)
-                            .foregroundColor(.white.opacity(0.6))
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Color.white.opacity(0.06))
-                            .clipShape(Capsule())
+                        HeroPill(text: "#\(n)", highlighted: false)
                     }
                 }
             }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 22)
 
-            Button {
-                showingEdit = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "pencil")
-                    Text("Edit profile")
-                }
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white)
-                .padding(.horizontal, 14).padding(.vertical, 8)
-                .background(Color.white.opacity(0.08))
-                .clipShape(Capsule())
+            if uploadingAvatar {
+                Color.black.opacity(0.42)
+                ProgressView().tint(.white)
             }
-            .buttonStyle(.plain)
+
+            VStack {
+                HStack {
+                    PhotosPicker(selection: $avatarPickerItem, matching: .images) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 46, height: 46)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.white.opacity(0.16), lineWidth: 1))
+                    }
+                    .disabled(uploadingAvatar)
+                    Spacer()
+                }
+                Spacer()
+            }
+            .padding(16)
         }
+        .frame(height: 470)
         .frame(maxWidth: .infinity)
-        .padding(.top, 4)
+        .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 34, style: .continuous).stroke(Color.white.opacity(0.10), lineWidth: 1))
+        .shadow(color: Color.cyan.opacity(0.14), radius: 30, x: 0, y: 18)
         .onChange(of: avatarPickerItem) { newItem in
             guard let item = newItem else { return }
             Task { await uploadAvatar(item) }
@@ -212,9 +223,7 @@ struct ProfileView: View {
             }
         }
         .padding(14)
-        .background(Color.accentColor.opacity(0.08))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.accentColor.opacity(0.3), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .profilePanel(cornerRadius: 18, accent: Color.accentColor.opacity(0.32))
     }
 
     private var upgradeCard: some View {
@@ -236,9 +245,7 @@ struct ProfileView: View {
                 Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundColor(.white.opacity(0.4))
             }
             .padding(14)
-            .background(Color.white.opacity(0.05))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.accentColor.opacity(0.3), lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .profilePanel(cornerRadius: 18, accent: Color.accentColor.opacity(0.30))
         }
         .buttonStyle(.plain)
     }
@@ -270,9 +277,7 @@ struct ProfileView: View {
                     .foregroundColor(.white.opacity(0.4))
             }
             .padding(14)
-            .background(Color.white.opacity(0.05))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.accentColor.opacity(0.3), lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .profilePanel(cornerRadius: 18, accent: Color.accentColor.opacity(0.30))
         }
         .buttonStyle(.plain)
     }
@@ -300,8 +305,7 @@ struct ProfileView: View {
                 Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundColor(.white.opacity(0.4))
             }
             .padding(14)
-            .background(Color.white.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .profilePanel(cornerRadius: 18, accent: Color.cyan.opacity(0.24))
         }
         .buttonStyle(.plain)
     }
@@ -355,8 +359,7 @@ struct ProfileView: View {
             }
         }
         .padding(14)
-        .background(Color.white.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .profilePanel(cornerRadius: 18)
     }
 
     // MARK: - Helpers
@@ -403,6 +406,139 @@ struct ProfileView: View {
 
 // MARK: - Components
 
+struct ProfileAmbientBackground: View {
+    var body: some View {
+        ZStack {
+            Color.black
+            RadialGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.50, blue: 0.78).opacity(0.34),
+                    Color.clear
+                ],
+                center: .init(x: 0.50, y: -0.08),
+                startRadius: 20,
+                endRadius: 430
+            )
+            RadialGradient(
+                colors: [
+                    Color(red: 0.52, green: 0.72, blue: 0.95).opacity(0.12),
+                    Color.clear
+                ],
+                center: .init(x: 0.12, y: 0.16),
+                startRadius: 10,
+                endRadius: 340
+            )
+            LinearGradient(
+                colors: [.clear, Color.black.opacity(0.88)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+    }
+}
+
+struct ProfilePortrait: View {
+    let urlString: String?
+    let name: String?
+
+    var body: some View {
+        ZStack {
+            portrait
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .scaleEffect(1.02)
+                .blur(radius: 18)
+                .opacity(0.54)
+
+            portrait
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .saturation(1.05)
+                .contrast(1.04)
+        }
+        .clipped()
+    }
+
+    @ViewBuilder
+    private var portrait: some View {
+        if let raw = urlString, !raw.isEmpty, let url = URL(string: raw) {
+            CachedAsyncImage(url: url) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+            } placeholder: {
+                placeholder
+            }
+        } else {
+            placeholder
+        }
+    }
+
+    private var placeholder: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.02, green: 0.09, blue: 0.15),
+                    Color(red: 0.05, green: 0.40, blue: 0.62),
+                    Color(red: 0.86, green: 0.90, blue: 0.94).opacity(0.74)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Text(profileInitials(name))
+                .font(.system(size: 74, weight: .black, design: .rounded))
+                .foregroundColor(.white.opacity(0.92))
+        }
+    }
+}
+
+struct HeroPill: View {
+    let text: String
+    let highlighted: Bool
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11, weight: .heavy, design: .rounded))
+            .tracking(0.6)
+            .foregroundColor(highlighted ? .black : .white.opacity(0.82))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(highlighted ? Color.white : Color.white.opacity(0.12))
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Color.white.opacity(0.16), lineWidth: 1))
+    }
+}
+
+struct ProfilePanelModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    let accent: Color
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(Color.white.opacity(0.035))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(accent, lineWidth: 1)
+            }
+    }
+}
+
+extension View {
+    func profilePanel(cornerRadius: CGFloat, accent: Color = Color.white.opacity(0.10)) -> some View {
+        modifier(ProfilePanelModifier(cornerRadius: cornerRadius, accent: accent))
+    }
+}
+
+private func profileInitials(_ name: String?) -> String {
+    let parts = (name ?? "?").split(separator: " ")
+    let first = parts.first?.first.map(String.init) ?? "?"
+    let last = parts.dropFirst().first?.first.map(String.init) ?? ""
+    return (first + last).uppercased()
+}
+
 private struct StatBubble: View {
     let value: String
     let label: String
@@ -413,8 +549,7 @@ private struct StatBubble: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-        .background(Color.white.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .profilePanel(cornerRadius: 18)
     }
 }
 
@@ -426,8 +561,7 @@ private struct BioCard: View {
             .foregroundColor(.white.opacity(0.75))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(Color.white.opacity(0.04))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .profilePanel(cornerRadius: 18)
     }
 }
 
@@ -445,8 +579,9 @@ private struct SocialChip: View {
             }
             .foregroundColor(.white)
             .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(Color.white.opacity(0.06))
+            .background(.ultraThinMaterial)
             .clipShape(Capsule())
+            .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
