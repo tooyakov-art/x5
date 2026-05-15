@@ -19,6 +19,8 @@ struct X5App: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        X5Typography.installAppearance()
+
         // Build 67: install crash + lifecycle reporter BEFORE any other init.
         // Sends device info + uncaught exception traces to Supabase
         // `app_diagnostics`. We need this because TestFlight's automatic
@@ -31,6 +33,7 @@ struct X5App: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .x5Typography()
                 .environmentObject(auth)
                 .environmentObject(history)
                 .environmentObject(brand)
