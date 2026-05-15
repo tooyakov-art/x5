@@ -27,7 +27,7 @@ struct ChatsListView: View {
                     chatList
                 }
             }
-            .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+            .background(X5Background())
             .navigationTitle(loc.t("chats_title"))
             .toolbarColorScheme(.dark, for: .navigationBar)
             .task { await reload() }
@@ -279,7 +279,7 @@ private struct ArchivedChatsView: View {
                 .id(tick)
             }
         }
-        .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+        .background(X5Background())
         .navigationTitle(loc.t("chats_archive"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)

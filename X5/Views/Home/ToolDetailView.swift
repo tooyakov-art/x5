@@ -77,7 +77,7 @@ struct ToolDetailView: View {
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(notified ? Color.green.opacity(0.9) : Color.accentColor)
+                        .background(notified ? Color.accentColor.opacity(0.9) : Color.accentColor)
                         .cornerRadius(14)
                     }
                     .disabled(notified)
@@ -89,7 +89,7 @@ struct ToolDetailView: View {
                 .frame(maxWidth: 640)
                 .frame(maxWidth: .infinity)
             }
-            .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+            .background(X5Background())
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)

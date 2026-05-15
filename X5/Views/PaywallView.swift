@@ -130,12 +130,11 @@ struct PaywallView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("X5")
-                    .font(.system(size: 13, weight: .black))
-                    .foregroundColor(.black)
+                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
-                    .background(Color.white)
-                    .clipShape(Capsule())
+                    .x5Glass(cornerRadius: 14)
                 Spacer()
                 Text("PRO")
                     .font(.system(size: 11, weight: .heavy))

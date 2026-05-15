@@ -17,7 +17,7 @@ struct PortfolioGrid: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Портфолио")
+                Text("РџРѕСЂС‚С„РѕР»РёРѕ")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.white)
                 Spacer()
@@ -27,10 +27,13 @@ struct PortfolioGrid: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "plus")
-                            Text("Добавить")
+                            Text("Р”РѕР±Р°РІРёС‚СЊ")
                         }
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .x5Glass(cornerRadius: 14)
                     }
                 }
             }
@@ -40,14 +43,13 @@ struct PortfolioGrid: View {
                     Image(systemName: "photo.stack")
                         .font(.system(size: 28, weight: .light))
                         .foregroundColor(.white.opacity(0.4))
-                    Text(canEdit ? "Загрузи свои работы" : "Портфолио пустое")
+                    Text(canEdit ? "Р—Р°РіСЂСѓР·Рё СЃРІРѕРё СЂР°Р±РѕС‚С‹" : "РџРѕСЂС‚С„РѕР»РёРѕ РїСѓСЃС‚РѕРµ")
                         .font(.system(size: 13))
                         .foregroundColor(.white.opacity(0.5))
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 32)
-                .background(Color.white.opacity(0.04))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .x5Glass(cornerRadius: 18)
             } else {
                 LazyVGrid(columns: columns, spacing: 8) {
                     ForEach(service.items) { item in
@@ -74,7 +76,6 @@ struct PortfolioGrid: View {
         }
     }
 }
-
 private struct PortfolioCell: View {
     let item: PortfolioItem
     let canEdit: Bool
@@ -110,13 +111,12 @@ private struct PortfolioCell: View {
                 .padding(6)
             }
         }
-        .confirmationDialog("Удалить из портфолио?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Удалить", role: .destructive) { onDelete() }
-            Button("Отмена", role: .cancel) {}
+        .confirmationDialog("РЈРґР°Р»РёС‚СЊ РёР· РїРѕСЂС‚С„РѕР»РёРѕ?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("РЈРґР°Р»РёС‚СЊ", role: .destructive) { onDelete() }
+            Button("РћС‚РјРµРЅР°", role: .cancel) {}
         }
     }
 }
-
 // MARK: - Add item
 
 struct AddPortfolioItemView: View {
@@ -144,7 +144,7 @@ struct AddPortfolioItemView: View {
                         } else {
                             HStack {
                                 Image(systemName: "photo.on.rectangle.angled")
-                                Text("Выбрать фото")
+                                Text("Р’С‹Р±СЂР°С‚СЊ С„РѕС‚Рѕ")
                             }
                             .frame(maxWidth: .infinity, minHeight: 100)
                         }
@@ -159,9 +159,9 @@ struct AddPortfolioItemView: View {
                     }
                 }
 
-                Section("Описание") {
-                    TextField("Название (опц.)", text: $title)
-                    TextField("Кейс / описание (опц.)", text: $description, axis: .vertical)
+                Section("РћРїРёСЃР°РЅРёРµ") {
+                    TextField("РќР°Р·РІР°РЅРёРµ (РѕРїС†.)", text: $title)
+                    TextField("РљРµР№СЃ / РѕРїРёСЃР°РЅРёРµ (РѕРїС†.)", text: $description, axis: .vertical)
                         .lineLimit(2...5)
                 }
 
@@ -170,19 +170,19 @@ struct AddPortfolioItemView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Color(red: 0.04, green: 0.05, blue: 0.10))
-            .navigationTitle("Добавить в портфолио")
+            .background(X5Background())
+            .navigationTitle("Р”РѕР±Р°РІРёС‚СЊ РІ РїРѕСЂС‚С„РѕР»РёРѕ")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") { dismiss() }
+                    Button("РћС‚РјРµРЅР°") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         Task { await save() }
                     } label: {
-                        if saving { ProgressView() } else { Text("Сохранить").bold() }
+                        if saving { ProgressView() } else { Text("РЎРѕС…СЂР°РЅРёС‚СЊ").bold() }
                     }
                     .disabled(saving || imageData == nil)
                 }
@@ -201,11 +201,11 @@ struct AddPortfolioItemView: View {
         if ok {
             dismiss()
         } else {
-            errorText = "Не удалось сохранить. Попробуй ещё раз."
+            errorText = "Не удалось сохранить. Проверь доступ к фото и попробуй другое изображение."
         }
     }
 
-    /// Re-encode picked image as JPEG ≤1.5MB to keep uploads fast.
+    /// Re-encode picked image as JPEG в‰¤1.5MB to keep uploads fast.
     private func compress(_ data: Data) -> Data {
         guard let image = UIImage(data: data) else { return data }
         let maxSide: CGFloat = 1600

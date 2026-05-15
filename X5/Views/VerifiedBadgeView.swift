@@ -75,7 +75,7 @@ struct VerifiedBadgeView: View {
             .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)
         }
-        .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+        .background(X5Background())
         .preferredColorScheme(.dark)
         .overlay(alignment: .topTrailing) {
             Button { dismiss() } label: {
@@ -122,7 +122,7 @@ struct VerifiedBadgeView: View {
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .background(working ? Color.accentColor.opacity(0.5) : Color.accentColor)
+                        .x5Glass(cornerRadius: 16, accent: working ? Color.accentColor.opacity(0.5) : Color.accentColor)
                         .cornerRadius(14)
                 }
                 .disabled(working)

@@ -41,7 +41,7 @@ struct RespondTaskView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Color(red: 0.04, green: 0.05, blue: 0.10))
+            .background(X5Background())
             .navigationTitle("Отклик")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)

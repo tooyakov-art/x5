@@ -74,8 +74,8 @@ enum HomeContent {
 
         .init(id: "video_gen", title: "Create Video", subtitle: "AI video",
               icon: "video", videoFile: "zooms.mp4",
-              gradientStart: .orange, gradientEnd: .black,
-              tag: "PRO", tagColor: Color(red: 0.96, green: 0.62, blue: 0.04)),
+              gradientStart: Color(red: 0.10, green: 0.32, blue: 0.72), gradientEnd: .black,
+              tag: "PRO", tagColor: Color(red: 0.22, green: 0.78, blue: 1.0)),
 
         .init(id: "outfit_swap", title: "Outfit Swap", subtitle: "Swap outfits",
               icon: "tshirt", videoFile: "outfit-swap.mp4",
@@ -91,7 +91,7 @@ enum HomeContent {
               icon: "paintbrush", videoFile: nil,
               gradientStart: Color(red: 0.39, green: 0.40, blue: 0.94).opacity(0.4),
               gradientEnd: .black,
-              tag: "AI", tagColor: Color(red: 0.80, green: 1.0, blue: 0.10)),
+              tag: "AI", tagColor: Color(red: 0.22, green: 0.78, blue: 1.0)),
 
         .init(id: "voice_tts", title: "Voice TTS", subtitle: "Text to speech",
               icon: "speaker.wave.2.fill", videoFile: "lipsync2.mp4",
@@ -100,9 +100,9 @@ enum HomeContent {
 
         .init(id: "whatsapp_bot", title: "WhatsApp Bot", subtitle: "Auto-responder",
               icon: "bubble.left.and.bubble.right.fill", videoFile: nil,
-              gradientStart: Color(red: 0.06, green: 0.73, blue: 0.51).opacity(0.4),
+              gradientStart: Color(red: 0.08, green: 0.34, blue: 0.88).opacity(0.4),
               gradientEnd: .black,
-              tag: "NEW", tagColor: Color(red: 0.06, green: 0.73, blue: 0.51)),
+              tag: "NEW", tagColor: Color(red: 0.22, green: 0.78, blue: 1.0)),
 
         .init(id: "instagram", title: "Instagram AI", subtitle: "Content plan",
               icon: "camera.fill", videoFile: nil,
@@ -117,13 +117,13 @@ enum HomeContent {
 
         .init(id: "lawyer", title: "Lawyer AI", subtitle: "Contracts & docs",
               icon: "doc.text.fill", videoFile: nil,
-              gradientStart: Color(red: 0.20, green: 0.83, blue: 0.60).opacity(0.4),
+              gradientStart: Color(red: 0.08, green: 0.34, blue: 0.88).opacity(0.4),
               gradientEnd: .black,
-              tag: "AI", tagColor: Color(red: 0.20, green: 0.83, blue: 0.60)),
+              tag: "AI", tagColor: Color(red: 0.22, green: 0.78, blue: 1.0)),
 
         .init(id: "academy", title: "Academy", subtitle: "Courses & training",
               icon: "graduationcap.fill", videoFile: nil,
-              gradientStart: Color(red: 0.80, green: 1.0, blue: 0.10).opacity(0.25),
+              gradientStart: Color(red: 0.08, green: 0.34, blue: 0.88).opacity(0.25),
               gradientEnd: .black,
               tag: nil, tagColor: nil),
 
@@ -135,14 +135,14 @@ enum HomeContent {
 
         .init(id: "analytics", title: "Analytics", subtitle: "KPI & statistics",
               icon: "chart.bar.fill", videoFile: nil,
-              gradientStart: Color(red: 0.80, green: 1.0, blue: 0.10).opacity(0.3),
+              gradientStart: Color(red: 0.08, green: 0.34, blue: 0.88).opacity(0.3),
               gradientEnd: .black,
-              tag: "AI", tagColor: Color(red: 0.80, green: 1.0, blue: 0.10)),
+              tag: "AI", tagColor: Color(red: 0.22, green: 0.78, blue: 1.0)),
 
         .init(id: "captions", title: "Captions", subtitle: "Caption templates (live)",
               icon: "text.alignleft", videoFile: nil,
-              gradientStart: Color(red: 0.80, green: 1.0, blue: 0.10).opacity(0.4),
+              gradientStart: Color(red: 0.08, green: 0.34, blue: 0.88).opacity(0.4),
               gradientEnd: .black,
-              tag: "LIVE", tagColor: Color(red: 0.80, green: 1.0, blue: 0.10))
+              tag: "LIVE", tagColor: Color(red: 0.22, green: 0.78, blue: 1.0))
     ]
 }

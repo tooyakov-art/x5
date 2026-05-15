@@ -3,12 +3,15 @@ import SwiftUI
 struct CoursesView: View {
     @EnvironmentObject private var sub: Subscription
     @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = CoursesService()
     @State private var showingPaywall = false
     @State private var editorTarget: EditorTarget?
 
-    private var isDev: Bool { Roles.isDeveloper(auth.userEmail) }
+    private var isDev: Bool {
+        Roles.isDeveloper(email: auth.userEmail, userRole: currentUser.profile?.userRole)
+    }
 
     /// Sheet payload — `.create` for new course, `.edit(course)` for existing.
     private enum EditorTarget: Identifiable {
@@ -69,11 +72,9 @@ struct CoursesView: View {
                                         } label: {
                                             Image(systemName: "pencil")
                                                 .font(.system(size: 14, weight: .bold))
-                                                .foregroundColor(.black)
+                                                .foregroundColor(.white)
                                                 .frame(width: 36, height: 36)
-                                                .background(Color.accentColor)
-                                                .clipShape(Circle())
-                                                .shadow(color: .black.opacity(0.4), radius: 6)
+                                                .x5Glass(cornerRadius: 18)
                                         }
                                         .buttonStyle(.plain)
                                         .padding(12)
@@ -90,7 +91,7 @@ struct CoursesView: View {
                     .refreshable { await service.loadCourses() }
                 }
             }
-            .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+            .background(X5Background())
             .navigationTitle("CourseUP")
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
@@ -104,10 +105,9 @@ struct CoursesView: View {
                                 Text(loc.t("courses_create_btn")).bold()
                             }
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(.black)
+                            .foregroundColor(.white)
                             .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(Color.accentColor)
-                            .clipShape(Capsule())
+                            .x5Glass(cornerRadius: 16)
                         }
                     }
                 } else if !sub.isPro {
@@ -115,10 +115,9 @@ struct CoursesView: View {
                         Button { showingPaywall = true } label: {
                             Text(loc.t("courses_pro_chip"))
                                 .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(.black)
+                                .foregroundColor(.white)
                                 .padding(.horizontal, 12).padding(.vertical, 6)
-                                .background(Color.accentColor)
-                                .clipShape(Capsule())
+                                .x5Glass(cornerRadius: 16)
                         }
                     }
                 }
@@ -372,11 +371,10 @@ struct CourseDetailView: View {
                             Text(loc.t("courses_unlock_pro"))
                         }
                         .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.black)
+                        .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(Color.accentColor)
-                        .cornerRadius(14)
+                        .x5Glass(cornerRadius: 16)
                     }
                 }
 
@@ -396,7 +394,7 @@ struct CourseDetailView: View {
             .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)
         }
-        .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+        .background(X5Background())
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
     }
@@ -504,8 +502,8 @@ private struct LessonRow: View {
                         Text(loc.t("courses_free_preview"))
                             .font(.system(size: 9, weight: .heavy))
                             .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(Color.green.opacity(0.18))
-                            .foregroundColor(.green)
+                            .background(Color.accentColor.opacity(0.18))
+                            .foregroundColor(.accentColor)
                             .clipShape(Capsule())
                     }
                 }

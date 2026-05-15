@@ -321,17 +321,10 @@ private struct HubBackdrop: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            Text("X5")
-                .font(.system(size: 188, weight: .black, design: .rounded))
-                .foregroundColor(HubPalette.cyan.opacity(0.13))
-                .blur(radius: 2)
-                .offset(x: -58, y: -250)
-
-            Text("HUB")
-                .font(.system(size: 132, weight: .black, design: .rounded))
-                .foregroundColor(Color.white.opacity(0.06))
-                .blur(radius: 1)
-                .offset(x: 70, y: -162)
+            X5LogoText(size: 168)
+                .opacity(0.11)
+                .blur(radius: 1.5)
+                .offset(x: -52, y: -248)
 
             RadialGradient(colors: [
                 HubPalette.cyan.opacity(0.38),

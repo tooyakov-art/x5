@@ -17,12 +17,14 @@ struct ProfileView: View {
     @State private var showingEdit = false
     @State private var avatarPickerItem: PhotosPickerItem?
     @State private var uploadingAvatar = false
+    @State private var uploadError: String?
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 22) {
+                VStack(spacing: 0) {
                     header
+                    VStack(spacing: 22) {
                     statsRow
                     if currentUser.profile?.isPro == true {
                         proHero
@@ -48,9 +50,10 @@ struct ProfileView: View {
                     if !(currentUser.profile?.hasActiveVerifiedBadge ?? false) {
                         verifiedCard
                     }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 18)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
                 .padding(.bottom, 32)
                 .frame(maxWidth: 640)
                 .frame(maxWidth: .infinity)
@@ -79,6 +82,14 @@ struct ProfileView: View {
             .sheet(isPresented: $showingPaywall) { PaywallView() }
             .sheet(isPresented: $showingVerified) { VerifiedBadgeView() }
             .sheet(isPresented: $showingEdit) { EditProfileView() }
+            .alert("Фото не сохранилось", isPresented: Binding(
+                get: { uploadError != nil },
+                set: { if !$0 { uploadError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(uploadError ?? "")
+            }
             .task { await iap.loadProducts() }
         }
     }
@@ -123,12 +134,10 @@ struct ProfileView: View {
                         Text("Edit profile")
                     }
                     .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundColor(.black)
+                    .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(Color.white)
-                    .clipShape(Capsule())
-                    .shadow(color: .white.opacity(0.16), radius: 18, x: 0, y: 10)
+                    .x5Glass(cornerRadius: 24)
                 }
                 .buttonStyle(.plain)
 
@@ -154,9 +163,7 @@ struct ProfileView: View {
                             .font(.system(size: 15, weight: .bold))
                             .foregroundColor(.white)
                             .frame(width: 46, height: 46)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.white.opacity(0.16), lineWidth: 1))
+                    .x5Glass(cornerRadius: 23)
                     }
                     .disabled(uploadingAvatar)
                     Spacer()
@@ -165,11 +172,9 @@ struct ProfileView: View {
             }
             .padding(16)
         }
-        .frame(height: 470)
+        .frame(height: min(UIScreen.main.bounds.height * 0.72, 620))
         .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 34, style: .continuous).stroke(Color.white.opacity(0.10), lineWidth: 1))
-        .shadow(color: Color.cyan.opacity(0.14), radius: 30, x: 0, y: 18)
+        .ignoresSafeArea(edges: .top)
         .onChange(of: avatarPickerItem) { newItem in
             guard let item = newItem else { return }
             Task { await uploadAvatar(item) }
@@ -177,15 +182,33 @@ struct ProfileView: View {
     }
 
     private func uploadAvatar(_ item: PhotosPickerItem) async {
-        guard let token = auth.accessToken else { return }
+        guard let token = auth.accessToken else {
+            uploadError = "Сначала войди в аккаунт."
+            return
+        }
         uploadingAvatar = true
         defer { uploadingAvatar = false }
-        if let data = try? await item.loadTransferable(type: Data.self),
-           let image = UIImage(data: data),
-           let jpeg = image.jpegData(compressionQuality: 0.85) {
-            await currentUser.uploadAvatar(jpeg, accessToken: token)
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data),
+              let jpeg = resizedJPEG(image, maxSide: 1800, quality: 0.82) else {
+            uploadError = "Не удалось прочитать выбранное фото."
+            avatarPickerItem = nil
+            return
+        }
+        let url = await currentUser.uploadAvatar(jpeg, accessToken: token)
+        if url == nil {
+            uploadError = currentUser.error ?? "Сервер не принял фото. Попробуй другое изображение."
         }
         avatarPickerItem = nil
+    }
+
+    private func resizedJPEG(_ image: UIImage, maxSide: CGFloat, quality: CGFloat) -> Data? {
+        let size = image.size
+        let scale = min(maxSide / max(size.width, size.height), 1)
+        let target = CGSize(width: size.width * scale, height: size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: target)
+        let resized = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: target)) }
+        return resized.jpegData(compressionQuality: quality)
     }
 
     // MARK: - Stats

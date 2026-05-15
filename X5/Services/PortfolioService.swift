@@ -62,10 +62,15 @@ final class PortfolioService: ObservableObject {
         upload.setValue("true", forHTTPHeaderField: "x-upsert")
         upload.httpBody = jpegData
 
-        guard let (_, response) = try? await URLSession.shared.data(for: upload),
-              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode)
+        guard let (uploadData, response) = try? await URLSession.shared.data(for: upload),
+              let http = response as? HTTPURLResponse
         else {
-            self.error = "Upload failed"
+            self.error = "Upload failed: no server response"
+            return false
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: uploadData, encoding: .utf8) ?? ""
+            self.error = "Upload failed (\(http.statusCode)): \(body)"
             return false
         }
 
@@ -88,11 +93,18 @@ final class PortfolioService: ObservableObject {
         ]
         insert.httpBody = try? JSONEncoder().encode(body)
 
-        guard let (data, _) = try? await URLSession.shared.data(for: insert),
+        guard let (data, insertResponse) = try? await URLSession.shared.data(for: insert),
+              let insertHTTP = insertResponse as? HTTPURLResponse
+        else {
+            self.error = "Insert failed: no server response"
+            return false
+        }
+        guard (200..<300).contains(insertHTTP.statusCode),
               let rows = try? JSONDecoder().decode([PortfolioItem].self, from: data),
               let inserted = rows.first
         else {
-            self.error = "Insert failed"
+            let body = String(data: data, encoding: .utf8) ?? ""
+            self.error = "Insert failed (\(insertHTTP.statusCode)): \(body)"
             return false
         }
         items.insert(inserted, at: 0)

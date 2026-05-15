@@ -51,11 +51,7 @@ struct OnboardingView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            Text("X5")
-                .font(.system(size: 56, weight: .black))
-                .italic()
-                .foregroundColor(.white)
-                .shadow(color: Color(red: 0.16, green: 0.50, blue: 0.95).opacity(0.5), radius: 24)
+            X5LogoText(size: 56)
 
             Text(loc.t("onb_title"))
                 .font(.system(size: 24, weight: .heavy))

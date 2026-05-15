@@ -17,4 +17,9 @@ enum Roles {
         guard let e = email?.lowercased() else { return false }
         return developerEmails.contains(e)
     }
+
+    static func isDeveloper(email: String?, userRole: String?) -> Bool {
+        if userRole?.lowercased() == "developer" { return true }
+        return isDeveloper(email)
+    }
 }

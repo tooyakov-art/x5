@@ -91,7 +91,7 @@ struct CourseEditorView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Color(red: 0.04, green: 0.05, blue: 0.10))
+            .background(X5Background())
             .navigationTitle(isCreating ? "Новый курс" : "Редактировать")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)

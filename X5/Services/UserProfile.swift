@@ -229,10 +229,16 @@ final class CurrentUser: ObservableObject {
         request.setValue("true", forHTTPHeaderField: "x-upsert")
         request.httpBody = jpegData
 
-        guard let (_, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode)
-        else { return nil }
+        guard let (uploadData, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse else {
+            self.error = "Upload failed: no server response"
+            return nil
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: uploadData, encoding: .utf8) ?? ""
+            self.error = "Upload failed (\(http.statusCode)): \(body)"
+            return nil
+        }
 
         let publicURL = baseURL.appendingPathComponent("storage/v1/object/public/avatars/\(path)").absoluteString
         await patch("avatar", value: publicURL, accessToken: accessToken)

@@ -13,6 +13,7 @@ import SwiftUI
 /// in-development tools for QA.
 struct HomeView: View {
     @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var loc: LocalizationService
 
     @State private var bannerIndex: Int = 0
@@ -21,7 +22,9 @@ struct HomeView: View {
     @State private var openImageGenerator: Bool = false
     @State private var showingNotifications: Bool = false
 
-    private var isDeveloper: Bool { Roles.isDeveloper(auth.userEmail) }
+    private var isDeveloper: Bool {
+        Roles.isDeveloper(email: auth.userEmail, userRole: currentUser.profile?.userRole)
+    }
     /// Apple-safe live tool IDs — these have working functionality.
     private static let liveToolIDs: Set<String> = ["photo", "captions", "academy"]
     private var visibleTools: [HomeTool] {
@@ -43,6 +46,10 @@ struct HomeView: View {
                     if !visibleBanners.isEmpty {
                         bannerCarousel
                     }
+                    HStack {
+                        X5LogoText(size: 38)
+                        Spacer()
+                    }
                     sectionHeader(isDeveloper ? "AI Tools" : "Live now")
                     toolGrid
                 }
@@ -52,8 +59,8 @@ struct HomeView: View {
                 .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity)
             }
-            .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
-            .navigationTitle("X5")
+            .background(X5Background())
+            .navigationTitle("")
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

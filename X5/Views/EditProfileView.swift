@@ -83,7 +83,7 @@ struct EditProfileView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Color(red: 0.04, green: 0.05, blue: 0.10))
+            .background(X5Background())
             .navigationTitle(loc.t("edit_profile"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -221,7 +221,7 @@ private struct CategoriesPicker: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .background(Color(red: 0.04, green: 0.05, blue: 0.10))
+        .background(X5Background())
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)

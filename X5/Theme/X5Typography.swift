@@ -19,6 +19,21 @@ enum X5Typography {
             .font: largeTitleFont,
             .foregroundColor: UIColor.white
         ]
+        let navAppearance = UINavigationBarAppearance()
+        navAppearance.configureWithTransparentBackground()
+        navAppearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
+        navAppearance.backgroundColor = UIColor.black.withAlphaComponent(0.18)
+        navAppearance.titleTextAttributes = [
+            .font: titleFont,
+            .foregroundColor: UIColor.white
+        ]
+        navAppearance.largeTitleTextAttributes = [
+            .font: largeTitleFont,
+            .foregroundColor: UIColor.white
+        ]
+        UINavigationBar.appearance().standardAppearance = navAppearance
+        UINavigationBar.appearance().compactAppearance = navAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
 
         UITabBarItem.appearance().setTitleTextAttributes([.font: captionFont], for: .normal)
         UITabBarItem.appearance().setTitleTextAttributes([.font: captionFont], for: .selected)
