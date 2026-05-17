@@ -22,12 +22,11 @@ struct X5LogoMark: View {
     var size: CGFloat = 56
 
     var body: some View {
-        Text("X5")
-            .font(.system(size: size, weight: .black))
-            .italic()
-            .foregroundColor(.white)
-            .kerning(-size * 0.035)
-            .shadow(color: X5Style.blueSoft.opacity(0.58), radius: size * 0.38, x: 0, y: 0)
+        Image("X5PremiumLogo")
+            .resizable()
+            .scaledToFit()
+            .frame(width: size * 2.55, height: size * 1.2)
+            .shadow(color: X5Style.blueSoft.opacity(0.46), radius: size * 0.24, x: 0, y: 0)
     }
 }
 

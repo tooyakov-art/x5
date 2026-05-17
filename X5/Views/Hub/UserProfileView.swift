@@ -1,7 +1,6 @@
 ﻿import SwiftUI
 
-/// Public profile — Instagram-style layout с большой обложкой:
-/// фото на полэкрана, имя, кнопка Follow, 3 колонки статистики и портфолио.
+/// Public profile — same hero language as the main profile, with public actions.
 struct UserProfileView: View {
     let userId: String
     let fallback: HubSpecialist?
@@ -17,7 +16,10 @@ struct UserProfileView: View {
     @State private var navigatingChat: ChatRoom?
     @State private var confirmBlock = false
     @State private var portfolioCount: Int = 0
-    @State private var showingSettings = false
+    @State private var isFollowing = false
+    @State private var followBusy = false
+    @State private var followersCount: Int?
+    @State private var followingCount: Int?
 
     private var baseURL: URL { X5Config.supabaseBaseURL }
     private var anonKey: String { X5Config.supabaseAnonKey }
@@ -51,8 +53,14 @@ struct UserProfileView: View {
         } message: {
             Text(loc.t("hub_block_user_message"))
         }
-        .task { await load() }
-        .sheet(isPresented: $showingSettings) { SettingsView() }
+        .task {
+            if isMe {
+                NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
+                dismiss()
+                return
+            }
+            await load()
+        }
         .sheet(item: $navigatingChat) { chat in
             NavigationStack { ChatThreadView(chat: chat) }
                 .preferredColorScheme(.dark)
@@ -143,8 +151,8 @@ struct UserProfileView: View {
             HStack {
                 Button { dismiss() } label: {
                     Image(systemName: "chevron.left")
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                        .frame(width: 56, height: 56)
+                        .x5ClearGlassCircle()
                 }
                 .font(.system(size: 28, weight: .semibold))
                 .foregroundStyle(.white)
@@ -153,19 +161,11 @@ struct UserProfileView: View {
 
                 Spacer()
 
-                if isMe {
-                    Button {
-                        showingSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .buttonStyle(.plain)
-                } else {
-                    Menu {
+                Menu {
+                    if !isMe {
+                        ShareLink(item: profileShareText) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
                         Button {
                             reportUser()
                         } label: {
@@ -176,14 +176,14 @@ struct UserProfileView: View {
                         } label: {
                             Label(loc.t("hub_block_user"), systemImage: "hand.raised.slash")
                         }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
                     }
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(.white)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(width: 56, height: 56)
+                        .x5ClearGlassCircle()
                 }
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(.white)
             }
         }
     }
@@ -191,50 +191,52 @@ struct UserProfileView: View {
     // MARK: - Кнопки Follow + message
 
     private var actionRow: some View {
-        Button {
-            if isMe {
-                openOwnProfile()
-            } else {
-                openChat()
-            }
-        } label: {
-            HStack(spacing: 8) {
-                if openingChat {
-                    ProgressView().tint(.white)
-                } else {
-                    Image(systemName: isMe ? "pencil" : "bubble.left.and.bubble.right.fill")
+        HStack(spacing: 10) {
+            Button {
+                Task { await toggleFollow() }
+            } label: {
+                HStack(spacing: 8) {
+                    if followBusy {
+                        ProgressView().tint(.white)
+                    } else {
+                        Image(systemName: isFollowing ? "checkmark" : "plus")
+                    }
+                    Text(isFollowing ? "Following" : "Follow")
                 }
-                Text(isMe ? "Edit profile" : (openingChat ? loc.t("user_open") : "Follow"))
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .x5ClearGlass(cornerRadius: 28, highlight: 0.16)
             }
-            .font(.system(size: 16, weight: .bold))
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .frame(height: 56)
-            .x5ClearGlass(cornerRadius: 28, highlight: 0.16)
-        }
-        .buttonStyle(.plain)
-        .disabled(!isMe && (openingChat || auth.accessToken == nil))
-    }
+            .buttonStyle(.plain)
+            .disabled(isMe || followBusy || auth.accessToken == nil)
 
-    private func openOwnProfile() {
-        NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
+            Button(action: openChat) {
+                Image(systemName: openingChat ? "ellipsis" : "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 56, height: 56)
+                    .x5ClearGlassCircle()
+            }
+            .buttonStyle(.plain)
+            .disabled(isMe || openingChat || auth.accessToken == nil)
+        }
     }
 
     // MARK: - 3 колонки статистики
 
     private var statsRow: some View {
         HStack(spacing: 8) {
-            PublicStatBubble(value: followingValue, label: "Following")
+            PublicStatBubble(value: creditsValue, label: "Credits")
             PublicStatBubble(value: followersValue, label: "Followers")
-            PublicStatBubble(value: creationsValue, label: "Creations")
+            PublicStatBubble(value: followingValue, label: "Following")
         }
     }
 
-    private var followingValue: String { "—" }
-    private var followersValue: String { "—" }
-    private var creationsValue: String {
-        portfolioCount > 0 ? "\(portfolioCount)" : "—"
-    }
+    private var creditsValue: String { "\(profile?.credits ?? 0)" }
+    private var followingValue: String { followingCount.map(String.init) ?? "—" }
+    private var followersValue: String { followersCount.map(String.init) ?? "—" }
 
     private var bioBlock: some View {
         Group {
@@ -274,19 +276,19 @@ struct UserProfileView: View {
         if let links {
             HStack(spacing: 8) {
                 if let v = links.telegram, !v.isEmpty {
-                    SocialLink(systemImage: "paperplane.fill", url: makeTelegram(v))
+                    SocialLink(systemImage: "paperplane.fill", textMark: nil, url: makeTelegram(v))
                 }
                 if let v = links.whatsapp, !v.isEmpty {
-                    SocialLink(systemImage: "phone.fill", url: makeWhatsApp(v))
+                    SocialLink(systemImage: "phone.bubble.left.fill", textMark: nil, url: makeWhatsApp(v))
                 }
                 if let v = links.instagram, !v.isEmpty {
-                    SocialLink(systemImage: "camera.fill", url: makeInstagram(v))
+                    SocialLink(systemImage: nil, textMark: "IG", url: makeInstagram(v))
                 }
                 if let v = links.youtube, !v.isEmpty, let u = URL(string: v) {
-                    SocialLink(systemImage: "play.rectangle.fill", url: u)
+                    SocialLink(systemImage: "play.rectangle.fill", textMark: nil, url: u)
                 }
                 if let v = links.tiktok, !v.isEmpty, let u = URL(string: v) {
-                    SocialLink(systemImage: "music.note", url: u)
+                    SocialLink(systemImage: nil, textMark: "♪", url: u)
                 }
                 Spacer()
             }
@@ -302,6 +304,7 @@ struct UserProfileView: View {
     }
 
     private var isMe: Bool { auth.userId == userId }
+    private var profileShareText: String { "X5: \(displayName)" }
 
     private func openChat() {
         guard let me = auth.userId, let token = auth.accessToken else { return }
@@ -340,6 +343,89 @@ struct UserProfileView: View {
             profile = rows.first
         }
         await loadPortfolioCount()
+        await loadFollowState()
+    }
+
+    private func loadFollowState() async {
+        async let followers = countFollowers(column: "following_id", value: userId)
+        async let following = countFollowers(column: "follower_id", value: userId)
+        followersCount = await followers
+        followingCount = await following
+
+        guard let me = auth.userId, me != userId else { return }
+        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/followers"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "follower_id", value: "eq.\(me)"),
+            URLQueryItem(name: "following_id", value: "eq.\(userId)"),
+            URLQueryItem(name: "select", value: "follower_id")
+        ]
+        var request = URLRequest(url: components.url!)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        if let token = auth.accessToken { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        if let (data, _) = try? await URLSession.shared.data(for: request),
+           let rows = try? JSONDecoder().decode([[String: String]].self, from: data) {
+            isFollowing = !rows.isEmpty
+        }
+    }
+
+    private func countFollowers(column: String, value: String) async -> Int? {
+        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/followers"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: column, value: "eq.\(value)"),
+            URLQueryItem(name: "select", value: "follower_id")
+        ]
+        var request = URLRequest(url: components.url!)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("count=exact", forHTTPHeaderField: "Prefer")
+        if let (data, response) = try? await URLSession.shared.data(for: request) {
+            if let http = response as? HTTPURLResponse,
+               let range = http.value(forHTTPHeaderField: "Content-Range"),
+               let total = range.split(separator: "/").last.map(String.init),
+               let n = Int(total) {
+                return n
+            }
+            if let rows = try? JSONDecoder().decode([[String: String]].self, from: data) {
+                return rows.count
+            }
+        }
+        return nil
+    }
+
+    private func toggleFollow() async {
+        guard let me = auth.userId, me != userId, let token = await auth.freshAccessToken() else { return }
+        followBusy = true
+        defer { followBusy = false }
+        if isFollowing {
+            var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/followers"), resolvingAgainstBaseURL: false)!
+            components.queryItems = [
+                URLQueryItem(name: "follower_id", value: "eq.\(me)"),
+                URLQueryItem(name: "following_id", value: "eq.\(userId)")
+            ]
+            var request = URLRequest(url: components.url!)
+            request.httpMethod = "DELETE"
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            if let (_, response) = try? await URLSession.shared.data(for: request) {
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 500
+                guard status < 300 else { return }
+                isFollowing = false
+                followersCount = max((followersCount ?? 1) - 1, 0)
+            }
+        } else {
+            var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/followers"))
+            request.httpMethod = "POST"
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+            request.httpBody = try? JSONSerialization.data(withJSONObject: ["follower_id": me, "following_id": userId])
+            if let (_, response) = try? await URLSession.shared.data(for: request) {
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 500
+                guard status < 300 else { return }
+                isFollowing = true
+                followersCount = (followersCount ?? 0) + 1
+            }
+        }
     }
 
     private func loadPortfolioCount() async {
@@ -442,19 +528,27 @@ private struct PublicStatBubble: View {
 }
 
 private struct SocialLink: View {
-    let systemImage: String
+    let systemImage: String?
+    let textMark: String?
     let url: URL?
 
     var body: some View {
         Button {
             if let url { UIApplication.shared.open(url) }
         } label: {
-            Image(systemName: systemImage)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(.white)
-                .frame(width: 40, height: 40)
-                .background(Color.white.opacity(0.08))
-                .clipShape(Circle())
+            ZStack {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 16, weight: .semibold))
+                } else {
+                    Text(textMark ?? "")
+                        .font(.system(size: textMark == "♪" ? 20 : 12, weight: .heavy))
+                        .italic()
+                }
+            }
+            .foregroundColor(.white)
+            .frame(width: 42, height: 42)
+            .x5ClearGlassCircle()
         }
         .buttonStyle(.plain)
         .disabled(url == nil)

@@ -162,8 +162,8 @@ struct HubView: View {
                 Image(systemName: "bell")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+                    .frame(width: 56, height: 56)
+                    .x5ClearGlassCircle()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Notifications")
@@ -253,7 +253,7 @@ struct HubView: View {
                                 }
                             }
                             .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
+                            .x5ClearGlassCircle()
                         }
                         .buttonStyle(.plain)
                         .disabled(openingChatWith != nil)
@@ -303,7 +303,9 @@ struct HubView: View {
     }
 
     private var filteredSpecialists: [HubSpecialist] {
-        let visible = service.specialists.filter { !BlockList.contains($0.id) }
+        let visible = service.specialists
+            .filter { !BlockList.contains($0.id) }
+            .filter { $0.id != auth.userId }
         guard let category else { return visible }
         return visible.filter { ($0.specialistCategory ?? []).contains(category) }
     }

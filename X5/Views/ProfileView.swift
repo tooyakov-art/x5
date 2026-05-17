@@ -197,8 +197,8 @@ struct ProfileView: View {
                                 ProgressView().tint(.white)
                             }
                         }
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                        .frame(width: 56, height: 56)
+                        .x5ClearGlassCircle()
                     }
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
@@ -212,8 +212,8 @@ struct ProfileView: View {
                     showingSettings = true
                 } label: {
                     Image(systemName: "gearshape")
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                        .frame(width: 56, height: 56)
+                        .x5ClearGlassCircle()
                 }
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(.white)

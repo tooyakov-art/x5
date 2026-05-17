@@ -115,13 +115,8 @@ struct EditProfileView: View {
     private func socialRow(icon: String, color: Color, name: String,
                            text: Binding<String>, placeholder: String) -> some View {
         HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(color)
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(.white)
-            }
-            .frame(width: 28, height: 28)
+            SocialPlatformIcon(platform: SocialPlatform(name: name, fallbackSystemImage: icon))
+                .frame(width: 34, height: 34)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
@@ -196,6 +191,63 @@ struct EditProfileView: View {
     private func nilIfEmpty(_ s: String) -> String? {
         let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+private enum SocialPlatform: Equatable {
+    case instagram, telegram, whatsapp, tiktok, youtube, linkedin, facebook, other(String)
+
+    init(name: String, fallbackSystemImage: String) {
+        switch name.lowercased() {
+        case "instagram": self = .instagram
+        case "telegram": self = .telegram
+        case "whatsapp": self = .whatsapp
+        case "tiktok": self = .tiktok
+        case "youtube": self = .youtube
+        case "linkedin": self = .linkedin
+        case "facebook": self = .facebook
+        default: self = .other(fallbackSystemImage)
+        }
+    }
+
+    var systemImage: String? {
+        switch self {
+        case .telegram: return "paperplane.fill"
+        case .whatsapp: return "phone.bubble.left.fill"
+        case .youtube: return "play.rectangle.fill"
+        case .other(let image): return image
+        default: return nil
+        }
+    }
+
+    var textMark: String {
+        switch self {
+        case .instagram: return "IG"
+        case .tiktok: return "♪"
+        case .linkedin: return "in"
+        case .facebook: return "f"
+        default: return ""
+        }
+    }
+}
+
+private struct SocialPlatformIcon: View {
+    let platform: SocialPlatform
+
+    var body: some View {
+        ZStack {
+            if let systemImage = platform.systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 14, weight: .bold))
+            } else {
+                Text(platform.textMark)
+                    .font(.system(size: platform == .tiktok ? 18 : 12, weight: .heavy))
+                    .italic()
+            }
+        }
+        .foregroundColor(.white)
+        .frame(width: 34, height: 34)
+        .x5ClearGlassCircle()
     }
 }
 
