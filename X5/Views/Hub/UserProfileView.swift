@@ -17,34 +17,154 @@ struct UserProfileView: View {
     @State private var navigatingChat: ChatRoom?
     @State private var confirmBlock = false
     @State private var portfolioCount: Int = 0
+    @State private var showingSettings = false
 
     private var baseURL: URL { X5Config.supabaseBaseURL }
     private var anonKey: String { X5Config.supabaseAnonKey }
+    private var heroHeight: CGFloat { max(UIScreen.main.bounds.height * 0.78, 640) }
+    private var profileContentWidth: CGFloat { min(UIScreen.main.bounds.width - 32, 390) }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 0) {
+            VStack(spacing: 18) {
                 coverHeader
-                actionRow
-                statsRow
-                bioBlock
-                categoryChips
-                socialButtons
-                PortfolioGrid(userId: userId, canEdit: false)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                Spacer(minLength: 24)
+                VStack(spacing: 16) {
+                    bioBlock
+                    categoryChips
+                    socialButtons
+                    PortfolioGrid(userId: userId, canEdit: false)
+                }
+                .frame(maxWidth: profileContentWidth)
+                .frame(maxWidth: .infinity)
             }
             .padding(.bottom, 32)
         }
-        .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+        .background { X5Background() }
         .ignoresSafeArea(edges: .top)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbar {
-            if !isMe {
-                ToolbarItem(placement: .topBarTrailing) {
+        .toolbar(.hidden, for: .navigationBar)
+        .alert(loc.t("hub_block_user_title"), isPresented: $confirmBlock) {
+            Button(loc.t("btn_cancel"), role: .cancel) {}
+            Button(loc.t("hub_block_user"), role: .destructive) {
+                BlockList.add(userId)
+                dismiss()
+            }
+        } message: {
+            Text(loc.t("hub_block_user_message"))
+        }
+        .task { await load() }
+        .sheet(isPresented: $showingSettings) { SettingsView() }
+        .sheet(item: $navigatingChat) { chat in
+            NavigationStack { ChatThreadView(chat: chat) }
+                .preferredColorScheme(.dark)
+        }
+    }
+
+    // MARK: - Большая обложка с фото и именем
+
+    private var coverHeader: some View {
+        ZStack(alignment: .bottom) {
+            CoverPhoto(urlString: profile?.avatar ?? fallback?.avatar,
+                       name: profile?.name ?? fallback?.name)
+                .frame(height: heroHeight)
+                .clipped()
+
+            LinearGradient(colors: [
+                Color.black.opacity(0.10),
+                Color.clear,
+                Color.black.opacity(0.22),
+                Color.black.opacity(0.92)
+            ], startPoint: .top, endPoint: .bottom)
+            .frame(height: heroHeight)
+            .allowsHitTesting(false)
+
+            topChrome
+                .frame(width: min(UIScreen.main.bounds.width - 32, 430))
+                .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.top, 52)
+
+            VStack(spacing: 14) {
+                HStack(spacing: 8) {
+                    Text(displayName)
+                        .font(.system(size: 42, weight: .black))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                        .shadow(color: .black.opacity(0.5), radius: 10, x: 0, y: 4)
+                    if (profile?.hasActiveVerifiedBadge ?? (fallback?.isVerified == true)) {
+                        VerifiedChip(size: 18)
+                    }
+                }
+
+                if let nick = profile?.nickname ?? fallback?.nickname, !nick.isEmpty {
+                    Text("@\(nick)")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.66))
+                }
+
+                actionRow
+
+                HStack(spacing: 6) {
+                    if (profile?.plan ?? fallback?.plan) == "pro" || isMe {
+                        Text("PRO")
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundColor(.black)
+                            .tracking(0.8)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Color.accentColor)
+                            .clipShape(Capsule())
+                    }
+                    Text("#\(profile?.signupNumber ?? 505)")
+                        .font(.system(size: 10, weight: .heavy))
+                        .tracking(0.8)
+                        .foregroundColor(.white.opacity(0.6))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Color.white.opacity(0.06))
+                        .clipShape(Capsule())
+                }
+
+                statsRow
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 28)
+            .frame(maxWidth: profileContentWidth)
+            .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: heroHeight)
+    }
+
+    private var topChrome: some View {
+        ZStack {
+            Text(loc.t("profile_title"))
+                .font(.system(size: 21, weight: .heavy))
+                .foregroundColor(.white)
+                .shadow(color: Color.black.opacity(0.4), radius: 8, y: 2)
+
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(.white)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back")
+
+                Spacer()
+
+                if isMe {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .buttonStyle(.plain)
+                } else {
                     Menu {
                         Button {
                             reportUser()
@@ -57,146 +177,57 @@ struct UserProfileView: View {
                             Label(loc.t("hub_block_user"), systemImage: "hand.raised.slash")
                         }
                     } label: {
-                        Image(systemName: "ellipsis.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(.white)
-                            .shadow(color: .black.opacity(0.6), radius: 4)
+                        Image(systemName: "ellipsis")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(.white)
                 }
             }
-        }
-        .alert(loc.t("hub_block_user_title"), isPresented: $confirmBlock) {
-            Button(loc.t("btn_cancel"), role: .cancel) {}
-            Button(loc.t("hub_block_user"), role: .destructive) {
-                BlockList.add(userId)
-                dismiss()
-            }
-        } message: {
-            Text(loc.t("hub_block_user_message"))
-        }
-        .task { await load() }
-        .sheet(item: $navigatingChat) { chat in
-            NavigationStack { ChatThreadView(chat: chat) }
-                .preferredColorScheme(.dark)
-        }
-    }
-
-    // MARK: - Большая обложка с фото и именем
-
-    private var coverHeader: some View {
-        ZStack(alignment: .bottomLeading) {
-            // Фото на весь верх (фоном)
-            CoverPhoto(urlString: profile?.avatar ?? fallback?.avatar,
-                       name: profile?.name ?? fallback?.name)
-                .frame(height: UIScreen.main.bounds.height * 1.0)
-                .clipped()
-
-            // Тёмный градиент вниз для читаемости текста
-            LinearGradient(colors: [
-                Color.clear,
-                Color.black.opacity(0.20),
-                Color.black.opacity(0.55),
-                Color.black.opacity(0.90)
-            ], startPoint: .top, endPoint: .bottom)
-            .frame(height: UIScreen.main.bounds.height * 1.0)
-            .allowsHitTesting(false)
-
-            // Имя и nickname слева снизу
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(displayName)
-                        .font(.system(size: 30, weight: .heavy))
-                        .foregroundColor(.white)
-                        .shadow(color: .black.opacity(0.45), radius: 6, y: 2)
-                    if (profile?.hasActiveVerifiedBadge ?? (fallback?.isVerified == true)) {
-                        VerifiedChip(size: 18)
-                    }
-                    if (profile?.plan ?? fallback?.plan) == "pro" {
-                        Text("PRO")
-                            .font(.system(size: 10, weight: .heavy))
-                            .foregroundColor(.black)
-                            .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(Color.accentColor)
-                            .clipShape(Capsule())
-                    }
-                }
-                if let nick = profile?.nickname ?? fallback?.nickname, !nick.isEmpty {
-                    Text("@\(nick)")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white.opacity(0.85))
-                        .shadow(color: .black.opacity(0.4), radius: 4)
-                }
-            }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 16)
         }
     }
 
     // MARK: - Кнопки Follow + message
 
     private var actionRow: some View {
-        HStack(spacing: 10) {
+        Button {
             if isMe {
-                Button {
-                    NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
-                } label: {
-                    Text("Edit Profile")
-                        .font(.system(size: 15, weight: .heavy))
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                }
-                .buttonStyle(.plain)
+                openOwnProfile()
             } else {
-                Button(action: openChat) {
-                    HStack(spacing: 8) {
-                        if openingChat {
-                            ProgressView().tint(.black)
-                        }
-                        Text(openingChat ? loc.t("user_open") : "Follow")
-                    }
-                    .font(.system(size: 15, weight: .heavy))
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(openingChat || auth.accessToken == nil)
-
-                Button(action: openChat) {
-                    Image(systemName: "bubble.left.and.bubble.right.fill")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(openingChat || auth.accessToken == nil)
+                openChat()
             }
+        } label: {
+            HStack(spacing: 8) {
+                if openingChat {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: isMe ? "pencil" : "bubble.left.and.bubble.right.fill")
+                }
+                Text(isMe ? "Edit profile" : (openingChat ? loc.t("user_open") : "Follow"))
+            }
+            .font(.system(size: 16, weight: .bold))
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 56)
+            .x5ClearGlass(cornerRadius: 28, highlight: 0.16)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
+        .buttonStyle(.plain)
+        .disabled(!isMe && (openingChat || auth.accessToken == nil))
+    }
+
+    private func openOwnProfile() {
+        NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
     }
 
     // MARK: - 3 колонки статистики
 
     private var statsRow: some View {
-        HStack(spacing: 0) {
-            StatCell(value: followingValue, label: "Following")
-            StatDivider()
-            StatCell(value: followersValue, label: "Followers")
-            StatDivider()
-            StatCell(value: creationsValue, label: "Creations")
+        HStack(spacing: 8) {
+            PublicStatBubble(value: followingValue, label: "Following")
+            PublicStatBubble(value: followersValue, label: "Followers")
+            PublicStatBubble(value: creationsValue, label: "Creations")
         }
-        .padding(.vertical, 14)
-        .padding(.horizontal, 4)
-        .x5ClearGlass(cornerRadius: 22, highlight: 0.12)
-        .padding(.horizontal, 16)
-        .padding(.top, 18)
     }
 
     private var followingValue: String { "—" }
@@ -391,27 +422,22 @@ private struct CoverPhoto: View {
     }
 }
 
-private struct StatCell: View {
+private struct PublicStatBubble: View {
     let value: String
     let label: String
     var body: some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.system(size: 22, weight: .heavy))
+                .font(.system(size: 16, weight: .bold))
                 .foregroundColor(.white)
             Text(label)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.white.opacity(0.6))
+                .font(.system(size: 9, weight: .heavy))
+                .tracking(0.8)
+                .foregroundColor(.white.opacity(0.45))
         }
         .frame(maxWidth: .infinity)
-    }
-}
-
-private struct StatDivider: View {
-    var body: some View {
-        Rectangle()
-            .fill(Color.white.opacity(0.12))
-            .frame(width: 1, height: 28)
+        .padding(.vertical, 12)
+        .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
     }
 }
 
