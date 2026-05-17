@@ -36,15 +36,7 @@ jobs:
           restore-keys: |
             spm-${{ runner.os }}-
 
-      - name: Cache xcodegen binary
-        uses: actions/cache@v4
-        id: cache-xcodegen
-        with:
-          path: /opt/homebrew/bin/xcodegen
-          key: xcodegen-${{ runner.os }}-v2.42
-
-      - name: Install xcodegen (if not cached)
-        if: steps.cache-xcodegen.outputs.cache-hit != 'true'
+      - name: Install xcodegen
         run: brew install xcodegen
 
       - name: Cache DerivedData (Xcode build artifacts)
