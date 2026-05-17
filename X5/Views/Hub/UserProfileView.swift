@@ -104,7 +104,7 @@ struct UserProfileView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(displayName)
-                        .font(.system(size: 28, weight: .heavy))
+                        .font(.system(size: 30, weight: .heavy, design: .rounded))
                         .foregroundColor(.white)
                         .shadow(color: .black.opacity(0.45), radius: 6, y: 2)
                     if (profile?.hasActiveVerifiedBadge ?? (fallback?.isVerified == true)) {
@@ -140,7 +140,7 @@ struct UserProfileView: View {
                     NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
                 } label: {
                     Text("Edit Profile")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
@@ -156,10 +156,10 @@ struct UserProfileView: View {
                         }
                         Text(openingChat ? loc.t("user_open") : "Follow")
                     }
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
                     .foregroundColor(.black)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 13)
                     .background(Color.white)
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                 }
@@ -193,6 +193,20 @@ struct UserProfileView: View {
             StatDivider()
             StatCell(value: creationsValue, label: "Creations")
         }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 4)
+        .background(.thinMaterial)
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(
+                    LinearGradient(colors: [
+                        Color.white.opacity(0.25),
+                        Color.white.opacity(0.05)
+                    ], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    lineWidth: 1
+                )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .padding(.horizontal, 16)
         .padding(.top, 18)
     }
@@ -394,10 +408,10 @@ private struct StatCell: View {
     var body: some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.system(size: 20, weight: .heavy))
+                .font(.system(size: 22, weight: .heavy, design: .rounded))
                 .foregroundColor(.white)
             Text(label)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundColor(.white.opacity(0.6))
         }
         .frame(maxWidth: .infinity)

@@ -306,7 +306,7 @@ private struct HubBackdrop: View {
             .ignoresSafeArea()
 
             RadialGradient(colors: [
-                Color.accentColor.opacity(0.22),
+                Color.accentColor.opacity(0.14),
                 Color.clear
             ], center: .topTrailing, startRadius: 10, endRadius: 260)
             .ignoresSafeArea()
@@ -314,7 +314,7 @@ private struct HubBackdrop: View {
 
             // Steam-style синий glow вместо старого зелёного
             RadialGradient(colors: [
-                Color(red: 0.15, green: 0.50, blue: 0.85).opacity(0.20),
+                Color(red: 0.15, green: 0.50, blue: 0.85).opacity(0.12),
                 Color.clear
             ], center: .bottomLeading, startRadius: 20, endRadius: 320)
             .ignoresSafeArea()
@@ -334,35 +334,37 @@ private struct CategoryTile: View {
             Text(cat.emoji)
                 .font(.system(size: 34))
             Text(cat.labelEn)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 13, weight: .bold, design: .rounded))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
                 .minimumScaleFactor(0.85)
             if count > 0 {
                 Text("\(count)")
-                    .font(.system(size: 10, weight: .heavy))
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
                     .foregroundColor(.black)
                     .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(Color.accentColor)
+                    .background(Color.accentColor.opacity(0.85))
                     .clipShape(Capsule())
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 110)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
-        .background(
-            LinearGradient(colors: [
-                Color.white.opacity(0.09),
-                Color.white.opacity(0.025)
-            ], startPoint: .topLeading, endPoint: .bottomTrailing)
-        )
+        .frame(height: 118)
+        .padding(.vertical, 10)
+        .background(.thinMaterial)
+        .background(Color.accentColor.opacity(0.05))
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(
+                    LinearGradient(colors: [
+                        Color.white.opacity(0.30),
+                        Color.white.opacity(0.06)
+                    ], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    lineWidth: 1.2
+                )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: Color.black.opacity(0.30), radius: 14, x: 0, y: 6)
     }
 }
 
