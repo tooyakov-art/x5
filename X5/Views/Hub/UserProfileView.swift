@@ -390,9 +390,10 @@ private struct CoverPhoto: View {
                 Color(red: 0.05, green: 0.12, blue: 0.40)
             ], startPoint: .topLeading, endPoint: .bottomTrailing)
             Text(initials)
-                .font(.system(size: 80, weight: .heavy))
+                .font(.system(size: 80, weight: .heavy, design: .rounded))
                 .foregroundColor(.white.opacity(0.85))
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var initials: String {

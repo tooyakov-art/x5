@@ -306,7 +306,7 @@ private struct HubBackdrop: View {
             .ignoresSafeArea()
 
             RadialGradient(colors: [
-                Color.accentColor.opacity(0.14),
+                Color.accentColor.opacity(0.32),
                 Color.clear
             ], center: .topTrailing, startRadius: 10, endRadius: 260)
             .ignoresSafeArea()
@@ -314,7 +314,7 @@ private struct HubBackdrop: View {
 
             // Steam-style синий glow вместо старого зелёного
             RadialGradient(colors: [
-                Color(red: 0.15, green: 0.50, blue: 0.85).opacity(0.12),
+                Color(red: 0.15, green: 0.50, blue: 0.85).opacity(0.28),
                 Color.clear
             ], center: .bottomLeading, startRadius: 20, endRadius: 320)
             .ignoresSafeArea()
@@ -351,8 +351,9 @@ private struct CategoryTile: View {
         .frame(maxWidth: .infinity)
         .frame(height: 118)
         .padding(.vertical, 10)
-        .background(.thinMaterial)
-        .background(Color.accentColor.opacity(0.05))
+        .background(.ultraThinMaterial)
+        .background(Color.white.opacity(0.04))
+        .background(Color.accentColor.opacity(0.10))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(

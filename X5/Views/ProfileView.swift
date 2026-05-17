@@ -483,6 +483,7 @@ private struct ProfileCoverPhoto: View {
                 .font(.system(size: 80, weight: .heavy, design: .rounded))
                 .foregroundColor(.white.opacity(0.85))
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var initials: String {
