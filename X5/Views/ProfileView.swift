@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 import PhotosUI
 
 struct ProfileView: View {
@@ -36,7 +36,7 @@ struct ProfileView: View {
                     if currentUser.profile?.showInHub != true {
                         becomeSpecialistCard
                     }
-                    // Portfolio goes BEFORE verified card so the "+ Добавить" button is reachable
+                    // Portfolio goes BEFORE verified card so the "+ Р”РѕР±Р°РІРёС‚СЊ" button is reachable
                     if let uid = currentUser.profile?.id {
                         PortfolioGrid(userId: uid, canEdit: true)
                     }
@@ -44,7 +44,7 @@ struct ProfileView: View {
                     if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
                         specialistCard(cats: cats)
                     }
-                    // Verified upsell at the bottom — non-blocking
+                    // Verified upsell at the bottom вЂ” non-blocking
                     if !(currentUser.profile?.hasActiveVerifiedBadge ?? false) {
                         verifiedCard
                     }
@@ -193,7 +193,7 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Image(systemName: "sparkles").foregroundColor(.accentColor)
-                Text("X5 Pro · active")
+                Text("X5 Pro В· active")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.white)
                 Spacer()
@@ -257,10 +257,10 @@ struct ProfileView: View {
                     .background(Color.accentColor)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Стать специалистом")
+                    Text("РЎС‚Р°С‚СЊ СЃРїРµС†РёР°Р»РёСЃС‚РѕРј")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundColor(.white)
-                    Text("Включи публичный профиль — клиенты найдут тебя в Hub и напишут в чат")
+                    Text("Р’РєР»СЋС‡Рё РїСѓР±Р»РёС‡РЅС‹Р№ РїСЂРѕС„РёР»СЊ вЂ” РєР»РёРµРЅС‚С‹ РЅР°Р№РґСѓС‚ С‚РµР±СЏ РІ Hub Рё РЅР°РїРёС€СѓС‚ РІ С‡Р°С‚")
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.55))
                 }
@@ -292,8 +292,8 @@ struct ProfileView: View {
                                                startPoint: .topLeading, endPoint: .bottomTrailing))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Получить галочку").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
-                    Text("Синяя ☑ рядом с именем — больше доверия и приоритет в Hub")
+                    Text("РџРѕР»СѓС‡РёС‚СЊ РіР°Р»РѕС‡РєСѓ").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
+                    Text("РЎРёРЅСЏСЏ в‘ СЂСЏРґРѕРј СЃ РёРјРµРЅРµРј вЂ” Р±РѕР»СЊС€Рµ РґРѕРІРµСЂРёСЏ Рё РїСЂРёРѕСЂРёС‚РµС‚ РІ Hub")
                         .font(.system(size: 12)).foregroundColor(.white.opacity(0.55))
                 }
                 Spacer()
@@ -368,7 +368,7 @@ struct ProfileView: View {
     /// Real subscription price from StoreKit / ASC. Loaded once on appear.
     private var upgradeSubtitle: String {
         if let p = iap.product {
-            return "\(p.displayPrice) / month — 1000 credits + all tools"
+            return "\(p.displayPrice) / month вЂ” 1000 credits + all tools"
         }
         return "1000 credits + all tools"
     }
@@ -449,5 +449,70 @@ private struct SocialChip: View {
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Profile cover helpers
+
+private struct ProfileCoverPhoto: View {
+    let urlString: String?
+    let name: String?
+
+    var body: some View {
+        Group {
+            if let s = urlString, !s.isEmpty, let url = URL(string: s) {
+                CachedAsyncImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    placeholder
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var placeholder: some View {
+        ZStack {
+            LinearGradient(colors: [
+                Color(red: 0.20, green: 0.45, blue: 0.85),
+                Color(red: 0.05, green: 0.12, blue: 0.40)
+            ], startPoint: .topLeading, endPoint: .bottomTrailing)
+            Text(initials)
+                .font(.system(size: 80, weight: .heavy, design: .rounded))
+                .foregroundColor(.white.opacity(0.85))
+        }
+    }
+
+    private var initials: String {
+        let parts = (name ?? "?").split(separator: " ")
+        let first = parts.first?.first.map(String.init) ?? "?"
+        let last = parts.dropFirst().first?.first.map(String.init) ?? ""
+        return (first + last).uppercased()
+    }
+}
+
+private struct ProfileStatCell: View {
+    let value: String
+    let label: String
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                .foregroundColor(.white)
+            Text(label)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(.white.opacity(0.6))
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct ProfileStatDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.12))
+            .frame(width: 1, height: 28)
     }
 }
