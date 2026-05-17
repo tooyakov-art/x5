@@ -57,8 +57,10 @@ struct UserProfile: Codable, Equatable, Identifiable {
     var displayName: String {
         if let n = name, !n.isEmpty { return n }
         if let n = nickname, !n.isEmpty { return n }
-        if let e = email, !e.isEmpty { return e }
-        return "User"
+        if let e = email, let prefix = e.split(separator: "@").first, !prefix.isEmpty {
+            return String(prefix).replacingOccurrences(of: ".", with: " ").capitalized
+        }
+        return "X5"
     }
 
     var planLabel: String {

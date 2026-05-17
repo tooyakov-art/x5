@@ -120,7 +120,7 @@ struct ChatsListView: View {
                             systemImage: muted ? "bell" : "bell.slash"
                         )
                     }
-                    .tint(.orange)
+                    .tint(.accentColor)
                 }
                 .contextMenu {
                     let pinned = ChatsLocalState.isPinned(chat.id)

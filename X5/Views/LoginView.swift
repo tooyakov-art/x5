@@ -40,12 +40,7 @@ struct LoginView: View {
 
     private var logoBlock: some View {
         VStack(spacing: 14) {
-            Text("X5")
-                .font(.system(size: 84, weight: .black))
-                .italic()
-                .foregroundColor(.white)
-                .kerning(-3)
-                .shadow(color: Color(red: 0.16, green: 0.50, blue: 0.95).opacity(0.6), radius: 32, x: 0, y: 0)
+            X5LogoMark(size: 84)
 
             Text(mode == .email
                  ? (isSignUp ? loc.t("login_signup") : loc.t("login_signin"))

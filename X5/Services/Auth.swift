@@ -99,6 +99,16 @@ final class Auth: ObservableObject {
         NotificationCenter.default.post(name: .x5UserDidSignOut, object: nil)
     }
 
+    func freshAccessToken() async -> String? {
+        if supabase.refreshToken == nil { return accessToken }
+        do {
+            let session = try await supabase.refreshSession()
+            return session.accessToken
+        } catch {
+            return nil
+        }
+    }
+
     func deleteAccount() async throws {
         try await supabase.deleteOwnAccount()
         await signOut()

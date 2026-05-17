@@ -77,19 +77,7 @@ struct ImageGeneratorView: View {
                 .foregroundColor(.white.opacity(0.66))
         }
         .padding(18)
-        .background(.ultraThinMaterial)
-        .background(
-            LinearGradient(colors: [
-                Color.white.opacity(0.12),
-                Color.accentColor.opacity(0.08),
-                Color.white.opacity(0.03)
-            ], startPoint: .topLeading, endPoint: .bottomTrailing)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .x5ClearGlass(cornerRadius: 20, highlight: 0.13)
     }
 
     private var promptPanel: some View {
@@ -99,7 +87,7 @@ struct ImageGeneratorView: View {
                 .tracking(1.2)
                 .foregroundColor(.white.opacity(0.45))
 
-            TextField("Premium Instagram ad for a coffee brand, dark studio light, neon lime details", text: $prompt, axis: .vertical)
+            TextField("Premium Instagram ad for a coffee brand, dark studio light, blue glass details", text: $prompt, axis: .vertical)
                 .focused($promptFocused)
                 .lineLimit(4...7)
                 .font(.system(size: 15))
@@ -119,8 +107,7 @@ struct ImageGeneratorView: View {
             }
         }
         .padding(14)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.11)
     }
 
     private var generateButton: some View {
@@ -169,8 +156,7 @@ struct ImageGeneratorView: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(.ultraThinMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .x5ClearGlass(cornerRadius: 14, highlight: 0.11)
                 }
                 .buttonStyle(.plain)
             }
@@ -187,7 +173,7 @@ struct ImageGeneratorView: View {
 
     private var generatorBackdrop: some View {
         ZStack {
-            Color(red: 0.025, green: 0.03, blue: 0.07).ignoresSafeArea()
+            X5Background()
             RadialGradient(colors: [Color.accentColor.opacity(0.22), Color.clear],
                            center: .topTrailing, startRadius: 10, endRadius: 280)
                 .ignoresSafeArea()
@@ -211,8 +197,7 @@ struct ImageGeneratorView: View {
                 .foregroundColor(.white.opacity(0.82))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
-                .background(.ultraThinMaterial)
-                .clipShape(Capsule())
+                .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
         }
         .buttonStyle(.plain)
     }

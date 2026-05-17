@@ -11,15 +11,10 @@ struct AppLockView: View {
 
     var body: some View {
         ZStack {
-            Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea()
+            X5Background()
             VStack(spacing: 22) {
                 Spacer()
-                Text("X5")
-                    .font(.system(size: 56, weight: .black))
-                    .italic()
-                    .foregroundColor(.white)
-                    .kerning(-2)
-                    .shadow(color: Color.accentColor.opacity(0.6), radius: 24)
+                X5LogoMark(size: 56)
 
                 Image(systemName: "faceid")
                     .font(.system(size: 64, weight: .light))
@@ -51,7 +46,7 @@ struct AppLockView: View {
                     .foregroundColor(.black)
                     .frame(maxWidth: .infinity)
                     .frame(height: 52)
-                    .background(Color.accentColor)
+                    .background(X5Style.blue)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .padding(.horizontal, 28)

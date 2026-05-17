@@ -17,15 +17,18 @@ struct HubView: View {
     @State private var category: String? = nil
     @State private var showingPostTask = false
     @State private var showingEditProfile = false
+    @State private var showingNotifications = false
     @State private var openingChatWith: String? = nil
     @State private var startingChat: ChatRoom? = nil
     @State private var chatError: String? = nil
 
-    private let hubBackground = Color(red: 0.025, green: 0.03, blue: 0.07)
+    private let hubBackground = X5Style.ink
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                hubHeader
+
                 Picker("", selection: $segment) {
                     ForEach(Segment.allCases) { s in
                         Text(s == .specialists ? loc.t("hub_specialists") : loc.t("hub_tasks")).tag(s)
@@ -49,18 +52,19 @@ struct HubView: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.white.opacity(0.9))
                             .padding(.horizontal, 12).padding(.vertical, 7)
-                            .background(.ultraThinMaterial)
-                            .overlay(
-                                Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1)
-                            )
-                            .clipShape(Capsule())
+                            .x5ClearGlass(cornerRadius: 16, highlight: 0.10)
                         }
                         .buttonStyle(.plain)
 
                         if let id = category {
-                            Text("\(HubCategories.all.first(where: { $0.id == id })?.emoji ?? "")  \(HubCategories.label(for: id))")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white)
+                            HStack(spacing: 7) {
+                                Image(systemName: hubCategorySymbol(for: id))
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.accentColor)
+                                Text(HubCategories.label(for: id))
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
                         }
                         Spacer()
                     }
@@ -81,8 +85,10 @@ struct HubView: View {
                     }
                 }
             }
-            .background(HubBackdrop(base: hubBackground))
-            .navigationTitle(loc.t("hub_title"))
+            .background { HubBackdrop(base: hubBackground) }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -95,13 +101,9 @@ struct HubView: View {
                                 Text(loc.t("hub_post")).bold()
                             }
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(.black)
+                            .foregroundColor(.white)
                             .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(.ultraThinMaterial)
-                            .overlay(
-                                Capsule().stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
-                            )
-                            .clipShape(Capsule())
+                            .x5ClearGlass(cornerRadius: 15, highlight: 0.11)
                         }
                     } else if !(currentUser.profile?.showInHub ?? false) {
                         Button {
@@ -109,13 +111,9 @@ struct HubView: View {
                         } label: {
                             Text(loc.t("hub_become_specialist"))
                                 .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(.black)
+                                .foregroundColor(.white)
                                 .padding(.horizontal, 10).padding(.vertical, 5)
-                                .background(.ultraThinMaterial)
-                                .overlay(
-                                    Capsule().stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
-                                )
-                                .clipShape(Capsule())
+                                .x5ClearGlass(cornerRadius: 15, highlight: 0.11)
                         }
                     }
                 }
@@ -132,6 +130,9 @@ struct HubView: View {
             .sheet(isPresented: $showingEditProfile) {
                 EditProfileView()
             }
+            .sheet(isPresented: $showingNotifications) {
+                NotificationsView()
+            }
             .sheet(item: $startingChat) { chat in
                 NavigationStack { ChatThreadView(chat: chat) }
                     .preferredColorScheme(.dark)
@@ -147,13 +148,43 @@ struct HubView: View {
         }
     }
 
+    private var hubHeader: some View {
+        HStack(alignment: .center) {
+            Text(loc.t("hub_title"))
+                .font(.system(size: 42, weight: .black))
+                .foregroundColor(.white)
+                .kerning(-1.0)
+                .shadow(color: X5Style.blueSoft.opacity(0.45), radius: 18, x: 0, y: 0)
+            Spacer()
+            Button {
+                showingNotifications = true
+            } label: {
+                Image(systemName: "bell")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 56, height: 56)
+                    .x5ClearGlassCircle()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Notifications")
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+    }
+
     private func startChat(with person: HubSpecialist) {
-        guard let myId = auth.userId, let token = auth.accessToken else {
+        guard let myId = auth.userId else {
             chatError = "Сначала войди в аккаунт."
             return
         }
         openingChatWith = person.id
         Task {
+            guard let token = await auth.freshAccessToken() else {
+                openingChatWith = nil
+                chatError = "Сначала войди в аккаунт."
+                return
+            }
             let chat = await chats.ensureChat(otherUserId: person.id, currentUserId: myId, taskId: nil, taskTitle: nil, accessToken: token)
             openingChatWith = nil
             if let chat {
@@ -169,10 +200,8 @@ struct HubView: View {
     private var categoriesGrid: some View {
         ScrollView {
             LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: 12),
-                          GridItem(.flexible(), spacing: 12),
-                          GridItem(.flexible(), spacing: 12)],
-                spacing: 12
+                columns: Array(repeating: GridItem(.flexible(minimum: 62, maximum: 92), spacing: 8), count: 4),
+                spacing: 8
             ) {
                 ForEach(HubCategories.all) { cat in
                     Button {
@@ -183,10 +212,10 @@ struct HubView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 14)
             .padding(.top, 12)
             .padding(.bottom, 32)
-            .frame(maxWidth: 640)
+            .frame(maxWidth: 430)
             .frame(maxWidth: .infinity)
         }
         .refreshable { await service.loadSpecialists() }
@@ -224,11 +253,7 @@ struct HubView: View {
                                 }
                             }
                             .frame(width: 44, height: 44)
-                            .background(.ultraThinMaterial)
-                            .overlay(
-                                Circle().stroke(Color.accentColor.opacity(0.28), lineWidth: 1)
-                            )
-                            .clipShape(Circle())
+                            .x5ClearGlassCircle()
                         }
                         .buttonStyle(.plain)
                         .disabled(openingChatWith != nil)
@@ -298,74 +323,106 @@ private struct HubBackdrop: View {
     var body: some View {
         ZStack {
             base.ignoresSafeArea()
-            LinearGradient(colors: [
-                Color(red: 0.08, green: 0.10, blue: 0.18).opacity(0.85),
-                Color.clear,
-                Color.black.opacity(0.20)
-            ], startPoint: .top, endPoint: .bottom)
-            .ignoresSafeArea()
 
             RadialGradient(colors: [
-                Color.accentColor.opacity(0.32),
+                X5Style.blue.opacity(0.34),
                 Color.clear
             ], center: .topTrailing, startRadius: 10, endRadius: 260)
             .ignoresSafeArea()
             .blur(radius: 18)
 
-            // Steam-style синий glow вместо старого зелёного
             RadialGradient(colors: [
-                Color(red: 0.15, green: 0.50, blue: 0.85).opacity(0.28),
+                X5Style.blueSoft.opacity(0.26),
                 Color.clear
             ], center: .bottomLeading, startRadius: 20, endRadius: 320)
             .ignoresSafeArea()
             .blur(radius: 24)
+
+            Text("X5")
+                .font(.system(size: 230, weight: .black))
+                .italic()
+                .foregroundColor(.white.opacity(0.035))
+                .kerning(-10)
+                .offset(x: -12, y: -120)
+                .allowsHitTesting(false)
+
+            LinearGradient(colors: [
+                Color.black.opacity(0.08),
+                Color.clear,
+                Color.black.opacity(0.20)
+            ], startPoint: .top, endPoint: .bottom)
+            .ignoresSafeArea()
         }
     }
 }
 
 // MARK: - Tile категории
 
+private func hubCategorySymbol(for id: String) -> String {
+    switch id {
+    case "marketing": return "megaphone.fill"
+    case "smm": return "iphone"
+    case "targeting": return "scope"
+    case "seo": return "magnifyingglass"
+    case "sales": return "dollarsign.circle.fill"
+    case "design": return "paintpalette.fill"
+    case "ui_ux": return "ruler"
+    case "motion": return "sparkles"
+    case "3d": return "cube.transparent"
+    case "web_dev": return "globe"
+    case "mobile_dev": return "apps.iphone"
+    case "bot_dev": return "cpu"
+    case "ai_ml": return "brain.head.profile"
+    case "gamedev": return "gamecontroller.fill"
+    case "ugc": return "video.fill"
+    case "copy": return "text.quote"
+    case "video": return "movieclapper.fill"
+    case "photo": return "camera.fill"
+    case "audio": return "mic.fill"
+    case "animation": return "wand.and.stars"
+    case "translation": return "character.book.closed.fill"
+    case "consulting": return "briefcase.fill"
+    case "finance": return "chart.line.uptrend.xyaxis"
+    case "legal": return "scale.3d"
+    case "hr": return "person.2.fill"
+    case "education": return "graduationcap.fill"
+    case "assistant": return "list.clipboard.fill"
+    default: return "square.grid.2x2.fill"
+    }
+}
+
 private struct CategoryTile: View {
     let cat: HubCategory
     let count: Int
 
     var body: some View {
-        VStack(spacing: 8) {
-            Text(cat.emoji)
-                .font(.system(size: 34))
+        VStack(spacing: 7) {
+            Image(systemName: hubCategorySymbol(for: cat.id))
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.94), X5Style.blue.opacity(0.76)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(height: 26)
             Text(cat.labelEn)
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 10.5, weight: .heavy))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
-                .minimumScaleFactor(0.85)
+                .minimumScaleFactor(0.68)
             if count > 0 {
                 Text("\(count)")
                     .font(.system(size: 10, weight: .heavy))
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(Color.accentColor.opacity(0.85))
-                    .clipShape(Capsule())
+                    .foregroundColor(.accentColor)
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 118)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
-        .background(Color.white.opacity(0.04))
-        .background(Color.accentColor.opacity(0.10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(
-                    LinearGradient(colors: [
-                        Color.white.opacity(0.30),
-                        Color.white.opacity(0.06)
-                    ], startPoint: .topLeading, endPoint: .bottomTrailing),
-                    lineWidth: 1.2
-                )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .shadow(color: Color.black.opacity(0.30), radius: 14, x: 0, y: 6)
+        .frame(height: 92)
+        .padding(.vertical, 8)
+        .x5ClearGlass(cornerRadius: 19, highlight: 0.12)
     }
 }
 
@@ -379,7 +436,7 @@ private struct SpecialistRow: View {
             AvatarView(urlString: person.avatar, name: person.name, size: 48)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(person.name ?? person.nickname ?? "User")
+                    Text(person.name ?? person.nickname ?? "X5")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
                     if person.isVerified == true {
@@ -409,18 +466,7 @@ private struct SpecialistRow: View {
                 .foregroundColor(.white.opacity(0.3))
         }
         .padding(12)
-        .background(.ultraThinMaterial)
-        .background(
-            LinearGradient(colors: [
-                Color.white.opacity(0.09),
-                Color.white.opacity(0.025)
-            ], startPoint: .topLeading, endPoint: .bottomTrailing)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .x5ClearGlass(cornerRadius: 16, highlight: 0.10)
     }
 
     private var categoryLabel: String {
@@ -470,18 +516,7 @@ private struct TaskRow: View {
             }
         }
         .padding(12)
-        .background(.ultraThinMaterial)
-        .background(
-            LinearGradient(colors: [
-                Color.white.opacity(0.09),
-                Color.white.opacity(0.025)
-            ], startPoint: .topLeading, endPoint: .bottomTrailing)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .x5ClearGlass(cornerRadius: 16, highlight: 0.10)
     }
 
     private func formatDate(_ iso: String) -> String {

@@ -77,7 +77,7 @@ struct ToolDetailView: View {
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(notified ? Color.green.opacity(0.9) : Color.accentColor)
+                        .background(notified ? Color.white.opacity(0.86) : Color.accentColor)
                         .cornerRadius(14)
                     }
                     .disabled(notified)

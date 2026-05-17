@@ -172,9 +172,7 @@ struct UserProfileView: View {
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(width: 44, height: 44)
-                        .background(.ultraThinMaterial)
-                        .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
-                        .clipShape(Circle())
+                        .x5ClearGlassCircle()
                 }
                 .buttonStyle(.plain)
                 .disabled(openingChat || auth.accessToken == nil)
@@ -196,18 +194,7 @@ struct UserProfileView: View {
         }
         .padding(.vertical, 14)
         .padding(.horizontal, 4)
-        .background(.thinMaterial)
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(
-                    LinearGradient(colors: [
-                        Color.white.opacity(0.25),
-                        Color.white.opacity(0.05)
-                    ], startPoint: .topLeading, endPoint: .bottomTrailing),
-                    lineWidth: 1
-                )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .x5ClearGlass(cornerRadius: 22, highlight: 0.12)
         .padding(.horizontal, 16)
         .padding(.top, 18)
     }
@@ -280,7 +267,7 @@ struct UserProfileView: View {
     // MARK: - Helpers
 
     private var displayName: String {
-        profile?.displayName ?? fallback?.name ?? fallback?.nickname ?? "User"
+        profile?.displayName ?? fallback?.name ?? fallback?.nickname ?? "X5"
     }
 
     private var isMe: Bool { auth.userId == userId }

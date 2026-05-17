@@ -174,7 +174,7 @@ private struct CourseCard: View {
                         Text(loc.t("courses_draft"))
                             .font(.system(size: 10, weight: .heavy))
                             .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(Color.orange)
+                            .background(Color.white.opacity(0.86))
                             .foregroundColor(.black)
                             .clipShape(Capsule())
                     }
@@ -296,7 +296,7 @@ private struct CourseRow: View {
                         Text("·")
                             .foregroundColor(.white.opacity(0.3))
                         HStack(spacing: 2) {
-                            Image(systemName: "star.fill").font(.system(size: 9)).foregroundColor(.yellow)
+                            Image(systemName: "star.fill").font(.system(size: 9)).foregroundColor(X5Style.blueSoft)
                             Text(String(format: "%.1f", r)).font(.system(size: 11)).foregroundColor(.white.opacity(0.55))
                         }
                     }
@@ -504,8 +504,8 @@ private struct LessonRow: View {
                         Text(loc.t("courses_free_preview"))
                             .font(.system(size: 9, weight: .heavy))
                             .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(Color.green.opacity(0.18))
-                            .foregroundColor(.green)
+                            .background(X5Style.blue.opacity(0.18))
+                            .foregroundColor(.accentColor)
                             .clipShape(Capsule())
                     }
                 }

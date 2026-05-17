@@ -1,33 +1,40 @@
 import SwiftUI
 
-/// Steam-style dark navy background with subtle cyan glow at top.
+/// Premium black/navy background with a controlled blue glow.
 /// Apply with `.x5Background()` to any root view.
 struct X5Background: View {
     var body: some View {
         ZStack {
-            // Base dark navy
-            Color(red: 0.04, green: 0.05, blue: 0.10)
+            X5Style.ink
 
-            // Top cyan glow
             RadialGradient(
                 colors: [
-                    Color(red: 0.15, green: 0.40, blue: 0.65).opacity(0.55),
+                    X5Style.blue.opacity(0.42),
                     .clear
                 ],
                 center: .init(x: 0.5, y: -0.05),
                 startRadius: 10,
-                endRadius: 380
+                endRadius: 430
             )
 
-            // Side blue blob
             RadialGradient(
                 colors: [
-                    Color(red: 0.10, green: 0.20, blue: 0.55).opacity(0.40),
+                    X5Style.blueSoft.opacity(0.26),
                     .clear
                 ],
-                center: .init(x: -0.05, y: 0.4),
+                center: .init(x: -0.06, y: 0.34),
                 startRadius: 10,
                 endRadius: 360
+            )
+
+            RadialGradient(
+                colors: [
+                    Color.white.opacity(0.10),
+                    .clear
+                ],
+                center: .init(x: 0.74, y: 0.04),
+                startRadius: 4,
+                endRadius: 220
             )
         }
         .ignoresSafeArea()
