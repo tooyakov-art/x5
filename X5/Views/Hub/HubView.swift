@@ -345,36 +345,7 @@ private struct HubBackdrop: View {
 // MARK: - Tile категории
 
 private func hubCategorySymbol(for id: String) -> String {
-    switch id {
-    case "marketing": return "megaphone.fill"
-    case "smm": return "iphone"
-    case "targeting": return "scope"
-    case "seo": return "magnifyingglass"
-    case "sales": return "dollarsign.circle.fill"
-    case "design": return "paintpalette.fill"
-    case "ui_ux": return "ruler"
-    case "motion": return "sparkles"
-    case "3d": return "cube.transparent"
-    case "web_dev": return "globe"
-    case "mobile_dev": return "apps.iphone"
-    case "bot_dev": return "cpu"
-    case "ai_ml": return "brain.head.profile"
-    case "gamedev": return "gamecontroller.fill"
-    case "ugc": return "video.fill"
-    case "copy": return "text.quote"
-    case "video": return "movieclapper.fill"
-    case "photo": return "camera.fill"
-    case "audio": return "mic.fill"
-    case "animation": return "wand.and.stars"
-    case "translation": return "character.book.closed.fill"
-    case "consulting": return "briefcase.fill"
-    case "finance": return "chart.line.uptrend.xyaxis"
-    case "legal": return "scale.3d"
-    case "hr": return "person.2.fill"
-    case "education": return "graduationcap.fill"
-    case "assistant": return "list.clipboard.fill"
-    default: return "square.grid.2x2.fill"
-    }
+    HubCategories.symbol(for: id)
 }
 
 private struct CategoryTile: View {

@@ -116,6 +116,39 @@ enum HubCategories {
         guard let id else { return "Other" }
         return all.first(where: { $0.id == id })?.labelEn ?? id.capitalized
     }
+
+    static func symbol(for id: String?) -> String {
+        switch id {
+        case "marketing": return "megaphone.fill"
+        case "smm": return "iphone"
+        case "targeting": return "scope"
+        case "seo": return "magnifyingglass"
+        case "sales": return "dollarsign.circle.fill"
+        case "design": return "paintpalette.fill"
+        case "ui_ux": return "ruler"
+        case "motion": return "sparkles"
+        case "3d": return "cube.transparent.fill"
+        case "web_dev": return "globe"
+        case "mobile_dev": return "apps.iphone"
+        case "bot_dev": return "cpu.fill"
+        case "ai_ml": return "brain.head.profile"
+        case "gamedev": return "gamecontroller.fill"
+        case "ugc": return "video.fill"
+        case "copy": return "pencil.and.outline"
+        case "video": return "movieclapper.fill"
+        case "photo": return "camera.fill"
+        case "audio": return "waveform"
+        case "animation": return "film.stack"
+        case "translation": return "character.book.closed.fill"
+        case "consulting": return "briefcase.fill"
+        case "finance": return "chart.line.uptrend.xyaxis"
+        case "legal": return "scalemass.fill"
+        case "hr": return "person.2.fill"
+        case "education": return "graduationcap.fill"
+        case "assistant": return "checklist"
+        default: return "wrench.and.screwdriver.fill"
+        }
+    }
 }
 
 // MARK: - Service

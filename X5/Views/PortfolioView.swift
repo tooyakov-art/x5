@@ -56,6 +56,16 @@ struct PortfolioGrid: View {
                                       onDelete: {
                                           guard let token = auth.accessToken else { return }
                                           Task { await service.delete(itemId: item.id, accessToken: token) }
+                                      },
+                                      onLoadLike: {
+                                          guard let token = auth.accessToken, let uid = auth.userId else {
+                                              return PortfolioLikeState(isLiked: false, count: 0)
+                                          }
+                                          return await service.likeState(itemId: item.id, currentUserId: uid, accessToken: token)
+                                      },
+                                      onSetLiked: { liked in
+                                          guard let token = auth.accessToken, let uid = auth.userId else { return false }
+                                          return await service.setLiked(itemId: item.id, liked: liked, currentUserId: uid, accessToken: token)
                                       })
                     }
                 }
@@ -79,8 +89,12 @@ private struct PortfolioCell: View {
     let item: PortfolioItem
     let canEdit: Bool
     let onDelete: () -> Void
+    let onLoadLike: () async -> PortfolioLikeState
+    let onSetLiked: (Bool) async -> Bool
 
     @State private var confirmDelete = false
+    @State private var likeState = PortfolioLikeState(isLiked: false, count: 0)
+    @State private var likeBusy = false
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -108,12 +122,45 @@ private struct PortfolioCell: View {
                         .background(Circle().fill(Color.black.opacity(0.6)))
                 }
                 .padding(6)
+            } else {
+                Button {
+                    Task { await toggleLike() }
+                } label: {
+                    Label("\(likeState.count)", systemImage: likeState.isLiked ? "heart.fill" : "heart")
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.46))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(likeBusy)
+                .padding(6)
+            }
+        }
+        .task {
+            if !canEdit {
+                likeState = await onLoadLike()
             }
         }
         .confirmationDialog("Удалить из портфолио?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Удалить", role: .destructive) { onDelete() }
             Button("Отмена", role: .cancel) {}
         }
+    }
+
+    private func toggleLike() async {
+        guard !likeBusy else { return }
+        likeBusy = true
+        defer { likeBusy = false }
+        let next = !likeState.isLiked
+        let ok = await onSetLiked(next)
+        guard ok else { return }
+        likeState = PortfolioLikeState(
+            isLiked: next,
+            count: max(0, likeState.count + (next ? 1 : -1))
+        )
     }
 }
 

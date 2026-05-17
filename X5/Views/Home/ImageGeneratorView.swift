@@ -15,6 +15,8 @@ struct ImageGeneratorView: View {
     @State private var errorMessage: String?
     @State private var generatedAsset: GeneratedImageAsset?
     @State private var viewerAsset: GeneratedImageAsset?
+    @State private var showingGallery = false
+    @StateObject private var gallery = GeneratedGalleryStore()
     @FocusState private var promptFocused: Bool
 
     init(category: ImageGenerationCategory = ImageGenerationCatalog.custom) {
@@ -48,14 +50,27 @@ struct ImageGeneratorView: View {
         .navigationTitle(categoryTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showingGallery = true } label: {
+                    Image(systemName: "photo.stack")
+                }
+                .accessibilityLabel("Общая галерея")
+            }
+        }
         .task { await refreshProfileIfPossible() }
+        .sheet(isPresented: $showingGallery) {
+            GeneratedGalleryView()
+        }
         .fullScreenCover(item: $viewerAsset) { asset in
-            GeneratedImageViewer(asset: asset) { image in
+            GeneratedImageViewer(asset: asset, onImageUpdated: { image in
                 if var updated = generatedAsset {
                     updated.image = image
                     generatedAsset = updated
                 }
-            }
+            }, onSaveToGallery: { image in
+                saveAssetToGallery(asset, image: image)
+            })
             .environmentObject(loc)
         }
     }
@@ -309,6 +324,7 @@ struct ImageGeneratorView: View {
                 creditsRemaining: response.creditsRemaining
             )
             generatedAsset = asset
+            _ = saveAssetToGallery(asset, image: image)
             viewerAsset = asset
             await refreshProfileIfPossible()
             DiagnosticLogger.log(event: "image_generated", extra: [
@@ -336,6 +352,17 @@ struct ImageGeneratorView: View {
     private func localized(_ key: String, fallback: String) -> String {
         let value = loc.t(key)
         return value == key ? fallback : value
+    }
+
+    @discardableResult
+    private func saveAssetToGallery(_ asset: GeneratedImageAsset, image: UIImage) -> Bool {
+        gallery.save(
+            image: image,
+            prompt: asset.prompt,
+            provider: asset.provider,
+            category: asset.category,
+            costCredits: asset.costCredits
+        ) != nil
     }
 }
 
@@ -411,15 +438,21 @@ private struct GeneratedImageViewer: View {
 
     let asset: GeneratedImageAsset
     let onImageUpdated: (UIImage) -> Void
+    let onSaveToGallery: (UIImage) -> Bool
 
     @State private var image: UIImage
     @State private var showingShare = false
     @State private var showingEditor = false
     @State private var saveMessage: String?
 
-    init(asset: GeneratedImageAsset, onImageUpdated: @escaping (UIImage) -> Void) {
+    init(
+        asset: GeneratedImageAsset,
+        onImageUpdated: @escaping (UIImage) -> Void,
+        onSaveToGallery: @escaping (UIImage) -> Bool
+    ) {
         self.asset = asset
         self.onImageUpdated = onImageUpdated
+        self.onSaveToGallery = onSaveToGallery
         _image = State(initialValue: asset.image)
     }
 
@@ -463,6 +496,9 @@ private struct GeneratedImageViewer: View {
                     Button { saveToPhotos() } label: {
                         Image(systemName: "arrow.down.circle")
                     }
+                    Button { saveToGallery() } label: {
+                        Image(systemName: "photo.stack")
+                    }
                     Button { showingShare = true } label: {
                         Image(systemName: "square.and.arrow.up")
                     }
@@ -503,6 +539,14 @@ private struct GeneratedImageViewer: View {
     private func saveToPhotos() {
         UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
         withAnimation { saveMessage = loc.t("gen_saved_photos") }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            withAnimation { saveMessage = nil }
+        }
+    }
+
+    private func saveToGallery() {
+        let saved = onSaveToGallery(image)
+        withAnimation { saveMessage = saved ? "Сохранено в галерею" : "Не удалось сохранить" }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
             withAnimation { saveMessage = nil }
         }

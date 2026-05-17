@@ -30,7 +30,7 @@ struct CreateTaskView: View {
                     TextField("Бюджет (например 50 000 ₸)", text: $budget)
                     Picker("Категория", selection: $category) {
                         ForEach(HubCategories.all) { cat in
-                            Text("\(cat.emoji)  \(cat.labelEn)").tag(cat.id)
+                            Label(cat.labelEn, systemImage: HubCategories.symbol(for: cat.id)).tag(cat.id)
                         }
                     }
                     Toggle("Срок", isOn: $hasDeadline)

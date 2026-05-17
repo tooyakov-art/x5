@@ -22,6 +22,11 @@ struct PortfolioItem: Codable, Identifiable, Equatable {
     }
 }
 
+struct PortfolioLikeState: Equatable {
+    let isLiked: Bool
+    let count: Int
+}
+
 @MainActor
 final class PortfolioService: ObservableObject {
     @Published private(set) var items: [PortfolioItem] = []
@@ -111,5 +116,78 @@ final class PortfolioService: ObservableObject {
            let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
             items.removeAll { $0.id == itemId }
         }
+    }
+
+    func likeState(itemId: String, currentUserId: String, accessToken: String) async -> PortfolioLikeState {
+        guard var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/portfolio_item_likes"), resolvingAgainstBaseURL: false) else {
+            return PortfolioLikeState(isLiked: false, count: 0)
+        }
+        components.queryItems = [
+            URLQueryItem(name: "item_id", value: "eq.\(itemId)"),
+            URLQueryItem(name: "select", value: "user_id")
+        ]
+        guard let reqURL = components.url else {
+            return PortfolioLikeState(isLiked: false, count: 0)
+        }
+        var request = URLRequest(url: reqURL)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let rows = try? JSONDecoder().decode([PortfolioLikeRow].self, from: data)
+        else {
+            return PortfolioLikeState(isLiked: false, count: 0)
+        }
+        return PortfolioLikeState(
+            isLiked: rows.contains { $0.userId == currentUserId },
+            count: rows.count
+        )
+    }
+
+    func setLiked(itemId: String, liked: Bool, currentUserId: String, accessToken: String) async -> Bool {
+        if liked {
+            var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/portfolio_item_likes"))
+            request.httpMethod = "POST"
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("resolution=ignore-duplicates", forHTTPHeaderField: "Prefer")
+            let body: [String: AnyEncodable] = [
+                "item_id": AnyEncodable(itemId),
+                "user_id": AnyEncodable(currentUserId)
+            ]
+            request.httpBody = try? JSONEncoder().encode(body)
+            guard let (_, response) = try? await URLSession.shared.data(for: request),
+                  let http = response as? HTTPURLResponse
+            else { return false }
+            return (200..<300).contains(http.statusCode)
+        } else {
+            guard var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/portfolio_item_likes"), resolvingAgainstBaseURL: false) else {
+                return false
+            }
+            components.queryItems = [
+                URLQueryItem(name: "item_id", value: "eq.\(itemId)"),
+                URLQueryItem(name: "user_id", value: "eq.\(currentUserId)")
+            ]
+            guard let reqURL = components.url else { return false }
+            var request = URLRequest(url: reqURL)
+            request.httpMethod = "DELETE"
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            guard let (_, response) = try? await URLSession.shared.data(for: request),
+                  let http = response as? HTTPURLResponse
+            else { return false }
+            return (200..<300).contains(http.statusCode)
+        }
+    }
+}
+
+private struct PortfolioLikeRow: Codable {
+    let userId: String
+
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
     }
 }

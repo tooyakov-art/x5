@@ -53,6 +53,10 @@ struct EditProfileView: View {
                     TextField(loc.t("edit_nickname_placeholder"), text: $nickname)
                         .autocapitalization(.none)
                         .textInputAutocapitalization(.never)
+                        .onChange(of: nickname) { value in
+                            nickname = value.lowercased()
+                                .filter { "abcdefghijklmnopqrstuvwxyz0123456789_".contains($0) }
+                        }
                     TextField(loc.t("edit_bio_placeholder"), text: $bio, axis: .vertical)
                         .lineLimit(2...5)
                     Text("\(bio.count) / 500")
@@ -124,10 +128,10 @@ struct EditProfileView: View {
     }
 
     private var isValid: Bool {
-        if !nickname.isEmpty {
-            let pattern = "^[a-z0-9_]{3,}$"
-            if nickname.range(of: pattern, options: .regularExpression) == nil { return false }
-        }
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanNickname = nickname.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if cleanName.count < 2 || cleanName.lowercased() == "user" || cleanName.lowercased() == "x5" { return false }
+        if cleanNickname.range(of: "^[a-z0-9_]{3,}$", options: .regularExpression) == nil { return false }
         return bio.count <= 500
     }
 
@@ -165,8 +169,8 @@ struct EditProfileView: View {
         ]
 
         var fields: [String: AnyEncodable] = [
-            "name": AnyEncodable(name),
-            "nickname": AnyEncodable(nilIfEmpty(nickname)),
+            "name": AnyEncodable(name.trimmingCharacters(in: .whitespacesAndNewlines)),
+            "nickname": AnyEncodable(nickname.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()),
             "bio": AnyEncodable(nilIfEmpty(bio)),
             "social_links": AnyEncodable(socials),
             "specialist_category": AnyEncodable(Array(pickedCategories)),
@@ -187,6 +191,8 @@ struct EditProfileView: View {
 }
 
 private struct CategoriesPicker: View {
+    @EnvironmentObject private var loc: LocalizationService
+    @Environment(\.dismiss) private var dismiss
     @Binding var selected: Set<String>
 
     var body: some View {
@@ -196,7 +202,7 @@ private struct CategoriesPicker: View {
                     toggle(cat.id)
                 } label: {
                     HStack {
-                        Text("\(cat.emoji)  \(cat.labelEn)")
+                        Label(cat.labelEn, systemImage: HubCategories.symbol(for: cat.id))
                         Spacer()
                         if selected.contains(cat.id) {
                             Image(systemName: "checkmark")
@@ -209,13 +215,18 @@ private struct CategoriesPicker: View {
         }
         .scrollContentBackground(.hidden)
         .background(Color(red: 0.04, green: 0.05, blue: 0.10))
-        .navigationTitle("")
+        .navigationTitle(loc.t("edit_categories"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button(loc.t("btn_done")) { dismiss() }
+            }
+        }
     }
 
     private func toggle(_ id: String) {
         if selected.contains(id) { selected.remove(id) }
-        else { selected.insert(id) }
+        else if selected.count < 3 { selected.insert(id) }
     }
 }

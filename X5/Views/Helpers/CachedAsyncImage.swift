@@ -28,7 +28,7 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
         // re-entry (returning to a chat after backgrounding for a few
         // seconds) shows the avatar at frame 1 instead of flashing the
         // placeholder for the duration of the .task hop.
-        if let url, let cached = ImageCache.shared.peekMemory(for: url) {
+        if let url, let cached = ImageCache.shared.peekMemory(for: url) ?? ImageCache.shared.peekDisk(for: url) {
             self._image = State(initialValue: cached)
             self._loaded = State(initialValue: true)
         }

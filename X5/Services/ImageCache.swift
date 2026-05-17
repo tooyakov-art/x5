@@ -78,6 +78,29 @@ actor ImageCache {
         return memory.object(forKey: key as NSString)
     }
 
+    /// Synchronous disk peek for cold app starts. This avoids a visible
+    /// placeholder flash for images already cached on disk before the async
+    /// actor hop resolves.
+    nonisolated func peekDisk(for url: URL) -> UIImage? {
+        let key = Self.keyFor(url: url)
+        if let cached = memory.object(forKey: key as NSString) { return cached }
+
+        let category = Self.categorize(url: url)
+        guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        let path = caches
+            .appendingPathComponent("x5-images", isDirectory: true)
+            .appendingPathComponent(category.rawValue, isDirectory: true)
+            .appendingPathComponent(key)
+        guard let data = try? Data(contentsOf: path), let image = UIImage(data: data) else {
+            return nil
+        }
+        let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 1024 * 1024
+        memory.setObject(image, forKey: key as NSString, cost: cost)
+        return image
+    }
+
     /// Returns image for URL, downloading if needed. Categorisation is automatic.
     /// Concurrent calls for the same URL share a single fetch (no duplicate downloads).
     func image(for url: URL) async -> UIImage? {

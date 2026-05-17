@@ -8,6 +8,8 @@ struct OnboardingView: View {
     @EnvironmentObject private var loc: LocalizationService
 
     @State private var role: Role?
+    @State private var name: String = ""
+    @State private var nickname: String = ""
     @State private var pickedCategories: Set<String> = []
     @State private var bio: String = ""
     @State private var saving = false
@@ -22,6 +24,7 @@ struct OnboardingView: View {
             ScrollView {
                 VStack(spacing: 22) {
                     header
+                    identityFields
                     rolePicker
                     if role == .specialist {
                         categoriesPicker
@@ -47,6 +50,7 @@ struct OnboardingView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear { populateIdentity() }
     }
 
     private var header: some View {
@@ -76,6 +80,44 @@ struct OnboardingView: View {
                      subtitle: loc.t("onb_role_entrepreneur_sub"),
                      systemImage: "briefcase.fill")
         }
+    }
+
+    private var identityFields: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(loc.t("edit_about_section"))
+                .font(.system(size: 12, weight: .heavy))
+                .foregroundColor(.white.opacity(0.55))
+
+            TextField(loc.t("edit_name_placeholder"), text: $name)
+                .textInputAutocapitalization(.words)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(12)
+                .background(Color.white.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            TextField(loc.t("edit_nickname_placeholder"), text: $nickname)
+                .textInputAutocapitalization(.never)
+                .autocapitalization(.none)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(12)
+                .background(Color.white.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .onChange(of: nickname) { value in
+                    nickname = value.lowercased()
+                        .filter { "abcdefghijklmnopqrstuvwxyz0123456789_".contains($0) }
+                }
+
+            if !nicknameTrimmed.isEmpty && !isValidNickname {
+                Text(loc.t("edit_nickname_placeholder"))
+                    .font(.caption)
+                    .foregroundColor(.red.opacity(0.85))
+            }
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func roleCard(_ r: Role, title: String, subtitle: String, systemImage: String) -> some View {
@@ -126,7 +168,7 @@ struct OnboardingView: View {
                         Button {
                             toggle(cat.id)
                         } label: {
-                            Text("\(cat.emoji) \(cat.labelEn)")
+                            Label(cat.labelEn, systemImage: HubCategories.symbol(for: cat.id))
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(selected ? .black : .white.opacity(0.85))
                                 .padding(.horizontal, 12).padding(.vertical, 8)
@@ -187,8 +229,35 @@ struct OnboardingView: View {
 
     private var canSubmit: Bool {
         guard let role else { return false }
+        guard hasRealName, isValidNickname else { return false }
         if role == .specialist { return !pickedCategories.isEmpty }
         return true
+    }
+
+    private var nameTrimmed: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var nicknameTrimmed: String {
+        nickname.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private var hasRealName: Bool {
+        let value = nameTrimmed
+        return value.count >= 2 && value.lowercased() != "user" && value.lowercased() != "x5"
+    }
+
+    private var isValidNickname: Bool {
+        nicknameTrimmed.range(of: "^[a-z0-9_]{3,}$", options: .regularExpression) != nil
+    }
+
+    private func populateIdentity() {
+        guard let p = currentUser.profile else { return }
+        let profileName = (p.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !profileName.isEmpty && profileName.lowercased() != "user" && profileName.lowercased() != "x5" {
+            name = profileName
+        }
+        nickname = (p.nickname ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     private func toggle(_ id: String) {
@@ -234,6 +303,8 @@ struct OnboardingView: View {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("return=representation", forHTTPHeaderField: "Prefer")
         var body: [String: Any] = [
+            "name": nameTrimmed,
+            "nickname": nicknameTrimmed,
             "user_role": role.rawValue,
             "specialist_category": Array(pickedCategories),
             "show_in_hub": role == .specialist

@@ -62,11 +62,16 @@ struct ContentView: View {
         }
     }
 
-    /// Onboarding required when we have a profile loaded but no user_role yet.
+    /// Onboarding required when we have a profile loaded but no real identity or role yet.
     /// While loading, fall through to AppTabView (avoids flicker).
     private var needsOnboarding: Bool {
         guard let profile = currentUser.profile else { return false }
-        return (profile.userRole ?? "").isEmpty
+        let cleanName = (profile.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowerName = cleanName.lowercased()
+        let cleanNickname = (profile.nickname ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let hasRealName = cleanName.count >= 2 && lowerName != "user" && lowerName != "x5"
+        let hasValidNickname = cleanNickname.range(of: "^[a-z0-9_]{3,}$", options: .regularExpression) != nil
+        return !hasRealName || !hasValidNickname || (profile.userRole ?? "").isEmpty
     }
 
     private func loadProfileIfNeeded() async {

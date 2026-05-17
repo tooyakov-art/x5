@@ -66,6 +66,17 @@ interface ChatRow {
   task_title: string | null;
 }
 
+interface SocialPushPayload {
+  recipient_id: string;
+  actor_id: string;
+  type: string;
+  title?: string;
+  body?: string;
+  object_type?: string;
+  object_id?: string;
+  thread_id?: string;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
 
@@ -76,7 +87,12 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || SUPABASE_URL;
   const supabase = createClient(supabaseUrl, serviceKey);
 
-  const raw = (await req.json()) as IncomingPayload;
+  const rawJson = (await req.json()) as IncomingPayload | SocialPushPayload;
+  if (isSocialPushPayload(rawJson)) {
+    return await sendSocialPush(supabase, rawJson);
+  }
+
+  const raw = rawJson as IncomingPayload;
   const body = raw.record ?? raw.new ?? (raw as MessageRow);
   if (!body?.chat_id || !body.sender_id) {
     return new Response("bad request", { status: 400 });
@@ -162,6 +178,94 @@ Deno.serve(async (req) => {
   }
   return new Response("ok");
 });
+
+function isSocialPushPayload(value: IncomingPayload | SocialPushPayload): value is SocialPushPayload {
+  const payload = value as SocialPushPayload;
+  return Boolean(payload.recipient_id && payload.actor_id && payload.type);
+}
+
+async function sendSocialPush(supabase: any, body: SocialPushPayload): Promise<Response> {
+  if (body.recipient_id === body.actor_id) return new Response("self event ignored");
+
+  const [{ data: actor }, { data: recipientProfile }] = await Promise.all([
+    supabase.from("profiles").select("name, nickname").eq("id", body.actor_id).maybeSingle(),
+    supabase.from("profiles").select("push_token").eq("id", body.recipient_id).maybeSingle()
+  ]);
+
+  const pushToken = recipientProfile?.push_token as string | undefined;
+  if (!pushToken) return new Response("no push token", { status: 200 });
+
+  const actorName: string = (actor?.name as string) || (actor?.nickname as string) || "Someone";
+  const title = body.title || actorName;
+  const text = body.body || defaultSocialBody(body.type, actorName);
+
+  const payload = {
+    aps: {
+      alert: {
+        title,
+        body: text
+      },
+      sound: "default",
+      badge: 1,
+      "thread-id": body.thread_id || body.object_id || body.type,
+      category: "SOCIAL"
+    },
+    type: body.type,
+    actor_id: body.actor_id,
+    object_type: body.object_type,
+    object_id: body.object_id
+  };
+
+  return await sendAPNs(pushToken, payload);
+}
+
+function defaultSocialBody(type: string, actorName: string): string {
+  switch (type) {
+    case "portfolio_like":
+      return `${actorName} liked your case`;
+    case "followed_user_posted":
+      return `${actorName} posted in X5`;
+    default:
+      return `${actorName} has an update`;
+  }
+}
+
+async function sendAPNs(pushToken: string, payload: unknown): Promise<Response> {
+  const keyId = Deno.env.get("APNS_KEY_ID");
+  const teamId = Deno.env.get("APNS_TEAM_ID");
+  const bundleId = Deno.env.get("APNS_BUNDLE_ID");
+  const useSandbox = (Deno.env.get("APNS_USE_SANDBOX") || "0") === "1";
+  const pem = Deno.env.get("APNS_PRIVATE_KEY");
+  if (!keyId || !teamId || !bundleId || !pem) {
+    return new Response("missing APNs env", { status: 500 });
+  }
+
+  const cryptoKey = await importPKCS8(pem);
+  const jwt = await jwtCreate(
+    { alg: "ES256", kid: keyId, typ: "JWT" },
+    { iss: teamId, iat: getNumericDate(0) },
+    cryptoKey
+  );
+
+  const host = useSandbox ? APNS_HOST_SANDBOX : APNS_HOST_PROD;
+  const apnsRes = await fetch(`${host}/3/device/${pushToken}`, {
+    method: "POST",
+    headers: {
+      "authorization": `bearer ${jwt}`,
+      "apns-topic": bundleId,
+      "apns-push-type": "alert",
+      "apns-priority": "10",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!apnsRes.ok) {
+    const text = await apnsRes.text();
+    return new Response(`APNs error ${apnsRes.status}: ${text}`, { status: 502 });
+  }
+  return new Response("ok");
+}
 
 async function importPKCS8(pem: string): Promise<CryptoKey> {
   const cleaned = pem

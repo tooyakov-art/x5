@@ -20,6 +20,7 @@ struct HomeView: View {
     @State private var openCaptions: Bool = false
     @State private var openImageCategory: ImageGenerationCategory?
     @State private var showingNotifications: Bool = false
+    @State private var showingGeneratedGallery: Bool = false
 
     private var isDeveloper: Bool { Roles.isDeveloper(auth.userEmail) }
     /// Apple-safe live tool IDs — these have working functionality.
@@ -45,7 +46,7 @@ struct HomeView: View {
                     }
                     sectionHeader(isDeveloper ? loc.t("home_ai_tools") : loc.t("home_live_now"))
                     toolGrid
-                    sectionHeader(loc.t("home_generate"))
+                    generationHeader
                     generationCategoryStrip
                 }
                 .padding(.horizontal, 16)
@@ -58,7 +59,13 @@ struct HomeView: View {
             .navigationTitle("X5")
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button { showingGeneratedGallery = true } label: {
+                        Image(systemName: "photo.stack")
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    .accessibilityLabel("Общая галерея")
+
                     Button { showingNotifications = true } label: {
                         Image(systemName: "bell")
                             .foregroundColor(.white.opacity(0.7))
@@ -81,6 +88,9 @@ struct HomeView: View {
             }
             .sheet(isPresented: $showingNotifications) {
                 NotificationsView()
+            }
+            .sheet(isPresented: $showingGeneratedGallery) {
+                GeneratedGalleryView()
             }
         }
     }
@@ -159,6 +169,22 @@ struct HomeView: View {
             }
             .padding(.horizontal, 2)
         }
+    }
+
+    private var generationHeader: some View {
+        HStack {
+            sectionHeader(loc.t("home_generate"))
+            Spacer()
+            Button {
+                showingGeneratedGallery = true
+            } label: {
+                Label("Общая галерея", systemImage: "photo.stack")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .buttonStyle(.bordered)
+            .tint(.white.opacity(0.18))
+        }
+        .padding(.trailing, 2)
     }
 
     private func sectionHeader(_ title: String) -> some View {
