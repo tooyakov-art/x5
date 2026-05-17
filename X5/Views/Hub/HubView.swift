@@ -51,8 +51,6 @@ struct HubView: View {
                             }
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.white.opacity(0.9))
-                            .padding(.horizontal, 12).padding(.vertical, 7)
-                            .x5ClearGlass(cornerRadius: 16, highlight: 0.10)
                         }
                         .buttonStyle(.plain)
 
@@ -101,20 +99,18 @@ struct HubView: View {
                                 Text(loc.t("hub_post")).bold()
                             }
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10).padding(.vertical, 5)
-                            .x5ClearGlass(cornerRadius: 15, highlight: 0.11)
                         }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
                     } else if !(currentUser.profile?.showInHub ?? false) {
                         Button {
                             NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
                         } label: {
                             Text(loc.t("hub_become_specialist"))
                                 .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 10).padding(.vertical, 5)
-                                .x5ClearGlass(cornerRadius: 15, highlight: 0.11)
                         }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                     }
                 }
             }
@@ -162,8 +158,8 @@ struct HubView: View {
                 Image(systemName: "bell")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(.white)
-                    .frame(width: 56, height: 56)
-                    .x5ClearGlassCircle()
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Notifications")
@@ -253,7 +249,7 @@ struct HubView: View {
                                 }
                             }
                             .frame(width: 44, height: 44)
-                            .x5ClearGlassCircle()
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .disabled(openingChatWith != nil)

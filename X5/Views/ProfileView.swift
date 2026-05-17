@@ -136,12 +136,12 @@ struct ProfileView: View {
                             Text("Edit profile")
                         }
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .x5ClearGlass(cornerRadius: 28, highlight: 0.16)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .tint(.white)
+                    .foregroundStyle(.black)
 
                     HStack(spacing: 6) {
                         Text(planLabel)
@@ -197,8 +197,8 @@ struct ProfileView: View {
                                 ProgressView().tint(.white)
                             }
                         }
-                        .frame(width: 56, height: 56)
-                        .x5ClearGlassCircle()
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                     }
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
@@ -212,8 +212,8 @@ struct ProfileView: View {
                     showingSettings = true
                 } label: {
                     Image(systemName: "gearshape")
-                        .frame(width: 56, height: 56)
-                        .x5ClearGlassCircle()
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(.white)

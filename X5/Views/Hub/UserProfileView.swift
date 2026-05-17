@@ -151,8 +151,8 @@ struct UserProfileView: View {
             HStack {
                 Button { dismiss() } label: {
                     Image(systemName: "chevron.left")
-                        .frame(width: 56, height: 56)
-                        .x5ClearGlassCircle()
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .font(.system(size: 28, weight: .semibold))
                 .foregroundStyle(.white)
@@ -179,8 +179,8 @@ struct UserProfileView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .frame(width: 56, height: 56)
-                        .x5ClearGlassCircle()
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .font(.system(size: 24, weight: .bold))
                 .foregroundStyle(.white)
@@ -204,20 +204,20 @@ struct UserProfileView: View {
                     Text(isFollowing ? "Following" : "Follow")
                 }
                 .font(.system(size: 16, weight: .bold))
-                .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .x5ClearGlass(cornerRadius: 28, highlight: 0.16)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(.white)
+            .foregroundStyle(.black)
             .disabled(isMe || followBusy || auth.accessToken == nil)
 
             Button(action: openChat) {
                 Image(systemName: openingChat ? "ellipsis" : "bubble.left.and.bubble.right.fill")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(.white)
-                    .frame(width: 56, height: 56)
-                    .x5ClearGlassCircle()
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(isMe || openingChat || auth.accessToken == nil)
@@ -547,8 +547,8 @@ private struct SocialLink: View {
                 }
             }
             .foregroundColor(.white)
-            .frame(width: 42, height: 42)
-            .x5ClearGlassCircle()
+            .frame(width: 40, height: 40)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(url == nil)

@@ -247,7 +247,6 @@ private struct SocialPlatformIcon: View {
         }
         .foregroundColor(.white)
         .frame(width: 34, height: 34)
-        .x5ClearGlassCircle()
     }
 }
 
