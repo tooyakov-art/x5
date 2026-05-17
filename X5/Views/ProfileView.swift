@@ -58,7 +58,30 @@ struct ProfileView: View {
             .refreshable { await refreshProfile() }
             .background { X5Background() }
             .ignoresSafeArea(edges: .top)
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationTitle(loc.t("profile_title"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if showsDoneButton {
+                        Button(loc.t("btn_done")) { dismiss() }
+                    } else {
+                        PhotosPicker(selection: $avatarPickerItem, matching: .images) {
+                            Image(systemName: uploadingAvatar ? "hourglass" : "camera.fill")
+                        }
+                        .disabled(uploadingAvatar)
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Settings")
+                }
+            }
             .sheet(isPresented: $showingSettings) { SettingsView() }
             .sheet(isPresented: $showingPaywall) { PaywallView() }
             .sheet(isPresented: $showingVerified) { VerifiedBadgeView() }
@@ -104,11 +127,6 @@ struct ProfileView: View {
                 )
                 .frame(width: proxy.size.width, height: height)
                 .allowsHitTesting(false)
-
-                topChrome
-                    .frame(width: min(proxy.size.width - 32, 430))
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .padding(.top, 52)
 
                 VStack(spacing: 14) {
                     HStack(spacing: 6) {
@@ -174,53 +192,6 @@ struct ProfileView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: heroHeight)
-    }
-
-    private var topChrome: some View {
-        ZStack {
-            Text(loc.t("profile_title"))
-                .font(.system(size: 21, weight: .heavy))
-                .foregroundColor(.white)
-                .shadow(color: Color.black.opacity(0.4), radius: 8, y: 2)
-
-            HStack {
-                if showsDoneButton {
-                    Button(loc.t("btn_done")) { dismiss() }
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.white)
-                } else {
-                    PhotosPicker(selection: $avatarPickerItem, matching: .images) {
-                        ZStack {
-                            Image(systemName: "camera.fill")
-                                .opacity(uploadingAvatar ? 0 : 1)
-                            if uploadingAvatar {
-                                ProgressView().tint(.white)
-                            }
-                        }
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                    }
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .buttonStyle(.plain)
-                    .disabled(uploadingAvatar)
-                }
-
-                Spacer()
-
-                Button {
-                    showingSettings = true
-                } label: {
-                    Image(systemName: "gearshape")
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(.white)
-                .buttonStyle(.plain)
-                .accessibilityLabel("Settings")
-            }
-        }
     }
 
     private func uploadAvatar(_ item: PhotosPickerItem) async {

@@ -43,7 +43,38 @@ struct UserProfileView: View {
         }
         .background { X5Background() }
         .ignoresSafeArea(edges: .top)
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle(loc.t("profile_title"))
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .accessibilityLabel("Back")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    ShareLink(item: profileShareText) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    Button {
+                        reportUser()
+                    } label: {
+                        Label(loc.t("hub_report_user"), systemImage: "exclamationmark.bubble")
+                    }
+                    Button(role: .destructive) {
+                        confirmBlock = true
+                    } label: {
+                        Label(loc.t("hub_block_user"), systemImage: "hand.raised.slash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+            }
+        }
         .alert(loc.t("hub_block_user_title"), isPresented: $confirmBlock) {
             Button(loc.t("btn_cancel"), role: .cancel) {}
             Button(loc.t("hub_block_user"), role: .destructive) {
@@ -84,11 +115,6 @@ struct UserProfileView: View {
             ], startPoint: .top, endPoint: .bottom)
             .frame(height: heroHeight)
             .allowsHitTesting(false)
-
-            topChrome
-                .frame(width: min(UIScreen.main.bounds.width - 32, 430))
-                .frame(maxHeight: .infinity, alignment: .top)
-                .padding(.top, 52)
 
             VStack(spacing: 14) {
                 HStack(spacing: 8) {
@@ -139,53 +165,6 @@ struct UserProfileView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: heroHeight)
-    }
-
-    private var topChrome: some View {
-        ZStack {
-            Text(loc.t("profile_title"))
-                .font(.system(size: 21, weight: .heavy))
-                .foregroundColor(.white)
-                .shadow(color: Color.black.opacity(0.4), radius: 8, y: 2)
-
-            HStack {
-                Button { dismiss() } label: {
-                    Image(systemName: "chevron.left")
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(.white)
-                .buttonStyle(.plain)
-                .accessibilityLabel("Back")
-
-                Spacer()
-
-                Menu {
-                    if !isMe {
-                        ShareLink(item: profileShareText) {
-                            Label("Share", systemImage: "square.and.arrow.up")
-                        }
-                        Button {
-                            reportUser()
-                        } label: {
-                            Label(loc.t("hub_report_user"), systemImage: "exclamationmark.bubble")
-                        }
-                        Button(role: .destructive) {
-                            confirmBlock = true
-                        } label: {
-                            Label(loc.t("hub_block_user"), systemImage: "hand.raised.slash")
-                        }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(.white)
-            }
-        }
     }
 
     // MARK: - Кнопки Follow + message

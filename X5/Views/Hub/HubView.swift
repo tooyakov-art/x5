@@ -89,7 +89,7 @@ struct HubView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
                     if segment == .tasks {
                         Button {
                             showingPostTask = true
@@ -98,19 +98,18 @@ struct HubView: View {
                                 Image(systemName: "plus")
                                 Text(loc.t("hub_post")).bold()
                             }
-                            .font(.system(size: 13, weight: .bold))
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
                     } else if !(currentUser.profile?.showInHub ?? false) {
                         Button {
                             NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
                         } label: {
                             Text(loc.t("hub_become_specialist"))
-                                .font(.system(size: 12, weight: .bold))
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                    }
+                    Button {
+                        showingNotifications = true
+                    } label: {
+                        Image(systemName: "bell")
                     }
                 }
             }
@@ -152,17 +151,6 @@ struct HubView: View {
                 .kerning(-1.0)
                 .shadow(color: X5Style.blueSoft.opacity(0.45), radius: 18, x: 0, y: 0)
             Spacer()
-            Button {
-                showingNotifications = true
-            } label: {
-                Image(systemName: "bell")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Notifications")
         }
         .padding(.horizontal, 24)
         .padding(.top, 10)
