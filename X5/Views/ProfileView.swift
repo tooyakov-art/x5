@@ -192,15 +192,17 @@ struct ProfileView: View {
                     PhotosPicker(selection: $avatarPickerItem, matching: .images) {
                         ZStack {
                             Image(systemName: "camera.fill")
-                                .font(.system(size: 20, weight: .bold))
+                                .opacity(uploadingAvatar ? 0 : 1)
                             if uploadingAvatar {
                                 ProgressView().tint(.white)
                             }
                         }
-                        .foregroundColor(.white)
-                        .frame(width: 56, height: 56)
-                        .x5ClearGlassCircle()
                     }
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .tint(.white.opacity(0.18))
                     .disabled(uploadingAvatar)
                 }
 
@@ -210,11 +212,12 @@ struct ProfileView: View {
                     showingSettings = true
                 } label: {
                     Image(systemName: "gearshape")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 56, height: 56)
-                        .x5ClearGlassCircle()
                 }
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.white)
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .tint(.white.opacity(0.18))
                 .accessibilityLabel("Settings")
             }
         }
