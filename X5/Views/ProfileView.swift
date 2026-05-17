@@ -48,8 +48,7 @@ struct ProfileView: View {
                             verifiedCard
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: 640)
+                    .frame(maxWidth: profileContentWidth)
                     .frame(maxWidth: .infinity)
                 }
                 .padding(.bottom, 32)
@@ -175,6 +174,8 @@ struct ProfileView: View {
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 28)
+            .frame(maxWidth: profileContentWidth)
+            .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity)
         .frame(height: heroHeight)
@@ -231,6 +232,10 @@ struct ProfileView: View {
 
     private var heroHeight: CGFloat {
         max(UIScreen.main.bounds.height * 0.78, 640)
+    }
+
+    private var profileContentWidth: CGFloat {
+        min(UIScreen.main.bounds.width - 32, 390)
     }
 
     private var displayName: String {
