@@ -37,25 +37,39 @@ private struct X5ClearGlassModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(
-                ZStack {
-                    Color.white.opacity(0.035)
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(highlight),
-                            Color.white.opacity(0.028),
-                            X5Style.blue.opacity(0.045)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(Color.black.opacity(0.34))
+                    .overlay(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(min(highlight, 0.08)),
+                                Color.white.opacity(0.018),
+                                X5Style.blue.opacity(0.13)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     )
-                }
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(X5Style.glassStroke(0.20), lineWidth: 1)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.18),
+                                Color.white.opacity(0.055),
+                                X5Style.blueSoft.opacity(0.36)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .shadow(color: Color.black.opacity(0.30), radius: 18, x: 0, y: 8)
+            .shadow(color: Color.black.opacity(0.45), radius: 18, x: 0, y: 8)
+            .shadow(color: X5Style.blue.opacity(0.16), radius: 12, x: 0, y: 0)
     }
 }
 
@@ -63,22 +77,39 @@ private struct X5ClearGlassCircleModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(
-                ZStack {
-                    Color.white.opacity(0.04)
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.18),
-                            Color.white.opacity(0.035),
-                            X5Style.blue.opacity(0.06)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .overlay(Color.black.opacity(0.36))
+                    .overlay(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.075),
+                                Color.white.opacity(0.018),
+                                X5Style.blue.opacity(0.16)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     )
-                }
             )
-            .overlay(Circle().stroke(X5Style.glassStroke(0.22), lineWidth: 1))
+            .overlay(
+                Circle()
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.20),
+                                Color.white.opacity(0.055),
+                                X5Style.blueSoft.opacity(0.42)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
             .clipShape(Circle())
-            .shadow(color: Color.black.opacity(0.30), radius: 18, x: 0, y: 8)
+            .shadow(color: Color.black.opacity(0.46), radius: 18, x: 0, y: 8)
+            .shadow(color: X5Style.blue.opacity(0.18), radius: 12, x: 0, y: 0)
     }
 }
 
