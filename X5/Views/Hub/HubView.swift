@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 /// Hub — bottom tab matching web HireView. Two segmented sub-tabs:
 /// Specialists (profiles where show_in_hub=true) and Tasks (open task marketplace).
@@ -36,12 +36,48 @@ struct HubView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 4)
 
-                CategoryRail(selected: $category)
+                // Когда категория выбрана — показываем кнопку «назад к категориям»
+                if category != nil {
+                    HStack {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { category = nil }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "chevron.left")
+                                Text(loc.t("hub_all"))
+                            }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.9))
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .background(.ultraThinMaterial)
+                            .overlay(
+                                Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1)
+                            )
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+
+                        if let id = category {
+                            Text("\(HubCategories.all.first { $0.id == id }?.emoji ?? \"\")  \(HubCategories.label(for: id))")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                }
 
                 Group {
                     switch segment {
-                    case .specialists: specialistsList
-                    case .tasks:       tasksList
+                    case .specialists:
+                        if category == nil {
+                            categoriesGrid
+                        } else {
+                            specialistsList
+                        }
+                    case .tasks:
+                        tasksList
                     }
                 }
             }
@@ -69,7 +105,6 @@ struct HubView: View {
                         }
                     } else if !(currentUser.profile?.showInHub ?? false) {
                         Button {
-                            // Open user's own Profile tab — there they edit and toggle "Show in Hub"
                             NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
                         } label: {
                             Text(loc.t("hub_become_specialist"))
@@ -127,6 +162,41 @@ struct HubView: View {
                 chatError = chats.error ?? "Не удалось открыть чат. Попробуй ещё раз."
             }
         }
+    }
+
+    // MARK: - Сетка категорий (главный экран Hub)
+
+    private var categoriesGrid: some View {
+        ScrollView {
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 12),
+                          GridItem(.flexible(), spacing: 12),
+                          GridItem(.flexible(), spacing: 12)],
+                spacing: 12
+            ) {
+                ForEach(HubCategories.all) { cat in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { category = cat.id }
+                    } label: {
+                        CategoryTile(cat: cat, count: countForCategory(cat.id))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 32)
+            .frame(maxWidth: 640)
+            .frame(maxWidth: .infinity)
+        }
+        .refreshable { await service.loadSpecialists() }
+    }
+
+    private func countForCategory(_ id: String) -> Int {
+        service.specialists
+            .filter { !BlockList.contains($0.id) }
+            .filter { ($0.specialistCategory ?? []).contains(id) }
+            .count
     }
 
     private var specialistsList: some View {
@@ -220,7 +290,7 @@ struct HubView: View {
     }
 }
 
-// MARK: - Background and filters
+// MARK: - Background
 
 private struct HubBackdrop: View {
     let base: Color
@@ -242,8 +312,9 @@ private struct HubBackdrop: View {
             .ignoresSafeArea()
             .blur(radius: 18)
 
+            // Steam-style синий glow вместо старого зелёного
             RadialGradient(colors: [
-                Color(red: 0.08, green: 0.62, blue: 0.48).opacity(0.16),
+                Color(red: 0.15, green: 0.50, blue: 0.85).opacity(0.20),
                 Color.clear
             ], center: .bottomLeading, startRadius: 20, endRadius: 320)
             .ignoresSafeArea()
@@ -252,45 +323,46 @@ private struct HubBackdrop: View {
     }
 }
 
-private struct CategoryRail: View {
-    @Binding var selected: String?
-    @EnvironmentObject private var loc: LocalizationService
+// MARK: - Tile категории
+
+private struct CategoryTile: View {
+    let cat: HubCategory
+    let count: Int
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                BlurPill(label: loc.t("hub_all"), isSelected: selected == nil) { selected = nil }
-                ForEach(HubCategories.all) { cat in
-                    BlurPill(label: "\(cat.emoji) \(cat.labelEn)", isSelected: selected == cat.id) {
-                        selected = (selected == cat.id) ? nil : cat.id
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
-        }
-    }
-}
-
-private struct BlurPill: View {
-    let label: String
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(label)
+        VStack(spacing: 8) {
+            Text(cat.emoji)
+                .font(.system(size: 34))
+            Text(cat.labelEn)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(isSelected ? .black : .white.opacity(0.88))
-                .padding(.horizontal, 12).padding(.vertical, 7)
-                .background(isSelected ? Color.accentColor.opacity(0.92) : Color.white.opacity(0.08))
-                .background(.ultraThinMaterial)
-                .overlay(
-                    Capsule().stroke(isSelected ? Color.accentColor.opacity(0.55) : Color.white.opacity(0.10), lineWidth: 1)
-                )
-                .clipShape(Capsule())
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+            if count > 0 {
+                Text("\(count)")
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Color.accentColor)
+                    .clipShape(Capsule())
+            }
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .frame(height: 110)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+        .background(
+            LinearGradient(colors: [
+                Color.white.opacity(0.09),
+                Color.white.opacity(0.025)
+            ], startPoint: .topLeading, endPoint: .bottomTrailing)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
@@ -444,7 +516,7 @@ struct AvatarView: View {
 
     private var placeholder: some View {
         ZStack {
-            LinearGradient(colors: [.purple, .pink], startPoint: .topLeading, endPoint: .bottomTrailing)
+            LinearGradient(colors: [.blue, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing)
             Text(initials)
                 .font(.system(size: size * 0.4, weight: .bold))
                 .foregroundColor(.white)
