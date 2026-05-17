@@ -73,9 +73,11 @@ struct HomeView: View {
                 NavigationStack { MainView() }
                     .preferredColorScheme(.dark)
             }
-            .navigationDestination(item: $openImageCategory) { category in
-                ImageGeneratorView(category: category)
-                    .preferredColorScheme(.dark)
+            .navigationDestination(isPresented: imageCategoryNavigationBinding) {
+                if let category = openImageCategory {
+                    ImageGeneratorView(category: category)
+                        .preferredColorScheme(.dark)
+                }
             }
             .sheet(isPresented: $showingNotifications) {
                 NotificationsView()
@@ -178,6 +180,15 @@ struct HomeView: View {
 
     private func categorySubtitle(_ category: ImageGenerationCategory) -> String {
         localized("gen_category_\(category.id)_subtitle", fallback: category.subtitle)
+    }
+
+    private var imageCategoryNavigationBinding: Binding<Bool> {
+        Binding(
+            get: { openImageCategory != nil },
+            set: { isPresented in
+                if !isPresented { openImageCategory = nil }
+            }
+        )
     }
 }
 
