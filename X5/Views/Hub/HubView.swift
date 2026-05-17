@@ -58,7 +58,7 @@ struct HubView: View {
                         .buttonStyle(.plain)
 
                         if let id = category {
-                            Text("\(HubCategories.all.first { $0.id == id }?.emoji ?? \"\")  \(HubCategories.label(for: id))")
+                            Text("\(HubCategories.all.first(where: { $0.id == id })?.emoji ?? "")  \(HubCategories.label(for: id))")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(.white)
                         }
