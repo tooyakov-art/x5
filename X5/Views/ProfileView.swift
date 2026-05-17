@@ -197,12 +197,12 @@ struct ProfileView: View {
                                 ProgressView().tint(.white)
                             }
                         }
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                     }
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .tint(.white.opacity(0.18))
+                    .buttonStyle(.plain)
                     .disabled(uploadingAvatar)
                 }
 
@@ -212,12 +212,12 @@ struct ProfileView: View {
                     showingSettings = true
                 } label: {
                     Image(systemName: "gearshape")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(.white)
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .tint(.white.opacity(0.18))
+                .buttonStyle(.plain)
                 .accessibilityLabel("Settings")
             }
         }

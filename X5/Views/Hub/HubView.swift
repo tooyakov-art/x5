@@ -162,8 +162,8 @@ struct HubView: View {
                 Image(systemName: "bell")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(.white)
-                    .frame(width: 56, height: 56)
-                    .x5ClearGlassCircle()
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Notifications")
@@ -253,7 +253,7 @@ struct HubView: View {
                                 }
                             }
                             .frame(width: 44, height: 44)
-                            .x5ClearGlassCircle()
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .disabled(openingChatWith != nil)

@@ -172,7 +172,7 @@ struct UserProfileView: View {
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(width: 44, height: 44)
-                        .x5ClearGlassCircle()
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(openingChat || auth.accessToken == nil)
