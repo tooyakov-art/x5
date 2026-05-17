@@ -1,4 +1,4 @@
-name: iOS build & TestFlight upload
+﻿name: iOS build & TestFlight upload
 
 on:
   push:
@@ -21,26 +21,41 @@ jobs:
 
       - name: Select Xcode
         run: |
-          ls /Applications | grep -i Xcode || true
           sudo xcode-select -s /Applications/Xcode_26.app || sudo xcode-select -s /Applications/Xcode.app
           xcodebuild -version
 
-      - name: Show toolchain
-        run: |
-          xcodebuild -version
-          swift --version
+      # ── КЕШ: Swift Package Manager + DerivedData ──
+      - name: Cache SPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+            ~/Library/Developer/Xcode/DerivedData/**/.build
+          key: spm-${{ runner.os }}-${{ hashFiles('project.yml') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
 
-      - name: List & install iOS simulator runtime if missing
-        run: |
-          xcodebuild -showsdks
-          xcrun simctl list runtimes
-          # Pre-install iOS runtime needed by actool when archiving on Xcode 16.
-          sudo xcodebuild -downloadPlatform iOS || true
-          xcrun simctl list runtimes
+      - name: Cache xcodegen binary
+        uses: actions/cache@v4
+        id: cache-xcodegen
+        with:
+          path: /opt/homebrew/bin/xcodegen
+          key: xcodegen-${{ runner.os }}-v2.42
 
-      - name: Install xcodegen
+      - name: Install xcodegen (if not cached)
+        if: steps.cache-xcodegen.outputs.cache-hit != 'true'
         run: brew install xcodegen
 
+      - name: Cache DerivedData (Xcode build artifacts)
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: derived-${{ runner.os }}-${{ hashFiles('X5/**/*.swift', 'project.yml') }}
+          restore-keys: |
+            derived-${{ runner.os }}-
+
+      # ── Подготовка проекта (параллельно с кешем выше) ──
       - name: Generate Xcode project
         run: xcodegen generate
 
@@ -58,13 +73,7 @@ jobs:
 
           echo -n "$P12_BASE64" | base64 --decode > "$CERT_PATH"
           echo -n "$PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
-
-          # Strip any CR/LF from password that might've crept into the secret value.
           P12_PASSWORD_CLEAN=$(printf '%s' "$P12_PASSWORD" | tr -d '\r\n')
-
-          echo "p12 size: $(wc -c < "$CERT_PATH")"
-          echo "profile size: $(wc -c < "$PROFILE_PATH")"
-          echo "p12 pass length: ${#P12_PASSWORD_CLEAN}"
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
@@ -91,11 +100,6 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :provisioningProfiles:${BUNDLE_ID} '${{ steps.profile.outputs.name }}'" ExportOptions.plist
 
       - name: Write Release.xcconfig with profile name
-        # Per-target signing config applied only to the X5 target via project.yml's
-        # configFiles. Keeps signing flags away from SPM resource bundles
-        # (GoogleSignIn / AppAuth / GTMSessionFetcher) which don't support
-        # provisioning profiles and fail the archive when a profile is forced
-        # globally via xcodebuild CLI overrides.
         run: |
           cat > Release.xcconfig <<EOF
           CODE_SIGN_STYLE = Manual
@@ -106,8 +110,6 @@ jobs:
           ENABLE_ON_DEMAND_RESOURCES = NO
           ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO
           EOF
-          echo "--- Release.xcconfig ---"
-          cat Release.xcconfig
 
       - name: Build & archive
         run: |
@@ -119,6 +121,8 @@ jobs:
             -destination 'generic/platform=iOS' \
             -sdk iphoneos \
             -archivePath "$ARCHIVE_PATH" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            SWIFT_COMPILATION_MODE=wholemodule \
             archive
 
       - name: Export IPA
@@ -146,8 +150,6 @@ jobs:
           mkdir -p "$HOME/.appstoreconnect/private_keys"
           P8_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
           printf '%s' "$ASC_API_KEY_BASE64" | base64 --decode > "$P8_PATH"
-          echo "p8 size: $(wc -c < "$P8_PATH")"
-          # Also place where altool searches per Apple docs
           mkdir -p ./private_keys
           cp "$P8_PATH" ./private_keys/
 

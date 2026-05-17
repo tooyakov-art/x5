@@ -88,16 +88,17 @@ struct UserProfileView: View {
             // Фото на весь верх (фоном)
             CoverPhoto(urlString: profile?.avatar ?? fallback?.avatar,
                        name: profile?.name ?? fallback?.name)
-                .frame(height: UIScreen.main.bounds.height * 0.55)
+                .frame(height: UIScreen.main.bounds.height * 1.0)
                 .clipped()
 
             // Тёмный градиент вниз для читаемости текста
             LinearGradient(colors: [
                 Color.clear,
-                Color.black.opacity(0.25),
-                Color.black.opacity(0.75)
+                Color.black.opacity(0.20),
+                Color.black.opacity(0.55),
+                Color.black.opacity(0.90)
             ], startPoint: .top, endPoint: .bottom)
-            .frame(height: UIScreen.main.bounds.height * 0.55)
+            .frame(height: UIScreen.main.bounds.height * 1.0)
             .allowsHitTesting(false)
 
             // Имя и nickname слева снизу
