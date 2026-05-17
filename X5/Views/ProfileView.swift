@@ -383,13 +383,13 @@ struct ProfileView: View {
                     .foregroundColor(.white.opacity(0.45))
                 HStack(spacing: 8) {
                     if let v = links.telegram, !v.isEmpty {
-                        SocialChip(label: "Telegram", value: v, systemImage: "paperplane.fill") { open(telegram: v) }
+                        SocialChip(label: "Telegram", value: v, brand: .telegram) { open(telegram: v) }
                     }
                     if let v = links.whatsapp, !v.isEmpty {
-                        SocialChip(label: "WhatsApp", value: v, systemImage: "phone.fill") { open(whatsapp: v) }
+                        SocialChip(label: "WhatsApp", value: v, brand: .whatsapp) { open(whatsapp: v) }
                     }
                     if let v = links.instagram, !v.isEmpty {
-                        SocialChip(label: "Instagram", value: v, systemImage: "camera.fill") { open(instagram: v) }
+                        SocialChip(label: "Instagram", value: v, brand: .instagram) { open(instagram: v) }
                     }
                 }
             }
@@ -496,13 +496,13 @@ private struct BioCard: View {
 private struct SocialChip: View {
     let label: String
     let value: String
-    let systemImage: String
+    let brand: SocialBrand
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: systemImage).font(.system(size: 12, weight: .semibold))
+                SocialBrandIcon(brand, size: 16)
                 Text(label).font(.system(size: 12, weight: .semibold))
             }
             .foregroundColor(.white)

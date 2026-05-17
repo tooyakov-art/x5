@@ -62,20 +62,13 @@ struct EditProfileView: View {
 
                 Section(header: Text(loc.t("edit_social")),
                         footer: Text(loc.t("edit_social_footer")).font(.caption)) {
-                    socialRow(icon: "camera.aperture", color: Color(red: 0.91, green: 0.27, blue: 0.55),
-                              name: "Instagram", text: $instagram, placeholder: "@username")
-                    socialRow(icon: "paperplane.fill", color: Color(red: 0.16, green: 0.55, blue: 0.93),
-                              name: "Telegram", text: $telegram, placeholder: "@username")
-                    socialRow(icon: "phone.fill", color: Color(red: 0.15, green: 0.78, blue: 0.40),
-                              name: "WhatsApp", text: $whatsapp, placeholder: "+7…")
-                    socialRow(icon: "music.note", color: .black.opacity(0.85),
-                              name: "TikTok", text: $tiktok, placeholder: "@username")
-                    socialRow(icon: "play.rectangle.fill", color: Color(red: 0.92, green: 0.05, blue: 0.10),
-                              name: "YouTube", text: $youtube, placeholder: "@channel")
-                    socialRow(icon: "briefcase.fill", color: Color(red: 0.04, green: 0.46, blue: 0.71),
-                              name: "LinkedIn", text: $linkedin, placeholder: "linkedin.com/in/…")
-                    socialRow(icon: "f.cursive", color: Color(red: 0.10, green: 0.33, blue: 0.78),
-                              name: "Facebook", text: $facebook, placeholder: "facebook.com/…")
+                    socialRow(brand: .instagram, name: "Instagram", text: $instagram, placeholder: "@username")
+                    socialRow(brand: .telegram, name: "Telegram", text: $telegram, placeholder: "@username")
+                    socialRow(brand: .whatsapp, name: "WhatsApp", text: $whatsapp, placeholder: "+7…")
+                    socialRow(brand: .tiktok, name: "TikTok", text: $tiktok, placeholder: "@username")
+                    socialRow(brand: .youtube, name: "YouTube", text: $youtube, placeholder: "@channel")
+                    socialRow(brand: .linkedin, name: "LinkedIn", text: $linkedin, placeholder: "linkedin.com/in/…")
+                    socialRow(brand: .facebook, name: "Facebook", text: $facebook, placeholder: "facebook.com/…")
                 }
 
                 if let err = errorMessage {
@@ -112,10 +105,9 @@ struct EditProfileView: View {
             .keyboardType(.URL)
     }
 
-    private func socialRow(icon: String, color: Color, name: String,
-                           text: Binding<String>, placeholder: String) -> some View {
+    private func socialRow(brand: SocialBrand, name: String, text: Binding<String>, placeholder: String) -> some View {
         HStack(spacing: 12) {
-            SocialPlatformIcon(platform: SocialPlatform(name: name, fallbackSystemImage: icon))
+            SocialBrandIcon(brand, size: 24)
                 .frame(width: 34, height: 34)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -191,62 +183,6 @@ struct EditProfileView: View {
     private func nilIfEmpty(_ s: String) -> String? {
         let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
-    }
-}
-
-private enum SocialPlatform: Equatable {
-    case instagram, telegram, whatsapp, tiktok, youtube, linkedin, facebook, other(String)
-
-    init(name: String, fallbackSystemImage: String) {
-        switch name.lowercased() {
-        case "instagram": self = .instagram
-        case "telegram": self = .telegram
-        case "whatsapp": self = .whatsapp
-        case "tiktok": self = .tiktok
-        case "youtube": self = .youtube
-        case "linkedin": self = .linkedin
-        case "facebook": self = .facebook
-        default: self = .other(fallbackSystemImage)
-        }
-    }
-
-    var systemImage: String? {
-        switch self {
-        case .telegram: return "paperplane.fill"
-        case .whatsapp: return "phone.bubble.left.fill"
-        case .youtube: return "play.rectangle.fill"
-        case .other(let image): return image
-        default: return nil
-        }
-    }
-
-    var textMark: String {
-        switch self {
-        case .instagram: return "IG"
-        case .tiktok: return "♪"
-        case .linkedin: return "in"
-        case .facebook: return "f"
-        default: return ""
-        }
-    }
-}
-
-private struct SocialPlatformIcon: View {
-    let platform: SocialPlatform
-
-    var body: some View {
-        ZStack {
-            if let systemImage = platform.systemImage {
-                Image(systemName: systemImage)
-                    .font(.system(size: 14, weight: .bold))
-            } else {
-                Text(platform.textMark)
-                    .font(.system(size: platform == .tiktok ? 18 : 12, weight: .heavy))
-                    .italic()
-            }
-        }
-        .foregroundColor(.white)
-        .frame(width: 34, height: 34)
     }
 }
 

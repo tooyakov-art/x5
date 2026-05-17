@@ -255,19 +255,19 @@ struct UserProfileView: View {
         if let links {
             HStack(spacing: 8) {
                 if let v = links.telegram, !v.isEmpty {
-                    SocialLink(systemImage: "paperplane.fill", textMark: nil, url: makeTelegram(v))
+                    SocialLink(brand: .telegram, url: makeTelegram(v))
                 }
                 if let v = links.whatsapp, !v.isEmpty {
-                    SocialLink(systemImage: "phone.bubble.left.fill", textMark: nil, url: makeWhatsApp(v))
+                    SocialLink(brand: .whatsapp, url: makeWhatsApp(v))
                 }
                 if let v = links.instagram, !v.isEmpty {
-                    SocialLink(systemImage: nil, textMark: "IG", url: makeInstagram(v))
+                    SocialLink(brand: .instagram, url: makeInstagram(v))
                 }
                 if let v = links.youtube, !v.isEmpty, let u = URL(string: v) {
-                    SocialLink(systemImage: "play.rectangle.fill", textMark: nil, url: u)
+                    SocialLink(brand: .youtube, url: u)
                 }
                 if let v = links.tiktok, !v.isEmpty, let u = URL(string: v) {
-                    SocialLink(systemImage: nil, textMark: "♪", url: u)
+                    SocialLink(brand: .tiktok, url: u)
                 }
                 Spacer()
             }
@@ -507,27 +507,16 @@ private struct PublicStatBubble: View {
 }
 
 private struct SocialLink: View {
-    let systemImage: String?
-    let textMark: String?
+    let brand: SocialBrand
     let url: URL?
 
     var body: some View {
         Button {
             if let url { UIApplication.shared.open(url) }
         } label: {
-            ZStack {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 16, weight: .semibold))
-                } else {
-                    Text(textMark ?? "")
-                        .font(.system(size: textMark == "♪" ? 20 : 12, weight: .heavy))
-                        .italic()
-                }
-            }
-            .foregroundColor(.white)
-            .frame(width: 40, height: 40)
-            .contentShape(Rectangle())
+            SocialBrandIcon(brand, size: 22)
+                .frame(width: 40, height: 40)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(url == nil)
