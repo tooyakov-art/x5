@@ -150,9 +150,14 @@ jobs:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
         run: |
+          set -euo pipefail
           IPA=$(ls "$EXPORT_PATH"/*.ipa | head -n 1)
+          LOG="$RUNNER_TEMP/altool-upload.log"
           xcrun altool --upload-app \
             --type ios \
             --file "$IPA" \
             --apiKey "$ASC_API_KEY_ID" \
-            --apiIssuer "$ASC_API_ISSUER_ID"
+            --apiIssuer "$ASC_API_ISSUER_ID" 2>&1 | tee "$LOG"
+          if grep -E "UPLOAD FAILED|Failed to upload package|STATE_ERROR|Validation failed" "$LOG"; then
+            exit 1
+          fi
