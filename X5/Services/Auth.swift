@@ -92,6 +92,7 @@ final class Auth: ObservableObject {
         await ImageCache.shared.clearForSignOut()
         // Per-chat local UI state (archived / muted / hidden) is per-account.
         ChatsLocalState.reset()
+        MessagesLocalState.reset()
         // Wipe the per-chat message cache on disk — without this a different
         // user signing in on the same device could read the previous user's
         // message history (and signed media URLs) from `Caches/x5-chats/`.

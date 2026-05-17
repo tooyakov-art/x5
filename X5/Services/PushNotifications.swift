@@ -23,6 +23,7 @@ final class PushNotifications: NSObject, ObservableObject {
 
     /// Last user we synced the token for. Re-sync when this changes.
     private var lastSyncedUserId: String?
+    private var lastSyncedDeviceToken: String?
 
     private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
     private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
@@ -132,6 +133,7 @@ final class PushNotifications: NSObject, ObservableObject {
     func currentUserDidChange(userId: String?, accessToken: String?) {
         guard let _ = userId, let _ = accessToken else {
             lastSyncedUserId = nil
+            lastSyncedDeviceToken = nil
             return
         }
         Task { await syncToken() }
@@ -144,7 +146,7 @@ final class PushNotifications: NSObject, ObservableObject {
             let userId = UserDefaults.standard.string(forKey: "x5.session.user_id"),
             let accessToken = Keychain.string(for: "x5.session.access_token"),
             !userId.isEmpty,
-            lastSyncedUserId != userId
+            lastSyncedUserId != userId || lastSyncedDeviceToken != token
         else { return }
 
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
@@ -154,10 +156,14 @@ final class PushNotifications: NSObject, ObservableObject {
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["push_token": token])
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "push_token": token,
+            "push_token_updated_at": ISO8601DateFormatter().string(from: Date())
+        ])
         if let (_, response) = try? await URLSession.shared.data(for: request),
            let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
             lastSyncedUserId = userId
+            lastSyncedDeviceToken = token
         }
     }
 }

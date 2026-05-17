@@ -7,17 +7,20 @@ struct CourseLesson: Codable, Identifiable, Hashable {
     let title: String
     let duration: String?
     let order: Int?
+    let price: Int?
     let videoUrl: String?
     let youtubeUrl: String?
     let thumbnailUrl: String?
     let isFreePreview: Bool?
+    let sellSeparately: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, duration, order
+        case id, title, duration, order, price
         case videoUrl
         case youtubeUrl
         case thumbnailUrl
         case isFreePreview
+        case sellSeparately
     }
 
     var freePreview: Bool { isFreePreview ?? false }
@@ -118,8 +121,8 @@ final class CoursesService: ObservableObject {
     @Published private(set) var isLoading: Bool = false
     @Published private(set) var error: String?
 
-    private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
-    private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
+    private var baseURL: URL { X5Config.supabaseBaseURL }
+    private var anonKey: String { X5Config.supabaseAnonKey }
 
     func loadCourses(includeHidden: Bool = false) async {
         isLoading = true
@@ -241,5 +244,70 @@ final class CoursesService: ObservableObject {
         let publicURL = baseURL.appendingPathComponent("storage/v1/object/public/course-covers/\(path)").absoluteString
         _ = await updateCourse(id: courseId, fields: ["cover_url": publicURL], accessToken: accessToken)
         return publicURL
+    }
+
+    /// Uploads a lesson video to the existing public `videos` bucket.
+    /// If Storage policy rejects this, the editor still supports direct video URLs.
+    @discardableResult
+    func uploadLessonVideo(courseId: String, lessonId: String, fileURL: URL, accessToken: String) async -> String? {
+        error = nil
+
+        let didAccess = fileURL.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess { fileURL.stopAccessingSecurityScopedResource() }
+        }
+
+        let ext = normalizedVideoExtension(from: fileURL)
+        let mime = videoMimeType(for: ext)
+        let path = "courses/\(courseId)/\(lessonId)-\(Int(Date().timeIntervalSince1970)).\(ext)"
+        let uploadURL = baseURL.appendingPathComponent("storage/v1/object/videos/\(path)")
+
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch {
+            self.error = "Не удалось прочитать выбранный видеофайл."
+            return nil
+        }
+
+        var req = URLRequest(url: uploadURL)
+        req.httpMethod = "POST"
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        req.setValue(mime, forHTTPHeaderField: "Content-Type")
+        req.setValue("3600", forHTTPHeaderField: "Cache-Control")
+        req.setValue("true", forHTTPHeaderField: "x-upsert")
+        req.httpBody = data
+
+        do {
+            let (body, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                let details = String(data: body, encoding: .utf8) ?? ""
+                self.error = "Видео не загружено. Блокер: Storage bucket `videos` должен разрешать authenticated/developer INSERT/UPDATE в `courses/*`. \(details)"
+                return nil
+            }
+        } catch {
+            self.error = "Видео не загружено: \(error.localizedDescription)"
+            return nil
+        }
+
+        return baseURL.appendingPathComponent("storage/v1/object/public/videos/\(path)").absoluteString
+    }
+
+    private func normalizedVideoExtension(from url: URL) -> String {
+        let raw = url.pathExtension.lowercased()
+        guard !raw.isEmpty else { return "mp4" }
+        switch raw {
+        case "mov", "m4v", "mp4": return raw
+        default: return "mp4"
+        }
+    }
+
+    private func videoMimeType(for ext: String) -> String {
+        switch ext {
+        case "mov": return "video/quicktime"
+        case "m4v": return "video/x-m4v"
+        default: return "video/mp4"
+        }
     }
 }

@@ -17,7 +17,7 @@ settings:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: F8LA8PC4U6
     MARKETING_VERSION: "1.1.1"
-    CURRENT_PROJECT_VERSION: "107"
+    CURRENT_PROJECT_VERSION: "108"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
 targets:
@@ -67,6 +67,7 @@ targets:
         NSFaceIDUsageDescription: "Used to lock X5 вЂ” only the device owner can open the app."
         NSMicrophoneUsageDescription: "Microphone access is needed to record voice messages in chats."
         NSPhotoLibraryUsageDescription: "Photo library access is needed to attach photos in chats and portfolio."
+        NSPhotoLibraryAddUsageDescription: "Photo library access is needed to save generated images."
         LSApplicationCategoryType: public.app-category.productivity
     entitlements:
       path: X5/X5.entitlements

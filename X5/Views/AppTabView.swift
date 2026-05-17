@@ -8,29 +8,30 @@ extension Notification.Name {
 /// Bottom tab layout — matches web x5 mobile MAIN_TAB_VIEWS:
 /// Home / Courses / Chats / Hub / Profile.
 struct AppTabView: View {
+    @EnvironmentObject private var loc: LocalizationService
     @State private var selectedTab: Int = 0
 
     var body: some View {
         TabView(selection: $selectedTab) {
             HomeView()
-                .tabItem { Label("Home", systemImage: "house") }
+                .tabItem { Label(loc.t("tab_home"), systemImage: "house") }
                 .tag(0)
                 .onAppear { DiagnosticLogger.log(event: "home_appeared") }
 
             CoursesView()
-                .tabItem { Label("CourseUP", systemImage: "graduationcap") }
+                .tabItem { Label(loc.t("tab_courses"), systemImage: "graduationcap") }
                 .tag(1)
 
             ChatsListView()
-                .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
+                .tabItem { Label(loc.t("tab_chats"), systemImage: "bubble.left.and.bubble.right") }
                 .tag(2)
 
             HubView()
-                .tabItem { Label("Hub", systemImage: "briefcase") }
+                .tabItem { Label(loc.t("tab_hub"), systemImage: "briefcase") }
                 .tag(3)
 
             ProfileView(showsDoneButton: false)
-                .tabItem { Label("Profile", systemImage: "person.crop.circle") }
+                .tabItem { Label(loc.t("tab_profile"), systemImage: "person.crop.circle") }
                 .tag(4)
         }
         .tint(.accentColor)

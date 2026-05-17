@@ -42,6 +42,19 @@ struct ChatRoom: Codable, Identifiable, Hashable {
             createdAt: createdAt
         )
     }
+
+    func with(unread: [String: Int]?) -> ChatRoom {
+        ChatRoom(
+            id: id,
+            participants: participants,
+            taskId: taskId,
+            taskTitle: taskTitle,
+            lastMessage: lastMessage,
+            lastMessageAt: lastMessageAt,
+            unread: unread,
+            createdAt: createdAt
+        )
+    }
 }
 
 struct ChatMessageRow: Codable, Identifiable, Hashable {
@@ -358,6 +371,70 @@ final class ChatsService: ObservableObject {
         let rows = (try? JSONDecoder().decode([ChatMessageRow].self, from: data)) ?? []
         persistMessageCache(chatId: chatId, rows: rows)
         return rows
+    }
+
+    func loadChat(chatId: String, accessToken: String) async -> ChatRoom? {
+        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/chats"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "id", value: "eq.\(chatId)"),
+            URLQueryItem(name: "select", value: "*")
+        ]
+        var request = URLRequest(url: components.url!)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (data, http) = await sendAuthed(request, accessToken: accessToken),
+              (200..<300).contains(http.statusCode),
+              let rows = try? JSONDecoder().decode([ChatRoom].self, from: data)
+        else { return nil }
+        return rows.first
+    }
+
+    func markRead(chatId: String, currentUserId: String, accessToken: String) async -> ChatRoom? {
+        error = nil
+        var rpc = URLRequest(url: baseURL.appendingPathComponent("rest/v1/rpc/x5_mark_chat_read"))
+        rpc.httpMethod = "POST"
+        rpc.setValue(anonKey, forHTTPHeaderField: "apikey")
+        rpc.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        rpc.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        rpc.httpBody = try? JSONSerialization.data(withJSONObject: ["p_chat_id": chatId])
+        if let (data, http) = await sendAuthed(rpc, accessToken: accessToken),
+           (200..<300).contains(http.statusCode),
+           let room = decodeChatRoom(from: data) {
+            error = nil
+            return room
+        }
+
+        // Fallback for older databases before the RPC migration is applied.
+        guard let room = await loadChat(chatId: chatId, accessToken: accessToken) else { return nil }
+        var nextUnread = room.unread ?? [:]
+        nextUnread[currentUserId] = 0
+
+        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/chats"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "id", value: "eq.\(chatId)")]
+        var patch = URLRequest(url: components.url!)
+        patch.httpMethod = "PATCH"
+        patch.setValue(anonKey, forHTTPHeaderField: "apikey")
+        patch.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        patch.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        patch.setValue("return=representation", forHTTPHeaderField: "Prefer")
+        patch.httpBody = try? JSONEncoder().encode(["unread": AnyEncodable(nextUnread)])
+        guard let (data, http) = await sendAuthed(patch, accessToken: accessToken),
+              (200..<300).contains(http.statusCode),
+              let rows = try? JSONDecoder().decode([ChatRoom].self, from: data),
+              let updated = rows.first
+        else { return room.with(unread: nextUnread) }
+        error = nil
+        return updated
+    }
+
+    private func decodeChatRoom(from data: Data) -> ChatRoom? {
+        if let room = try? JSONDecoder().decode(ChatRoom.self, from: data) {
+            return room
+        }
+        if let rows = try? JSONDecoder().decode([ChatRoom].self, from: data) {
+            return rows.first
+        }
+        return nil
     }
 
     /// Ensures a chat row exists for the (me, other) pair, optionally tagged with a task.

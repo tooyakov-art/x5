@@ -20,6 +20,7 @@ struct UserProfileView: View {
     @State private var followBusy = false
     @State private var followersCount: Int?
     @State private var followingCount: Int?
+    @State private var isRefreshing = false
 
     private var baseURL: URL { X5Config.supabaseBaseURL }
     private var anonKey: String { X5Config.supabaseAnonKey }
@@ -41,8 +42,17 @@ struct UserProfileView: View {
             }
             .padding(.bottom, 32)
         }
+        .coordinateSpace(name: "publicProfileScroll")
+        .refreshable { await refreshPublicProfile() }
         .background { X5Background() }
         .ignoresSafeArea(edges: .top)
+        .overlay(alignment: .top) {
+            if isRefreshing {
+                ProgressView()
+                    .tint(.white)
+                    .padding(.top, 58)
+            }
+        }
         .navigationTitle(loc.t("profile_title"))
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
@@ -58,7 +68,7 @@ struct UserProfileView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     ShareLink(item: profileShareText) {
-                        Label("Share", systemImage: "square.and.arrow.up")
+                        Label(loc.t("common_share"), systemImage: "square.and.arrow.up")
                     }
                     Button {
                         reportUser()
@@ -101,67 +111,78 @@ struct UserProfileView: View {
     // MARK: - Большая обложка с фото и именем
 
     private var coverHeader: some View {
-        ZStack(alignment: .bottom) {
-            CoverPhoto(urlString: profile?.avatar ?? fallback?.avatar,
-                       name: profile?.name ?? fallback?.name)
-                .frame(height: heroHeight)
-                .clipped()
+        GeometryReader { proxy in
+            let pull = max(proxy.frame(in: .named("publicProfileScroll")).minY, 0)
+            let height = heroHeight + pull
 
-            LinearGradient(colors: [
-                Color.black.opacity(0.10),
-                Color.clear,
-                Color.black.opacity(0.22),
-                Color.black.opacity(0.92)
-            ], startPoint: .top, endPoint: .bottom)
-            .frame(height: heroHeight)
-            .allowsHitTesting(false)
+            ZStack(alignment: .bottom) {
+                CoverPhoto(urlString: profile?.avatar ?? fallback?.avatar,
+                           name: profile?.name ?? fallback?.name)
+                    .frame(width: proxy.size.width, height: height)
+                    .clipped()
 
-            VStack(spacing: 14) {
-                HStack(spacing: 8) {
-                    Text(displayName)
-                        .font(.system(size: 42, weight: .black))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                        .shadow(color: .black.opacity(0.5), radius: 10, x: 0, y: 4)
-                    if (profile?.hasActiveVerifiedBadge ?? (fallback?.isVerified == true)) {
-                        VerifiedChip(size: 18)
+                LinearGradient(colors: [
+                    Color.black.opacity(0.10),
+                    Color.clear,
+                    Color.black.opacity(0.12),
+                    Color.black.opacity(0.70)
+                ], startPoint: .top, endPoint: .bottom)
+                .frame(width: proxy.size.width, height: height)
+                .allowsHitTesting(false)
+
+                ProfileHeroBottomFade()
+                    .frame(width: proxy.size.width, height: 240)
+                    .position(x: proxy.size.width / 2, y: height - 120)
+
+                VStack(spacing: 14) {
+                    HStack(spacing: 8) {
+                        Text(displayName)
+                            .font(.system(size: 42, weight: .black))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                            .shadow(color: .black.opacity(0.5), radius: 10, x: 0, y: 4)
+                        if (profile?.hasActiveVerifiedBadge ?? (fallback?.isVerified == true)) {
+                            VerifiedChip(size: 18)
+                        }
                     }
-                }
 
-                if let nick = profile?.nickname ?? fallback?.nickname, !nick.isEmpty {
-                    Text("@\(nick)")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.66))
-                }
+                    if let nick = profile?.nickname ?? fallback?.nickname, !nick.isEmpty {
+                        Text("@\(nick)")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.66))
+                    }
 
-                actionRow
+                    actionRow
 
-                HStack(spacing: 6) {
-                    if (profile?.plan ?? fallback?.plan) == "pro" || isMe {
-                        Text("PRO")
+                    HStack(spacing: 6) {
+                        if (profile?.plan ?? fallback?.plan) == "pro" || isMe {
+                            Text("PRO")
+                                .font(.system(size: 10, weight: .heavy))
+                                .foregroundColor(.black)
+                                .tracking(0.8)
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(Color.accentColor)
+                                .clipShape(Capsule())
+                        }
+                        Text("#\(profile?.signupNumber ?? 505)")
                             .font(.system(size: 10, weight: .heavy))
-                            .foregroundColor(.black)
                             .tracking(0.8)
+                            .foregroundColor(.white.opacity(0.6))
                             .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Color.accentColor)
+                            .background(Color.white.opacity(0.06))
                             .clipShape(Capsule())
                     }
-                    Text("#\(profile?.signupNumber ?? 505)")
-                        .font(.system(size: 10, weight: .heavy))
-                        .tracking(0.8)
-                        .foregroundColor(.white.opacity(0.6))
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Color.white.opacity(0.06))
-                        .clipShape(Capsule())
-                }
 
-                statsRow
+                    statsRow
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 28)
+                .frame(maxWidth: profileContentWidth)
+                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 28)
-            .frame(maxWidth: profileContentWidth)
-            .frame(maxWidth: .infinity)
+            .frame(width: proxy.size.width, height: height)
+            .offset(y: -pull)
         }
         .frame(maxWidth: .infinity)
         .frame(height: heroHeight)
@@ -180,7 +201,7 @@ struct UserProfileView: View {
                     } else {
                         Image(systemName: isFollowing ? "checkmark" : "plus")
                     }
-                    Text(isFollowing ? "Following" : "Follow")
+                    Text(isFollowing ? loc.t("profile_following_action") : loc.t("profile_follow_action"))
                 }
                 .font(.system(size: 16, weight: .bold))
                 .frame(maxWidth: .infinity)
@@ -207,9 +228,9 @@ struct UserProfileView: View {
 
     private var statsRow: some View {
         HStack(spacing: 8) {
-            PublicStatBubble(value: creditsValue, label: "Credits")
-            PublicStatBubble(value: followersValue, label: "Followers")
-            PublicStatBubble(value: followingValue, label: "Following")
+            PublicStatBubble(value: creditsValue, label: loc.t("profile_credits"))
+            PublicStatBubble(value: followersValue, label: loc.t("profile_followers"))
+            PublicStatBubble(value: followingValue, label: loc.t("profile_following"))
         }
     }
 
@@ -306,8 +327,14 @@ struct UserProfileView: View {
         }
     }
 
-    private func load() async {
-        guard !isLoading else { return }
+    private func refreshPublicProfile() async {
+        isRefreshing = true
+        defer { isRefreshing = false }
+        await load(force: true)
+    }
+
+    private func load(force: Bool = false) async {
+        guard force || !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!

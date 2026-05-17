@@ -18,6 +18,7 @@ struct ProfileView: View {
     @State private var avatarPickerItem: PhotosPickerItem?
     @State private var uploadingAvatar = false
     @State private var avatarError: String?
+    @State private var isRefreshing = false
 
     var body: some View {
         NavigationStack {
@@ -58,6 +59,13 @@ struct ProfileView: View {
             .refreshable { await refreshProfile() }
             .background { X5Background() }
             .ignoresSafeArea(edges: .top)
+            .overlay(alignment: .top) {
+                if isRefreshing {
+                    ProgressView()
+                        .tint(.white)
+                        .padding(.top, 58)
+                }
+            }
             .navigationTitle(loc.t("profile_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -119,14 +127,18 @@ struct ProfileView: View {
                     colors: [
                         Color.black.opacity(0.10),
                         Color.clear,
-                        Color.black.opacity(0.22),
-                        Color.black.opacity(0.92)
+                        Color.black.opacity(0.12),
+                        Color.black.opacity(0.70)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .frame(width: proxy.size.width, height: height)
                 .allowsHitTesting(false)
+
+                ProfileHeroBottomFade()
+                    .frame(width: proxy.size.width, height: 240)
+                    .position(x: proxy.size.width / 2, y: height - 120)
 
                 VStack(spacing: 14) {
                     HStack(spacing: 6) {
@@ -151,7 +163,7 @@ struct ProfileView: View {
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "pencil")
-                            Text("Edit profile")
+                            Text(loc.t("profile_edit"))
                         }
                         .font(.system(size: 16, weight: .bold))
                         .frame(maxWidth: .infinity)
@@ -219,9 +231,9 @@ struct ProfileView: View {
 
     private var heroStatsRow: some View {
         HStack(spacing: 8) {
-            StatBubble(value: "\(currentUser.profile?.credits ?? 0)", label: "Credits")
-            StatBubble(value: "0", label: "Followers")
-            StatBubble(value: "0", label: "Following")
+            StatBubble(value: "\(currentUser.profile?.credits ?? 0)", label: loc.t("profile_credits"))
+            StatBubble(value: "0", label: loc.t("profile_followers"))
+            StatBubble(value: "0", label: loc.t("profile_following"))
         }
     }
 
@@ -234,6 +246,8 @@ struct ProfileView: View {
     }
 
     private func refreshProfile() async {
+        isRefreshing = true
+        defer { isRefreshing = false }
         guard let uid = auth.userId, let token = await auth.freshAccessToken() else { return }
         await currentUser.load(userId: uid, accessToken: token)
         subscription.sync(from: currentUser.profile)
@@ -265,11 +279,11 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Image(systemName: "sparkles").foregroundColor(.accentColor)
-                Text("X5 Pro В· active")
+                Text(loc.t("profile_pro_active"))
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.white)
                 Spacer()
-                Button("Manage") {
+                Button(loc.t("profile_manage")) {
                     if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
                         UIApplication.shared.open(url)
                     }
@@ -278,7 +292,7 @@ struct ProfileView: View {
                 .foregroundColor(.accentColor)
             }
             if let end = currentUser.profile?.subscriptionEndDate {
-                Text("Renews \(formatDate(end))")
+                Text("\(loc.t("profile_renews")) \(formatDate(end))")
                     .font(.system(size: 12))
                     .foregroundColor(.white.opacity(0.55))
             }
@@ -299,7 +313,7 @@ struct ProfileView: View {
                     .background(Color.accentColor)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Upgrade to Pro").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
+                    Text(loc.t("profile_upgrade")).font(.system(size: 15, weight: .bold)).foregroundColor(.white)
                     Text(upgradeSubtitle).font(.system(size: 12)).foregroundColor(.white.opacity(0.55))
                 }
                 Spacer()
@@ -325,10 +339,10 @@ struct ProfileView: View {
                     .background(Color.accentColor)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("РЎС‚Р°С‚СЊ СЃРїРµС†РёР°Р»РёСЃС‚РѕРј")
+                    Text(loc.t("profile_become_specialist_title"))
                         .font(.system(size: 15, weight: .bold))
                         .foregroundColor(.white)
-                    Text("Р’РєР»СЋС‡Рё РїСѓР±Р»РёС‡РЅС‹Р№ РїСЂРѕС„РёР»СЊ вЂ” РєР»РёРµРЅС‚С‹ РЅР°Р№РґСѓС‚ С‚РµР±СЏ РІ Hub Рё РЅР°РїРёС€СѓС‚ РІ С‡Р°С‚")
+                    Text(loc.t("profile_become_specialist_sub"))
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.55))
                 }
@@ -358,8 +372,8 @@ struct ProfileView: View {
                                                startPoint: .topLeading, endPoint: .bottomTrailing))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("РџРѕР»СѓС‡РёС‚СЊ РіР°Р»РѕС‡РєСѓ").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
-                    Text("РЎРёРЅСЏСЏ в‘ СЂСЏРґРѕРј СЃ РёРјРµРЅРµРј вЂ” Р±РѕР»СЊС€Рµ РґРѕРІРµСЂРёСЏ Рё РїСЂРёРѕСЂРёС‚РµС‚ РІ Hub")
+                    Text(loc.t("profile_get_verified")).font(.system(size: 15, weight: .bold)).foregroundColor(.white)
+                    Text(loc.t("profile_verified_sub"))
                         .font(.system(size: 12)).foregroundColor(.white.opacity(0.55))
                 }
                 Spacer()
@@ -377,7 +391,7 @@ struct ProfileView: View {
     private var socialLinks: some View {
         if let links = currentUser.profile?.socialLinks {
             VStack(alignment: .leading, spacing: 10) {
-                Text("SOCIAL")
+                Text(loc.t("profile_social").uppercased())
                     .font(.system(size: 11, weight: .bold))
                     .tracking(1.4)
                     .foregroundColor(.white.opacity(0.45))
@@ -399,12 +413,12 @@ struct ProfileView: View {
     private func specialistCard(cats: [String]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("SPECIALIST")
+                Text(loc.t("profile_specialist").uppercased())
                     .font(.system(size: 11, weight: .bold))
                     .tracking(1.4)
                     .foregroundColor(.white.opacity(0.45))
                 Spacer()
-                Text(currentUser.profile?.showInHub == true ? "On Hub" : "Hidden")
+                Text(currentUser.profile?.showInHub == true ? loc.t("profile_on_hub") : loc.t("profile_hidden"))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(currentUser.profile?.showInHub == true ? .accentColor : .white.opacity(0.5))
             }
@@ -432,9 +446,9 @@ struct ProfileView: View {
     /// Real subscription price from StoreKit / ASC. Loaded once on appear.
     private var upgradeSubtitle: String {
         if let p = iap.product {
-            return "\(p.displayPrice) / month вЂ” 1000 credits + all tools"
+            return "\(p.displayPrice) / \(loc.t("profile_month")) - \(loc.t("profile_upgrade_sub"))"
         }
-        return "1000 credits + all tools"
+        return loc.t("profile_upgrade_sub")
     }
 
     private func formatDate(_ iso: String) -> String {

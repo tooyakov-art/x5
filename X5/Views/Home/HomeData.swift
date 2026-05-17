@@ -36,6 +36,101 @@ struct HomeTool: Identifiable, Hashable {
     }
 }
 
+enum ImageGenerationProvider: String, CaseIterable, Identifiable, Hashable {
+    case gpt
+    case google
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .gpt: return "GPT"
+        case .google: return "Google"
+        }
+    }
+}
+
+struct ImageGenerationCategory: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let icon: String
+    let examplePrompt: String
+    let gradientStart: Color
+    let gradientEnd: Color
+}
+
+enum ImageGenerationCatalog {
+    static let creditCost: Int = 10
+
+    static let custom = ImageGenerationCategory(
+        id: "custom",
+        title: "Custom",
+        subtitle: "Any marketing visual",
+        icon: "sparkles",
+        examplePrompt: "Premium Instagram ad for a coffee brand, dark studio light, blue glass details",
+        gradientStart: X5Style.blue.opacity(0.34),
+        gradientEnd: .black
+    )
+
+    static let categories: [ImageGenerationCategory] = [
+        .init(
+            id: "logo",
+            title: "Logo",
+            subtitle: "Brand mark",
+            icon: "seal.fill",
+            examplePrompt: "Minimal premium logo for a boutique coffee brand, silver and cyan, black background",
+            gradientStart: Color(red: 0.62, green: 0.70, blue: 0.82).opacity(0.42),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "story",
+            title: "Story",
+            subtitle: "Vertical creative",
+            icon: "rectangle.portrait.fill",
+            examplePrompt: "Instagram story for a luxury skincare launch, product glow, clean text space",
+            gradientStart: X5Style.blue.opacity(0.40),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "post",
+            title: "Post",
+            subtitle: "Square feed post",
+            icon: "square.grid.2x2.fill",
+            examplePrompt: "Square Instagram post for a restaurant opening, cinematic table scene, premium lighting",
+            gradientStart: Color(red: 0.39, green: 0.40, blue: 0.94).opacity(0.42),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "insta_pack",
+            title: "Insta Pack",
+            subtitle: "Post + story mood",
+            icon: "square.stack.3d.up.fill",
+            examplePrompt: "Cohesive Instagram visual package for a fashion brand, post cover, story mood, brand texture",
+            gradientStart: X5Style.blueSoft.opacity(0.42),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "product",
+            title: "Product",
+            subtitle: "Ad-ready shot",
+            icon: "shippingbox.fill",
+            examplePrompt: "Premium product ad for wireless headphones, black acrylic surface, cyan rim light",
+            gradientStart: Color(red: 0.23, green: 0.51, blue: 0.96).opacity(0.42),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "packaging",
+            title: "Packaging",
+            subtitle: "Box and label",
+            icon: "cube.box.fill",
+            examplePrompt: "Luxury packaging concept for artisan chocolate, matte black box, silver label, studio render",
+            gradientStart: Color(red: 0.52, green: 0.57, blue: 0.68).opacity(0.42),
+            gradientEnd: .black
+        )
+    ]
+}
+
 enum HomeContent {
     static let banners: [HomeBanner] = [
         .init(title: "AI Influencer", subtitle: "Create your virtual influencer",

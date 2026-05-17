@@ -45,11 +45,13 @@ struct X5App: App {
                 .task(id: auth.isAuthenticated) {
                     DiagnosticLogger.log(event: "auth_state",
                                          extra: ["authenticated": auth.isAuthenticated ? "true" : "false"])
-                    // Build 67: defensively skip PushNotifications bootstrap on
-                    // launch. The async permission request and APNs registration
-                    // both have known iOS 26 regressions with strict concurrency;
-                    // we re-enable them once we know they are not implicated.
-                    if !auth.isAuthenticated {
+                    if auth.isAuthenticated {
+                        PushNotifications.shared.bootstrap()
+                        PushNotifications.shared.currentUserDidChange(
+                            userId: auth.userId,
+                            accessToken: auth.accessToken
+                        )
+                    } else {
                         PushNotifications.shared.cancelPromoLoop()
                     }
                 }

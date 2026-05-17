@@ -50,11 +50,14 @@ struct SettingsView: View {
                     }
                 }
 
-                // Appearance / language — read-only, follows system iOS language
+                // Appearance / language
                 Section {
-                    Button {
-                        if let url = URL(string: UIApplication.openSettingsURLString) {
-                            UIApplication.shared.open(url)
+                    Picker(selection: Binding(
+                        get: { loc.current },
+                        set: { loc.setLanguage($0) }
+                    )) {
+                        ForEach(AppLanguage.allCases) { language in
+                            Text("\(language.flag) \(language.label)").tag(language)
                         }
                     } label: {
                         HStack {
@@ -64,12 +67,9 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(loc.t("settings_language"))
                                     .foregroundColor(.primary)
-                                Text("\(loc.current.flag) \(loc.current.label) · из системы")
+                                Text("\(loc.current.flag) \(loc.current.label)")
                                     .font(.caption).foregroundColor(.secondary)
                             }
-                            Spacer()
-                            Image(systemName: "arrow.up.forward.app")
-                                .foregroundColor(.secondary)
                         }
                     }
                 } header: {

@@ -82,7 +82,7 @@ struct CoursesView: View {
                             }
                         }
                         .padding(.horizontal, 16)
-                        .padding(.top, 12)
+                        .padding(.top, 2)
                         .padding(.bottom, 32)
                         .frame(maxWidth: 640)
                         .frame(maxWidth: .infinity)

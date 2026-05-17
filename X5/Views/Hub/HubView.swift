@@ -153,8 +153,8 @@ struct HubView: View {
             Spacer()
         }
         .padding(.horizontal, 24)
-        .padding(.top, 10)
-        .padding(.bottom, 8)
+        .padding(.top, 0)
+        .padding(.bottom, 4)
     }
 
     private func startChat(with person: HubSpecialist) {

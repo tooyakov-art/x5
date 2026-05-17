@@ -18,7 +18,7 @@ struct HomeView: View {
     @State private var bannerIndex: Int = 0
     @State private var openTool: HomeTool?
     @State private var openCaptions: Bool = false
-    @State private var openImageGenerator: Bool = false
+    @State private var openImageCategory: ImageGenerationCategory?
     @State private var showingNotifications: Bool = false
 
     private var isDeveloper: Bool { Roles.isDeveloper(auth.userEmail) }
@@ -43,11 +43,13 @@ struct HomeView: View {
                     if !visibleBanners.isEmpty {
                         bannerCarousel
                     }
-                    sectionHeader(isDeveloper ? "AI Tools" : "Live now")
+                    sectionHeader(isDeveloper ? loc.t("home_ai_tools") : loc.t("home_live_now"))
                     toolGrid
+                    sectionHeader(loc.t("home_generate"))
+                    generationCategoryStrip
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 12)
+                .padding(.top, 2)
                 .padding(.bottom, 40)
                 .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity)
@@ -61,7 +63,7 @@ struct HomeView: View {
                         Image(systemName: "bell")
                             .foregroundColor(.white.opacity(0.7))
                     }
-                    .accessibilityLabel("Notifications")
+                    .accessibilityLabel(loc.t("notif_title"))
                 }
             }
             .sheet(item: $openTool) { tool in
@@ -71,8 +73,8 @@ struct HomeView: View {
                 NavigationStack { MainView() }
                     .preferredColorScheme(.dark)
             }
-            .sheet(isPresented: $openImageGenerator) {
-                ImageGeneratorView()
+            .navigationDestination(item: $openImageCategory) { category in
+                ImageGeneratorView(category: category)
                     .preferredColorScheme(.dark)
             }
             .sheet(isPresented: $showingNotifications) {
@@ -116,7 +118,7 @@ struct HomeView: View {
                     if tool.id == "captions" {
                         openCaptions = true
                     } else if tool.id == "photo" {
-                        openImageGenerator = true
+                        openImageCategory = ImageGenerationCatalog.custom
                     } else if tool.id == "academy" {
                         // Live: deep-link to Courses tab via NotificationCenter.
                         NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "courses"])
@@ -124,10 +126,36 @@ struct HomeView: View {
                         openTool = tool
                     }
                 } label: {
-                    HomeToolCard(tool: tool)
+                    HomeToolCard(
+                        tool: tool,
+                        title: localized("home_tool_\(tool.id)_title", fallback: tool.title),
+                        subtitle: localized("home_tool_\(tool.id)_subtitle", fallback: tool.subtitle)
+                    )
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
+
+    private var generationCategoryStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(ImageGenerationCatalog.categories) { category in
+                    Button {
+                        DiagnosticLogger.log(event: "home_generation_category_tap",
+                                             extra: ["category": category.id])
+                        openImageCategory = category
+                    } label: {
+                        GenerationCategoryCard(
+                            category: category,
+                            title: categoryTitle(category),
+                            subtitle: categorySubtitle(category)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 2)
         }
     }
 
@@ -137,6 +165,19 @@ struct HomeView: View {
             .tracking(1.4)
             .foregroundColor(.white.opacity(0.45))
             .padding(.leading, 4)
+    }
+
+    private func localized(_ key: String, fallback: String) -> String {
+        let value = loc.t(key)
+        return value == key ? fallback : value
+    }
+
+    private func categoryTitle(_ category: ImageGenerationCategory) -> String {
+        localized("gen_category_\(category.id)_title", fallback: category.title)
+    }
+
+    private func categorySubtitle(_ category: ImageGenerationCategory) -> String {
+        localized("gen_category_\(category.id)_subtitle", fallback: category.subtitle)
     }
 }
 
@@ -181,6 +222,8 @@ private struct HomeBannerCard: View {
 
 private struct HomeToolCard: View {
     let tool: HomeTool
+    let title: String
+    let subtitle: String
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -194,10 +237,10 @@ private struct HomeToolCard: View {
                                startPoint: .center, endPoint: .bottom)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(tool.title)
+                    Text(title)
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.white)
-                    Text(tool.subtitle)
+                    Text(subtitle)
                         .font(.system(size: 11))
                         .foregroundColor(.white.opacity(0.7))
                 }
@@ -227,5 +270,46 @@ private struct HomeToolCard: View {
                     .padding(8)
             }
         }
+    }
+}
+
+private struct GenerationCategoryCard: View {
+    let category: ImageGenerationCategory
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: category.icon)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 38, height: 38)
+                .background(Color.white.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            Spacer(minLength: 8)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.58))
+                    .lineLimit(1)
+            }
+        }
+        .padding(13)
+        .frame(width: 138, height: 132)
+        .background(
+            RadialGradient(
+                colors: [category.gradientStart.opacity(0.24), Color.clear],
+                center: .topLeading,
+                startRadius: 4,
+                endRadius: 150
+            )
+        )
+        .x5ClearGlass(cornerRadius: 16, highlight: 0.11)
     }
 }

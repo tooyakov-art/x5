@@ -18,6 +18,9 @@ struct ChatThreadView: View {
     @State private var confirmBlock: Bool = false
     @State private var photoItem: PhotosPickerItem?
     @State private var attachmentError: String?
+    @State private var roomUnread: [String: Int] = [:]
+    @State private var messageStateTick: Int = 0
+    @State private var replyingTo: ChatMessageRow?
     @FocusState private var inputFocused: Bool
     @State private var searchActive: Bool = false
     @State private var searchQuery: String = ""
@@ -54,9 +57,35 @@ struct ChatThreadView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(visibleMessages) { msg in
-                            Bubble(message: msg, isMine: msg.senderId == auth.userId)
+                        ForEach(Array(visibleMessages.enumerated()), id: \.element.id) { pair in
+                            let index = pair.offset
+                            let msg = pair.element
+                            if shouldShowDateHeader(at: index) {
+                                DateDivider(text: dateHeaderText(for: msg))
+                            }
+                            Bubble(
+                                message: msg,
+                                isMine: msg.senderId == auth.userId,
+                                isRead: isReadByPeer(msg),
+                                isPinned: MessagesLocalState.isPinned(msg.id),
+                                onReply: { replyingTo = msg },
+                                onTogglePin: { toggleMessagePin(msg) },
+                                onAskStartupChat: { askStartupChat(about: msg) },
+                                onDeleteForMe: {
+                                    MessagesLocalState.hide(msg.id)
+                                    messageStateTick &+= 1
+                                }
+                            )
                                 .id(msg.id)
+                                .simultaneousGesture(
+                                    DragGesture(minimumDistance: 24, coordinateSpace: .local)
+                                        .onEnded { value in
+                                            guard value.translation.width > 56,
+                                                  abs(value.translation.width) > abs(value.translation.height) * 1.5
+                                            else { return }
+                                            replyingTo = msg
+                                        }
+                                )
                         }
                     }
                     .padding(.horizontal, 14)
@@ -70,6 +99,32 @@ struct ChatThreadView: View {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
                 }
+            }
+
+            if let replyingTo {
+                HStack(spacing: 10) {
+                    Rectangle()
+                        .fill(Color.accentColor)
+                        .frame(width: 3)
+                        .clipShape(Capsule())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(loc.t("chats_msg_reply"))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.accentColor)
+                        Text(messagePreview(replyingTo))
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.65))
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Button { self.replyingTo = nil } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.white.opacity(0.45))
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.05))
             }
 
             HStack(spacing: 8) {
@@ -114,14 +169,16 @@ struct ChatThreadView: View {
                     Image(systemName: recorder.isRecording ? "mic.circle.fill" : "mic.circle")
                         .font(.system(size: 30))
                         .foregroundColor(recorder.isRecording ? .red : .white.opacity(0.6))
+                        .opacity(sending ? 0.35 : 1)
                         .gesture(
                             DragGesture(minimumDistance: 0)
                                 .onChanged { _ in
-                                    if !recorder.isRecording {
+                                    if !sending && !recorder.isRecording {
                                         Task { await recorder.start() }
                                     }
                                 }
                                 .onEnded { _ in
+                                    guard !sending else { return }
                                     if let result = recorder.stop() {
                                         Task { await sendVoice(result) }
                                     } else {
@@ -129,6 +186,7 @@ struct ChatThreadView: View {
                                     }
                                 }
                         )
+                        .allowsHitTesting(!sending)
                 }
             }
             .padding(12)
@@ -255,6 +313,7 @@ struct ChatThreadView: View {
             Text(attachmentError ?? "")
         }
         .task {
+            roomUnread = chat.unread ?? [:]
             // Paint cached messages instantly so the chat doesn't appear
             // blank during the fetch — Telegram-style.
             let cached = service.cachedMessages(chatId: chat.id)
@@ -262,6 +321,7 @@ struct ChatThreadView: View {
                 messages = cached
             }
             await reload()
+            await markThreadRead()
             await loadOther()
         }
     }
@@ -282,6 +342,7 @@ struct ChatThreadView: View {
         }
         if let inserted = await service.sendMedia(chatId: chat.id, currentUserId: uid, type: "image", mediaUrl: url, mime: "image/jpeg", accessToken: token) {
             messages.append(inserted)
+            incrementPeerUnread()
         } else {
             attachmentError = service.error ?? "Не удалось отправить фото."
         }
@@ -297,6 +358,7 @@ struct ChatThreadView: View {
         }
         if let inserted = await service.sendMedia(chatId: chat.id, currentUserId: uid, type: "audio", mediaUrl: url, mime: result.mime, accessToken: token) {
             messages.append(inserted)
+            incrementPeerUnread()
         } else {
             attachmentError = service.error ?? "Не удалось отправить голосовое."
         }
@@ -340,11 +402,92 @@ struct ChatThreadView: View {
     /// scroll behaviour and message identity are unaffected when the search
     /// box closes.
     private var visibleMessages: [ChatMessageRow] {
+        _ = messageStateTick
+        let activeMessages = messages.filter { !MessagesLocalState.isHidden($0.id) }
         let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard searchActive, !q.isEmpty else { return messages }
-        return messages.filter { msg in
+        guard searchActive, !q.isEmpty else { return activeMessages }
+        return activeMessages.filter { msg in
             (msg.content ?? "").localizedCaseInsensitiveContains(q)
         }
+    }
+
+    private func markThreadRead() async {
+        guard let token = auth.accessToken, let uid = auth.userId else { return }
+        if let updated = await service.markRead(chatId: chat.id, currentUserId: uid, accessToken: token) {
+            roomUnread = updated.unread ?? [:]
+        } else {
+            roomUnread[uid] = 0
+        }
+    }
+
+    private func incrementPeerUnread() {
+        guard let uid = auth.userId,
+              let peer = chat.otherParticipantId(currentUser: uid)
+        else { return }
+        let current = roomUnread[peer] ?? chat.unreadCount(for: peer)
+        roomUnread[peer] = current + 1
+    }
+
+    private func isReadByPeer(_ message: ChatMessageRow) -> Bool {
+        guard message.senderId == auth.userId,
+              let uid = auth.userId,
+              let peer = chat.otherParticipantId(currentUser: uid)
+        else { return false }
+        return (roomUnread[peer] ?? chat.unreadCount(for: peer)) == 0
+    }
+
+    private func toggleMessagePin(_ message: ChatMessageRow) {
+        if MessagesLocalState.isPinned(message.id) {
+            MessagesLocalState.unpin(message.id)
+        } else {
+            MessagesLocalState.pin(message.id)
+        }
+        messageStateTick &+= 1
+    }
+
+    private func askStartupChat(about message: ChatMessageRow) {
+        draft = "StartupChat: \(messagePreview(message))"
+        inputFocused = true
+    }
+
+    private func messagePreview(_ message: ChatMessageRow) -> String {
+        if let text = message.content?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            return text
+        }
+        switch message.type {
+        case "image": return loc.t("chats_preview_photo")
+        case "audio": return loc.t("chat_voice_message")
+        default: return loc.t("chats_no_messages")
+        }
+    }
+
+    private func shouldShowDateHeader(at index: Int) -> Bool {
+        guard visibleMessages.indices.contains(index),
+              let current = messageDate(visibleMessages[index])
+        else { return false }
+        guard index > 0,
+              let previous = messageDate(visibleMessages[index - 1])
+        else { return true }
+        return !Calendar.current.isDate(current, inSameDayAs: previous)
+    }
+
+    private func dateHeaderText(for message: ChatMessageRow) -> String {
+        guard let date = messageDate(message) else { return "" }
+        let cal = Calendar.current
+        if cal.isDateInToday(date) { return loc.t("chats_date_today") }
+        if cal.isDateInYesterday(date) { return loc.t("chats_date_yesterday") }
+        let formatter = DateFormatter()
+        formatter.locale = .current
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+
+    private func messageDate(_ message: ChatMessageRow) -> Date? {
+        guard let iso = message.createdAt, !iso.isEmpty else { return nil }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
     }
 
     private func send() {
@@ -357,58 +500,126 @@ struct ChatThreadView: View {
         Task {
             if let inserted = await service.sendText(chatId: chat.id, currentUserId: uid, text: text, accessToken: token) {
                 messages.append(inserted)
+                incrementPeerUnread()
+                replyingTo = nil
             }
             sending = false
         }
     }
 }
 
+private struct DateDivider: View {
+    let text: String
+
+    var body: some View {
+        HStack {
+            Spacer()
+            Text(text)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.white.opacity(0.58))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.08))
+                .clipShape(Capsule())
+            Spacer()
+        }
+        .padding(.vertical, 6)
+    }
+}
+
 private struct Bubble: View {
     let message: ChatMessageRow
     let isMine: Bool
+    let isRead: Bool
+    let isPinned: Bool
     var onCopy: (() -> Void)? = nil
+    var onReply: (() -> Void)? = nil
+    var onTogglePin: (() -> Void)? = nil
+    var onAskStartupChat: (() -> Void)? = nil
+    var onDeleteForMe: (() -> Void)? = nil
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 6) {
             if isMine { Spacer(minLength: 40) }
             content
                 .contextMenu {
+                    Button { onReply?() } label: {
+                        Label(loc.t("chats_msg_reply"), systemImage: "arrowshape.turn.up.left")
+                    }
+                    Button { onTogglePin?() } label: {
+                        Label(
+                            isPinned ? loc.t("chats_msg_unpin") : loc.t("chats_msg_pin"),
+                            systemImage: isPinned ? "pin.slash" : "pin"
+                        )
+                    }
+                    Button { onAskStartupChat?() } label: {
+                        Label(loc.t("chats_msg_ask_startupchat"), systemImage: "sparkles")
+                    }
+                    Divider()
                     if let text = message.content, !text.isEmpty,
                        message.type != "image", message.type != "audio" {
                         Button {
                             UIPasteboard.general.string = text
                             onCopy?()
                         } label: {
-                            Label("Копировать", systemImage: "doc.on.doc")
+                            Label(loc.t("chats_msg_copy"), systemImage: "doc.on.doc")
                         }
+                    }
+                    Button(role: .destructive) {
+                        onDeleteForMe?()
+                    } label: {
+                        Label(loc.t("chats_msg_delete_for_me"), systemImage: "trash")
                     }
                 }
             if !isMine { Spacer(minLength: 40) }
         }
     }
 
-    @ViewBuilder
     private var content: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            if isPinned {
+                HStack(spacing: 4) {
+                    Image(systemName: "pin.fill")
+                    Text(loc.t("chats_pinned_label"))
+                }
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.white.opacity(0.5))
+            }
+            payload
+            messageStatus
+        }
+        .padding(message.type == "image" ? 4 : 10)
+        .background(isMine ? Color.accentColor.opacity(0.22) : Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var payload: some View {
         switch message.type {
         case "image":
             imageBubble
         case "audio":
-            AudioBubble(url: message.mediaUrl, isMine: isMine)
+            AudioBubble(url: message.mediaUrl)
         default:
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(message.content ?? "")
-                    .font(.system(size: 14))
-                    .foregroundColor(.white)
-                if let stamp = formattedTimestamp {
-                    Text(stamp)
-                        .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.5))
-                }
-            }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(isMine ? Color.accentColor.opacity(0.22) : Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            Text(message.content ?? "")
+                .font(.system(size: 14))
+                .foregroundColor(.white)
         }
+    }
+
+    private var messageStatus: some View {
+        HStack(spacing: 4) {
+            if let stamp = formattedTimestamp {
+                Text(stamp)
+            }
+            if isMine {
+                Image(systemName: isRead ? "checkmark.circle.fill" : "checkmark")
+                    .accessibilityLabel(isRead ? "Read" : "Sent")
+            }
+        }
+        .font(.system(size: 10, weight: .medium))
+        .foregroundColor(.white.opacity(0.5))
     }
 
     /// Short relative-time label rendered inside text bubbles.
@@ -454,7 +665,6 @@ private struct Bubble: View {
 
 private struct AudioBubble: View {
     let url: String?
-    let isMine: Bool
     @EnvironmentObject private var loc: LocalizationService
     @State private var player: AVPlayer?
     @State private var isPlaying = false
@@ -473,9 +683,6 @@ private struct AudioBubble: View {
                 .font(.system(size: 13))
                 .foregroundColor(.white.opacity(0.85))
         }
-        .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(isMine ? Color.accentColor.opacity(0.22) : Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func togglePlay() {

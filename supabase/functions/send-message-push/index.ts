@@ -9,7 +9,7 @@
 //   APNS_TEAM_ID            -- Apple Developer team id (e.g. "F8LA8PC4U6")
 //   APNS_BUNDLE_ID          -- "com.x5studio.app"
 //   APNS_PRIVATE_KEY        -- contents of AuthKey_<KEY_ID>.p8 (PEM with -----BEGIN/END PRIVATE KEY-----)
-//   APNS_USE_SANDBOX        -- "1" while testing on TestFlight, "0" for production
+//   APNS_USE_SANDBOX        -- "1" for debug/dev APNs tokens, "0" for TestFlight/App Store
 //
 // Auto-injected by the Supabase Edge runtime (we cannot set SUPABASE_*
 // secrets manually — the prefix is reserved):
@@ -55,6 +55,11 @@ interface MessageRow {
   content: string | null;
 }
 
+type IncomingPayload = Partial<MessageRow> & {
+  record?: MessageRow;
+  new?: MessageRow;
+};
+
 interface ChatRow {
   id: string;
   participants: string[];
@@ -66,10 +71,13 @@ Deno.serve(async (req) => {
 
   // Supabase reserves the SUPABASE_ prefix for secrets — the runtime
   // provides SUPABASE_SERVICE_ROLE_KEY automatically.
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const supabase = createClient(SUPABASE_URL, serviceKey);
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!serviceKey) return new Response("missing service role key", { status: 500 });
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || SUPABASE_URL;
+  const supabase = createClient(supabaseUrl, serviceKey);
 
-  const body = (await req.json()) as MessageRow;
+  const raw = (await req.json()) as IncomingPayload;
+  const body = raw.record ?? raw.new ?? (raw as MessageRow);
   if (!body?.chat_id || !body.sender_id) {
     return new Response("bad request", { status: 400 });
   }
@@ -98,11 +106,14 @@ Deno.serve(async (req) => {
   const senderName: string = (sender?.name as string) || (sender?.nickname as string) || "Someone";
 
   // Build APNs JWT
-  const keyId = Deno.env.get("APNS_KEY_ID")!;
-  const teamId = Deno.env.get("APNS_TEAM_ID")!;
-  const bundleId = Deno.env.get("APNS_BUNDLE_ID")!;
+  const keyId = Deno.env.get("APNS_KEY_ID");
+  const teamId = Deno.env.get("APNS_TEAM_ID");
+  const bundleId = Deno.env.get("APNS_BUNDLE_ID");
   const useSandbox = (Deno.env.get("APNS_USE_SANDBOX") || "0") === "1";
-  const pem = Deno.env.get("APNS_PRIVATE_KEY")!;
+  const pem = Deno.env.get("APNS_PRIVATE_KEY");
+  if (!keyId || !teamId || !bundleId || !pem) {
+    return new Response("missing APNs env", { status: 500 });
+  }
 
   const cryptoKey = await importPKCS8(pem);
   const jwt = await jwtCreate(

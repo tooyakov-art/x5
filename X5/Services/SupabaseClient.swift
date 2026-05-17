@@ -144,8 +144,16 @@ final class SupabaseClient {
         }
     }
 
-    func generateImage(prompt: String) async throws -> GeneratedImage {
-        let body = try JSONSerialization.data(withJSONObject: ["prompt": prompt])
+    func generateImage(
+        prompt: String,
+        provider: ImageGenerationProvider,
+        category: ImageGenerationCategory
+    ) async throws -> GeneratedImage {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "prompt": prompt,
+            "provider": provider.rawValue,
+            "category": category.id
+        ])
         let data = try await runAuthed { token in
             let url = self.baseURL.appendingPathComponent("functions/v1/generate-image")
             var request = URLRequest(url: url)
@@ -195,6 +203,10 @@ final class SupabaseClient {
 struct GeneratedImage: Decodable {
     let imageBase64: String
     let prompt: String
+    let provider: String?
+    let category: String?
+    let costCredits: Int?
+    let creditsRemaining: Int?
 }
 
 enum SupabaseError: LocalizedError {

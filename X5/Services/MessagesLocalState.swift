@@ -11,12 +11,18 @@ import Foundation
 /// doesn't inherit the previous user's hidden messages.
 enum MessagesLocalState {
     private static let hiddenKey = "x5.messages.hidden_ids"
+    private static let pinnedKey = "x5.messages.pinned_ids"
 
     static var hidden: Set<String> {
         Set(UserDefaults.standard.stringArray(forKey: hiddenKey) ?? [])
     }
 
+    static var pinned: Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: pinnedKey) ?? [])
+    }
+
     static func isHidden(_ id: String) -> Bool { hidden.contains(id) }
+    static func isPinned(_ id: String) -> Bool { pinned.contains(id) }
 
     static func hide(_ id: String) {
         var current = hidden
@@ -30,8 +36,21 @@ enum MessagesLocalState {
         UserDefaults.standard.set(Array(current), forKey: hiddenKey)
     }
 
+    static func pin(_ id: String) {
+        var current = pinned
+        current.insert(id)
+        UserDefaults.standard.set(Array(current), forKey: pinnedKey)
+    }
+
+    static func unpin(_ id: String) {
+        var current = pinned
+        current.remove(id)
+        UserDefaults.standard.set(Array(current), forKey: pinnedKey)
+    }
+
     /// Called from Auth.signOut — keeps cross-account isolation.
     static func reset() {
         UserDefaults.standard.removeObject(forKey: hiddenKey)
+        UserDefaults.standard.removeObject(forKey: pinnedKey)
     }
 }
