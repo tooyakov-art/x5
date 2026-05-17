@@ -53,29 +53,12 @@ struct ProfileView: View {
                 }
                 .padding(.bottom, 32)
             }
+            .coordinateSpace(name: "profileScroll")
             .scrollIndicators(.hidden)
+            .refreshable { await refreshProfile() }
             .background { X5Background() }
             .ignoresSafeArea(edges: .top)
-            .navigationTitle(loc.t("profile_title"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .foregroundColor(.white.opacity(0.7))
-                    }
-                    .accessibilityLabel("Settings")
-                }
-                if showsDoneButton {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button(loc.t("btn_done")) { dismiss() }
-                    }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showingSettings) { SettingsView() }
             .sheet(isPresented: $showingPaywall) { PaywallView() }
             .sheet(isPresented: $showingVerified) { VerifiedBadgeView() }
@@ -99,104 +82,142 @@ struct ProfileView: View {
     // MARK: - Hero
 
     private var hero: some View {
-        ZStack(alignment: .bottom) {
-            ProfileCoverPhoto(urlString: currentUser.profile?.avatar,
-                              name: displayName)
-                .frame(height: heroHeight)
-                .clipped()
+        GeometryReader { proxy in
+            let pull = max(proxy.frame(in: .named("profileScroll")).minY, 0)
+            let height = heroHeight + pull
 
-            LinearGradient(
-                colors: [
-                    Color.black.opacity(0.18),
-                    Color.clear,
-                    Color.black.opacity(0.22),
-                    Color.black.opacity(0.92)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: heroHeight)
-            .allowsHitTesting(false)
+            ZStack(alignment: .bottom) {
+                ProfileCoverPhoto(urlString: currentUser.profile?.avatar,
+                                  name: displayName)
+                    .frame(width: proxy.size.width, height: height)
+                    .clipped()
 
-            VStack(spacing: 14) {
-                HStack(spacing: 6) {
-                    Text(displayName)
-                        .font(.system(size: 42, weight: .black))
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.10),
+                        Color.clear,
+                        Color.black.opacity(0.22),
+                        Color.black.opacity(0.92)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: proxy.size.width, height: height)
+                .allowsHitTesting(false)
+
+                topChrome
+                    .frame(width: min(proxy.size.width - 32, 430))
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 52)
+
+                VStack(spacing: 14) {
+                    HStack(spacing: 6) {
+                        Text(displayName)
+                            .font(.system(size: 42, weight: .black))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                            .shadow(color: Color.black.opacity(0.5), radius: 10, x: 0, y: 4)
+                        if currentUser.profile?.hasActiveVerifiedBadge == true {
+                            VerifiedChip(size: 18)
+                        }
+                    }
+                    if !handleText.isEmpty {
+                        Text(handleText)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.66))
+                    }
+
+                    Button {
+                        showingEdit = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "pencil")
+                            Text("Edit profile")
+                        }
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                        .shadow(color: Color.black.opacity(0.5), radius: 10, x: 0, y: 4)
-                    if currentUser.profile?.hasActiveVerifiedBadge == true {
-                        VerifiedChip(size: 18)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                        .x5ClearGlass(cornerRadius: 28, highlight: 0.16)
                     }
-                }
-                if !handleText.isEmpty {
-                    Text(handleText)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.66))
-                }
+                    .buttonStyle(.plain)
 
-                Button {
-                    showingEdit = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "pencil")
-                        Text("Edit profile")
-                    }
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .x5ClearGlass(cornerRadius: 28, highlight: 0.16)
-                }
-                .buttonStyle(.plain)
-
-                HStack(spacing: 6) {
-                    Text(planLabel)
-                        .font(.system(size: 10, weight: .heavy))
-                        .tracking(0.8)
-                        .foregroundColor(currentUser.profile?.isPro == true ? .black : .white)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(currentUser.profile?.isPro == true ? Color.accentColor : Color.white.opacity(0.1))
-                        .clipShape(Capsule())
-                    if let n = currentUser.profile?.signupNumber {
-                        Text("#\(n)")
+                    HStack(spacing: 6) {
+                        Text(planLabel)
                             .font(.system(size: 10, weight: .heavy))
                             .tracking(0.8)
-                            .foregroundColor(.white.opacity(0.6))
+                            .foregroundColor(currentUser.profile?.isPro == true ? .black : .white)
                             .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Color.white.opacity(0.06))
+                            .background(currentUser.profile?.isPro == true ? Color.accentColor : Color.white.opacity(0.1))
                             .clipShape(Capsule())
+                        if let n = currentUser.profile?.signupNumber {
+                            Text("#\(n)")
+                                .font(.system(size: 10, weight: .heavy))
+                                .tracking(0.8)
+                                .foregroundColor(.white.opacity(0.6))
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(Color.white.opacity(0.06))
+                                .clipShape(Capsule())
+                        }
                     }
-                }
 
-                heroStatsRow
+                    heroStatsRow
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 28)
+                .frame(maxWidth: profileContentWidth)
+                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 28)
-            .frame(maxWidth: profileContentWidth)
-            .frame(maxWidth: .infinity)
+            .frame(width: proxy.size.width, height: height)
+            .offset(y: -pull)
         }
         .frame(maxWidth: .infinity)
         .frame(height: heroHeight)
-        .overlay(alignment: .topLeading) {
-            PhotosPicker(selection: $avatarPickerItem, matching: .images) {
-                ZStack {
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 21, weight: .bold))
-                    if uploadingAvatar {
-                        ProgressView().tint(.white)
-                    }
-                }
+    }
+
+    private var topChrome: some View {
+        ZStack {
+            Text(loc.t("profile_title"))
+                .font(.system(size: 21, weight: .heavy))
                 .foregroundColor(.white)
-                .frame(width: 58, height: 58)
-                .x5ClearGlassCircle()
+                .shadow(color: Color.black.opacity(0.4), radius: 8, y: 2)
+
+            HStack {
+                if showsDoneButton {
+                    Button(loc.t("btn_done")) { dismiss() }
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                } else {
+                    PhotosPicker(selection: $avatarPickerItem, matching: .images) {
+                        ZStack {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 20, weight: .bold))
+                            if uploadingAvatar {
+                                ProgressView().tint(.white)
+                            }
+                        }
+                        .foregroundColor(.white)
+                        .frame(width: 56, height: 56)
+                        .x5ClearGlassCircle()
+                    }
+                    .disabled(uploadingAvatar)
+                }
+
+                Spacer()
+
+                Button {
+                    showingSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 56, height: 56)
+                        .x5ClearGlassCircle()
+                }
+                .accessibilityLabel("Settings")
             }
-            .disabled(uploadingAvatar)
-            .padding(.leading, 24)
-            .padding(.top, 76)
         }
-        .frame(maxWidth: .infinity)
     }
 
     private func uploadAvatar(_ item: PhotosPickerItem) async {
@@ -236,6 +257,13 @@ struct ProfileView: View {
 
     private var profileContentWidth: CGFloat {
         min(UIScreen.main.bounds.width - 32, 390)
+    }
+
+    private func refreshProfile() async {
+        guard let uid = auth.userId, let token = await auth.freshAccessToken() else { return }
+        await currentUser.load(userId: uid, accessToken: token)
+        subscription.sync(from: currentUser.profile)
+        await iap.loadProducts()
     }
 
     private var displayName: String {
