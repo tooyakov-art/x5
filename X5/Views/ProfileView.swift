@@ -480,7 +480,7 @@ private struct ProfileCoverPhoto: View {
                 Color(red: 0.05, green: 0.12, blue: 0.40)
             ], startPoint: .topLeading, endPoint: .bottomTrailing)
             Text(initials)
-                .font(.system(size: 80, weight: .heavy, design: .rounded))
+                .font(.system(size: 80, weight: .heavy))
                 .foregroundColor(.white.opacity(0.85))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -500,10 +500,10 @@ private struct ProfileStatCell: View {
     var body: some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                .font(.system(size: 22, weight: .heavy))
                 .foregroundColor(.white)
             Text(label)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(.white.opacity(0.6))
         }
         .frame(maxWidth: .infinity)

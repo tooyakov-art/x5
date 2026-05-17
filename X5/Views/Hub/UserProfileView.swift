@@ -105,7 +105,7 @@ struct UserProfileView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(displayName)
-                        .font(.system(size: 30, weight: .heavy, design: .rounded))
+                        .font(.system(size: 30, weight: .heavy))
                         .foregroundColor(.white)
                         .shadow(color: .black.opacity(0.45), radius: 6, y: 2)
                     if (profile?.hasActiveVerifiedBadge ?? (fallback?.isVerified == true)) {
@@ -141,7 +141,7 @@ struct UserProfileView: View {
                     NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
                 } label: {
                     Text("Edit Profile")
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .font(.system(size: 15, weight: .heavy))
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
@@ -157,7 +157,7 @@ struct UserProfileView: View {
                         }
                         Text(openingChat ? loc.t("user_open") : "Follow")
                     }
-                    .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    .font(.system(size: 15, weight: .heavy))
                     .foregroundColor(.black)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
@@ -390,7 +390,7 @@ private struct CoverPhoto: View {
                 Color(red: 0.05, green: 0.12, blue: 0.40)
             ], startPoint: .topLeading, endPoint: .bottomTrailing)
             Text(initials)
-                .font(.system(size: 80, weight: .heavy, design: .rounded))
+                .font(.system(size: 80, weight: .heavy))
                 .foregroundColor(.white.opacity(0.85))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -410,10 +410,10 @@ private struct StatCell: View {
     var body: some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                .font(.system(size: 22, weight: .heavy))
                 .foregroundColor(.white)
             Text(label)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(.white.opacity(0.6))
         }
         .frame(maxWidth: .infinity)
