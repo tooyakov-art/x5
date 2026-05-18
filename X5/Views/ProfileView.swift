@@ -79,7 +79,6 @@ struct ProfileView: View {
                             Image(systemName: uploadingAvatar ? "hourglass" : "camera.fill")
                         }
                         .buttonStyle(.bordered)
-                        .buttonBorderShape(.circle)
                         .controlSize(.large)
                         .disabled(uploadingAvatar)
                     }
@@ -91,7 +90,6 @@ struct ProfileView: View {
                         Image(systemName: "gearshape")
                     }
                     .buttonStyle(.bordered)
-                    .buttonBorderShape(.circle)
                     .controlSize(.large)
                     .accessibilityLabel("Settings")
                 }

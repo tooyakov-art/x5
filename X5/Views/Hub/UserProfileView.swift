@@ -64,7 +64,6 @@ struct UserProfileView: View {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(.bordered)
-                .buttonBorderShape(.circle)
                 .controlSize(.large)
                 .accessibilityLabel("Back")
             }
@@ -87,7 +86,6 @@ struct UserProfileView: View {
                     Image(systemName: "ellipsis")
                 }
                 .buttonStyle(.bordered)
-                .buttonBorderShape(.circle)
                 .controlSize(.large)
             }
         }
