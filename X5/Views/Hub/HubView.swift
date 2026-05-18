@@ -23,8 +23,6 @@ struct HubView: View {
     @State private var chatError: String? = nil
     @State private var selectedCountry: HubCountry = .kazakhstan
 
-    private let hubBackground = X5Style.ink
-
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -88,7 +86,7 @@ struct HubView: View {
                     }
                 }
             }
-            .background { HubBackdrop(base: hubBackground) }
+            .background { X5Background() }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -359,45 +357,6 @@ private struct HubCountry: Identifiable, Hashable {
     ]
 }
 
-private struct HubBackdrop: View {
-    let base: Color
-
-    var body: some View {
-        ZStack {
-            base.ignoresSafeArea()
-
-            RadialGradient(colors: [
-                X5Style.blue.opacity(0.34),
-                Color.clear
-            ], center: .topTrailing, startRadius: 10, endRadius: 260)
-            .ignoresSafeArea()
-            .blur(radius: 18)
-
-            RadialGradient(colors: [
-                X5Style.blueSoft.opacity(0.26),
-                Color.clear
-            ], center: .bottomLeading, startRadius: 20, endRadius: 320)
-            .ignoresSafeArea()
-            .blur(radius: 24)
-
-            Text("X5")
-                .font(.system(size: 230, weight: .black))
-                .italic()
-                .foregroundColor(.white.opacity(0.035))
-                .kerning(-10)
-                .offset(x: -12, y: -120)
-                .allowsHitTesting(false)
-
-            LinearGradient(colors: [
-                Color.black.opacity(0.08),
-                Color.clear,
-                Color.black.opacity(0.20)
-            ], startPoint: .top, endPoint: .bottom)
-            .ignoresSafeArea()
-        }
-    }
-}
-
 // MARK: - Tile категории
 
 private func hubCategorySymbol(for id: String) -> String {
@@ -435,7 +394,14 @@ private struct CategoryTile: View {
         .frame(maxWidth: .infinity)
         .frame(height: 92)
         .padding(.vertical, 8)
-        .x5ClearGlass(cornerRadius: 19, highlight: 0.12)
+        .background(
+            RoundedRectangle(cornerRadius: 19, style: .continuous)
+                .fill(Color.white.opacity(0.075))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 19, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
     }
 }
 
@@ -479,7 +445,14 @@ private struct SpecialistRow: View {
                 .foregroundColor(.white.opacity(0.3))
         }
         .padding(12)
-        .x5ClearGlass(cornerRadius: 16, highlight: 0.10)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.065))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     private var categoryLabel: String {
@@ -529,7 +502,14 @@ private struct TaskRow: View {
             }
         }
         .padding(12)
-        .x5ClearGlass(cornerRadius: 16, highlight: 0.10)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.065))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     private func formatDate(_ iso: String) -> String {

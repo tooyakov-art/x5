@@ -90,9 +90,10 @@ struct CoursesView: View {
                     .refreshable { await service.loadCourses() }
                 }
             }
-            .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+            .background { X5Background() }
             .navigationTitle("CourseUP")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 if isDev {

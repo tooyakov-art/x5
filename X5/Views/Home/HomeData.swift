@@ -189,7 +189,7 @@ enum HomeContent {
               gradientStart: .indigo, gradientEnd: .black,
               tag: "AI", tagColor: Color(red: 0.39, green: 0.40, blue: 0.94)),
 
-        .init(id: "video_gen", title: "Create Video", subtitle: "AI video",
+        .init(id: "video_gen", title: "Kling Video", subtitle: "Text/Image to video",
               icon: "video", videoFile: "zooms.mp4",
               gradientStart: X5Style.blue.opacity(0.42), gradientEnd: .black,
               tag: "PRO", tagColor: Color.white.opacity(0.88)),
@@ -199,7 +199,7 @@ enum HomeContent {
               gradientStart: .purple, gradientEnd: .black,
               tag: "NEW", tagColor: Color(red: 0.51, green: 0.55, blue: 0.97)),
 
-        .init(id: "lipsync", title: "Lipsync Studio", subtitle: "Lip sync",
+        .init(id: "lipsync", title: "Lip Sync", subtitle: "Talking video",
               icon: "mouth", videoFile: "lipsync.mp4",
               gradientStart: X5Style.blue.opacity(0.36), gradientEnd: .black,
               tag: "NEW", tagColor: X5Style.blueSoft),
@@ -227,7 +227,7 @@ enum HomeContent {
               gradientEnd: .black,
               tag: "AI", tagColor: X5Style.blue),
 
-        .init(id: "video_creative", title: "Video Creative", subtitle: "Reels scripts",
+        .init(id: "video_creative", title: "Motion Control", subtitle: "Camera moves",
               icon: "film", videoFile: "behind-scenes.mp4",
               gradientStart: .purple, gradientEnd: .black,
               tag: "AI", tagColor: Color(red: 0.66, green: 0.55, blue: 0.98)),

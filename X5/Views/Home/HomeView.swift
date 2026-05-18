@@ -42,6 +42,7 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
+                    homeTitle
                     if !visibleBanners.isEmpty {
                         bannerCarousel
                     }
@@ -57,9 +58,10 @@ struct HomeView: View {
                 .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity)
             }
-            .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
-            .navigationTitle("X5")
+            .background { X5Background() }
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -96,6 +98,20 @@ struct HomeView: View {
                 GeneratedGalleryView()
             }
         }
+    }
+
+    private var homeTitle: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("X5")
+                .font(.system(size: 18, weight: .black))
+                .foregroundColor(.accentColor)
+            Text("Маркетинг")
+                .font(.system(size: 36, weight: .black))
+                .foregroundColor(.white)
+                .kerning(-0.6)
+        }
+        .padding(.top, -4)
+        .padding(.leading, 2)
     }
 
     private var bannerCarousel: some View {
@@ -310,7 +326,10 @@ private struct HomeToolCard: View {
                 LinearGradient(colors: [tool.gradientStart, tool.gradientEnd],
                                startPoint: .topLeading, endPoint: .bottomTrailing)
 
-                // Build 66: LoopingVideo disabled — AVPlayer crash on iOS 26 stable.
+                if let url = tool.videoURL {
+                    LoopingVideo(url: url, fallback: tool.gradientStart.opacity(0.28))
+                        .overlay(Color.black.opacity(0.18))
+                }
 
                 LinearGradient(colors: [Color.black.opacity(0), Color.black.opacity(0.7)],
                                startPoint: .center, endPoint: .bottom)
