@@ -84,6 +84,8 @@ struct MainView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("X5")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .tabBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

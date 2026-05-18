@@ -236,6 +236,8 @@ extension LocalizationService {
             "hub_no_tasks_sub": "Когда предприниматели добавят задачи — они появятся здесь.",
             "hub_send_message": "Написать сообщение",
             "hub_all": "Все",
+            "hub_country_orders": "Заказы сейчас показываются для этой страны",
+            "hub_country_soon": "Другие страны позже",
 
             // Chats
             "chats_title": "Чаты",
@@ -334,6 +336,7 @@ extension LocalizationService {
             "home_live_now": "Доступно сейчас",
             "home_generate": "Генерация",
             "gen_provider": "Провайдер",
+            "gen_model": "Модель",
             "gen_prompt": "Промпт",
             "gen_credits": "кредитов",
             "gen_balance": "Баланс",
@@ -638,6 +641,8 @@ extension LocalizationService {
             "hub_no_tasks_sub": "When entrepreneurs post tasks, they'll appear here.",
             "hub_send_message": "Send message",
             "hub_all": "All",
+            "hub_country_orders": "Orders are shown for this country now",
+            "hub_country_soon": "Other countries later",
 
             "chats_title": "Chats",
             "chats_archive": "Archive",
@@ -734,6 +739,7 @@ extension LocalizationService {
             "home_live_now": "Live now",
             "home_generate": "Generate",
             "gen_provider": "Provider",
+            "gen_model": "Model",
             "gen_prompt": "Prompt",
             "gen_credits": "credits",
             "gen_balance": "Balance",
@@ -1036,6 +1042,8 @@ extension LocalizationService {
             "hub_no_tasks_sub": "Кәсіпкерлер тапсырма жариялағанда — осында пайда болады.",
             "hub_send_message": "Хабарлама жазу",
             "hub_all": "Барлығы",
+            "hub_country_orders": "Тапсырыстар қазір осы ел үшін көрсетіледі",
+            "hub_country_soon": "Басқа елдер кейінірек",
 
             "chats_title": "Чаттар",
             "chats_archive": "Мұрағат",
@@ -1132,6 +1140,7 @@ extension LocalizationService {
             "home_live_now": "Қазір қолжетімді",
             "home_generate": "Генерация",
             "gen_provider": "Провайдер",
+            "gen_model": "Модель",
             "gen_prompt": "Промпт",
             "gen_credits": "кредит",
             "gen_balance": "Баланс",

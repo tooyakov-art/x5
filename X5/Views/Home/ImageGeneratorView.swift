@@ -19,7 +19,7 @@ struct ImageGeneratorView: View {
     @StateObject private var gallery = GeneratedGalleryStore()
     @FocusState private var promptFocused: Bool
 
-    init(category: ImageGenerationCategory = ImageGenerationCatalog.custom, provider: ImageGenerationProvider = .gpt) {
+    init(category: ImageGenerationCategory = ImageGenerationCatalog.custom, provider: ImageGenerationProvider = .gptImageMini) {
         self.category = category
         _prompt = State(initialValue: category.examplePrompt)
         _selectedProvider = State(initialValue: provider)
@@ -50,6 +50,7 @@ struct ImageGeneratorView: View {
         .background(generatorBackdrop)
         .navigationTitle(categoryTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -114,14 +115,37 @@ struct ImageGeneratorView: View {
 
     private var providerPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionLabel(loc.t("gen_provider"))
+            sectionLabel(loc.t("gen_model"))
 
-            Picker(loc.t("gen_provider"), selection: $selectedProvider) {
-                ForEach(ImageGenerationProvider.allCases) { provider in
-                    Text(provider.title).tag(provider)
+            Menu {
+                ForEach(ImageGenerationProvider.allCases) { model in
+                    Button {
+                        selectedProvider = model
+                    } label: {
+                        Label(model.title, systemImage: model == selectedProvider ? "checkmark" : "cpu")
+                    }
                 }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "cpu")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(selectedProvider.title)
+                            .font(.system(size: 15, weight: .heavy))
+                        Text(selectedProvider.subtitle)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.58))
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.52))
+                }
+                .foregroundColor(.white)
+                .padding(12)
+                .background(Color.white.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
-            .pickerStyle(.segmented)
             .disabled(isGenerating)
 
             HStack {
@@ -330,7 +354,7 @@ struct ImageGeneratorView: View {
             let asset = GeneratedImageAsset(
                 image: image,
                 prompt: response.prompt,
-                provider: response.provider ?? selectedProvider.rawValue,
+                provider: response.model ?? selectedProvider.rawValue,
                 category: response.category ?? category.id,
                 costCredits: response.costCredits ?? ImageGenerationCatalog.creditCost,
                 creditsRemaining: response.creditsRemaining

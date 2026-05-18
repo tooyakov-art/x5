@@ -19,7 +19,7 @@ struct HomeView: View {
     @State private var openTool: HomeTool?
     @State private var openCaptions: Bool = false
     @State private var openImageCategory: ImageGenerationCategory?
-    @State private var selectedGenerationProvider: ImageGenerationProvider = .gpt
+    @State private var selectedGenerationProvider: ImageGenerationProvider = .gptImageMini
     @State private var showingNotifications: Bool = false
     @State private var showingGeneratedGallery: Bool = false
 
@@ -59,6 +59,7 @@ struct HomeView: View {
             }
             .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
             .navigationTitle("X5")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -192,14 +193,37 @@ struct HomeView: View {
 
     private var generationProviderPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionHeader(loc.t("gen_provider"))
+            sectionHeader(loc.t("gen_model"))
 
-            Picker(loc.t("gen_provider"), selection: $selectedGenerationProvider) {
-                ForEach(ImageGenerationProvider.allCases) { provider in
-                    Text(provider.title).tag(provider)
+            Menu {
+                ForEach(ImageGenerationProvider.allCases) { model in
+                    Button {
+                        selectedGenerationProvider = model
+                    } label: {
+                        Label(model.title, systemImage: model == selectedGenerationProvider ? "checkmark" : "cpu")
+                    }
                 }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "cpu")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(selectedGenerationProvider.title)
+                            .font(.system(size: 14, weight: .heavy))
+                        Text(selectedGenerationProvider.subtitle)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.56))
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.52))
+                }
+                .foregroundColor(.white)
+                .padding(12)
+                .background(Color.white.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
-            .pickerStyle(.segmented)
         }
         .padding(12)
         .x5ClearGlass(cornerRadius: 16, highlight: 0.10)

@@ -37,15 +37,37 @@ struct HomeTool: Identifiable, Hashable {
 }
 
 enum ImageGenerationProvider: String, CaseIterable, Identifiable, Hashable {
-    case gpt
-    case google
+    case gptImageMini = "gpt-image-1-mini"
+    case gptImage = "gpt-image-1"
+    case geminiFlash = "gemini-3.1-flash-image-preview"
+    case geminiFlashLite = "gemini-2.5-flash-image-preview"
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .gpt: return "GPT"
-        case .google: return "Google"
+        case .gptImageMini: return "GPT Image Mini"
+        case .gptImage: return "GPT Image"
+        case .geminiFlash: return "Gemini Flash Image"
+        case .geminiFlashLite: return "Gemini Flash Lite"
+        }
+    }
+
+    var provider: String {
+        switch self {
+        case .gptImageMini, .gptImage:
+            return "gpt"
+        case .geminiFlash, .geminiFlashLite:
+            return "google"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .gptImageMini: return "fast OpenAI image model"
+        case .gptImage: return "higher quality OpenAI image model"
+        case .geminiFlash: return "Google multimodal image model"
+        case .geminiFlashLite: return "faster Gemini image preview"
         }
     }
 }

@@ -92,6 +92,7 @@ struct ToolDetailView: View {
             .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .tabBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

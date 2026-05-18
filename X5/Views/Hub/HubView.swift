@@ -21,6 +21,7 @@ struct HubView: View {
     @State private var openingChatWith: String? = nil
     @State private var startingChat: ChatRoom? = nil
     @State private var chatError: String? = nil
+    @State private var selectedCountry: HubCountry = .kazakhstan
 
     private let hubBackground = X5Style.ink
 
@@ -38,6 +39,10 @@ struct HubView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 4)
+
+                if segment == .tasks {
+                    countrySelector
+                }
 
                 // Когда категория выбрана — показываем кнопку «назад к категориям»
                 if category != nil {
@@ -153,8 +158,38 @@ struct HubView: View {
             Spacer()
         }
         .padding(.horizontal, 24)
-        .padding(.top, 0)
+        .padding(.top, -8)
         .padding(.bottom, 4)
+    }
+
+    private var countrySelector: some View {
+        HStack(spacing: 8) {
+            Menu {
+                Button {
+                    selectedCountry = .kazakhstan
+                } label: {
+                    Label(HubCountry.kazakhstan.title, systemImage: "checkmark")
+                }
+                Section(loc.t("hub_country_soon")) {
+                    ForEach(HubCountry.comingSoon) { country in
+                        Button(country.title) {}
+                            .disabled(true)
+                    }
+                }
+            } label: {
+                Label(selectedCountry.title, systemImage: "location.fill")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .buttonStyle(.bordered)
+            .tint(.white.opacity(0.18))
+
+            Text(loc.t("hub_country_orders"))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white.opacity(0.52))
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 2)
     }
 
     private func startChat(with person: HubSpecialist) {
@@ -182,6 +217,7 @@ struct HubView: View {
     // MARK: - Сетка категорий (главный экран Hub)
 
     private var categoriesGrid: some View {
+        let counts = categoryCounts
         ScrollView {
             LazyVGrid(
                 columns: Array(repeating: GridItem(.flexible(minimum: 62, maximum: 92), spacing: 8), count: 4),
@@ -191,7 +227,7 @@ struct HubView: View {
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) { category = cat.id }
                     } label: {
-                        CategoryTile(cat: cat, count: countForCategory(cat.id))
+                        CategoryTile(cat: cat, count: counts[cat.id] ?? 0)
                     }
                     .buttonStyle(.plain)
                 }
@@ -206,10 +242,17 @@ struct HubView: View {
     }
 
     private func countForCategory(_ id: String) -> Int {
-        service.specialists
-            .filter { !BlockList.contains($0.id) }
-            .filter { ($0.specialistCategory ?? []).contains(id) }
-            .count
+        categoryCounts[id] ?? 0
+    }
+
+    private var categoryCounts: [String: Int] {
+        var counts: [String: Int] = [:]
+        for person in service.specialists where !BlockList.contains(person.id) {
+            for id in person.specialistCategory ?? [] {
+                counts[id, default: 0] += 1
+            }
+        }
+        return counts
     }
 
     private var specialistsList: some View {
@@ -302,6 +345,20 @@ struct HubView: View {
 }
 
 // MARK: - Background
+
+private struct HubCountry: Identifiable, Hashable {
+    let id: String
+    let title: String
+
+    static let kazakhstan = HubCountry(id: "kz", title: "Kazakhstan")
+    static let comingSoon: [HubCountry] = [
+        HubCountry(id: "uz", title: "Uzbekistan"),
+        HubCountry(id: "kg", title: "Kyrgyzstan"),
+        HubCountry(id: "ae", title: "UAE"),
+        HubCountry(id: "tr", title: "Turkey"),
+        HubCountry(id: "us", title: "USA")
+    ]
+}
 
 private struct HubBackdrop: View {
     let base: Color

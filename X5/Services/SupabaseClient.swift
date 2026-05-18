@@ -151,7 +151,8 @@ final class SupabaseClient {
     ) async throws -> GeneratedImage {
         let body = try JSONSerialization.data(withJSONObject: [
             "prompt": prompt,
-            "provider": provider.rawValue,
+            "provider": provider.provider,
+            "model": provider.rawValue,
             "category": category.id
         ])
         let data = try await runAuthed { token in
@@ -204,6 +205,7 @@ struct GeneratedImage: Decodable {
     let imageBase64: String
     let prompt: String
     let provider: String?
+    let model: String?
     let category: String?
     let costCredits: Int?
     let creditsRemaining: Int?

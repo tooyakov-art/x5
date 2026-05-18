@@ -1,5 +1,12 @@
 export const IMAGE_CREDIT_COST = 10;
 
+export const generationModels = [
+  { id: "gpt-image-1-mini", provider: "gpt", title: "GPT Image Mini" },
+  { id: "gpt-image-1", provider: "gpt", title: "GPT Image" },
+  { id: "gemini-3.1-flash-image-preview", provider: "google", title: "Gemini Flash Image" },
+  { id: "gemini-2.5-flash-image-preview", provider: "google", title: "Gemini Flash Lite" },
+];
+
 export const generationProviders = [
   { id: "gpt", title: "GPT" },
   { id: "google", title: "Google" },
@@ -61,9 +68,8 @@ export function normalizeGenerationRequest(body) {
     prompt = prompt.slice(0, 900);
   }
 
-  const provider = generationProviders.some((item) => item.id === body?.provider)
-    ? body.provider
-    : "gpt";
+  const model = generationModels.find((item) => item.id === body?.model) || generationModels[0];
+  const provider = model.provider;
   const category =
     generationCategories.find((item) => item.id === body?.category) ||
     generationCategories[0];
@@ -71,6 +77,7 @@ export function normalizeGenerationRequest(body) {
   return {
     prompt,
     provider,
+    model: model.id,
     category,
     costCredits: IMAGE_CREDIT_COST,
   };

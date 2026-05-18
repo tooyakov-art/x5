@@ -29,6 +29,7 @@ struct ChatThreadView: View {
     @FocusState private var inputFocused: Bool
     @State private var searchActive: Bool = false
     @State private var searchQuery: String = ""
+    @State private var showingStickers: Bool = false
     /// Bumped when ChatsLocalState mutations happen via the header menu so the
     /// view rereads `isMuted/isPinned` for icon toggles without observing.
     @State private var chatStateTick: Int = 0
@@ -153,12 +154,21 @@ struct ChatThreadView: View {
                     .background(Color.red.opacity(0.15))
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 } else {
-                    TextField(loc.t("chats_message_placeholder"), text: $draft, axis: .vertical)
-                        .focused($inputFocused)
-                        .padding(.horizontal, 12).padding(.vertical, 10)
-                        .background(Color.white.opacity(0.06))
-                        .cornerRadius(20)
-                        .lineLimit(1...4)
+                    HStack(spacing: 8) {
+                        TextField(loc.t("chats_message_placeholder"), text: $draft, axis: .vertical)
+                            .focused($inputFocused)
+                            .lineLimit(1...4)
+                        Button {
+                            showingStickers = true
+                        } label: {
+                            Image(systemName: "face.smiling")
+                                .font(.system(size: 21, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.55))
+                        }
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(Capsule())
                 }
 
                 if canSend {
@@ -188,10 +198,11 @@ struct ChatThreadView: View {
                 }
             }
             .padding(12)
-            .background(Color(red: 0.04, green: 0.05, blue: 0.10))
+            .background(Color.black.opacity(0.72).ignoresSafeArea(edges: .bottom))
         }
         .background(ChatBackground())
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -309,6 +320,14 @@ struct ChatThreadView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(attachmentError ?? "")
+        }
+        .sheet(isPresented: $showingStickers) {
+            StickerTray { sticker in
+                showingStickers = false
+                sendSticker(sticker)
+            }
+            .presentationDetents([.medium])
+            .preferredColorScheme(.dark)
         }
         .task {
             roomUnread = chat.unread ?? [:]
@@ -589,9 +608,32 @@ struct ChatThreadView: View {
             sending = false
         }
     }
+
+    private func sendSticker(_ sticker: String) {
+        guard let uid = auth.userId else { return }
+        sending = true
+        Task {
+            guard let token = await auth.freshAccessToken() else {
+                sending = false
+                return
+            }
+            if let inserted = await service.sendText(
+                chatId: chat.id,
+                currentUserId: uid,
+                text: "\(stickerLinePrefix)\(sticker)",
+                accessToken: token,
+                previewText: sticker
+            ) {
+                messages.append(inserted)
+                incrementPeerUnread()
+            }
+            sending = false
+        }
+    }
 }
 
 private let replyLinePrefix = "↪ "
+private let stickerLinePrefix = "x5_sticker:"
 
 private func splitReplyText(_ content: String?) -> (reply: String?, body: String) {
     guard let content, !content.isEmpty else { return (nil, "") }
@@ -609,6 +651,46 @@ private func splitReplyText(_ content: String?) -> (reply: String?, body: String
         .trimmingCharacters(in: .whitespacesAndNewlines)
     guard !reply.isEmpty, !body.isEmpty else { return (nil, content) }
     return (reply, body)
+}
+
+private struct StickerTray: View {
+    let onPick: (String) -> Void
+
+    private let stickers = [
+        "🌙", "✨", "🔥", "💎",
+        "😂", "😍", "😭", "😎",
+        "👍", "🙏", "❤️", "🚀",
+        "🎯", "💸", "✅", "👀"
+    ]
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVGrid(columns: columns, spacing: 10) {
+                    ForEach(stickers, id: \.self) { sticker in
+                        Button {
+                            onPick(sticker)
+                        } label: {
+                            Text(sticker)
+                                .font(.system(size: 46))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 76)
+                                .background(Color.white.opacity(0.07))
+                                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(16)
+            }
+            .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+            .navigationTitle("Стикеры")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+    }
 }
 
 private struct DateDivider: View {
@@ -701,9 +783,13 @@ private struct Bubble: View {
                 messageStatus
             }
         }
-        .padding(message.type == "image" ? 4 : 10)
-        .background(isMine ? Color.accentColor.opacity(0.22) : Color.white.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(message.type == "image" ? 4 : (stickerText == nil ? 10 : 2))
+        .background(stickerText == nil ? bubbleColor : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var bubbleColor: Color {
+        isMine ? Color(red: 0.08, green: 0.16, blue: 0.43) : Color(red: 0.14, green: 0.14, blue: 0.15)
     }
 
     @ViewBuilder
@@ -714,10 +800,23 @@ private struct Bubble: View {
         case "audio":
             AudioBubble(url: message.mediaUrl)
         default:
-            Text(splitReplyText(message.content).body)
-                .font(.system(size: 14))
-                .foregroundColor(.white)
+            if let sticker = stickerText {
+                Text(sticker)
+                    .font(.system(size: 76))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+            } else {
+                Text(splitReplyText(message.content).body)
+                    .font(.system(size: 15))
+                    .foregroundColor(.white)
+            }
         }
+    }
+
+    private var stickerText: String? {
+        let body = splitReplyText(message.content).body
+        guard body.hasPrefix(stickerLinePrefix) else { return nil }
+        return String(body.dropFirst(stickerLinePrefix.count))
     }
 
     private var messageStatus: some View {

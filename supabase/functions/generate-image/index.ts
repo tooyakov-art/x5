@@ -71,13 +71,14 @@ Deno.serve(async (req) => {
     const finalPrompt = buildFinalPrompt(normalized.prompt, normalized.category);
     const imageBase64 =
       normalized.provider === "google"
-        ? await generateWithGoogle(providerKey, finalPrompt)
-        : await generateWithGPT(providerKey, finalPrompt);
+        ? await generateWithGoogle(providerKey, finalPrompt, normalized.model)
+        : await generateWithGPT(providerKey, finalPrompt, normalized.model);
 
     return json({
       imageBase64,
       prompt: normalized.prompt,
       provider: normalized.provider,
+      model: normalized.model,
       category: normalized.category.id,
       costCredits: normalized.costCredits,
       creditsRemaining: spent.credits,
@@ -99,7 +100,7 @@ function getProviderKey(provider: string): string | undefined {
   return Deno.env.get("OPENAI_API_KEY") || undefined;
 }
 
-async function generateWithGPT(apiKey: string, finalPrompt: string): Promise<string> {
+async function generateWithGPT(apiKey: string, finalPrompt: string, model: string): Promise<string> {
   const response = await fetch(OPENAI_URL, {
     method: "POST",
     headers: {
@@ -107,7 +108,7 @@ async function generateWithGPT(apiKey: string, finalPrompt: string): Promise<str
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-1-mini",
+      model: model || Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-1-mini",
       prompt: finalPrompt,
       size: "1024x1024",
       quality: "low",
@@ -127,8 +128,8 @@ async function generateWithGPT(apiKey: string, finalPrompt: string): Promise<str
   return imageBase64;
 }
 
-async function generateWithGoogle(apiKey: string, finalPrompt: string): Promise<string> {
-  const model = Deno.env.get("GOOGLE_IMAGE_MODEL") || GOOGLE_MODEL;
+async function generateWithGoogle(apiKey: string, finalPrompt: string, requestedModel: string): Promise<string> {
+  const model = requestedModel || Deno.env.get("GOOGLE_IMAGE_MODEL") || GOOGLE_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const response = await fetch(url, {
     method: "POST",

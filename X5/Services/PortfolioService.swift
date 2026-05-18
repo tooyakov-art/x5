@@ -27,6 +27,25 @@ struct PortfolioLikeState: Equatable {
     let count: Int
 }
 
+struct PortfolioComment: Codable, Identifiable, Equatable {
+    let id: String
+    let itemId: String
+    let userId: String
+    let userName: String?
+    let userAvatar: String?
+    let text: String
+    let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, text
+        case itemId = "item_id"
+        case userId = "user_id"
+        case userName = "user_name"
+        case userAvatar = "user_avatar"
+        case createdAt = "created_at"
+    }
+}
+
 @MainActor
 final class PortfolioService: ObservableObject {
     @Published private(set) var items: [PortfolioItem] = []
@@ -55,17 +74,24 @@ final class PortfolioService: ObservableObject {
 
     /// Uploads JPEG to Storage, then inserts a portfolio_items row pointing at the public URL.
     func addImage(jpegData: Data, userId: String, title: String?, description: String?, accessToken: String) async -> Bool {
-        let path = "\(userId)/\(Int(Date().timeIntervalSince1970)).jpg"
+        await addMedia(data: jpegData, type: "image", mime: "image/jpeg", ext: "jpg", userId: userId, title: title, description: description, accessToken: accessToken)
+    }
+
+    /// Uploads image/video to Storage, then inserts a portfolio_items row pointing at the public URL.
+    func addMedia(data: Data, type: String, mime: String, ext: String, userId: String, title: String?, description: String?, accessToken: String) async -> Bool {
+        let cleanType = type == "video" ? "video" : "image"
+        let safeExt = ext.isEmpty ? (cleanType == "video" ? "mov" : "jpg") : ext
+        let path = "\(userId)/\(Int(Date().timeIntervalSince1970)).\(safeExt)"
         let uploadURL = baseURL.appendingPathComponent("storage/v1/object/portfolio/\(path)")
 
         var upload = URLRequest(url: uploadURL)
         upload.httpMethod = "POST"
         upload.setValue(anonKey, forHTTPHeaderField: "apikey")
         upload.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        upload.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        upload.setValue(mime, forHTTPHeaderField: "Content-Type")
         upload.setValue("3600", forHTTPHeaderField: "Cache-Control")
         upload.setValue("true", forHTTPHeaderField: "x-upsert")
-        upload.httpBody = jpegData
+        upload.httpBody = data
 
         guard let (_, response) = try? await URLSession.shared.data(for: upload),
               let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode)
@@ -85,11 +111,11 @@ final class PortfolioService: ObservableObject {
 
         let body: [String: AnyEncodable] = [
             "user_id": AnyEncodable(userId),
-            "type": AnyEncodable("image"),
+            "type": AnyEncodable(cleanType),
             "title": AnyEncodable(title ?? ""),
             "description": AnyEncodable(description ?? ""),
             "media_url": AnyEncodable(publicURL),
-            "thumbnail_url": AnyEncodable(publicURL)
+            "thumbnail_url": AnyEncodable(cleanType == "image" ? publicURL : "")
         ]
         insert.httpBody = try? JSONEncoder().encode(body)
 
@@ -102,6 +128,47 @@ final class PortfolioService: ObservableObject {
         }
         items.insert(inserted, at: 0)
         return true
+    }
+
+    func loadComments(itemId: String, accessToken: String) async -> [PortfolioComment] {
+        guard var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/portfolio_item_comments"), resolvingAgainstBaseURL: false) else { return [] }
+        components.queryItems = [
+            URLQueryItem(name: "item_id", value: "eq.\(itemId)"),
+            URLQueryItem(name: "select", value: "*"),
+            URLQueryItem(name: "order", value: "created_at.asc")
+        ]
+        guard let reqURL = components.url else { return [] }
+        var request = URLRequest(url: reqURL)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode)
+        else { return [] }
+        return (try? JSONDecoder().decode([PortfolioComment].self, from: data)) ?? []
+    }
+
+    func addComment(itemId: String, userId: String, userName: String?, userAvatar: String?, text: String, accessToken: String) async -> PortfolioComment? {
+        var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/portfolio_item_comments"))
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("return=representation", forHTTPHeaderField: "Prefer")
+        let body: [String: AnyEncodable] = [
+            "item_id": AnyEncodable(itemId),
+            "user_id": AnyEncodable(userId),
+            "user_name": AnyEncodable(userName ?? ""),
+            "user_avatar": AnyEncodable(userAvatar ?? ""),
+            "text": AnyEncodable(text)
+        ]
+        request.httpBody = try? JSONEncoder().encode(body)
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let rows = try? JSONDecoder().decode([PortfolioComment].self, from: data)
+        else { return nil }
+        return rows.first
     }
 
     func delete(itemId: String, accessToken: String) async {
