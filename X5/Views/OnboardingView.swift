@@ -269,11 +269,14 @@ struct OnboardingView: View {
     }
 
     private func submit() {
-        guard let role, let token = auth.accessToken else { return }
+        guard let role else { return }
         saving = true
         errorMessage = nil
         Task {
             do {
+                guard let token = await auth.freshAccessToken() else {
+                    throw NSError(domain: "Onboarding", code: 401, userInfo: [NSLocalizedDescriptionKey: "Сессия устарела. Выйди и войди снова."])
+                }
                 try await patchProfile(role: role, token: token)
                 if let uid = auth.userId {
                     await currentUser.load(userId: uid, accessToken: token)
@@ -313,9 +316,18 @@ struct OnboardingView: View {
             body["bio"] = bio
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw NSError(domain: "Onboarding", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: loc.t("onb_save_failed")])
+            let body = String(data: data, encoding: .utf8) ?? ""
+            DiagnosticLogger.log(event: "onboarding_save_failed", extra: [
+                "status": "\(http.statusCode)",
+                "body": body
+            ])
+            throw NSError(
+                domain: "Onboarding",
+                code: http.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: "\(loc.t("onb_save_failed")) (\(http.statusCode))"]
+            )
         }
     }
 }
