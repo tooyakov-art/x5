@@ -407,7 +407,7 @@ struct ChatThreadView: View {
                     .frame(width: 46, height: 46)
             }
             .buttonStyle(.bordered)
-            .buttonBorderShape(.circle)
+            .clipShape(Circle())
             .tint(.white.opacity(0.10))
 
             Button { showingProfile = true } label: {
@@ -504,7 +504,7 @@ struct ChatThreadView: View {
                 .frame(width: 46, height: 46)
         }
         .buttonStyle(.bordered)
-        .buttonBorderShape(.circle)
+        .clipShape(Circle())
         .tint(.white.opacity(0.10))
     }
 
