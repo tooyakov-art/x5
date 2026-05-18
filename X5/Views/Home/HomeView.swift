@@ -19,6 +19,7 @@ struct HomeView: View {
     @State private var openTool: HomeTool?
     @State private var openCaptions: Bool = false
     @State private var openImageCategory: ImageGenerationCategory?
+    @State private var selectedGenerationProvider: ImageGenerationProvider = .gpt
     @State private var showingNotifications: Bool = false
     @State private var showingGeneratedGallery: Bool = false
 
@@ -47,6 +48,7 @@ struct HomeView: View {
                     sectionHeader(isDeveloper ? loc.t("home_ai_tools") : loc.t("home_live_now"))
                     toolGrid
                     generationHeader
+                    generationProviderPicker
                     generationCategoryStrip
                 }
                 .padding(.horizontal, 16)
@@ -82,7 +84,7 @@ struct HomeView: View {
             }
             .navigationDestination(isPresented: imageCategoryNavigationBinding) {
                 if let category = openImageCategory {
-                    ImageGeneratorView(category: category)
+                    ImageGeneratorView(category: category, provider: selectedGenerationProvider)
                         .preferredColorScheme(.dark)
                 }
             }
@@ -161,7 +163,8 @@ struct HomeView: View {
                         GenerationCategoryCard(
                             category: category,
                             title: categoryTitle(category),
-                            subtitle: categorySubtitle(category)
+                            subtitle: categorySubtitle(category),
+                            provider: selectedGenerationProvider
                         )
                     }
                     .buttonStyle(.plain)
@@ -185,6 +188,21 @@ struct HomeView: View {
             .tint(.white.opacity(0.18))
         }
         .padding(.trailing, 2)
+    }
+
+    private var generationProviderPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader(loc.t("gen_provider"))
+
+            Picker(loc.t("gen_provider"), selection: $selectedGenerationProvider) {
+                ForEach(ImageGenerationProvider.allCases) { provider in
+                    Text(provider.title).tag(provider)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+        .padding(12)
+        .x5ClearGlass(cornerRadius: 16, highlight: 0.10)
     }
 
     private func sectionHeader(_ title: String) -> some View {
@@ -314,6 +332,7 @@ private struct GenerationCategoryCard: View {
     let category: ImageGenerationCategory
     let title: String
     let subtitle: String
+    let provider: ImageGenerationProvider
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -335,10 +354,14 @@ private struct GenerationCategoryCard: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.white.opacity(0.58))
                     .lineLimit(1)
+                Text("\(provider.title) / \(ImageGenerationCatalog.creditCost)")
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundColor(.white.opacity(0.42))
+                    .lineLimit(1)
             }
         }
         .padding(13)
-        .frame(width: 138, height: 132)
+        .frame(width: 142, height: 146)
         .background(
             RadialGradient(
                 colors: [category.gradientStart.opacity(0.24), Color.clear],

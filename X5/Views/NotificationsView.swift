@@ -61,18 +61,19 @@ struct NotificationsView: View {
     }
 
     private func reload() async {
-        guard let uid = auth.userId, let token = auth.accessToken else { return }
+        guard let uid = auth.userId, let token = await auth.freshAccessToken() else { return }
         await service.load(userId: uid, accessToken: token)
     }
 
     private func markRead(_ item: AppNotification) async {
-        guard let token = auth.accessToken else { return }
+        guard let token = await auth.freshAccessToken() else { return }
         await service.markRead(item, accessToken: token)
     }
 }
 
 private struct NotificationRow: View {
     let item: AppNotification
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -80,12 +81,12 @@ private struct NotificationRow: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(.white)
                 .frame(width: 36, height: 36)
-                .background(item.isRead ? Color.white.opacity(0.08) : X5Style.blue.opacity(0.95))
+                .background(item.isRead ? Color.white.opacity(0.08) : accent)
                 .clipShape(Circle())
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(item.title)
+                    Text(displayTitle)
                         .font(.system(size: 15, weight: .bold))
                         .foregroundColor(.white)
                     Spacer()
@@ -108,10 +109,35 @@ private struct NotificationRow: View {
 
     private var icon: String {
         switch item.type {
-        case "portfolio_like": return "heart.fill"
+        case "portfolio_like", "like": return "heart.fill"
+        case "follow", "new_follower", "follower": return "person.badge.plus"
         case "followed_user_posted": return "person.crop.circle.badge.plus"
-        case "message": return "message.fill"
+        case "message", "chat_message", "new_message": return "message.fill"
         default: return "bell.fill"
+        }
+    }
+
+    private var accent: Color {
+        switch item.type {
+        case "portfolio_like", "like": return .pink.opacity(0.95)
+        case "follow", "new_follower", "follower", "followed_user_posted": return .cyan.opacity(0.85)
+        case "message", "chat_message", "new_message": return X5Style.blue.opacity(0.95)
+        default: return X5Style.blue.opacity(0.75)
+        }
+    }
+
+    private var displayTitle: String {
+        switch item.type {
+        case "message", "chat_message", "new_message":
+            return item.title == "New message" ? loc.t("notif_message_title") : item.title
+        case "portfolio_like", "like":
+            return item.title.isEmpty ? loc.t("notif_like_title") : item.title
+        case "follow", "new_follower", "follower":
+            return item.title.isEmpty ? loc.t("notif_follow_title") : item.title
+        case "followed_user_posted":
+            return item.title.isEmpty ? loc.t("notif_followed_post_title") : item.title
+        default:
+            return item.title
         }
     }
 

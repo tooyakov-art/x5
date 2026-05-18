@@ -10,7 +10,7 @@ struct ImageGeneratorView: View {
     let category: ImageGenerationCategory
 
     @State private var prompt: String
-    @State private var selectedProvider: ImageGenerationProvider = .gpt
+    @State private var selectedProvider: ImageGenerationProvider
     @State private var isGenerating = false
     @State private var errorMessage: String?
     @State private var generatedAsset: GeneratedImageAsset?
@@ -19,9 +19,10 @@ struct ImageGeneratorView: View {
     @StateObject private var gallery = GeneratedGalleryStore()
     @FocusState private var promptFocused: Bool
 
-    init(category: ImageGenerationCategory = ImageGenerationCatalog.custom) {
+    init(category: ImageGenerationCategory = ImageGenerationCatalog.custom, provider: ImageGenerationProvider = .gpt) {
         self.category = category
         _prompt = State(initialValue: category.examplePrompt)
+        _selectedProvider = State(initialValue: provider)
     }
 
     var body: some View {
@@ -295,6 +296,16 @@ struct ImageGeneratorView: View {
     private func generate() async {
         let cleanPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanPrompt.isEmpty else { return }
+        guard !isGenerating else { return }
+
+        promptFocused = false
+        isGenerating = true
+        errorMessage = nil
+        generatedAsset = nil
+        defer { isGenerating = false }
+
+        await refreshProfileIfPossible()
+
         guard currentCredits != nil else {
             errorMessage = loc.t("gen_loading_balance")
             return
@@ -303,12 +314,6 @@ struct ImageGeneratorView: View {
             errorMessage = loc.t("gen_not_enough_credits")
             return
         }
-
-        promptFocused = false
-        isGenerating = true
-        errorMessage = nil
-        generatedAsset = nil
-        defer { isGenerating = false }
 
         do {
             let response = try await auth.supabase.generateImage(
@@ -391,6 +396,7 @@ private struct GenerationAnimationView: View {
 
     @State private var rotating = false
     @State private var pulsing = false
+    @State private var scanning = false
 
     var body: some View {
         HStack(spacing: 16) {
@@ -420,6 +426,8 @@ private struct GenerationAnimationView: View {
                 Text("\(loc.t("gen_building")) \(localizedCategoryTitle.lowercased())")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white.opacity(0.58))
+                generationPulseBars
+                    .padding(.top, 4)
             }
             Spacer()
         }
@@ -428,8 +436,31 @@ private struct GenerationAnimationView: View {
         .onAppear {
             rotating = true
             pulsing = true
+            scanning = true
         }
         .animation(.linear(duration: 1.25).repeatForever(autoreverses: false), value: rotating)
+    }
+
+    private var generationPulseBars: some View {
+        HStack(alignment: .bottom, spacing: 4) {
+            ForEach(0..<7, id: \.self) { index in
+                Capsule()
+                    .fill(
+                        LinearGradient(colors: [Color.white.opacity(0.92), X5Style.blue.opacity(0.85)],
+                                       startPoint: .top,
+                                       endPoint: .bottom)
+                    )
+                    .frame(width: 8, height: scanning ? CGFloat(8 + (index % 4) * 5) : 6)
+                    .opacity(scanning ? 0.95 : 0.35)
+                    .animation(
+                        .easeInOut(duration: 0.55)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(index) * 0.07),
+                        value: scanning
+                    )
+            }
+        }
+        .frame(height: 28, alignment: .bottom)
     }
 
     private var localizedCategoryTitle: String {
@@ -503,7 +534,7 @@ private struct GeneratedImageViewer: View {
                     Button { saveToPhotos() } label: {
                         Image(systemName: "arrow.down.circle")
                     }
-                    .accessibilityLabel(loc.t("gen_action_download"))
+                    .accessibilityLabel(loc.t("common_save"))
                     Button { saveToGallery() } label: {
                         Image(systemName: "photo.stack")
                     }

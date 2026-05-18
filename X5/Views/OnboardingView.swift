@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Mandatory after first sign in: pick a role, optionally categories.
-/// Writes user_role + specialist_category[] + show_in_hub to profiles.
+/// Mandatory after first sign in: collect identity, role, and optional specialist data.
+/// Writes name + nickname + user_role + specialist_category[] + show_in_hub to profiles.
 struct OnboardingView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
@@ -15,42 +15,46 @@ struct OnboardingView: View {
     @State private var saving = false
     @State private var errorMessage: String?
 
-    enum Role: String { case specialist, entrepreneur }
+    enum Role: String, CaseIterable, Identifiable {
+        case specialist
+        case entrepreneur
+
+        var id: String { rawValue }
+    }
 
     var body: some View {
-        ZStack {
-            X5Background()
-
-            ScrollView {
-                VStack(spacing: 22) {
+        NavigationStack {
+            Form {
+                Section {
                     header
-                    identityFields
-                    rolePicker
-                    if role == .specialist {
-                        categoriesPicker
-                        bioField
-                    }
-                    if role == .entrepreneur {
-                        entrepreneurNote
-                    }
-                    submitButton
-                    if let err = errorMessage {
-                        Text(err)
-                            .font(.footnote)
-                            .foregroundColor(.red.opacity(0.85))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 16)
-                    }
+                        .frame(maxWidth: .infinity)
+                        .listRowBackground(Color.clear)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 36)
-                .padding(.bottom, 40)
-                .frame(maxWidth: 640)
-                .frame(maxWidth: .infinity)
+
+                identitySection
+                roleSection
+
+                if role == .specialist {
+                    categoriesSection
+                    bioSection
+                }
+
+                if role == .entrepreneur {
+                    entrepreneurSection
+                }
+
+                submitSection
             }
+            .scrollContentBackground(.hidden)
+            .background { X5Background() }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
         }
+        .tint(.accentColor)
         .preferredColorScheme(.dark)
-        .onAppear { populateIdentity() }
+        .onAppear { populateProfileFields() }
+        .onChange(of: currentUser.profile) { _ in populateProfileFields() }
     }
 
     private var header: some View {
@@ -63,168 +67,120 @@ struct OnboardingView: View {
 
             Text(loc.t("onb_subtitle"))
                 .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.55))
+                .foregroundColor(.white.opacity(0.62))
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 16)
         }
+        .padding(.vertical, 12)
     }
 
-    private var rolePicker: some View {
-        VStack(spacing: 12) {
-            roleCard(.specialist,
-                     title: loc.t("onb_role_specialist"),
-                     subtitle: loc.t("onb_role_specialist_sub"),
-                     systemImage: "person.crop.square.fill")
-            roleCard(.entrepreneur,
-                     title: loc.t("onb_role_entrepreneur"),
-                     subtitle: loc.t("onb_role_entrepreneur_sub"),
-                     systemImage: "briefcase.fill")
-        }
-    }
-
-    private var identityFields: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(loc.t("edit_about_section"))
-                .font(.system(size: 12, weight: .heavy))
-                .foregroundColor(.white.opacity(0.55))
-
+    private var identitySection: some View {
+        Section {
             TextField(loc.t("edit_name_placeholder"), text: $name)
+                .textContentType(.name)
                 .textInputAutocapitalization(.words)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.white)
-                .padding(12)
-                .background(Color.white.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             TextField(loc.t("edit_nickname_placeholder"), text: $nickname)
+                .textContentType(.username)
                 .textInputAutocapitalization(.never)
                 .autocapitalization(.none)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.white)
-                .padding(12)
-                .background(Color.white.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .onChange(of: nickname) { value in
-                    nickname = value.lowercased()
-                        .filter { "abcdefghijklmnopqrstuvwxyz0123456789_".contains($0) }
-                }
-
-            if !nicknameTrimmed.isEmpty && !isValidNickname {
-                Text(loc.t("edit_nickname_placeholder"))
-                    .font(.caption)
-                    .foregroundColor(.red.opacity(0.85))
-            }
-        }
-        .padding(14)
-        .background(Color.white.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    private func roleCard(_ r: Role, title: String, subtitle: String, systemImage: String) -> some View {
-        Button { role = r } label: {
-            HStack(alignment: .top, spacing: 14) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundColor(role == r ? .black : .accentColor)
-                    .frame(width: 44, height: 44)
-                    .background(role == r ? Color.accentColor : Color.accentColor.opacity(0.14))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.system(size: 16, weight: .bold)).foregroundColor(.white)
-                    Text(subtitle).font(.system(size: 12)).foregroundColor(.white.opacity(0.55))
-                }
-                Spacer()
-                Image(systemName: role == r ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20))
-                    .foregroundColor(role == r ? .accentColor : .white.opacity(0.3))
-            }
-            .padding(14)
-            .background(Color.white.opacity(0.04))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(role == r ? Color.accentColor.opacity(0.6) : Color.white.opacity(0.08), lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var categoriesPicker: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(loc.t("onb_pick_categories"))
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.white)
-                Spacer()
-                Text("\(pickedCategories.count)/3")
-                    .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.5))
-            }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(HubCategories.all) { cat in
-                        let selected = pickedCategories.contains(cat.id)
-                        Button {
-                            toggle(cat.id)
-                        } label: {
-                            Label(cat.labelEn, systemImage: HubCategories.symbol(for: cat.id))
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(selected ? .black : .white.opacity(0.85))
-                                .padding(.horizontal, 12).padding(.vertical, 8)
-                                .background(selected ? Color.accentColor : Color.white.opacity(0.06))
-                                .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
+                    let cleaned = Self.cleanNickname(value)
+                    if cleaned != value {
+                        nickname = cleaned
                     }
                 }
-            }
-            .frame(height: 36)
+        } header: {
+            Text(loc.t("onb_identity_section"))
+        } footer: {
+            Text(identityFooter)
         }
-        .padding(14)
-        .background(Color.white.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private var bioField: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(loc.t("onb_bio_label"))
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.white.opacity(0.6))
+    private var roleSection: some View {
+        Section {
+            Picker(loc.t("onb_role_section"), selection: $role) {
+                Text(loc.t("onb_role_specialist")).tag(Role?.some(.specialist))
+                Text(loc.t("onb_role_entrepreneur")).tag(Role?.some(.entrepreneur))
+            }
+            .pickerStyle(.segmented)
+        } footer: {
+            Text(roleFooter)
+        }
+    }
+
+    private var categoriesSection: some View {
+        Section {
+            ForEach(HubCategories.all) { cat in
+                let selected = pickedCategories.contains(cat.id)
+                Toggle(isOn: categoryBinding(for: cat.id)) {
+                    Label(cat.labelEn, systemImage: HubCategories.symbol(for: cat.id))
+                }
+                .disabled(!selected && pickedCategories.count >= 3)
+            }
+        } header: {
+            Text(loc.t("onb_pick_categories"))
+        } footer: {
+            Text("\(pickedCategories.count)/3")
+        }
+    }
+
+    private var bioSection: some View {
+        Section {
             TextField(loc.t("onb_bio_placeholder"), text: $bio, axis: .vertical)
                 .lineLimit(2...4)
-                .padding(12)
-                .background(Color.white.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .foregroundColor(.white)
+        } header: {
+            Text(loc.t("onb_bio_label"))
         }
     }
 
-    private var entrepreneurNote: some View {
-        Text(loc.t("onb_entrepreneur_note"))
-            .font(.system(size: 13))
-            .foregroundColor(.white.opacity(0.6))
-            .padding(14)
-            .background(Color.white.opacity(0.04))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    private var entrepreneurSection: some View {
+        Section {
+            Text(loc.t("onb_entrepreneur_note"))
+                .foregroundColor(.secondary)
+        }
     }
 
-    private var submitButton: some View {
-        Button(action: submit) {
-            HStack {
-                if saving { ProgressView().tint(.black) }
-                Text(saving ? loc.t("onb_saving") : loc.t("onb_continue"))
-                    .font(.system(size: 16, weight: .bold))
+    private var submitSection: some View {
+        Section {
+            Button(action: submit) {
+                HStack {
+                    if saving {
+                        ProgressView()
+                    }
+                    Text(saving ? loc.t("onb_saving") : loc.t("onb_continue"))
+                }
+                .frame(maxWidth: .infinity)
             }
-            .foregroundColor(.black)
-            .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .background(canSubmit ? Color.accentColor : Color.accentColor.opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(!canSubmit || saving)
+        } footer: {
+            if let err = errorMessage {
+                Text(err)
+                    .foregroundColor(.red)
+            }
         }
-        .disabled(!canSubmit || saving)
-        .buttonStyle(.plain)
-        .padding(.top, 4)
+    }
+
+    private var identityFooter: String {
+        if !nameTrimmed.isEmpty && !hasRealName {
+            return loc.t("onb_name_required")
+        }
+        if !nicknameTrimmed.isEmpty && !isValidNickname {
+            return loc.t("onb_nickname_required")
+        }
+        return loc.t("onb_identity_hint")
+    }
+
+    private var roleFooter: String {
+        switch role {
+        case .specialist:
+            return loc.t("onb_role_specialist_sub")
+        case .entrepreneur:
+            return loc.t("onb_role_entrepreneur_sub")
+        case nil:
+            return loc.t("onb_role_required")
+        }
     }
 
     private var canSubmit: Bool {
@@ -239,33 +195,49 @@ struct OnboardingView: View {
     }
 
     private var nicknameTrimmed: String {
-        nickname.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        Self.cleanNickname(nickname.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     private var hasRealName: Bool {
         let value = nameTrimmed
-        return value.count >= 2 && value.lowercased() != "user" && value.lowercased() != "x5"
+        let lower = value.lowercased()
+        return value.count >= 2 && lower != "user" && lower != "x5"
     }
 
     private var isValidNickname: Bool {
         nicknameTrimmed.range(of: "^[a-z0-9_]{3,}$", options: .regularExpression) != nil
     }
 
-    private func populateIdentity() {
+    private static func cleanNickname(_ value: String) -> String {
+        value.lowercased().filter { "abcdefghijklmnopqrstuvwxyz0123456789_".contains($0) }
+    }
+
+    private func categoryBinding(for id: String) -> Binding<Bool> {
+        Binding {
+            pickedCategories.contains(id)
+        } set: { isSelected in
+            if isSelected {
+                if pickedCategories.count < 3 {
+                    pickedCategories.insert(id)
+                }
+            } else {
+                pickedCategories.remove(id)
+            }
+        }
+    }
+
+    private func populateProfileFields() {
         guard let p = currentUser.profile else { return }
         let profileName = (p.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if !profileName.isEmpty && profileName.lowercased() != "user" && profileName.lowercased() != "x5" {
             name = profileName
         }
-        nickname = (p.nickname ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    }
-
-    private func toggle(_ id: String) {
-        if pickedCategories.contains(id) {
-            pickedCategories.remove(id)
-        } else if pickedCategories.count < 3 {
-            pickedCategories.insert(id)
+        nickname = Self.cleanNickname((p.nickname ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
+        if let storedRole = Role(rawValue: p.userRole ?? "") {
+            role = storedRole
         }
+        pickedCategories = Set(p.specialistCategory ?? [])
+        bio = p.bio ?? ""
     }
 
     private func submit() {
@@ -275,7 +247,7 @@ struct OnboardingView: View {
         Task {
             do {
                 guard let token = await auth.freshAccessToken() else {
-                    throw NSError(domain: "Onboarding", code: 401, userInfo: [NSLocalizedDescriptionKey: "Сессия устарела. Выйди и войди снова."])
+                    throw NSError(domain: "Onboarding", code: 401, userInfo: [NSLocalizedDescriptionKey: loc.t("onb_session_expired")])
                 }
                 try await patchProfile(role: role, token: token)
                 if let uid = auth.userId {
@@ -299,23 +271,27 @@ struct OnboardingView: View {
         guard let url = components.url else {
             throw NSError(domain: "Onboarding", code: -1, userInfo: [NSLocalizedDescriptionKey: loc.t("onb_save_failed")])
         }
+
+        let categories = role == .specialist ? Array(pickedCategories) : []
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("return=representation", forHTTPHeaderField: "Prefer")
+
         var body: [String: Any] = [
             "name": nameTrimmed,
             "nickname": nicknameTrimmed,
             "user_role": role.rawValue,
-            "specialist_category": Array(pickedCategories),
+            "specialist_category": categories,
             "show_in_hub": role == .specialist
         ]
         if !bio.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            body["bio"] = bio
+            body["bio"] = bio.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             let body = String(data: data, encoding: .utf8) ?? ""

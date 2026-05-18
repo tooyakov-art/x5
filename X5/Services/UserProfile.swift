@@ -55,12 +55,20 @@ struct UserProfile: Codable, Equatable, Identifiable {
     }
 
     var displayName: String {
-        if let n = name, !n.isEmpty { return n }
-        if let n = nickname, !n.isEmpty { return n }
+        if let n = Self.cleanDisplayName(name) { return n }
+        if let n = Self.cleanDisplayName(nickname) { return n }
         if let e = email, let prefix = e.split(separator: "@").first, !prefix.isEmpty {
-            return String(prefix).replacingOccurrences(of: ".", with: " ").capitalized
+            let emailName = String(prefix).replacingOccurrences(of: ".", with: " ").capitalized
+            if let n = Self.cleanDisplayName(emailName) { return n }
         }
         return "X5"
+    }
+
+    private static func cleanDisplayName(_ raw: String?) -> String? {
+        let value = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = value.lowercased()
+        guard !value.isEmpty, lower != "user", lower != "x5" else { return nil }
+        return value
     }
 
     var planLabel: String {

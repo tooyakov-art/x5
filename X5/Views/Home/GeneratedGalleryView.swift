@@ -182,7 +182,7 @@ private struct GeneratedGalleryPreviewView: View {
                     Button { saveToPhotos() } label: {
                         Image(systemName: "arrow.down.circle")
                     }
-                    .accessibilityLabel(loc.t("gen_action_download"))
+                    .accessibilityLabel(loc.t("common_save"))
                     Button { showingShare = true } label: {
                         Image(systemName: "square.and.arrow.up")
                     }

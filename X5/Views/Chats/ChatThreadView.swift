@@ -24,6 +24,8 @@ struct ChatThreadView: View {
     @State private var voicePressActive: Bool = false
     @State private var voiceStartInFlight: Bool = false
     @State private var voiceSendInFlight: Bool = false
+    @State private var lastVoiceSendFingerprint: String?
+    @State private var lastVoiceSendAt: Date?
     @FocusState private var inputFocused: Bool
     @State private var searchActive: Bool = false
     @State private var searchQuery: String = ""
@@ -346,9 +348,20 @@ struct ChatThreadView: View {
 
     private func sendVoice(_ result: (data: Data, mime: String, ext: String)) async {
         guard let token = await auth.freshAccessToken(), let uid = auth.userId else { return }
+        let fingerprint = voiceFingerprint(result.data)
+        let now = Date()
+        if lastVoiceSendFingerprint == fingerprint,
+           let lastAt = lastVoiceSendAt,
+           now.timeIntervalSince(lastAt) < 8 {
+            return
+        }
+        lastVoiceSendFingerprint = fingerprint
+        lastVoiceSendAt = now
+
         sending = true
         defer { sending = false }
         guard let url = await service.uploadAttachment(chatId: chat.id, data: result.data, mime: result.mime, ext: result.ext, accessToken: token) else {
+            clearVoiceFingerprint(fingerprint)
             attachmentError = service.error ?? "Не удалось загрузить голосовое."
             return
         }
@@ -356,8 +369,21 @@ struct ChatThreadView: View {
             messages.append(inserted)
             incrementPeerUnread()
         } else {
+            clearVoiceFingerprint(fingerprint)
             attachmentError = service.error ?? "Не удалось отправить голосовое."
         }
+    }
+
+    private func voiceFingerprint(_ data: Data) -> String {
+        let head = data.prefix(96).map { String(format: "%02x", $0) }.joined()
+        let tail = data.suffix(32).map { String(format: "%02x", $0) }.joined()
+        return "\(data.count):\(head):\(tail)"
+    }
+
+    private func clearVoiceFingerprint(_ fingerprint: String) {
+        guard lastVoiceSendFingerprint == fingerprint else { return }
+        lastVoiceSendFingerprint = nil
+        lastVoiceSendAt = nil
     }
 
     private func report() {
@@ -403,7 +429,9 @@ struct ChatThreadView: View {
         let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard searchActive, !q.isEmpty else { return activeMessages }
         return activeMessages.filter { msg in
-            (msg.content ?? "").localizedCaseInsensitiveContains(q)
+            let parts = splitReplyText(msg.content)
+            return parts.body.localizedCaseInsensitiveContains(q)
+                || (parts.reply ?? "").localizedCaseInsensitiveContains(q)
         }
     }
 
@@ -438,8 +466,8 @@ struct ChatThreadView: View {
         }
         voiceSendInFlight = true
         Task {
+            defer { voiceSendInFlight = false }
             await sendVoice(result)
-            voiceSendInFlight = false
         }
     }
 
@@ -484,7 +512,8 @@ struct ChatThreadView: View {
     }
 
     private func messagePreview(_ message: ChatMessageRow) -> String {
-        if let text = message.content?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+        let text = splitReplyText(message.content).body.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty {
             return text
         }
         switch message.type {
@@ -492,6 +521,15 @@ struct ChatThreadView: View {
         case "audio": return loc.t("chat_voice_message")
         default: return loc.t("chats_no_messages")
         }
+    }
+
+    private func encodedReplyText(_ text: String, replyingTo message: ChatMessageRow?) -> String {
+        guard let message else { return text }
+        let preview = messagePreview(message)
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !preview.isEmpty else { return text }
+        return "\(replyLinePrefix)\(String(preview.prefix(120)))\n\(text)"
     }
 
     private func shouldShowDateHeader(at index: Int) -> Bool {
@@ -527,6 +565,8 @@ struct ChatThreadView: View {
         guard let uid = auth.userId else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        let reply = replyingTo
+        let outboundText = encodedReplyText(text, replyingTo: reply)
         draft = ""
         inputFocused = false
         sending = true
@@ -535,7 +575,13 @@ struct ChatThreadView: View {
                 sending = false
                 return
             }
-            if let inserted = await service.sendText(chatId: chat.id, currentUserId: uid, text: text, accessToken: token) {
+            if let inserted = await service.sendText(
+                chatId: chat.id,
+                currentUserId: uid,
+                text: outboundText,
+                accessToken: token,
+                previewText: text
+            ) {
                 messages.append(inserted)
                 incrementPeerUnread()
                 replyingTo = nil
@@ -543,6 +589,26 @@ struct ChatThreadView: View {
             sending = false
         }
     }
+}
+
+private let replyLinePrefix = "↪ "
+
+private func splitReplyText(_ content: String?) -> (reply: String?, body: String) {
+    guard let content, !content.isEmpty else { return (nil, "") }
+    let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
+    guard let first = lines.first else { return (nil, content) }
+    let firstLine = String(first)
+    guard firstLine.hasPrefix(replyLinePrefix), lines.count > 1 else {
+        return (nil, content)
+    }
+    let reply = String(firstLine.dropFirst(replyLinePrefix.count))
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    let body = lines.dropFirst()
+        .map(String.init)
+        .joined(separator: "\n")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !reply.isEmpty, !body.isEmpty else { return (nil, content) }
+    return (reply, body)
 }
 
 private struct DateDivider: View {
@@ -594,10 +660,9 @@ private struct Bubble: View {
                         Label(loc.t("chats_msg_ask_startupchat"), systemImage: "sparkles")
                     }
                     Divider()
-                    if let text = message.content, !text.isEmpty,
-                       message.type != "image", message.type != "audio" {
+                    if !copyText.isEmpty, message.type != "image", message.type != "audio" {
                         Button {
-                            UIPasteboard.general.string = text
+                            UIPasteboard.general.string = copyText
                             onCopy?()
                         } label: {
                             Label(loc.t("chats_msg_copy"), systemImage: "doc.on.doc")
@@ -613,8 +678,12 @@ private struct Bubble: View {
         }
     }
 
+    private var copyText: String {
+        splitReplyText(message.content).body
+    }
+
     private var content: some View {
-        VStack(alignment: .trailing, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             if isPinned {
                 HStack(spacing: 4) {
                     Image(systemName: "pin.fill")
@@ -623,8 +692,14 @@ private struct Bubble: View {
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(.white.opacity(0.5))
             }
+            if let reply = splitReplyText(message.content).reply {
+                ReplyPreview(text: reply)
+            }
             payload
-            messageStatus
+            HStack {
+                Spacer(minLength: 8)
+                messageStatus
+            }
         }
         .padding(message.type == "image" ? 4 : 10)
         .background(isMine ? Color.accentColor.opacity(0.22) : Color.white.opacity(0.06))
@@ -639,7 +714,7 @@ private struct Bubble: View {
         case "audio":
             AudioBubble(url: message.mediaUrl)
         default:
-            Text(message.content ?? "")
+            Text(splitReplyText(message.content).body)
                 .font(.system(size: 14))
                 .foregroundColor(.white)
         }
@@ -674,7 +749,7 @@ private struct Bubble: View {
             return timeFmt.string(from: date)
         }
         if cal.isDateInYesterday(date) {
-            return "Вчера " + timeFmt.string(from: date)
+            return loc.t("chats_date_yesterday") + " " + timeFmt.string(from: date)
         }
         let dayFmt = DateFormatter()
         dayFmt.locale = .current
@@ -699,8 +774,36 @@ private struct Bubble: View {
     }
 }
 
+private struct ReplyPreview: View {
+    let text: String
+    @EnvironmentObject private var loc: LocalizationService
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Rectangle()
+                .fill(Color.accentColor.opacity(0.9))
+                .frame(width: 3)
+                .clipShape(Capsule())
+            VStack(alignment: .leading, spacing: 1) {
+                Text(loc.t("chats_msg_reply"))
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Color.accentColor)
+                Text(text)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.62))
+                    .lineLimit(2)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color.black.opacity(0.16))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
 private struct ReadReceipt: View {
     let isRead: Bool
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         ZStack {
@@ -714,7 +817,7 @@ private struct ReadReceipt: View {
         .font(.system(size: 10, weight: .bold))
         .foregroundColor(isRead ? Color.accentColor : Color.white.opacity(0.58))
         .frame(width: isRead ? 15 : 9, height: 10)
-        .accessibilityLabel(isRead ? "Read" : "Sent")
+        .accessibilityLabel(isRead ? loc.t("chats_msg_read") : loc.t("chats_msg_sent"))
     }
 }
 

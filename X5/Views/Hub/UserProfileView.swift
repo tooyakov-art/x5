@@ -237,13 +237,17 @@ struct UserProfileView: View {
             .disabled(isMe || followBusy || auth.accessToken == nil)
 
             Button(action: openChat) {
-                Image(systemName: openingChat ? "ellipsis" : "bubble.left.and.bubble.right.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+                HStack(spacing: 8) {
+                    Image(systemName: openingChat ? "ellipsis" : "bubble.left.and.bubble.right.fill")
+                    Text(loc.t("tab_chats"))
+                }
+                .font(.system(size: 16, weight: .bold))
+                .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .tint(.white)
+            .foregroundStyle(.white)
             .disabled(isMe || openingChat || auth.accessToken == nil)
         }
     }
@@ -252,15 +256,15 @@ struct UserProfileView: View {
 
     private var statsRow: some View {
         HStack(spacing: 8) {
-            PublicStatBubble(value: creditsValue, label: loc.t("profile_credits"))
-            PublicStatBubble(value: followersValue, label: loc.t("profile_followers"))
             PublicStatBubble(value: followingValue, label: loc.t("profile_following"))
+            PublicStatBubble(value: followersValue, label: loc.t("profile_followers"))
+            PublicStatBubble(value: creationsValue, label: loc.t("profile_creations"))
         }
     }
 
-    private var creditsValue: String { "\(profile?.credits ?? 0)" }
     private var followingValue: String { followingCount.map(String.init) ?? "—" }
     private var followersValue: String { followersCount.map(String.init) ?? "—" }
+    private var creationsValue: String { "\(portfolioCount)" }
 
     private var bioBlock: some View {
         Group {

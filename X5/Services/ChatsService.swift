@@ -551,7 +551,7 @@ final class ChatsService: ObservableObject {
     /// Sends a text message, then bumps chats.last_message / last_message_at.
     /// Sets `self.error` on failure so the UI can show a real reason instead of a dead spinner.
     @discardableResult
-    func sendText(chatId: String, currentUserId: String, text: String, accessToken: String) async -> ChatMessageRow? {
+    func sendText(chatId: String, currentUserId: String, text: String, accessToken: String, previewText: String? = nil) async -> ChatMessageRow? {
         error = nil
         var post = URLRequest(url: baseURL.appendingPathComponent("rest/v1/messages"))
         post.httpMethod = "POST"
@@ -585,8 +585,10 @@ final class ChatsService: ObservableObject {
         patch.setValue(anonKey, forHTTPHeaderField: "apikey")
         patch.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         patch.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let trimmedPreview = previewText?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let preview = (trimmedPreview?.isEmpty == false) ? (trimmedPreview ?? text) : text
         let bumpBody: [String: AnyEncodable] = [
-            "last_message": AnyEncodable(text),
+            "last_message": AnyEncodable(preview),
             "last_message_at": AnyEncodable(ISO8601DateFormatter().string(from: Date()))
         ]
         patch.httpBody = try? JSONEncoder().encode(bumpBody)
