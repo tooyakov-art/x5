@@ -77,9 +77,8 @@ struct ProfileView: View {
                     } else {
                         PhotosPicker(selection: $avatarPickerItem, matching: .images) {
                             Image(systemName: uploadingAvatar ? "hourglass" : "camera.fill")
+                                .font(.system(size: 20, weight: .semibold))
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
                         .disabled(uploadingAvatar)
                     }
                 }
@@ -88,9 +87,8 @@ struct ProfileView: View {
                         showingSettings = true
                     } label: {
                         Image(systemName: "gearshape")
+                            .font(.system(size: 20, weight: .semibold))
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
                     .accessibilityLabel("Settings")
                 }
             }

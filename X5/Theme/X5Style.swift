@@ -1,8 +1,8 @@
 import SwiftUI
 
 enum X5Style {
-    static let blue = Color(red: 0.07, green: 0.36, blue: 1.00)
-    static let blueSoft = Color(red: 0.16, green: 0.50, blue: 0.95)
+    static let blue = Color(red: 0.705, green: 1.00, blue: 0.00)
+    static let blueSoft = Color(red: 0.84, green: 1.00, blue: 0.22)
     static let ink = Color(red: 0.02, green: 0.025, blue: 0.055)
 
     static func glassStroke(_ opacity: Double = 0.22) -> LinearGradient {
