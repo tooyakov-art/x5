@@ -217,7 +217,6 @@ struct HubView: View {
     // MARK: - Сетка категорий (главный экран Hub)
 
     private var categoriesGrid: some View {
-        let counts = categoryCounts
         ScrollView {
             LazyVGrid(
                 columns: Array(repeating: GridItem(.flexible(minimum: 62, maximum: 92), spacing: 8), count: 4),
@@ -227,7 +226,7 @@ struct HubView: View {
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) { category = cat.id }
                     } label: {
-                        CategoryTile(cat: cat, count: counts[cat.id] ?? 0)
+                        CategoryTile(cat: cat, count: countForCategory(cat.id))
                     }
                     .buttonStyle(.plain)
                 }

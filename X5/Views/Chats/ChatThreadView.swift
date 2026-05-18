@@ -5,6 +5,7 @@ import AVFoundation
 struct ChatThreadView: View {
     let chat: ChatRoom
 
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = ChatsService()
@@ -36,6 +37,8 @@ struct ChatThreadView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            telegramHeader
+
             if searchActive {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
@@ -202,6 +205,8 @@ struct ChatThreadView: View {
         }
         .background(ChatBackground())
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
@@ -391,6 +396,116 @@ struct ChatThreadView: View {
             clearVoiceFingerprint(fingerprint)
             attachmentError = service.error ?? "Не удалось отправить голосовое."
         }
+    }
+
+    private var telegramHeader: some View {
+        HStack(spacing: 10) {
+            Button { dismiss() } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 46, height: 46)
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.circle)
+            .tint(.white.opacity(0.10))
+
+            Button { showingProfile = true } label: {
+                HStack(spacing: 10) {
+                    AvatarView(urlString: other?.avatar, name: other?.displayName, size: 38)
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 5) {
+                            Text(other?.displayName ?? "X5")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                            if other?.hasActiveVerifiedBadge == true {
+                                VerifiedChip(size: 12)
+                            }
+                        }
+                        Text(loc.t("chats_view_profile"))
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(.white.opacity(0.48))
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 54)
+                .background(.ultraThinMaterial)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(.white.opacity(0.10), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+
+            telegramMenu
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+        .background(
+            Rectangle()
+                .fill(Color.black.opacity(0.16))
+                .background(.ultraThinMaterial)
+        )
+    }
+
+    private var telegramMenu: some View {
+        Menu {
+            Button {
+                searchActive.toggle()
+                if !searchActive { searchQuery = "" }
+            } label: {
+                Label(loc.t("chats_search_placeholder"), systemImage: "magnifyingglass")
+            }
+            let muted = ChatsLocalState.isMuted(chat.id)
+            Button {
+                if muted { ChatsLocalState.unmute(chat.id) }
+                else { ChatsLocalState.mute(chat.id) }
+                chatStateTick &+= 1
+            } label: {
+                Label(
+                    muted ? loc.t("chats_unmute") : loc.t("chats_mute"),
+                    systemImage: muted ? "bell" : "bell.slash"
+                )
+            }
+            let pinned = ChatsLocalState.isPinned(chat.id)
+            Button {
+                if pinned { ChatsLocalState.unpin(chat.id) }
+                else { ChatsLocalState.pin(chat.id) }
+                chatStateTick &+= 1
+            } label: {
+                Label(
+                    pinned ? loc.t("chats_unpin") : loc.t("chats_pin"),
+                    systemImage: pinned ? "pin.slash" : "pin"
+                )
+            }
+            Divider()
+            Button {
+                showingProfile = true
+            } label: {
+                Label(loc.t("chat_open_profile"), systemImage: "person.crop.circle")
+            }
+            Divider()
+            Button {
+                report()
+            } label: {
+                Label(loc.t("chat_report_user"), systemImage: "exclamationmark.bubble")
+            }
+            Button(role: .destructive) {
+                confirmBlock = true
+            } label: {
+                Label(loc.t("chat_block_user"), systemImage: "hand.raised.slash")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 46, height: 46)
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.circle)
+        .tint(.white.opacity(0.10))
     }
 
     private func voiceFingerprint(_ data: Data) -> String {
