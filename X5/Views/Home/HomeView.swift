@@ -64,7 +64,7 @@ struct HomeView: View {
                         Image(systemName: "photo.stack")
                             .foregroundColor(.white.opacity(0.7))
                     }
-                    .accessibilityLabel("Общая галерея")
+                    .accessibilityLabel(loc.t("gen_gallery"))
 
                     Button { showingNotifications = true } label: {
                         Image(systemName: "bell")
@@ -178,7 +178,7 @@ struct HomeView: View {
             Button {
                 showingGeneratedGallery = true
             } label: {
-                Label("Общая галерея", systemImage: "photo.stack")
+                Label(loc.t("gen_gallery"), systemImage: "photo.stack")
                     .font(.system(size: 12, weight: .semibold))
             }
             .buttonStyle(.bordered)

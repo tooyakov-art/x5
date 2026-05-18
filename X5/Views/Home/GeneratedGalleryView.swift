@@ -3,6 +3,7 @@ import UIKit
 
 struct GeneratedGalleryView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var loc: LocalizationService
     @StateObject private var store = GeneratedGalleryStore()
     @State private var preview: GeneratedGalleryPreview?
 
@@ -36,19 +37,22 @@ struct GeneratedGalleryView: View {
                     }
                 }
             }
-            .navigationTitle("Общая галерея")
+            .navigationTitle(loc.t("gen_gallery"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Готово") { dismiss() }
+                    Button(loc.t("btn_done")) { dismiss() }
                 }
             }
             .fullScreenCover(item: $preview) { preview in
-                GeneratedGalleryPreviewView(preview: preview) {
+                GeneratedGalleryPreviewView(preview: preview, onImageUpdated: { image in
+                    store.replaceImage(for: preview.item, image: image)
+                }, onDelete: {
                     store.delete(preview.item)
                     self.preview = nil
-                }
+                })
+                .environmentObject(loc)
             }
         }
         .preferredColorScheme(.dark)
@@ -59,10 +63,10 @@ struct GeneratedGalleryView: View {
             Image(systemName: "photo.stack")
                 .font(.system(size: 44, weight: .light))
                 .foregroundColor(.white.opacity(0.45))
-            Text("Пока пусто")
+            Text(loc.t("gen_gallery_empty_title"))
                 .font(.system(size: 18, weight: .bold))
                 .foregroundColor(.white)
-            Text("Сгенерированные картинки будут сохраняться здесь.")
+            Text(loc.t("gen_gallery_empty_subtitle"))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
@@ -114,12 +118,27 @@ private struct GeneratedGalleryPreview: Identifiable {
 
 private struct GeneratedGalleryPreviewView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var loc: LocalizationService
 
     let preview: GeneratedGalleryPreview
+    let onImageUpdated: (UIImage) -> Void
     let onDelete: () -> Void
 
+    @State private var image: UIImage
     @State private var showingShare = false
+    @State private var showingEditor = false
     @State private var saveMessage: String?
+
+    init(
+        preview: GeneratedGalleryPreview,
+        onImageUpdated: @escaping (UIImage) -> Void,
+        onDelete: @escaping () -> Void
+    ) {
+        self.preview = preview
+        self.onImageUpdated = onImageUpdated
+        self.onDelete = onDelete
+        _image = State(initialValue: preview.image)
+    }
 
     var body: some View {
         NavigationStack {
@@ -128,7 +147,7 @@ private struct GeneratedGalleryPreviewView: View {
 
                 VStack(spacing: 16) {
                     Spacer(minLength: 0)
-                    Image(uiImage: preview.image)
+                    Image(uiImage: image)
                         .resizable()
                         .scaledToFit()
                         .padding(.horizontal, 14)
@@ -152,34 +171,55 @@ private struct GeneratedGalleryPreviewView: View {
                         .frame(maxHeight: .infinity, alignment: .bottom)
                 }
             }
-            .navigationTitle("Общая галерея")
+            .navigationTitle(loc.t("gen_gallery"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Готово") { dismiss() }
+                    Button(loc.t("btn_done")) { dismiss() }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { saveToPhotos() } label: {
                         Image(systemName: "arrow.down.circle")
                     }
+                    .accessibilityLabel(loc.t("gen_action_download"))
                     Button { showingShare = true } label: {
                         Image(systemName: "square.and.arrow.up")
                     }
+                    .accessibilityLabel(loc.t("gen_action_share"))
+                    Button { showingEditor = true } label: {
+                        Image(systemName: "pencil")
+                    }
+                    .accessibilityLabel(loc.t("gen_action_edit"))
+                    Button { showingEditor = true } label: {
+                        Image(systemName: "paintbrush")
+                    }
+                    .accessibilityLabel(loc.t("gen_action_draw"))
                     Button(role: .destructive) { onDelete() } label: {
                         Image(systemName: "trash")
                     }
                 }
             }
             .sheet(isPresented: $showingShare) {
-                GeneratedGalleryActivityView(image: preview.image)
+                GeneratedGalleryActivityView(image: image)
+            }
+            .fullScreenCover(isPresented: $showingEditor) {
+                ImageMarkupEditorView(source: image) { edited in
+                    image = edited
+                    onImageUpdated(edited)
+                    withAnimation { saveMessage = loc.t("gen_saved_gallery") }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                        withAnimation { saveMessage = nil }
+                    }
+                }
+                .environmentObject(loc)
             }
         }
     }
 
     private func saveToPhotos() {
-        UIImageWriteToSavedPhotosAlbum(preview.image, nil, nil, nil)
-        withAnimation { saveMessage = "Сохранено в Фото" }
+        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+        withAnimation { saveMessage = loc.t("gen_saved_photos") }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
             withAnimation { saveMessage = nil }
         }

@@ -78,6 +78,9 @@ struct ProfileView: View {
                         PhotosPicker(selection: $avatarPickerItem, matching: .images) {
                             Image(systemName: uploadingAvatar ? "hourglass" : "camera.fill")
                         }
+                        .buttonStyle(.bordered)
+                        .buttonBorderShape(.circle)
+                        .controlSize(.large)
                         .disabled(uploadingAvatar)
                     }
                 }
@@ -87,6 +90,9 @@ struct ProfileView: View {
                     } label: {
                         Image(systemName: "gearshape")
                     }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.circle)
+                    .controlSize(.large)
                     .accessibilityLabel("Settings")
                 }
             }
@@ -136,9 +142,29 @@ struct ProfileView: View {
                 .frame(width: proxy.size.width, height: height)
                 .allowsHitTesting(false)
 
+                ProfileCoverPhoto(urlString: currentUser.profile?.avatar,
+                                  name: displayName)
+                    .frame(width: proxy.size.width, height: height)
+                    .clipped()
+                    .blur(radius: 22)
+                    .scaleEffect(1.04)
+                    .overlay(Color.black.opacity(0.10))
+                    .mask(
+                        VStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            LinearGradient(
+                                colors: [.clear, .black.opacity(0.72), .black],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .frame(height: 300)
+                        }
+                    )
+                    .allowsHitTesting(false)
+
                 ProfileHeroBottomFade()
-                    .frame(width: proxy.size.width, height: 240)
-                    .position(x: proxy.size.width / 2, y: height - 120)
+                    .frame(width: proxy.size.width, height: 300)
+                    .position(x: proxy.size.width / 2, y: height - 150)
 
                 VStack(spacing: 14) {
                     HStack(spacing: 6) {
@@ -247,11 +273,15 @@ struct ProfileView: View {
 
     private func refreshProfile() async {
         isRefreshing = true
-        defer { isRefreshing = false }
-        guard let uid = auth.userId, let token = await auth.freshAccessToken() else { return }
+        guard let uid = auth.userId, let token = await auth.freshAccessToken() else {
+            isRefreshing = false
+            return
+        }
         await currentUser.load(userId: uid, accessToken: token)
         subscription.sync(from: currentUser.profile)
         await iap.loadProducts()
+        try? await Task.sleep(nanoseconds: 450_000_000)
+        isRefreshing = false
     }
 
     private var displayName: String {

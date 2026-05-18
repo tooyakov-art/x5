@@ -120,6 +120,7 @@ struct CourseEditorView: View {
                 LessonEditorSheet(
                     lesson: target.lesson,
                     uploadBlockerText: videoUploadBlockerText,
+                    uploadsImmediately: existingId != nil,
                     uploadVideo: { fileURL in
                         await uploadVideo(fileURL, lessonId: target.lesson.id)
                     },
@@ -227,9 +228,6 @@ struct CourseEditorView: View {
     }
 
     private var videoUploadBlockerText: String? {
-        if existingId == nil {
-            return "Для загрузки файла сначала сохраните курс как черновик, затем откройте его на редактирование. Ссылку на видео можно добавить сразу."
-        }
         if auth.accessToken == nil {
             return "Для загрузки файла нужен активный вход разработчика."
         }
@@ -267,7 +265,7 @@ struct CourseEditorView: View {
     }
 
     private func save() async {
-        guard let token = auth.accessToken else { return }
+        guard let token = await auth.freshAccessToken() else { return }
         saving = true
         defer { saving = false }
         errorText = nil
@@ -288,6 +286,10 @@ struct CourseEditorView: View {
             uploadingCover = true
             _ = await service.uploadCover(courseId: id, jpegData: jpeg, accessToken: token)
             uploadingCover = false
+        }
+
+        guard await uploadPendingLessonVideos(courseId: id, accessToken: token) else {
+            return
         }
 
         let priceInt = Int(price) ?? 0
@@ -311,7 +313,7 @@ struct CourseEditorView: View {
     }
 
     private func runDelete() async {
-        guard let id = existingId, let token = auth.accessToken else { return }
+        guard let id = existingId, let token = await auth.freshAccessToken() else { return }
         saving = true
         defer { saving = false }
         let ok = await service.deleteCourse(id: id, accessToken: token)
@@ -327,13 +329,36 @@ struct CourseEditorView: View {
         guard let courseId = existingId else {
             return .failure("Сначала сохраните курс как черновик, затем откройте редактирование и загрузите файл.")
         }
-        guard let token = auth.accessToken else {
+        guard let token = await auth.freshAccessToken() else {
             return .failure("Нужен активный вход разработчика.")
         }
         if let publicURL = await service.uploadLessonVideo(courseId: courseId, lessonId: lessonId, fileURL: fileURL, accessToken: token) {
             return .success(publicURL)
         }
         return .failure(service.error ?? "Не удалось загрузить видео.")
+    }
+
+    private func uploadPendingLessonVideos(courseId: String, accessToken: String) async -> Bool {
+        for categoryIndex in categories.indices {
+            for dayIndex in categories[categoryIndex].days.indices {
+                for lessonIndex in categories[categoryIndex].days[dayIndex].lessons.indices {
+                    guard let fileURL = categories[categoryIndex].days[dayIndex].lessons[lessonIndex].pendingVideoFileURL else {
+                        continue
+                    }
+
+                    let lessonId = categories[categoryIndex].days[dayIndex].lessons[lessonIndex].id
+                    guard let publicURL = await service.uploadLessonVideo(courseId: courseId, lessonId: lessonId, fileURL: fileURL, accessToken: accessToken) else {
+                        errorText = service.error ?? "Не удалось загрузить видео урока."
+                        return false
+                    }
+
+                    categories[categoryIndex].days[dayIndex].lessons[lessonIndex].videoUrl = publicURL
+                    categories[categoryIndex].days[dayIndex].lessons[lessonIndex].pendingVideoFileURL = nil
+                    categories[categoryIndex].days[dayIndex].lessons[lessonIndex].pendingVideoFileName = nil
+                }
+            }
+        }
+        return true
     }
 
     private func orderedCategories() -> [EditableCategory] {
@@ -501,6 +526,8 @@ private struct EditableLesson: Identifiable, Equatable {
     var thumbnailUrl: String
     var isFreePreview: Bool
     var sellSeparately: Bool
+    var pendingVideoFileURL: URL?
+    var pendingVideoFileName: String?
 
     init(
         id: String,
@@ -512,7 +539,9 @@ private struct EditableLesson: Identifiable, Equatable {
         youtubeUrl: String,
         thumbnailUrl: String,
         isFreePreview: Bool,
-        sellSeparately: Bool
+        sellSeparately: Bool,
+        pendingVideoFileURL: URL? = nil,
+        pendingVideoFileName: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -524,6 +553,8 @@ private struct EditableLesson: Identifiable, Equatable {
         self.thumbnailUrl = thumbnailUrl
         self.isFreePreview = isFreePreview
         self.sellSeparately = sellSeparately
+        self.pendingVideoFileURL = pendingVideoFileURL
+        self.pendingVideoFileName = pendingVideoFileName
     }
 
     init(_ lesson: CourseLesson) {
@@ -537,6 +568,8 @@ private struct EditableLesson: Identifiable, Equatable {
         self.thumbnailUrl = lesson.thumbnailUrl ?? ""
         self.isFreePreview = lesson.isFreePreview ?? false
         self.sellSeparately = lesson.sellSeparately ?? false
+        self.pendingVideoFileURL = nil
+        self.pendingVideoFileName = nil
     }
 
     static func new(order: Int) -> EditableLesson {
@@ -555,10 +588,11 @@ private struct EditableLesson: Identifiable, Equatable {
     }
 
     var hasVideo: Bool {
-        !videoUrl.x5Trimmed.isEmpty || !youtubeUrl.x5Trimmed.isEmpty
+        pendingVideoFileURL != nil || !videoUrl.x5Trimmed.isEmpty || !youtubeUrl.x5Trimmed.isEmpty
     }
 
     var videoLabel: String {
+        if let pendingVideoFileName, !pendingVideoFileName.x5Trimmed.isEmpty { return pendingVideoFileName }
         if !videoUrl.x5Trimmed.isEmpty { return "Video URL" }
         if !youtubeUrl.x5Trimmed.isEmpty { return "YouTube" }
         return "Видео не задано"
@@ -619,6 +653,7 @@ private struct LessonEditorSheet: View {
 
     private let lesson: EditableLesson
     let uploadBlockerText: String?
+    let uploadsImmediately: Bool
     let uploadVideo: (URL) async -> LessonVideoUploadResult
     let onSave: (EditableLesson) -> Void
 
@@ -630,6 +665,8 @@ private struct LessonEditorSheet: View {
     @State private var thumbnailUrl: String
     @State private var isFreePreview: Bool
     @State private var sellSeparately: Bool
+    @State private var pendingVideoFileURL: URL?
+    @State private var pendingVideoFileName: String?
     @State private var showingImporter = false
     @State private var uploading = false
     @State private var errorText: String?
@@ -637,11 +674,13 @@ private struct LessonEditorSheet: View {
     init(
         lesson: EditableLesson,
         uploadBlockerText: String?,
+        uploadsImmediately: Bool,
         uploadVideo: @escaping (URL) async -> LessonVideoUploadResult,
         onSave: @escaping (EditableLesson) -> Void
     ) {
         self.lesson = lesson
         self.uploadBlockerText = uploadBlockerText
+        self.uploadsImmediately = uploadsImmediately
         self.uploadVideo = uploadVideo
         self.onSave = onSave
         _title = State(initialValue: lesson.title)
@@ -652,6 +691,8 @@ private struct LessonEditorSheet: View {
         _thumbnailUrl = State(initialValue: lesson.thumbnailUrl)
         _isFreePreview = State(initialValue: lesson.isFreePreview)
         _sellSeparately = State(initialValue: lesson.sellSeparately)
+        _pendingVideoFileURL = State(initialValue: lesson.pendingVideoFileURL)
+        _pendingVideoFileName = State(initialValue: lesson.pendingVideoFileName)
     }
 
     var body: some View {
@@ -685,9 +726,15 @@ private struct LessonEditorSheet: View {
                     Button {
                         showingImporter = true
                     } label: {
-                        Label(uploading ? "Загрузка..." : "Импортировать видеофайл", systemImage: "square.and.arrow.up")
+                        Label(videoImportTitle, systemImage: "square.and.arrow.up")
                     }
                     .disabled(uploading || uploadBlockerText != nil)
+
+                    if let pendingVideoFileName {
+                        Label(pendingVideoFileName, systemImage: "clock.arrow.circlepath")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
 
                     if let uploadBlockerText {
                         Text(uploadBlockerText)
@@ -697,7 +744,7 @@ private struct LessonEditorSheet: View {
                 } header: {
                     Text("Видео")
                 } footer: {
-                    Text("Прямая MP4/HLS ссылка сохраняется сразу. Импорт загружает файл в Supabase Storage `videos/courses/...` и подставляет public URL.")
+                    Text("Прямая MP4/HLS ссылка сохраняется сразу. В новом курсе файл загрузится при сохранении; в существующем уроке импорт сразу заменит videoUrl.")
                 }
 
                 Section("Отдельная продажа") {
@@ -748,16 +795,64 @@ private struct LessonEditorSheet: View {
         }
     }
 
+    private var videoImportTitle: String {
+        if uploading { return "Загрузка..." }
+        if pendingVideoFileURL != nil || !videoUrl.x5Trimmed.isEmpty { return "Заменить видеофайл" }
+        return "Импортировать видеофайл"
+    }
+
     private func importVideo(_ url: URL) async {
         uploading = true
         defer { uploading = false }
         errorText = nil
 
+        guard uploadsImmediately else {
+            stagePendingVideo(url)
+            return
+        }
+
         let result = await uploadVideo(url)
         if let publicURL = result.url {
             videoUrl = publicURL
+            pendingVideoFileURL = nil
+            pendingVideoFileName = nil
         } else {
             errorText = result.error ?? "Видео не загружено."
+        }
+    }
+
+    private func stagePendingVideo(_ url: URL) {
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess { url.stopAccessingSecurityScopedResource() }
+        }
+
+        do {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("x5-course-videos", isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+            let ext = normalizedVideoExtension(from: url)
+            let fileName = "\(lesson.id)-\(UUID().uuidString).\(ext)"
+            let destination = directory.appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.copyItem(at: url, to: destination)
+
+            videoUrl = ""
+            pendingVideoFileURL = destination
+            pendingVideoFileName = url.lastPathComponent
+        } catch {
+            errorText = "Не удалось подготовить видеофайл: \(error.localizedDescription)"
+        }
+    }
+
+    private func normalizedVideoExtension(from url: URL) -> String {
+        let ext = url.pathExtension.lowercased()
+        guard !ext.isEmpty else { return "mp4" }
+        switch ext {
+        case "mov", "m4v", "mp4": return ext
+        default: return "mp4"
         }
     }
 
@@ -772,7 +867,9 @@ private struct LessonEditorSheet: View {
             youtubeUrl: youtubeUrl.x5Trimmed,
             thumbnailUrl: thumbnailUrl.x5Trimmed,
             isFreePreview: isFreePreview,
-            sellSeparately: sellSeparately
+            sellSeparately: sellSeparately,
+            pendingVideoFileURL: pendingVideoFileURL,
+            pendingVideoFileName: pendingVideoFileName
         )
     }
 }

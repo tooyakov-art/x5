@@ -55,7 +55,7 @@ struct ImageGeneratorView: View {
                 Button { showingGallery = true } label: {
                     Image(systemName: "photo.stack")
                 }
-                .accessibilityLabel("Общая галерея")
+                .accessibilityLabel(loc.t("gen_gallery"))
             }
         }
         .task { await refreshProfileIfPossible() }
@@ -121,6 +121,7 @@ struct ImageGeneratorView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .disabled(isGenerating)
 
             HStack {
                 Label("\(ImageGenerationCatalog.creditCost)", systemImage: "creditcard")
@@ -242,7 +243,8 @@ struct ImageGeneratorView: View {
     }
 
     private var hasEnoughCredits: Bool {
-        (currentCredits ?? 0) >= ImageGenerationCatalog.creditCost
+        guard let currentCredits else { return false }
+        return currentCredits >= ImageGenerationCatalog.creditCost
     }
 
     private var canGenerate: Bool {
@@ -286,13 +288,17 @@ struct ImageGeneratorView: View {
     }
 
     private func refreshProfileIfPossible() async {
-        guard let uid = auth.userId, let token = auth.accessToken else { return }
+        guard let uid = auth.userId, let token = await auth.freshAccessToken() else { return }
         await currentUser.load(userId: uid, accessToken: token)
     }
 
     private func generate() async {
         let cleanPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanPrompt.isEmpty else { return }
+        guard currentCredits != nil else {
+            errorMessage = loc.t("gen_loading_balance")
+            return
+        }
         guard hasEnoughCredits else {
             errorMessage = loc.t("gen_not_enough_credits")
             return
@@ -301,6 +307,7 @@ struct ImageGeneratorView: View {
         promptFocused = false
         isGenerating = true
         errorMessage = nil
+        generatedAsset = nil
         defer { isGenerating = false }
 
         do {
@@ -496,18 +503,23 @@ private struct GeneratedImageViewer: View {
                     Button { saveToPhotos() } label: {
                         Image(systemName: "arrow.down.circle")
                     }
+                    .accessibilityLabel(loc.t("gen_action_download"))
                     Button { saveToGallery() } label: {
                         Image(systemName: "photo.stack")
                     }
+                    .accessibilityLabel(loc.t("gen_gallery"))
                     Button { showingShare = true } label: {
                         Image(systemName: "square.and.arrow.up")
                     }
+                    .accessibilityLabel(loc.t("gen_action_share"))
                     Button { showingEditor = true } label: {
                         Image(systemName: "pencil")
                     }
+                    .accessibilityLabel(loc.t("gen_action_edit"))
                     Button { showingEditor = true } label: {
                         Image(systemName: "paintbrush")
                     }
+                    .accessibilityLabel(loc.t("gen_action_draw"))
                 }
             }
             .sheet(isPresented: $showingShare) {
@@ -546,7 +558,7 @@ private struct GeneratedImageViewer: View {
 
     private func saveToGallery() {
         let saved = onSaveToGallery(image)
-        withAnimation { saveMessage = saved ? "Сохранено в галерею" : "Не удалось сохранить" }
+        withAnimation { saveMessage = saved ? loc.t("gen_saved_gallery") : loc.t("gen_save_failed") }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
             withAnimation { saveMessage = nil }
         }
@@ -557,7 +569,7 @@ private final class DrawingCanvasState: ObservableObject {
     let canvasView = PKCanvasView()
 }
 
-private struct ImageMarkupEditorView: View {
+struct ImageMarkupEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var loc: LocalizationService
 

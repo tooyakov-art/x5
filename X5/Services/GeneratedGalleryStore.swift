@@ -76,6 +76,18 @@ final class GeneratedGalleryStore: ObservableObject {
         }
     }
 
+    @discardableResult
+    func replaceImage(for item: GeneratedGalleryItem, image: UIImage) -> Bool {
+        do {
+            guard let data = image.jpegData(compressionQuality: 0.92) else { return false }
+            try data.write(to: imageURL(for: item), options: .atomic)
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
+    }
+
     func image(for item: GeneratedGalleryItem) -> UIImage? {
         guard let data = try? Data(contentsOf: imageURL(for: item)) else { return nil }
         return UIImage(data: data)

@@ -21,6 +21,9 @@ struct ChatThreadView: View {
     @State private var roomUnread: [String: Int] = [:]
     @State private var messageStateTick: Int = 0
     @State private var replyingTo: ChatMessageRow?
+    @State private var voicePressActive: Bool = false
+    @State private var voiceStartInFlight: Bool = false
+    @State private var voiceSendInFlight: Bool = false
     @FocusState private var inputFocused: Bool
     @State private var searchActive: Bool = false
     @State private var searchQuery: String = ""
@@ -169,24 +172,17 @@ struct ChatThreadView: View {
                     Image(systemName: recorder.isRecording ? "mic.circle.fill" : "mic.circle")
                         .font(.system(size: 30))
                         .foregroundColor(recorder.isRecording ? .red : .white.opacity(0.6))
-                        .opacity(sending ? 0.35 : 1)
+                        .opacity((sending || voiceSendInFlight) ? 0.35 : 1)
                         .gesture(
                             DragGesture(minimumDistance: 0)
                                 .onChanged { _ in
-                                    if !sending && !recorder.isRecording {
-                                        Task { await recorder.start() }
-                                    }
+                                    beginVoicePress()
                                 }
                                 .onEnded { _ in
-                                    guard !sending else { return }
-                                    if let result = recorder.stop() {
-                                        Task { await sendVoice(result) }
-                                    } else {
-                                        recorder.cancel()
-                                    }
+                                    endVoicePress()
                                 }
                         )
-                        .allowsHitTesting(!sending)
+                        .allowsHitTesting(!sending && !voiceSendInFlight)
                 }
             }
             .padding(12)
@@ -327,7 +323,7 @@ struct ChatThreadView: View {
     }
 
     private func sendPhoto(_ item: PhotosPickerItem) async {
-        guard let token = auth.accessToken, let uid = auth.userId else { return }
+        guard let token = await auth.freshAccessToken(), let uid = auth.userId else { return }
         sending = true
         defer { sending = false }
         guard let raw = try? await item.loadTransferable(type: Data.self),
@@ -349,7 +345,7 @@ struct ChatThreadView: View {
     }
 
     private func sendVoice(_ result: (data: Data, mime: String, ext: String)) async {
-        guard let token = auth.accessToken, let uid = auth.userId else { return }
+        guard let token = await auth.freshAccessToken(), let uid = auth.userId else { return }
         sending = true
         defer { sending = false }
         guard let url = await service.uploadAttachment(chatId: chat.id, data: result.data, mime: result.mime, ext: result.ext, accessToken: token) else {
@@ -385,12 +381,12 @@ struct ChatThreadView: View {
     }
 
     private func reload() async {
-        guard let token = auth.accessToken else { return }
+        guard let token = await auth.freshAccessToken() else { return }
         messages = await service.loadMessages(chatId: chat.id, accessToken: token)
     }
 
     private func loadOther() async {
-        guard let token = auth.accessToken,
+        guard let token = await auth.freshAccessToken(),
               let myId = auth.userId,
               let otherId = chat.otherParticipantId(currentUser: myId)
         else { return }
@@ -411,8 +407,44 @@ struct ChatThreadView: View {
         }
     }
 
+    private func beginVoicePress() {
+        guard !sending,
+              !voiceSendInFlight,
+              !voicePressActive,
+              !voiceStartInFlight,
+              !recorder.isRecording
+        else { return }
+        voicePressActive = true
+        voiceStartInFlight = true
+        Task {
+            await recorder.start()
+            voiceStartInFlight = false
+            if !voicePressActive {
+                recorder.cancel()
+            }
+        }
+    }
+
+    private func endVoicePress() {
+        guard voicePressActive else { return }
+        voicePressActive = false
+        guard !sending, !voiceSendInFlight else {
+            recorder.cancel()
+            return
+        }
+        guard recorder.isRecording, let result = recorder.stop() else {
+            recorder.cancel()
+            return
+        }
+        voiceSendInFlight = true
+        Task {
+            await sendVoice(result)
+            voiceSendInFlight = false
+        }
+    }
+
     private func markThreadRead() async {
-        guard let token = auth.accessToken, let uid = auth.userId else { return }
+        guard let token = await auth.freshAccessToken(), let uid = auth.userId else { return }
         if let updated = await service.markRead(chatId: chat.id, currentUserId: uid, accessToken: token) {
             roomUnread = updated.unread ?? [:]
         } else {
@@ -446,6 +478,7 @@ struct ChatThreadView: View {
     }
 
     private func askStartupChat(about message: ChatMessageRow) {
+        replyingTo = message
         draft = "StartupChat: \(messagePreview(message))"
         inputFocused = true
     }
@@ -491,13 +524,17 @@ struct ChatThreadView: View {
     }
 
     private func send() {
-        guard let token = auth.accessToken, let uid = auth.userId else { return }
+        guard let uid = auth.userId else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         draft = ""
         inputFocused = false
         sending = true
         Task {
+            guard let token = await auth.freshAccessToken() else {
+                sending = false
+                return
+            }
             if let inserted = await service.sendText(chatId: chat.id, currentUserId: uid, text: text, accessToken: token) {
                 messages.append(inserted)
                 incrementPeerUnread()
@@ -614,8 +651,7 @@ private struct Bubble: View {
                 Text(stamp)
             }
             if isMine {
-                Image(systemName: isRead ? "checkmark.circle.fill" : "checkmark")
-                    .accessibilityLabel(isRead ? "Read" : "Sent")
+                ReadReceipt(isRead: isRead)
             }
         }
         .font(.system(size: 10, weight: .medium))
@@ -660,6 +696,25 @@ private struct Bubble: View {
             .aspectRatio(3/4, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
+    }
+}
+
+private struct ReadReceipt: View {
+    let isRead: Bool
+
+    var body: some View {
+        ZStack {
+            Image(systemName: "checkmark")
+                .offset(x: isRead ? -3 : 0)
+            if isRead {
+                Image(systemName: "checkmark")
+                    .offset(x: 3)
+            }
+        }
+        .font(.system(size: 10, weight: .bold))
+        .foregroundColor(isRead ? Color.accentColor : Color.white.opacity(0.58))
+        .frame(width: isRead ? 15 : 9, height: 10)
+        .accessibilityLabel(isRead ? "Read" : "Sent")
     }
 }
 

@@ -63,6 +63,9 @@ struct UserProfileView: View {
                 Button { dismiss() } label: {
                     Image(systemName: "chevron.left")
                 }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+                .controlSize(.large)
                 .accessibilityLabel("Back")
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -83,6 +86,9 @@ struct UserProfileView: View {
                 } label: {
                     Image(systemName: "ellipsis")
                 }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+                .controlSize(.large)
             }
         }
         .alert(loc.t("hub_block_user_title"), isPresented: $confirmBlock) {
@@ -130,9 +136,29 @@ struct UserProfileView: View {
                 .frame(width: proxy.size.width, height: height)
                 .allowsHitTesting(false)
 
+                CoverPhoto(urlString: profile?.avatar ?? fallback?.avatar,
+                           name: profile?.name ?? fallback?.name)
+                    .frame(width: proxy.size.width, height: height)
+                    .clipped()
+                    .blur(radius: 22)
+                    .scaleEffect(1.04)
+                    .overlay(Color.black.opacity(0.10))
+                    .mask(
+                        VStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            LinearGradient(
+                                colors: [.clear, .black.opacity(0.72), .black],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .frame(height: 300)
+                        }
+                    )
+                    .allowsHitTesting(false)
+
                 ProfileHeroBottomFade()
-                    .frame(width: proxy.size.width, height: 240)
-                    .position(x: proxy.size.width / 2, y: height - 120)
+                    .frame(width: proxy.size.width, height: 300)
+                    .position(x: proxy.size.width / 2, y: height - 150)
 
                 VStack(spacing: 14) {
                     HStack(spacing: 8) {
@@ -307,9 +333,13 @@ struct UserProfileView: View {
     private var profileShareText: String { "X5: \(displayName)" }
 
     private func openChat() {
-        guard let me = auth.userId, let token = auth.accessToken else { return }
+        guard let me = auth.userId else { return }
         openingChat = true
         Task {
+            guard let token = await auth.freshAccessToken() else {
+                openingChat = false
+                return
+            }
             let chat = await chats.ensureChat(otherUserId: userId, currentUserId: me, taskId: nil, taskTitle: nil, accessToken: token)
             openingChat = false
             if let chat { navigatingChat = chat }
@@ -329,8 +359,9 @@ struct UserProfileView: View {
 
     private func refreshPublicProfile() async {
         isRefreshing = true
-        defer { isRefreshing = false }
         await load(force: true)
+        try? await Task.sleep(nanoseconds: 450_000_000)
+        isRefreshing = false
     }
 
     private func load(force: Bool = false) async {
@@ -367,7 +398,7 @@ struct UserProfileView: View {
         ]
         var request = URLRequest(url: components.url!)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        if let token = auth.accessToken { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        if let token = await auth.freshAccessToken() { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         if let (data, _) = try? await URLSession.shared.data(for: request),
            let rows = try? JSONDecoder().decode([[String: String]].self, from: data) {
             isFollowing = !rows.isEmpty
