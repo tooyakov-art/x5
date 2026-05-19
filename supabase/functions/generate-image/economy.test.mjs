@@ -17,9 +17,21 @@ test("normalizes provider, category, prompt, and fixed credit cost", () => {
   });
 
   assert.equal(request.provider, "google");
+  assert.equal(request.model, "gemini-3-pro-image-preview");
   assert.equal(request.category.id, "logo");
   assert.equal(request.prompt, "premium bakery mark");
   assert.equal(request.costCredits, IMAGE_CREDIT_COST);
+});
+
+test("upgrades legacy nano banana requests to pro for text reliability", () => {
+  const request = normalizeGenerationRequest({
+    model: "gemini-2.5-flash-image",
+    category: "packaging",
+    prompt: "make the text readable on this box",
+  });
+
+  assert.equal(request.provider, "google");
+  assert.equal(request.model, "gemini-3-pro-image-preview");
 });
 
 test("falls back to GPT and custom category for unknown values", () => {

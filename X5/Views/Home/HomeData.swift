@@ -76,8 +76,10 @@ enum ImageGenerationProvider: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .gptImage2, .gptImage15, .gptImageMini, .gptImage:
             return "gpt"
-        case .nanoBananaPro, .nanoBanana2, .nanoBanana:
+        case .nanoBananaPro, .nanoBanana2:
             return "google"
+        case .nanoBanana:
+            return "soon"
         default:
             return "soon"
         }
@@ -89,9 +91,9 @@ enum ImageGenerationProvider: String, CaseIterable, Identifiable, Hashable {
         case .gptImage15: return "state-of-the-art OpenAI image model"
         case .gptImageMini: return "fast OpenAI image model"
         case .gptImage: return "higher quality OpenAI image model"
-        case .nanoBananaPro: return "Gemini 3 Pro Image"
-        case .nanoBanana2: return "Gemini 3.1 Flash Image"
-        case .nanoBanana: return "Gemini 2.5 Flash Image"
+        case .nanoBananaPro: return "Gemini 3 Pro Image · best for text"
+        case .nanoBanana2: return "Gemini 3.1 Flash Image · fast"
+        case .nanoBanana: return "Gemini 2.5 Flash Image · soon"
         case .imagen4: return "Google image model · soon"
         case .fluxPro: return "Black Forest Labs · soon"
         case .midjourney: return "creative image model · soon"

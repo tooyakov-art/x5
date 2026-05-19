@@ -15,7 +15,7 @@ import {
 
 const OPENAI_URL = "https://api.openai.com/v1/images/generations";
 const OPENAI_EDIT_URL = "https://api.openai.com/v1/images/edits";
-const GOOGLE_MODEL = "gemini-3.1-flash-image-preview";
+const GOOGLE_MODEL = "gemini-3-pro-image-preview";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

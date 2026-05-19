@@ -7,8 +7,11 @@ export const generationModels = [
   { id: "gpt-image-1", provider: "gpt", title: "GPT Image" },
   { id: "gemini-3-pro-image-preview", provider: "google", title: "Nano Banana Pro" },
   { id: "gemini-3.1-flash-image-preview", provider: "google", title: "Nano Banana 2" },
-  { id: "gemini-2.5-flash-image", provider: "google", title: "Nano Banana" },
 ];
+
+const generationModelAliases = new Map([
+  ["gemini-2.5-flash-image", "gemini-3-pro-image-preview"],
+]);
 
 export const generationProviders = [
   { id: "gpt", title: "GPT" },
@@ -72,8 +75,9 @@ export function normalizeGenerationRequest(body) {
   }
 
   const requestedProvider = String(body?.provider || "").trim();
+  const requestedModel = generationModelAliases.get(String(body?.model || "").trim()) || body?.model;
   const model =
-    generationModels.find((item) => item.id === body?.model) ||
+    generationModels.find((item) => item.id === requestedModel) ||
     generationModels.find((item) => item.provider === requestedProvider) ||
     generationModels[0];
   const provider = model.provider;
