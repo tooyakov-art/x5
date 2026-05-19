@@ -17,21 +17,35 @@ test("normalizes provider, category, prompt, and fixed credit cost", () => {
   });
 
   assert.equal(request.provider, "google");
-  assert.equal(request.model, "gemini-3-pro-image-preview");
+  assert.equal(request.model, "gemini-3.1-flash-image-preview");
   assert.equal(request.category.id, "logo");
   assert.equal(request.prompt, "premium bakery mark");
   assert.equal(request.costCredits, IMAGE_CREDIT_COST);
 });
 
-test("upgrades legacy nano banana requests to pro for text reliability", () => {
-  const request = normalizeGenerationRequest({
-    model: "gemini-2.5-flash-image",
+test("keeps exact Nano Banana model ids", () => {
+  const nanoBanana2 = normalizeGenerationRequest({
+    model: "gemini-3.1-flash-image-preview",
+    category: "post",
+    prompt: "make a post",
+  });
+  const nanoBananaPro = normalizeGenerationRequest({
+    model: "gemini-3-pro-image-preview",
     category: "packaging",
     prompt: "make the text readable on this box",
   });
+  const request = normalizeGenerationRequest({
+    model: "gemini-2.5-flash-image",
+    category: "logo",
+    prompt: "simple banana logo",
+  });
 
+  assert.equal(nanoBanana2.provider, "google");
+  assert.equal(nanoBanana2.model, "gemini-3.1-flash-image-preview");
+  assert.equal(nanoBananaPro.provider, "google");
+  assert.equal(nanoBananaPro.model, "gemini-3-pro-image-preview");
   assert.equal(request.provider, "google");
-  assert.equal(request.model, "gemini-3-pro-image-preview");
+  assert.equal(request.model, "gemini-2.5-flash-image");
 });
 
 test("falls back to GPT and custom category for unknown values", () => {

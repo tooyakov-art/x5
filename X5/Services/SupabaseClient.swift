@@ -238,7 +238,33 @@ enum SupabaseError: LocalizedError {
         case .invalidResponse:
             return "Invalid response from server."
         case .serverError(let status, let body):
-            return "Server error \(status): \(body)"
+            if let message = Self.serverMessage(from: body) {
+                return message
+            }
+            return "Server error \(status)."
+        }
+    }
+
+    private static func serverMessage(from body: String) -> String? {
+        guard let data = body.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+
+        if let message = payload["message"] as? String, !message.isEmpty {
+            return message
+        }
+
+        switch payload["error"] as? String {
+        case "provider_not_configured":
+            return "Image provider is not configured."
+        case "insufficient_credits":
+            return "Not enough credits."
+        case "credit_service_unavailable":
+            return "Credit service is unavailable."
+        case "provider_error":
+            return "Image provider error."
+        default:
+            return nil
         }
     }
 }

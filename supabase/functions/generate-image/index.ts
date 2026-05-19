@@ -15,7 +15,7 @@ import {
 
 const OPENAI_URL = "https://api.openai.com/v1/images/generations";
 const OPENAI_EDIT_URL = "https://api.openai.com/v1/images/edits";
-const GOOGLE_MODEL = "gemini-3-pro-image-preview";
+const GOOGLE_MODEL = "gemini-3.1-flash-image-preview";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -53,7 +53,13 @@ Deno.serve(async (req) => {
 
   const providerKey = getProviderKey(normalized.provider);
   if (!providerKey) {
-    return json({ error: "provider_not_configured", provider: normalized.provider }, 500);
+    return json({
+      error: "provider_not_configured",
+      provider: normalized.provider,
+      message: normalized.provider === "google"
+        ? "Google Gemini API key is not configured."
+        : "Image provider API key is not configured.",
+    }, 503);
   }
 
   const spent = await spendCredits(user.id, normalized.costCredits);
