@@ -10,10 +10,10 @@ struct TaskDetailView: View {
     @StateObject private var service = HubService()
     @StateObject private var chats = ChatsService()
     @State private var responses: [TaskResponse] = []
-    @State private var showingRespond = false
     @State private var navigatingChat: ChatRoom?
     @State private var accepting: String?
     @State private var confirmBlock = false
+    @State private var openingChat = false
 
     private var isAuthor: Bool { auth.userId == task.authorId }
     private var hasRespondedAlready: Bool {
@@ -106,17 +106,21 @@ struct TaskDetailView: View {
                         .padding(.top, 8)
                 } else if task.status == "open" {
                     Button {
-                        showingRespond = true
+                        Task { await openChatWithAuthor() }
                     } label: {
-                        Text(loc.t("hub_respond_to_task"))
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Color.accentColor)
-                            .cornerRadius(14)
+                        HStack {
+                            if openingChat { ProgressView().tint(.black) }
+                            Text(openingChat ? "Открываю чат..." : loc.t("hub_respond_to_task"))
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.accentColor)
+                        .cornerRadius(14)
                     }
                     .buttonStyle(.plain)
+                    .disabled(openingChat)
                     .padding(.top, 8)
                 } else {
                     Text(loc.t("hub_task_closed"))
@@ -165,12 +169,24 @@ struct TaskDetailView: View {
             Text(loc.t("hub_block_author_message"))
         }
         .task { responses = await service.loadResponses(taskId: task.id) }
-        .sheet(isPresented: $showingRespond) {
-            RespondTaskView(task: task)
-        }
         .sheet(item: $navigatingChat) { chat in
             NavigationStack { ChatThreadView(chat: chat) }
                 .preferredColorScheme(.dark)
+        }
+    }
+
+    private func openChatWithAuthor() async {
+        guard let uid = auth.userId, let token = auth.accessToken else { return }
+        openingChat = true
+        defer { openingChat = false }
+        if let chat = await chats.ensureChat(
+            otherUserId: task.authorId,
+            currentUserId: uid,
+            taskId: task.id,
+            taskTitle: task.title,
+            accessToken: token
+        ) {
+            navigatingChat = chat
         }
     }
 

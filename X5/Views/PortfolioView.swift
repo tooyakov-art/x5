@@ -3,7 +3,7 @@ import PhotosUI
 import AVKit
 import UniformTypeIdentifiers
 
-/// Grid of portfolio items. Used inside ProfileView (own) and UserProfileView (public).
+/// Instagram-style portfolio feed. Used inside ProfileView (own) and UserProfileView (public).
 struct PortfolioGrid: View {
     let userId: String
     let canEdit: Bool
@@ -12,10 +12,15 @@ struct PortfolioGrid: View {
     @StateObject private var service = PortfolioService()
     @State private var showingAdd = false
     @State private var selectedPost: PortfolioItem?
+    @State private var pinnedTick = 0
 
-    private let columns = [GridItem(.flexible(), spacing: 8),
-                           GridItem(.flexible(), spacing: 8),
-                           GridItem(.flexible(), spacing: 8)]
+    private var orderedItems: [PortfolioItem] {
+        _ = pinnedTick
+        let pinned = service.items.filter { PortfolioPinnedStore.isPinned($0.id) }
+            .sorted { (PortfolioPinnedStore.index(of: $0.id) ?? 99) < (PortfolioPinnedStore.index(of: $1.id) ?? 99) }
+        let rest = service.items.filter { !PortfolioPinnedStore.isPinned($0.id) }
+        return pinned + rest
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -52,27 +57,22 @@ struct PortfolioGrid: View {
                 .background(Color.white.opacity(0.04))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             } else {
-                LazyVGrid(columns: columns, spacing: 8) {
-                    ForEach(service.items) { item in
-                        PortfolioCell(item: item,
-                                      canEdit: canEdit,
-                                      onDelete: {
-                                          guard let token = auth.accessToken else { return }
-                                          Task { await service.delete(itemId: item.id, accessToken: token) }
-                                      },
-                                      onLoadLike: {
-                                          guard let token = auth.accessToken, let uid = auth.userId else {
-                                              return PortfolioLikeState(isLiked: false, count: 0)
-                                          }
-                                          return await service.likeState(itemId: item.id, currentUserId: uid, accessToken: token)
-                                      },
-                                       onSetLiked: { liked in
-                                           guard let token = auth.accessToken, let uid = auth.userId else { return false }
-                                           return await service.setLiked(itemId: item.id, liked: liked, currentUserId: uid, accessToken: token)
-                                       })
-                        .onTapGesture {
-                            selectedPost = item
-                        }
+                LazyVStack(spacing: 16) {
+                    ForEach(orderedItems) { item in
+                        PortfolioFeedCard(
+                            item: item,
+                            canEdit: canEdit,
+                            isPinned: PortfolioPinnedStore.isPinned(item.id),
+                            onOpen: { selectedPost = item },
+                            onDelete: {
+                                guard let token = auth.accessToken else { return }
+                                Task { await service.delete(itemId: item.id, accessToken: token) }
+                            },
+                            onTogglePin: {
+                                PortfolioPinnedStore.toggle(item.id)
+                                pinnedTick += 1
+                            }
+                        )
                     }
                 }
             }
@@ -123,6 +123,128 @@ struct PortfolioGrid: View {
             )
             .preferredColorScheme(.dark)
         }
+    }
+}
+
+private enum PortfolioPinnedStore {
+    private static let key = "x5.portfolio.pinned.ids"
+
+    static func ids() -> [String] {
+        UserDefaults.standard.stringArray(forKey: key) ?? []
+    }
+
+    static func isPinned(_ id: String) -> Bool {
+        ids().contains(id)
+    }
+
+    static func index(of id: String) -> Int? {
+        ids().firstIndex(of: id)
+    }
+
+    static func toggle(_ id: String) {
+        var current = ids()
+        if let index = current.firstIndex(of: id) {
+            current.remove(at: index)
+        } else {
+            current.insert(id, at: 0)
+            current = Array(current.prefix(3))
+        }
+        UserDefaults.standard.set(current, forKey: key)
+    }
+}
+
+private struct PortfolioFeedCard: View {
+    let item: PortfolioItem
+    let canEdit: Bool
+    let isPinned: Bool
+    let onOpen: () -> Void
+    let onDelete: () -> Void
+    let onTogglePin: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button(action: onOpen) {
+                ZStack {
+                    Color.white.opacity(0.06)
+                    if item.type == "video" {
+                        Color.black.opacity(0.55)
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 52, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.9))
+                    } else if let s = item.mediaUrl, let url = URL(string: s) {
+                        CachedAsyncImage(url: url) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            ProgressView().tint(.white.opacity(0.5))
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .aspectRatio(4 / 5, contentMode: .fit)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(alignment: .topLeading) {
+                    if isPinned {
+                        Label("Закреп", systemImage: "pin.fill")
+                            .font(.system(size: 11, weight: .heavy))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6)
+                            .background(Color.accentColor)
+                            .clipShape(Capsule())
+                            .padding(10)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    if let title = item.title, !title.isEmpty {
+                        Text(title)
+                            .font(.system(size: 15, weight: .heavy))
+                            .foregroundColor(.white)
+                    }
+                    if let description = item.description, !description.isEmpty {
+                        Text(description)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.62))
+                            .lineLimit(2)
+                    }
+                    if item.type == "video" {
+                        Label("Открыть в видео-редакторе", systemImage: "wand.and.stars")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.accentColor)
+                    }
+                }
+                Spacer()
+                if canEdit {
+                    Menu {
+                        Button {
+                            onTogglePin()
+                        } label: {
+                            Label(isPinned ? "Открепить" : "Закрепить", systemImage: isPinned ? "pin.slash" : "pin")
+                        }
+                        Button(role: .destructive) {
+                            onDelete()
+                        } label: {
+                            Label("Удалить", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: 22, weight: .semibold))
+                    }
+                    .foregroundColor(.white.opacity(0.82))
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.white.opacity(0.045))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
     }
 }
 

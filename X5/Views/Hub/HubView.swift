@@ -17,7 +17,6 @@ struct HubView: View {
     @State private var category: String? = nil
     @State private var showingPostTask = false
     @State private var showingEditProfile = false
-    @State private var showingNotifications = false
     @State private var openingChatWith: String? = nil
     @State private var startingChat: ChatRoom? = nil
     @State private var chatError: String? = nil
@@ -39,6 +38,7 @@ struct HubView: View {
                 .padding(.bottom, 4)
 
                 if segment == .tasks {
+                    createTaskButton
                     countrySelector
                 }
 
@@ -82,7 +82,11 @@ struct HubView: View {
                             specialistsList
                         }
                     case .tasks:
-                        tasksList
+                        if category == nil {
+                            categoriesGrid
+                        } else {
+                            tasksList
+                        }
                     }
                 }
             }
@@ -93,26 +97,12 @@ struct HubView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    if segment == .tasks {
-                        Button {
-                            showingPostTask = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "plus")
-                                Text(loc.t("hub_post")).bold()
-                            }
-                        }
-                    } else if !(currentUser.profile?.showInHub ?? false) {
+                    if segment == .specialists && !(currentUser.profile?.showInHub ?? false) {
                         Button {
                             NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
                         } label: {
                             Text(loc.t("hub_become_specialist"))
                         }
-                    }
-                    Button {
-                        showingNotifications = true
-                    } label: {
-                        Image(systemName: "bell")
                     }
                 }
             }
@@ -127,9 +117,6 @@ struct HubView: View {
             }
             .sheet(isPresented: $showingEditProfile) {
                 EditProfileView()
-            }
-            .sheet(isPresented: $showingNotifications) {
-                NotificationsView()
             }
             .sheet(item: $startingChat) { chat in
                 NavigationStack { ChatThreadView(chat: chat) }
@@ -158,6 +145,24 @@ struct HubView: View {
         .padding(.horizontal, 24)
         .padding(.top, -22)
         .padding(.bottom, 4)
+    }
+
+    private var createTaskButton: some View {
+        Button {
+            showingPostTask = true
+        } label: {
+            Label("СОЗДАТЬ ЗАДАЧУ", systemImage: "plus.circle.fill")
+                .font(.system(size: 16, weight: .black))
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Color.accentColor)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
     }
 
     private var countrySelector: some View {
@@ -239,14 +244,27 @@ struct HubView: View {
     }
 
     private func countForCategory(_ id: String) -> Int {
-        categoryCounts[id] ?? 0
+        if segment == .tasks {
+            return taskCategoryCounts[id] ?? 0
+        }
+        return specialistCategoryCounts[id] ?? 0
     }
 
-    private var categoryCounts: [String: Int] {
+    private var specialistCategoryCounts: [String: Int] {
         var counts: [String: Int] = [:]
         for person in service.specialists where !BlockList.contains(person.id) {
             for id in person.specialistCategory ?? [] {
                 counts[id, default: 0] += 1
+            }
+        }
+        return counts
+    }
+
+    private var taskCategoryCounts: [String: Int] {
+        var counts: [String: Int] = [:]
+        for task in service.tasks where !BlockList.contains(task.authorId) {
+            if let category = task.category {
+                counts[category, default: 0] += 1
             }
         }
         return counts
