@@ -46,51 +46,14 @@ struct HubView: View {
                     countrySelector
                 }
 
-                // Когда категория выбрана — показываем кнопку «назад к категориям»
-                if category != nil {
-                    HStack {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) { category = nil }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "chevron.left")
-                                Text(loc.t("hub_all"))
-                            }
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.9))
-                        }
-                        .buttonStyle(.plain)
-
-                        if let id = category {
-                            HStack(spacing: 7) {
-                                Image(systemName: hubCategorySymbol(for: id))
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(.accentColor)
-                                Text(HubCategories.label(for: id))
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(.white)
-                            }
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                }
+                categoryRail
 
                 Group {
                     switch segment {
                     case .specialists:
-                        if category == nil {
-                            categoriesGrid
-                        } else {
-                            specialistsList
-                        }
+                        specialistsList
                     case .tasks:
-                        if category == nil {
-                            categoriesGrid
-                        } else {
-                            tasksList
-                        }
+                        tasksList
                     }
                 }
             }
@@ -236,6 +199,36 @@ struct HubView: View {
         .padding(.top, 2)
     }
 
+    private var categoryRail: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 9) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) { category = nil }
+                } label: {
+                    CategoryChip(title: loc.t("hub_all"),
+                                 systemImage: "line.3.horizontal.decrease.circle",
+                                 count: totalVisibleCount,
+                                 isSelected: category == nil)
+                }
+                .buttonStyle(.plain)
+
+                ForEach(HubCategories.all) { cat in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) { category = cat.id }
+                    } label: {
+                        CategoryChip(title: HubCategories.label(for: cat.id),
+                                     systemImage: hubCategorySymbol(for: cat.id),
+                                     count: countForCategory(cat.id),
+                                     isSelected: category == cat.id)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        }
+    }
+
     private func startChat(with person: HubSpecialist) {
         guard let myId = auth.userId else {
             chatError = "Сначала войди в аккаунт."
@@ -289,6 +282,20 @@ struct HubView: View {
             return taskCategoryCounts[id] ?? 0
         }
         return specialistCategoryCounts[id] ?? 0
+    }
+
+    private var totalVisibleCount: Int {
+        switch segment {
+        case .specialists:
+            return service.specialists
+                .filter { !BlockList.contains($0.id) }
+                .filter { $0.id != auth.userId }
+                .count
+        case .tasks:
+            return service.tasks
+                .filter { !BlockList.contains($0.authorId) }
+                .count
+        }
     }
 
     private var specialistCategoryCounts: [String: Int] {
@@ -458,6 +465,39 @@ private func normalizedHubCategory(_ value: String?) -> String {
         return "ui_ux"
     default:
         return cleaned
+    }
+}
+
+private struct CategoryChip: View {
+    let title: String
+    let systemImage: String
+    let count: Int
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .bold))
+            Text(title)
+                .font(.system(size: 14, weight: .heavy))
+                .lineLimit(1)
+            if count > 0 {
+                Text("\(count)")
+                    .font(.system(size: 12, weight: .black))
+                    .padding(.leading, 1)
+            }
+        }
+        .foregroundColor(isSelected ? .black : .white.opacity(0.72))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            Capsule(style: .continuous)
+                .fill(isSelected ? Color.accentColor : Color.white.opacity(0.075))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 }
 
