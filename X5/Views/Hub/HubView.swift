@@ -216,7 +216,7 @@ struct HubView: View {
                     Button {
                         withAnimation(.easeInOut(duration: 0.18)) { category = cat.id }
                     } label: {
-                        CategoryChip(title: HubCategories.label(for: cat.id),
+                        CategoryChip(title: HubCategories.label(for: cat.id, language: loc.current),
                                      systemImage: hubCategorySymbol(for: cat.id),
                                      count: countForCategory(cat.id),
                                      isSelected: category == cat.id)
@@ -478,16 +478,18 @@ private struct CategoryChip: View {
         HStack(spacing: 7) {
             Image(systemName: systemImage)
                 .font(.system(size: 14, weight: .bold))
+                .foregroundColor(.white.opacity(0.72))
             Text(title)
                 .font(.system(size: 14, weight: .heavy))
                 .lineLimit(1)
+                .foregroundColor(isSelected ? .black : .white.opacity(0.76))
             if count > 0 {
                 Text("\(count)")
                     .font(.system(size: 12, weight: .black))
                     .padding(.leading, 1)
+                    .foregroundColor(isSelected ? .black.opacity(0.78) : .white.opacity(0.60))
             }
         }
-        .foregroundColor(isSelected ? .black : .white.opacity(0.72))
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(
@@ -509,15 +511,9 @@ private struct CategoryTile: View {
         VStack(spacing: 7) {
             Image(systemName: hubCategorySymbol(for: cat.id))
                 .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.94), X5Style.blue.opacity(0.76)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .foregroundColor(.white.opacity(0.74))
                 .frame(height: 26)
-            Text(cat.labelEn)
+            Text(cat.labelRu)
                 .font(.system(size: 10.5, weight: .heavy))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
@@ -526,7 +522,7 @@ private struct CategoryTile: View {
             if count > 0 {
                 Text("\(count)")
                     .font(.system(size: 10, weight: .heavy))
-                    .foregroundColor(.accentColor)
+                    .foregroundColor(.white.opacity(0.62))
             }
         }
         .frame(maxWidth: .infinity)
@@ -547,6 +543,7 @@ private struct CategoryTile: View {
 
 private struct SpecialistRow: View {
     let person: HubSpecialist
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         HStack(spacing: 12) {
@@ -569,7 +566,7 @@ private struct SpecialistRow: View {
                 }
                 Text(categoryLabel)
                     .font(.system(size: 12))
-                    .foregroundColor(.accentColor.opacity(0.85))
+                    .foregroundColor(.white.opacity(0.58))
                 if let bio = person.bio, !bio.isEmpty {
                     Text(bio)
                         .font(.system(size: 12))
@@ -595,12 +592,13 @@ private struct SpecialistRow: View {
 
     private var categoryLabel: String {
         let ids = person.specialistCategory ?? []
-        return ids.prefix(2).map { HubCategories.label(for: $0) }.joined(separator: " · ")
+        return ids.prefix(2).map { HubCategories.label(for: $0, language: loc.current) }.joined(separator: " · ")
     }
 }
 
 private struct TaskRow: View {
     let task: HubTask
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -610,9 +608,9 @@ private struct TaskRow: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
                         .lineLimit(2)
-                    Text(HubCategories.label(for: task.category))
+                    Text(HubCategories.label(for: task.category, language: loc.current))
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(.white.opacity(0.58))
                 }
                 Spacer()
                 if let budget = task.budget, !budget.isEmpty {

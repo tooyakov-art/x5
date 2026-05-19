@@ -78,43 +78,61 @@ struct HubCategory: Identifiable, Hashable {
     let id: String
     let emoji: String
     let labelEn: String
+    let labelRu: String
+    let labelKk: String
 }
 
 enum HubCategories {
     static let all: [HubCategory] = [
-        .init(id: "marketing", emoji: "📣", labelEn: "Marketing"),
-        .init(id: "smm", emoji: "📱", labelEn: "SMM"),
-        .init(id: "targeting", emoji: "🎯", labelEn: "Ads"),
-        .init(id: "seo", emoji: "🔍", labelEn: "SEO"),
-        .init(id: "sales", emoji: "💰", labelEn: "Sales"),
-        .init(id: "design", emoji: "🎨", labelEn: "Design"),
-        .init(id: "ui_ux", emoji: "📐", labelEn: "UI/UX"),
-        .init(id: "motion", emoji: "✨", labelEn: "Motion"),
-        .init(id: "3d", emoji: "🧊", labelEn: "3D / CGI"),
-        .init(id: "web_dev", emoji: "🌐", labelEn: "Web Dev"),
-        .init(id: "mobile_dev", emoji: "📲", labelEn: "Mobile Dev"),
-        .init(id: "bot_dev", emoji: "🤖", labelEn: "Chatbots"),
-        .init(id: "ai_ml", emoji: "🧠", labelEn: "AI / ML"),
-        .init(id: "gamedev", emoji: "🎮", labelEn: "Game Dev"),
-        .init(id: "ugc", emoji: "📹", labelEn: "UGC"),
-        .init(id: "copy", emoji: "✍️", labelEn: "Copywriting"),
-        .init(id: "video", emoji: "🎬", labelEn: "Video / Editing"),
-        .init(id: "photo", emoji: "📸", labelEn: "Photo"),
-        .init(id: "audio", emoji: "🎙️", labelEn: "Audio"),
-        .init(id: "animation", emoji: "🎞️", labelEn: "Animation"),
-        .init(id: "translation", emoji: "🌍", labelEn: "Translation"),
-        .init(id: "consulting", emoji: "💼", labelEn: "Consulting"),
-        .init(id: "finance", emoji: "📊", labelEn: "Finance"),
-        .init(id: "legal", emoji: "⚖️", labelEn: "Legal"),
-        .init(id: "hr", emoji: "👥", labelEn: "HR"),
-        .init(id: "education", emoji: "🎓", labelEn: "Education"),
-        .init(id: "assistant", emoji: "📋", labelEn: "Assistant"),
-        .init(id: "other", emoji: "🔧", labelEn: "Other")
+        .init(id: "marketing", emoji: "📣", labelEn: "Marketing", labelRu: "Маркетинг", labelKk: "Маркетинг"),
+        .init(id: "smm", emoji: "📱", labelEn: "SMM", labelRu: "SMM", labelKk: "SMM"),
+        .init(id: "targeting", emoji: "🎯", labelEn: "Ads", labelRu: "Таргет", labelKk: "Таргет"),
+        .init(id: "seo", emoji: "🔍", labelEn: "SEO", labelRu: "SEO", labelKk: "SEO"),
+        .init(id: "sales", emoji: "💰", labelEn: "Sales", labelRu: "Продажи", labelKk: "Сату"),
+        .init(id: "design", emoji: "🎨", labelEn: "Design", labelRu: "Дизайн", labelKk: "Дизайн"),
+        .init(id: "ui_ux", emoji: "📐", labelEn: "UI/UX", labelRu: "UI/UX", labelKk: "UI/UX"),
+        .init(id: "motion", emoji: "✨", labelEn: "Motion", labelRu: "Моушн", labelKk: "Моушн"),
+        .init(id: "3d", emoji: "🧊", labelEn: "3D / CGI", labelRu: "3D / CGI", labelKk: "3D / CGI"),
+        .init(id: "web_dev", emoji: "🌐", labelEn: "Web Dev", labelRu: "Веб-разработка", labelKk: "Веб-әзірлеу"),
+        .init(id: "mobile_dev", emoji: "📲", labelEn: "Mobile Dev", labelRu: "Мобильные", labelKk: "Мобильді"),
+        .init(id: "bot_dev", emoji: "🤖", labelEn: "Chatbots", labelRu: "Чат-боты", labelKk: "Чат-боттар"),
+        .init(id: "ai_ml", emoji: "🧠", labelEn: "AI / ML", labelRu: "AI / ML", labelKk: "AI / ML"),
+        .init(id: "gamedev", emoji: "🎮", labelEn: "Game Dev", labelRu: "Геймдев", labelKk: "Геймдев"),
+        .init(id: "ugc", emoji: "📹", labelEn: "UGC", labelRu: "UGC", labelKk: "UGC"),
+        .init(id: "copy", emoji: "✍️", labelEn: "Copywriting", labelRu: "Копирайтинг", labelKk: "Копирайтинг"),
+        .init(id: "video", emoji: "🎬", labelEn: "Video / Editing", labelRu: "Видео / монтаж", labelKk: "Видео / монтаж"),
+        .init(id: "photo", emoji: "📸", labelEn: "Photo", labelRu: "Фото", labelKk: "Фото"),
+        .init(id: "audio", emoji: "🎙️", labelEn: "Audio", labelRu: "Аудио", labelKk: "Аудио"),
+        .init(id: "animation", emoji: "🎞️", labelEn: "Animation", labelRu: "Анимация", labelKk: "Анимация"),
+        .init(id: "translation", emoji: "🌍", labelEn: "Translation", labelRu: "Перевод", labelKk: "Аударма"),
+        .init(id: "consulting", emoji: "💼", labelEn: "Consulting", labelRu: "Консалтинг", labelKk: "Кеңес беру"),
+        .init(id: "finance", emoji: "📊", labelEn: "Finance", labelRu: "Финансы", labelKk: "Қаржы"),
+        .init(id: "legal", emoji: "⚖️", labelEn: "Legal", labelRu: "Юристы", labelKk: "Заңгерлер"),
+        .init(id: "hr", emoji: "👥", labelEn: "HR", labelRu: "HR", labelKk: "HR"),
+        .init(id: "education", emoji: "🎓", labelEn: "Education", labelRu: "Обучение", labelKk: "Оқыту"),
+        .init(id: "assistant", emoji: "📋", labelEn: "Assistant", labelRu: "Ассистент", labelKk: "Ассистент"),
+        .init(id: "other", emoji: "🔧", labelEn: "Other", labelRu: "Другое", labelKk: "Басқа")
     ]
 
     static func label(for id: String?) -> String {
         guard let id else { return "Other" }
         return all.first(where: { $0.id == id })?.labelEn ?? id.capitalized
+    }
+
+    static func label(for id: String?, language: AppLanguage) -> String {
+        guard let id else {
+            switch language {
+            case .ru: return "Другое"
+            case .kk: return "Басқа"
+            case .en: return "Other"
+            }
+        }
+        guard let category = all.first(where: { $0.id == id }) else { return id.capitalized }
+        switch language {
+        case .ru: return category.labelRu
+        case .kk: return category.labelKk
+        case .en: return category.labelEn
+        }
     }
 
     static func symbol(for id: String?) -> String {
