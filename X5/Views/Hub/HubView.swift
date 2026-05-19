@@ -240,7 +240,7 @@ struct HubView: View {
             .frame(maxWidth: 430)
             .frame(maxWidth: .infinity)
         }
-        .refreshable { await service.loadSpecialists() }
+        .refreshable { await refreshCurrentHubSegment() }
     }
 
     private func countForCategory(_ id: String) -> Int {
@@ -254,7 +254,7 @@ struct HubView: View {
         var counts: [String: Int] = [:]
         for person in service.specialists where !BlockList.contains(person.id) {
             for id in person.specialistCategory ?? [] {
-                counts[id, default: 0] += 1
+                counts[normalizedHubCategory(id), default: 0] += 1
             }
         }
         return counts
@@ -264,7 +264,7 @@ struct HubView: View {
         var counts: [String: Int] = [:]
         for task in service.tasks where !BlockList.contains(task.authorId) {
             if let category = task.category {
-                counts[category, default: 0] += 1
+                counts[normalizedHubCategory(category), default: 0] += 1
             }
         }
         return counts
@@ -349,13 +349,24 @@ struct HubView: View {
             .filter { !BlockList.contains($0.id) }
             .filter { $0.id != auth.userId }
         guard let category else { return visible }
-        return visible.filter { ($0.specialistCategory ?? []).contains(category) }
+        return visible.filter { person in
+            (person.specialistCategory ?? []).contains { normalizedHubCategory($0) == category }
+        }
     }
 
     private var filteredTasks: [HubTask] {
         let visible = service.tasks.filter { !BlockList.contains($0.authorId) }
         guard let category else { return visible }
-        return visible.filter { $0.category == category }
+        return visible.filter { normalizedHubCategory($0.category) == category }
+    }
+
+    private func refreshCurrentHubSegment() async {
+        switch segment {
+        case .specialists:
+            await service.loadSpecialists()
+        case .tasks:
+            await service.loadTasks()
+        }
     }
 }
 
@@ -379,6 +390,34 @@ private struct HubCountry: Identifiable, Hashable {
 
 private func hubCategorySymbol(for id: String) -> String {
     HubCategories.symbol(for: id)
+}
+
+private func normalizedHubCategory(_ value: String?) -> String {
+    guard let value else { return "other" }
+    let cleaned = value
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+        .replacingOccurrences(of: "-", with: "_")
+        .replacingOccurrences(of: " ", with: "_")
+
+    switch cleaned {
+    case "ads", "ad", "target", "target_ads", "targeting_ads", "reklama", "реклама", "таргет", "таргет_реклама":
+        return "targeting"
+    case "chatbot", "chatbots", "bot", "bots", "botdev", "bot_dev":
+        return "bot_dev"
+    case "web", "webdev", "web_development":
+        return "web_dev"
+    case "mobile", "mobiledev", "mobile_development":
+        return "mobile_dev"
+    case "ai", "ml", "ai_ml", "ai_neural", "нейросети":
+        return "ai_ml"
+    case "game", "game_dev":
+        return "gamedev"
+    case "uiux", "ui/ux", "ux_ui":
+        return "ui_ux"
+    default:
+        return cleaned
+    }
 }
 
 private struct CategoryTile: View {
