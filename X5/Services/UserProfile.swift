@@ -160,6 +160,12 @@ final class CurrentUser: ObservableObject {
         }
     }
 
+    func applyCreditsRemaining(_ credits: Int) {
+        guard var profile else { return }
+        profile.credits = credits
+        self.profile = profile
+    }
+
     deinit {
         if let observer { NotificationCenter.default.removeObserver(observer) }
     }

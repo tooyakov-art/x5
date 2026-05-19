@@ -71,19 +71,36 @@ export function normalizeGenerationRequest(body) {
     prompt = prompt.slice(0, 900);
   }
 
-  const model = generationModels.find((item) => item.id === body?.model) || generationModels[0];
+  const requestedProvider = String(body?.provider || "").trim();
+  const model =
+    generationModels.find((item) => item.id === body?.model) ||
+    generationModels.find((item) => item.provider === requestedProvider) ||
+    generationModels[0];
   const provider = model.provider;
   const category =
     generationCategories.find((item) => item.id === body?.category) ||
     generationCategories[0];
+  const images = normalizeImages(body?.images);
 
   return {
     prompt,
     provider,
     model: model.id,
     category,
+    images,
     costCredits: IMAGE_CREDIT_COST,
   };
+}
+
+export function normalizeImages(rawImages) {
+  if (!Array.isArray(rawImages)) return [];
+
+  return rawImages.slice(0, 6).flatMap((item) => {
+    const data = String(item?.data || "").trim().replace(/^data:[^;]+;base64,/, "");
+    const mimeType = String(item?.mimeType || item?.mime_type || "image/jpeg").trim();
+    if (!data || !/^image\/(jpeg|jpg|png|webp)$/i.test(mimeType)) return [];
+    return [{ data, mimeType: mimeType.toLowerCase().replace("image/jpg", "image/jpeg") }];
+  });
 }
 
 export function buildFinalPrompt(prompt, category = generationCategories[0]) {

@@ -5,6 +5,7 @@ import {
   IMAGE_CREDIT_COST,
   buildFinalPrompt,
   generationCategories,
+  normalizeImages,
   normalizeGenerationRequest,
 } from "./economy.mjs";
 
@@ -45,4 +46,15 @@ test("builds category-specific generation prompt", () => {
 
   assert.match(finalPrompt, /logo/i);
   assert.match(finalPrompt, /minimal coffee brand/);
+});
+
+test("normalizes image references for edit requests", () => {
+  const images = normalizeImages([
+    { mimeType: "image/jpg", data: "data:image/jpeg;base64,abc123" },
+    { mimeType: "text/plain", data: "bad" },
+  ]);
+
+  assert.deepEqual(images, [
+    { mimeType: "image/jpeg", data: "abc123" },
+  ]);
 });

@@ -147,14 +147,24 @@ final class SupabaseClient {
     func generateImage(
         prompt: String,
         provider: ImageGenerationProvider,
-        category: ImageGenerationCategory
+        category: ImageGenerationCategory,
+        referenceImages: [ImageGenerationReference] = []
     ) async throws -> GeneratedImage {
-        let body = try JSONSerialization.data(withJSONObject: [
+        var payload: [String: Any] = [
             "prompt": prompt,
             "provider": provider.provider,
             "model": provider.rawValue,
             "category": category.id
-        ])
+        ]
+        if !referenceImages.isEmpty {
+            payload["images"] = referenceImages.map { image in
+                [
+                    "mimeType": image.mimeType,
+                    "data": image.base64
+                ]
+            }
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload)
         let data = try await runAuthed { token in
             let url = self.baseURL.appendingPathComponent("functions/v1/generate-image")
             var request = URLRequest(url: url)
@@ -199,6 +209,11 @@ final class SupabaseClient {
             throw SupabaseError.serverError(status: http.statusCode, body: body)
         }
     }
+}
+
+struct ImageGenerationReference {
+    let mimeType: String
+    let base64: String
 }
 
 struct GeneratedImage: Decodable {

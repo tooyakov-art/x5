@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import PencilKit
+import PhotosUI
 
 struct ImageGeneratorView: View {
     @EnvironmentObject private var auth: Auth
@@ -16,6 +17,9 @@ struct ImageGeneratorView: View {
     @State private var generatedAsset: GeneratedImageAsset?
     @State private var viewerAsset: GeneratedImageAsset?
     @State private var showingGallery = false
+    @State private var referenceItems: [PhotosPickerItem] = []
+    @State private var referenceImages: [ImageReferenceAsset] = []
+    @State private var isLoadingReferences = false
     @StateObject private var gallery = GeneratedGalleryStore()
     @FocusState private var promptFocused: Bool
 
@@ -31,6 +35,7 @@ struct ImageGeneratorView: View {
                 hero
                 providerPanel
                 promptPanel
+                referencePanel
                 generateButton
 
                 if isGenerating {
@@ -63,6 +68,9 @@ struct ImageGeneratorView: View {
         .task { await refreshProfileIfPossible() }
         .sheet(isPresented: $showingGallery) {
             GeneratedGalleryView()
+        }
+        .onChange(of: referenceItems) { newItems in
+            Task { await loadReferenceImages(newItems) }
         }
         .fullScreenCover(item: $viewerAsset) { asset in
             GeneratedImageViewer(asset: asset, onImageUpdated: { image in
@@ -192,6 +200,72 @@ struct ImageGeneratorView: View {
         }
         .padding(14)
         .x5ClearGlass(cornerRadius: 18, highlight: 0.11)
+    }
+
+    private var referencePanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                sectionLabel("Референсы")
+                Spacer()
+                if isLoadingReferences {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(0.8)
+                }
+            }
+
+            PhotosPicker(selection: $referenceItems, maxSelectionCount: 6, matching: .images) {
+                Label(referenceImages.isEmpty ? "Добавить фото" : "Изменить фото", systemImage: "photo.badge.plus")
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(isGenerating || isLoadingReferences)
+
+            if !referenceImages.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(referenceImages) { item in
+                            ZStack(alignment: .topTrailing) {
+                                Image(uiImage: item.image)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 76, height: 76)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                                    )
+
+                                Button {
+                                    referenceImages.removeAll { $0.id == item.id }
+                                    if referenceImages.isEmpty { referenceItems = [] }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 20, weight: .bold))
+                                        .symbolRenderingMode(.palette)
+                                        .foregroundStyle(.white, .black.opacity(0.62))
+                                }
+                                .buttonStyle(.plain)
+                                .offset(x: 7, y: -7)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                    .padding(.trailing, 8)
+                }
+
+                Text("AI будет использовать эти фото как референсы: изменить, добавить, убрать или сгенерировать похожую картинку.")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.54))
+            }
+        }
+        .padding(14)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
     }
 
     private var generateButton: some View {
@@ -350,7 +424,8 @@ struct ImageGeneratorView: View {
             let response = try await auth.supabase.generateImage(
                 prompt: cleanPrompt,
                 provider: selectedProvider,
-                category: category
+                category: category,
+                referenceImages: referenceImages.map { $0.reference }
             )
             guard let data = Data(base64Encoded: response.imageBase64),
                   let image = UIImage(data: data)
@@ -369,6 +444,9 @@ struct ImageGeneratorView: View {
             generatedAsset = asset
             _ = saveAssetToGallery(asset, image: image)
             viewerAsset = asset
+            if let creditsRemaining = response.creditsRemaining {
+                currentUser.applyCreditsRemaining(creditsRemaining)
+            }
             await refreshProfileIfPossible()
             DiagnosticLogger.log(event: "image_generated", extra: [
                 "provider": selectedProvider.rawValue,
@@ -382,6 +460,29 @@ struct ImageGeneratorView: View {
             ])
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func loadReferenceImages(_ items: [PhotosPickerItem]) async {
+        isLoadingReferences = true
+        defer { isLoadingReferences = false }
+
+        var loaded: [ImageReferenceAsset] = []
+        for item in items.prefix(6) {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let uiImage = UIImage(data: data),
+                  let jpegData = uiImage.jpegData(compressionQuality: 0.88)
+            else { continue }
+            loaded.append(
+                ImageReferenceAsset(
+                    image: uiImage,
+                    reference: ImageGenerationReference(
+                        mimeType: "image/jpeg",
+                        base64: jpegData.base64EncodedString()
+                    )
+                )
+            )
+        }
+        referenceImages = loaded
     }
 
     private var categoryTitle: String {
@@ -417,6 +518,12 @@ private struct GeneratedImageAsset: Identifiable {
     let category: String
     let costCredits: Int
     let creditsRemaining: Int?
+}
+
+private struct ImageReferenceAsset: Identifiable {
+    let id = UUID()
+    let image: UIImage
+    let reference: ImageGenerationReference
 }
 
 private struct GenerationAnimationView: View {

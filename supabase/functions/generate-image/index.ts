@@ -14,6 +14,7 @@ import {
 } from "./economy.mjs";
 
 const OPENAI_URL = "https://api.openai.com/v1/images/generations";
+const OPENAI_EDIT_URL = "https://api.openai.com/v1/images/edits";
 const GOOGLE_MODEL = "gemini-3.1-flash-image-preview";
 
 const corsHeaders = {
@@ -71,8 +72,8 @@ Deno.serve(async (req) => {
     const finalPrompt = buildFinalPrompt(normalized.prompt, normalized.category);
     const imageBase64 =
       normalized.provider === "google"
-        ? await generateWithGoogle(providerKey, finalPrompt, normalized.model)
-        : await generateWithGPT(providerKey, finalPrompt, normalized.model);
+        ? await generateWithGoogle(providerKey, finalPrompt, normalized.model, normalized.images)
+        : await generateWithGPT(providerKey, finalPrompt, normalized.model, normalized.images);
 
     return json({
       imageBase64,
@@ -100,7 +101,11 @@ function getProviderKey(provider: string): string | undefined {
   return Deno.env.get("OPENAI_API_KEY") || undefined;
 }
 
-async function generateWithGPT(apiKey: string, finalPrompt: string, model: string): Promise<string> {
+async function generateWithGPT(apiKey: string, finalPrompt: string, model: string, images: any[] = []): Promise<string> {
+  if (images.length > 0) {
+    return await editWithGPT(apiKey, finalPrompt, model, images);
+  }
+
   const response = await fetch(OPENAI_URL, {
     method: "POST",
     headers: {
@@ -128,9 +133,52 @@ async function generateWithGPT(apiKey: string, finalPrompt: string, model: strin
   return imageBase64;
 }
 
-async function generateWithGoogle(apiKey: string, finalPrompt: string, requestedModel: string): Promise<string> {
+async function editWithGPT(apiKey: string, finalPrompt: string, model: string, images: any[]): Promise<string> {
+  const form = new FormData();
+  form.append("model", model || Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-2");
+  form.append("prompt", finalPrompt);
+  form.append("size", "1024x1024");
+  form.append("quality", "low");
+
+  images.slice(0, 6).forEach((image, index) => {
+    const bytes = decodeBase64(image.data);
+    const mimeType = image.mimeType || "image/jpeg";
+    const ext = mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg";
+    form.append("image[]", new Blob([bytes], { type: mimeType }), `reference-${index + 1}.${ext}`);
+  });
+
+  const response = await fetch(OPENAI_EDIT_URL, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: form,
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || `OpenAI edit error ${response.status}`);
+  }
+
+  const imageBase64 = payload?.data?.[0]?.b64_json;
+  if (!imageBase64) {
+    throw new Error("OpenAI returned no edited image");
+  }
+  return imageBase64;
+}
+
+async function generateWithGoogle(apiKey: string, finalPrompt: string, requestedModel: string, images: any[] = []): Promise<string> {
   const model = requestedModel || Deno.env.get("GOOGLE_IMAGE_MODEL") || GOOGLE_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  const parts = [
+    { text: finalPrompt },
+    ...images.slice(0, 6).map((image) => ({
+      inline_data: {
+        mime_type: image.mimeType || "image/jpeg",
+        data: image.data,
+      },
+    })),
+  ];
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -138,7 +186,7 @@ async function generateWithGoogle(apiKey: string, finalPrompt: string, requested
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: finalPrompt }] }],
+      contents: [{ parts }],
       generationConfig: {
         responseModalities: ["TEXT", "IMAGE"],
       },
@@ -157,6 +205,15 @@ async function generateWithGoogle(apiKey: string, finalPrompt: string, requested
     throw new Error("Google returned no image");
   }
   return imageBase64;
+}
+
+function decodeBase64(data: string): Uint8Array {
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
 async function verifyUser(authorization: string): Promise<{ id: string } | null> {
