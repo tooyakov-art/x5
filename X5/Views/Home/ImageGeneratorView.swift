@@ -80,6 +80,11 @@ struct ImageGeneratorView: View {
                 }
             }, onSaveToGallery: { image in
                 saveAssetToGallery(asset, image: image)
+            }, onRegenerate: { editPrompt, image in
+                let clean = editPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !clean.isEmpty, let reference = makeReference(from: image) else { return }
+                prompt = clean
+                Task { await generate(promptOverride: clean, referencesOverride: [reference]) }
             })
             .environmentObject(loc)
         }
@@ -398,8 +403,11 @@ struct ImageGeneratorView: View {
         await currentUser.load(userId: uid, accessToken: token)
     }
 
-    private func generate() async {
-        let cleanPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func generate(
+        promptOverride: String? = nil,
+        referencesOverride: [ImageGenerationReference]? = nil
+    ) async {
+        let cleanPrompt = (promptOverride ?? prompt).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanPrompt.isEmpty else { return }
         guard !isGenerating else { return }
 
@@ -415,7 +423,8 @@ struct ImageGeneratorView: View {
             errorMessage = loc.t("gen_loading_balance")
             return
         }
-        guard hasEnoughCredits else {
+        let creditsBefore = currentCredits ?? 0
+        guard creditsBefore >= ImageGenerationCatalog.creditCost else {
             errorMessage = loc.t("gen_not_enough_credits")
             return
         }
@@ -425,7 +434,7 @@ struct ImageGeneratorView: View {
                 prompt: cleanPrompt,
                 provider: selectedProvider,
                 category: category,
-                referenceImages: referenceImages.map { $0.reference }
+                referenceImages: referencesOverride ?? referenceImages.map { $0.reference }
             )
             guard let data = Data(base64Encoded: response.imageBase64),
                   let image = UIImage(data: data)
@@ -444,10 +453,8 @@ struct ImageGeneratorView: View {
             generatedAsset = asset
             _ = saveAssetToGallery(asset, image: image)
             viewerAsset = asset
-            if let creditsRemaining = response.creditsRemaining {
-                currentUser.applyCreditsRemaining(creditsRemaining)
-            }
-            await refreshProfileIfPossible()
+            let remainingCredits = response.creditsRemaining ?? max(creditsBefore - ImageGenerationCatalog.creditCost, 0)
+            currentUser.applyCreditsRemaining(remainingCredits)
             DiagnosticLogger.log(event: "image_generated", extra: [
                 "provider": selectedProvider.rawValue,
                 "category": category.id
@@ -483,6 +490,14 @@ struct ImageGeneratorView: View {
             )
         }
         referenceImages = loaded
+    }
+
+    private func makeReference(from image: UIImage) -> ImageGenerationReference? {
+        guard let jpegData = image.jpegData(compressionQuality: 0.88) else { return nil }
+        return ImageGenerationReference(
+            mimeType: "image/jpeg",
+            base64: jpegData.base64EncodedString()
+        )
     }
 
     private var categoryTitle: String {
@@ -615,20 +630,24 @@ private struct GeneratedImageViewer: View {
     let asset: GeneratedImageAsset
     let onImageUpdated: (UIImage) -> Void
     let onSaveToGallery: (UIImage) -> Bool
+    let onRegenerate: (String, UIImage) -> Void
 
     @State private var image: UIImage
     @State private var showingShare = false
     @State private var showingEditor = false
+    @State private var regeneratePrompt = ""
     @State private var saveMessage: String?
 
     init(
         asset: GeneratedImageAsset,
         onImageUpdated: @escaping (UIImage) -> Void,
-        onSaveToGallery: @escaping (UIImage) -> Bool
+        onSaveToGallery: @escaping (UIImage) -> Bool,
+        onRegenerate: @escaping (String, UIImage) -> Void
     ) {
         self.asset = asset
         self.onImageUpdated = onImageUpdated
         self.onSaveToGallery = onSaveToGallery
+        self.onRegenerate = onRegenerate
         _image = State(initialValue: asset.image)
     }
 
@@ -645,6 +664,7 @@ private struct GeneratedImageViewer: View {
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .padding(.horizontal, 14)
                     metaBar
+                    regenerateBar
                     Spacer(minLength: 0)
                 }
 
@@ -714,6 +734,45 @@ private struct GeneratedImageViewer: View {
         }
         .font(.system(size: 12, weight: .bold))
         .foregroundColor(.white.opacity(0.62))
+        .padding(.horizontal, 14)
+    }
+
+    private var regenerateBar: some View {
+        VStack(spacing: 10) {
+            TextField("Что изменить? Например: улучши текст на коробке", text: $regeneratePrompt, axis: .vertical)
+                .lineLimit(2...4)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(12)
+                .background(Color.white.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            HStack(spacing: 10) {
+                Button {
+                    showingEditor = true
+                } label: {
+                    Label("Отметить", systemImage: "pencil.tip.crop.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    let clean = regeneratePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !clean.isEmpty else { return }
+                    onRegenerate(clean, image)
+                    dismiss()
+                } label: {
+                    Label("Перегенерировать", systemImage: "wand.and.stars")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(regeneratePrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .controlSize(.regular)
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .padding(.horizontal, 14)
     }
 

@@ -69,7 +69,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const finalPrompt = buildFinalPrompt(normalized.prompt, normalized.category);
+    const finalPrompt = buildFinalPrompt(
+      normalized.prompt,
+      normalized.category,
+      normalized.images.length > 0,
+    );
     const imageBase64 =
       normalized.provider === "google"
         ? await generateWithGoogle(providerKey, finalPrompt, normalized.model, normalized.images)
@@ -144,7 +148,7 @@ async function editWithGPT(apiKey: string, finalPrompt: string, model: string, i
     const bytes = decodeBase64(image.data);
     const mimeType = image.mimeType || "image/jpeg";
     const ext = mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg";
-    form.append("image[]", new Blob([bytes], { type: mimeType }), `reference-${index + 1}.${ext}`);
+    form.append("image", new Blob([bytes], { type: mimeType }), `reference-${index + 1}.${ext}`);
   });
 
   const response = await fetch(OPENAI_EDIT_URL, {
@@ -170,7 +174,7 @@ async function editWithGPT(apiKey: string, finalPrompt: string, model: string, i
 async function generateWithGoogle(apiKey: string, finalPrompt: string, requestedModel: string, images: any[] = []): Promise<string> {
   const model = requestedModel || Deno.env.get("GOOGLE_IMAGE_MODEL") || GOOGLE_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-  const parts = [
+  const requestParts = [
     { text: finalPrompt },
     ...images.slice(0, 6).map((image) => ({
       inline_data: {
@@ -186,7 +190,7 @@ async function generateWithGoogle(apiKey: string, finalPrompt: string, requested
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      contents: [{ parts }],
+      contents: [{ parts: requestParts }],
       generationConfig: {
         responseModalities: ["TEXT", "IMAGE"],
       },
@@ -198,8 +202,8 @@ async function generateWithGoogle(apiKey: string, finalPrompt: string, requested
     throw new Error(payload?.error?.message || `Google error ${response.status}`);
   }
 
-  const parts = payload?.candidates?.[0]?.content?.parts || [];
-  const imagePart = parts.find((part: any) => part?.inlineData?.data || part?.inline_data?.data);
+  const responseParts = payload?.candidates?.[0]?.content?.parts || [];
+  const imagePart = responseParts.find((part: any) => part?.inlineData?.data || part?.inline_data?.data);
   const imageBase64 = imagePart?.inlineData?.data || imagePart?.inline_data?.data;
   if (!imageBase64) {
     throw new Error("Google returned no image");

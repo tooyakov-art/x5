@@ -103,7 +103,18 @@ export function normalizeImages(rawImages) {
   });
 }
 
-export function buildFinalPrompt(prompt, category = generationCategories[0]) {
+export function buildFinalPrompt(prompt, category = generationCategories[0], hasImages = false) {
+  if (hasImages) {
+    return [
+      "Edit the provided image(s). Preserve the original subject, product, packaging, composition, layout, camera angle, background, and text placement unless the user explicitly asks to change them.",
+      "Do not invent unrelated objects or replace the scene. If the user asks to improve/enhance/upscale, only improve clarity, sharpness, lighting, cleanup, and text readability.",
+      "If the image contains text, keep the same words and make them more readable; do not create random text.",
+      `User instruction: ${prompt}`,
+      category.promptGuide,
+      "No explicit sexual content, hate, gore, real-person impersonation, or misleading medical/financial claims.",
+    ].join("\n");
+  }
+
   return [
     prompt,
     category.promptGuide,

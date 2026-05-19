@@ -48,6 +48,14 @@ test("builds category-specific generation prompt", () => {
   assert.match(finalPrompt, /minimal coffee brand/);
 });
 
+test("builds conservative edit prompt when images are attached", () => {
+  const finalPrompt = buildFinalPrompt("improve image", generationCategories[0], true);
+
+  assert.match(finalPrompt, /Preserve the original subject/i);
+  assert.match(finalPrompt, /Do not invent unrelated objects/i);
+  assert.match(finalPrompt, /text readability/i);
+});
+
 test("normalizes image references for edit requests", () => {
   const images = normalizeImages([
     { mimeType: "image/jpg", data: "data:image/jpeg;base64,abc123" },
