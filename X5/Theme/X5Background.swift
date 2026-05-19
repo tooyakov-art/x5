@@ -11,7 +11,7 @@ struct X5Background: View {
 
             RadialGradient(
                 colors: [
-                    X5Style.blue.opacity(0.42),
+                    X5Style.backgroundBlue.opacity(0.58),
                     .clear
                 ],
                 center: .init(x: 0.5, y: -0.05),
@@ -21,7 +21,7 @@ struct X5Background: View {
 
             RadialGradient(
                 colors: [
-                    X5Style.blueSoft.opacity(0.26),
+                    X5Style.backgroundCyan.opacity(0.30),
                     .clear
                 ],
                 center: .init(x: -0.06, y: 0.34),
@@ -41,7 +41,7 @@ struct X5Background: View {
 
             RadialGradient(
                 colors: [
-                    Color.white.opacity(0.10),
+                    X5Style.backgroundCyan.opacity(0.16),
                     .clear
                 ],
                 center: .init(x: 0.74, y: 0.04),

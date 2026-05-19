@@ -19,7 +19,7 @@ struct ImageGeneratorView: View {
     @StateObject private var gallery = GeneratedGalleryStore()
     @FocusState private var promptFocused: Bool
 
-    init(category: ImageGenerationCategory = ImageGenerationCatalog.custom, provider: ImageGenerationProvider = .gptImageMini) {
+    init(category: ImageGenerationCategory = ImageGenerationCatalog.custom, provider: ImageGenerationProvider = .gptImage2) {
         self.category = category
         _prompt = State(initialValue: category.examplePrompt)
         _selectedProvider = State(initialValue: provider)
@@ -119,10 +119,17 @@ struct ImageGeneratorView: View {
 
             Menu {
                 ForEach(ImageGenerationProvider.allCases) { model in
-                    Button {
-                        selectedProvider = model
-                    } label: {
-                        Label(model.title, systemImage: model == selectedProvider ? "checkmark" : "cpu")
+                    if model.isComingSoon {
+                        Button {} label: {
+                            Label("\(model.title) · скоро", systemImage: "clock")
+                        }
+                        .disabled(true)
+                    } else {
+                        Button {
+                            selectedProvider = model
+                        } label: {
+                            Label(model.title, systemImage: model == selectedProvider ? "checkmark" : "cpu")
+                        }
                     }
                 }
             } label: {

@@ -108,7 +108,7 @@ async function generateWithGPT(apiKey: string, finalPrompt: string, model: strin
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: model || Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-1-mini",
+      model: model || Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-2",
       prompt: finalPrompt,
       size: "1024x1024",
       quality: "low",
@@ -140,7 +140,7 @@ async function generateWithGoogle(apiKey: string, finalPrompt: string, requested
     body: JSON.stringify({
       contents: [{ parts: [{ text: finalPrompt }] }],
       generationConfig: {
-        responseModalities: ["Image"],
+        responseModalities: ["TEXT", "IMAGE"],
       },
     }),
   });

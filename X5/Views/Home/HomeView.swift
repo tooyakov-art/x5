@@ -19,7 +19,7 @@ struct HomeView: View {
     @State private var openTool: HomeTool?
     @State private var openCaptions: Bool = false
     @State private var openImageCategory: ImageGenerationCategory?
-    @State private var selectedGenerationProvider: ImageGenerationProvider = .gptImageMini
+    @State private var selectedGenerationProvider: ImageGenerationProvider = .gptImage2
     @State private var showingNotifications: Bool = false
     @State private var showingGeneratedGallery: Bool = false
 
@@ -53,7 +53,7 @@ struct HomeView: View {
                     generationCategoryStrip
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 2)
+                .padding(.top, -18)
                 .padding(.bottom, 40)
                 .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity)
@@ -110,7 +110,7 @@ struct HomeView: View {
                 .foregroundColor(.white)
                 .kerning(-0.6)
         }
-        .padding(.top, -4)
+        .padding(.top, -10)
         .padding(.leading, 2)
     }
 
@@ -213,10 +213,17 @@ struct HomeView: View {
 
             Menu {
                 ForEach(ImageGenerationProvider.allCases) { model in
-                    Button {
-                        selectedGenerationProvider = model
-                    } label: {
-                        Label(model.title, systemImage: model == selectedGenerationProvider ? "checkmark" : "cpu")
+                    if model.isComingSoon {
+                        Button {} label: {
+                            Label("\(model.title) · скоро", systemImage: "clock")
+                        }
+                        .disabled(true)
+                    } else {
+                        Button {
+                            selectedGenerationProvider = model
+                        } label: {
+                            Label(model.title, systemImage: model == selectedGenerationProvider ? "checkmark" : "cpu")
+                        }
                     }
                 }
             } label: {

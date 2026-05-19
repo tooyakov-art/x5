@@ -1,14 +1,15 @@
 import Foundation
 import SwiftUI
 
-/// Storage prefix for home banner & tool-card videos (mirrors web `VID` constant).
+/// Storage prefix for App Store-safe home videos.
+/// Only X5-owned Kling AI exports should be placed here.
 let X5_HOME_VIDEO_BASE = "https://afwznqjpshybmqhlewmy.supabase.co/storage/v1/object/public/videos/home"
 
 struct HomeBanner: Identifiable, Hashable {
     let id = UUID()
     let title: String
     let subtitle: String
-    let videoFile: String?       // e.g. "zooms.mp4" — under VID base
+    let videoFile: String?
     let gradientStart: Color
     let gradientEnd: Color
     let toolID: String           // tool to navigate when tapped
@@ -37,38 +38,75 @@ struct HomeTool: Identifiable, Hashable {
 }
 
 enum ImageGenerationProvider: String, CaseIterable, Identifiable, Hashable {
+    case gptImage2 = "gpt-image-2"
+    case gptImage15 = "gpt-image-1.5"
     case gptImageMini = "gpt-image-1-mini"
     case gptImage = "gpt-image-1"
-    case geminiFlash = "gemini-3.1-flash-image-preview"
-    case geminiFlashLite = "gemini-2.5-flash-image-preview"
+    case nanoBananaPro = "gemini-3-pro-image-preview"
+    case nanoBanana2 = "gemini-3.1-flash-image-preview"
+    case nanoBanana = "gemini-2.5-flash-image"
+    case imagen4 = "imagen-4"
+    case fluxPro = "flux-pro"
+    case midjourney = "midjourney-v7"
+    case runwayFrames = "runway-frames"
+    case adobeFirefly = "adobe-firefly"
+    case leonardoPhoenix = "leonardo-phoenix"
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .gptImage2: return "GPT Image 2"
+        case .gptImage15: return "GPT Image 1.5"
         case .gptImageMini: return "GPT Image Mini"
         case .gptImage: return "GPT Image"
-        case .geminiFlash: return "Gemini Flash Image"
-        case .geminiFlashLite: return "Gemini Flash Lite"
+        case .nanoBananaPro: return "Nano Banana Pro"
+        case .nanoBanana2: return "Nano Banana 2"
+        case .nanoBanana: return "Nano Banana"
+        case .imagen4: return "Imagen 4"
+        case .fluxPro: return "FLUX Pro"
+        case .midjourney: return "Midjourney"
+        case .runwayFrames: return "Runway Frames"
+        case .adobeFirefly: return "Adobe Firefly"
+        case .leonardoPhoenix: return "Leonardo Phoenix"
         }
     }
 
     var provider: String {
         switch self {
-        case .gptImageMini, .gptImage:
+        case .gptImage2, .gptImage15, .gptImageMini, .gptImage:
             return "gpt"
-        case .geminiFlash, .geminiFlashLite:
+        case .nanoBananaPro, .nanoBanana2, .nanoBanana:
             return "google"
+        default:
+            return "soon"
         }
     }
 
     var subtitle: String {
         switch self {
+        case .gptImage2: return "latest OpenAI image model"
+        case .gptImage15: return "state-of-the-art OpenAI image model"
         case .gptImageMini: return "fast OpenAI image model"
         case .gptImage: return "higher quality OpenAI image model"
-        case .geminiFlash: return "Google multimodal image model"
-        case .geminiFlashLite: return "faster Gemini image preview"
+        case .nanoBananaPro: return "Gemini 3 Pro Image"
+        case .nanoBanana2: return "Gemini 3.1 Flash Image"
+        case .nanoBanana: return "Gemini 2.5 Flash Image"
+        case .imagen4: return "Google image model · soon"
+        case .fluxPro: return "Black Forest Labs · soon"
+        case .midjourney: return "creative image model · soon"
+        case .runwayFrames: return "Runway image model · soon"
+        case .adobeFirefly: return "Adobe image model · soon"
+        case .leonardoPhoenix: return "Leonardo image model · soon"
         }
+    }
+
+    var isAvailable: Bool {
+        provider != "soon"
+    }
+
+    var isComingSoon: Bool {
+        !isAvailable
     }
 }
 
@@ -161,22 +199,22 @@ enum HomeContent {
               gradientEnd: Color(red: 0.06, green: 0.20, blue: 0.38),
               toolID: "ai_influencer"),
         .init(title: "Create Video", subtitle: "AI video generation — Kling 3.0",
-              videoFile: "zooms.mp4",
+              videoFile: nil,
               gradientStart: Color(red: 0.06, green: 0.05, blue: 0.16),
               gradientEnd: Color(red: 0.09, green: 0.13, blue: 0.24),
               toolID: "video_gen"),
         .init(title: "Face Swap", subtitle: "Swap faces in photos & videos",
-              videoFile: "face-swap.mp4",
+              videoFile: nil,
               gradientStart: Color(red: 0.10, green: 0.10, blue: 0.18),
               gradientEnd: Color(red: 0.06, green: 0.20, blue: 0.38),
               toolID: "edit_image"),
         .init(title: "Transitions", subtitle: "Cinematic scene transitions",
-              videoFile: "transitions.mp4",
+              videoFile: nil,
               gradientStart: Color(red: 0.06, green: 0.05, blue: 0.16),
               gradientEnd: Color(red: 0.14, green: 0.14, blue: 0.24),
               toolID: "vfx_library"),
         .init(title: "Lipsync Studio", subtitle: "Lip sync with audio",
-              videoFile: "lipsync2.mp4",
+              videoFile: nil,
               gradientStart: Color(red: 0.10, green: 0.10, blue: 0.18),
               gradientEnd: Color(red: 0.18, green: 0.10, blue: 0.30),
               toolID: "lipsync")
@@ -185,22 +223,22 @@ enum HomeContent {
     /// 14 tools matching web `toolCards` array.
     static let tools: [HomeTool] = [
         .init(id: "photo", title: "Create Image", subtitle: "AI generation",
-              icon: "photo", videoFile: "angles.mp4",
+              icon: "photo", videoFile: nil,
               gradientStart: .indigo, gradientEnd: .black,
               tag: "AI", tagColor: Color(red: 0.39, green: 0.40, blue: 0.94)),
 
         .init(id: "video_gen", title: "Kling Video", subtitle: "Text/Image to video",
-              icon: "video", videoFile: "zooms.mp4",
+              icon: "video", videoFile: nil,
               gradientStart: X5Style.blue.opacity(0.42), gradientEnd: .black,
               tag: "PRO", tagColor: Color.white.opacity(0.88)),
 
         .init(id: "outfit_swap", title: "Outfit Swap", subtitle: "Swap outfits",
-              icon: "tshirt", videoFile: "outfit-swap.mp4",
+              icon: "tshirt", videoFile: nil,
               gradientStart: .purple, gradientEnd: .black,
               tag: "NEW", tagColor: Color(red: 0.51, green: 0.55, blue: 0.97)),
 
         .init(id: "lipsync", title: "Lip Sync", subtitle: "Talking video",
-              icon: "mouth", videoFile: "lipsync.mp4",
+              icon: "mouth", videoFile: nil,
               gradientStart: X5Style.blue.opacity(0.36), gradientEnd: .black,
               tag: "NEW", tagColor: X5Style.blueSoft),
 
@@ -211,7 +249,7 @@ enum HomeContent {
               tag: "AI", tagColor: X5Style.blue),
 
         .init(id: "voice_tts", title: "Voice TTS", subtitle: "Text to speech",
-              icon: "speaker.wave.2.fill", videoFile: "lipsync2.mp4",
+              icon: "speaker.wave.2.fill", videoFile: nil,
               gradientStart: .pink, gradientEnd: .black,
               tag: "AI", tagColor: Color(red: 0.66, green: 0.55, blue: 0.98)),
 
@@ -228,7 +266,7 @@ enum HomeContent {
               tag: "AI", tagColor: X5Style.blue),
 
         .init(id: "video_creative", title: "Motion Control", subtitle: "Camera moves",
-              icon: "film", videoFile: "behind-scenes.mp4",
+              icon: "film", videoFile: nil,
               gradientStart: .purple, gradientEnd: .black,
               tag: "AI", tagColor: Color(red: 0.66, green: 0.55, blue: 0.98)),
 

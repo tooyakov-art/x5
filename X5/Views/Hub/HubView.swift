@@ -156,7 +156,7 @@ struct HubView: View {
             Spacer()
         }
         .padding(.horizontal, 24)
-        .padding(.top, -8)
+        .padding(.top, -22)
         .padding(.bottom, 4)
     }
 

@@ -1,10 +1,13 @@
 export const IMAGE_CREDIT_COST = 10;
 
 export const generationModels = [
+  { id: "gpt-image-2", provider: "gpt", title: "GPT Image 2" },
+  { id: "gpt-image-1.5", provider: "gpt", title: "GPT Image 1.5" },
   { id: "gpt-image-1-mini", provider: "gpt", title: "GPT Image Mini" },
   { id: "gpt-image-1", provider: "gpt", title: "GPT Image" },
-  { id: "gemini-3.1-flash-image-preview", provider: "google", title: "Gemini Flash Image" },
-  { id: "gemini-2.5-flash-image-preview", provider: "google", title: "Gemini Flash Lite" },
+  { id: "gemini-3-pro-image-preview", provider: "google", title: "Nano Banana Pro" },
+  { id: "gemini-3.1-flash-image-preview", provider: "google", title: "Nano Banana 2" },
+  { id: "gemini-2.5-flash-image", provider: "google", title: "Nano Banana" },
 ];
 
 export const generationProviders = [
