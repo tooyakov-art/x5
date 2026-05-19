@@ -13,9 +13,11 @@ struct HubView: View {
     @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = HubService()
     @StateObject private var chats = ChatsService()
+    @StateObject private var portfolio = PortfolioService()
     @State private var segment: Segment = .specialists
     @State private var category: String? = nil
     @State private var showingPostTask = false
+    @State private var showingAddPortfolio = false
     @State private var showingEditProfile = false
     @State private var openingChatWith: String? = nil
     @State private var startingChat: ChatRoom? = nil
@@ -37,7 +39,9 @@ struct HubView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 4)
 
-                if segment == .tasks {
+                if segment == .specialists {
+                    addPortfolioButton
+                } else if segment == .tasks {
                     createTaskButton
                     countrySelector
                 }
@@ -115,6 +119,25 @@ struct HubView: View {
                     Task { await service.loadTasks() }
                 })
             }
+            .sheet(isPresented: $showingAddPortfolio) {
+                AddPortfolioItemView { data, mediaType, mime, ext, title, desc in
+                    guard let token = auth.accessToken, let userId = auth.userId else {
+                        chatError = "Сначала войди в аккаунт."
+                        return false
+                    }
+                    return await portfolio.addMedia(
+                        data: data,
+                        type: mediaType,
+                        mime: mime,
+                        ext: ext,
+                        userId: userId,
+                        title: title,
+                        description: desc,
+                        accessToken: token
+                    )
+                }
+                .preferredColorScheme(.dark)
+            }
             .sheet(isPresented: $showingEditProfile) {
                 EditProfileView()
             }
@@ -151,7 +174,25 @@ struct HubView: View {
         Button {
             showingPostTask = true
         } label: {
-            Label("СОЗДАТЬ ЗАДАЧУ", systemImage: "plus.circle.fill")
+            Label(loc.t("hub_create_task"), systemImage: "plus.circle.fill")
+                .font(.system(size: 16, weight: .black))
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Color.accentColor)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
+    }
+
+    private var addPortfolioButton: some View {
+        Button {
+            showingAddPortfolio = true
+        } label: {
+            Label(loc.t("hub_add_portfolio"), systemImage: "photo.badge.plus")
                 .font(.system(size: 16, weight: .black))
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)
@@ -171,16 +212,16 @@ struct HubView: View {
                 Button {
                     selectedCountry = .kazakhstan
                 } label: {
-                    Label(HubCountry.kazakhstan.title, systemImage: "checkmark")
+                    Label(loc.t(HubCountry.kazakhstan.titleKey), systemImage: "checkmark")
                 }
                 Section(loc.t("hub_country_soon")) {
                     ForEach(HubCountry.comingSoon) { country in
-                        Button(country.title) {}
+                        Button(loc.t(country.titleKey)) {}
                             .disabled(true)
                     }
                 }
             } label: {
-                Label(selectedCountry.title, systemImage: "location.fill")
+                Label(loc.t(selectedCountry.titleKey), systemImage: "location.fill")
                     .font(.system(size: 13, weight: .semibold))
             }
             .buttonStyle(.bordered)
@@ -374,15 +415,15 @@ struct HubView: View {
 
 private struct HubCountry: Identifiable, Hashable {
     let id: String
-    let title: String
+    let titleKey: String
 
-    static let kazakhstan = HubCountry(id: "kz", title: "Kazakhstan")
+    static let kazakhstan = HubCountry(id: "kz", titleKey: "country_kazakhstan")
     static let comingSoon: [HubCountry] = [
-        HubCountry(id: "uz", title: "Uzbekistan"),
-        HubCountry(id: "kg", title: "Kyrgyzstan"),
-        HubCountry(id: "ae", title: "UAE"),
-        HubCountry(id: "tr", title: "Turkey"),
-        HubCountry(id: "us", title: "USA")
+        HubCountry(id: "uz", titleKey: "country_uzbekistan"),
+        HubCountry(id: "kg", titleKey: "country_kyrgyzstan"),
+        HubCountry(id: "ae", titleKey: "country_uae"),
+        HubCountry(id: "tr", titleKey: "country_turkey"),
+        HubCountry(id: "us", titleKey: "country_usa")
     ]
 }
 
