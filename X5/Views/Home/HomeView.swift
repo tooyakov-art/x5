@@ -221,14 +221,14 @@ private enum HomeMediaAction {
 }
 
 private enum HomeMediaVideos {
-    static let logo = URL(string: "https://videos.pexels.com/video-files/17461591/17461591-hd_1920_1080_30fps.mp4")
-    static let story = URL(string: "https://videos.pexels.com/video-files/4232959/4232959-hd_1920_1080_24fps.mp4")
-    static let post = URL(string: "https://videos.pexels.com/video-files/6756651/6756651-hd_1920_1080_24fps.mp4")
-    static let instaPack = URL(string: "https://videos.pexels.com/video-files/854321/854321-hd_1920_1080_24fps.mp4")
-    static let product = URL(string: "https://videos.pexels.com/video-files/6802234/6802234-hd_1920_1080_30fps.mp4")
-    static let packaging = URL(string: "https://videos.pexels.com/video-files/5051027/5051027-hd_1920_1080_25fps.mp4")
-    static let custom = URL(string: "https://videos.pexels.com/video-files/7409223/7409223-hd_1920_1080_24fps.mp4")
-    static let video = URL(string: "https://videos.pexels.com/video-files/7287517/7287517-hd_1920_1080_25fps.mp4")
+    static let logo = URL(string: "https://v1-kling.kechuangai.com/kcdn/cdn-kcdn112452/kling-website/dev-home/demo-3-global.038434fdc4f93199.mp4")
+    static let story = URL(string: "https://v1-kling.kechuangai.com/kcdn/cdn-kcdn112452/kling-homepage-aio-prod_aio/assets/videos/model-video-6.bdfb682669810c7d.mp4")
+    static let post = URL(string: "https://v1-kling.kechuangai.com/kcdn/cdn-kcdn112452/kling-homepage-aio-prod_aio/assets/videos/model-video-4.6a17a3c0bd109de9.mp4")
+    static let instaPack = URL(string: "https://v1-kling.kechuangai.com/kcdn/cdn-kcdn112452/kling-website/dev-home/demo-2-global.3d9f73e4e7668b72.mp4")
+    static let product = URL(string: "https://v1-kling.kechuangai.com/kcdn/cdn-kcdn112452/kling-homepage-aio-prod_aio/assets/videos/model-video-3.9dd689c609dc5e87.mp4")
+    static let packaging = URL(string: "https://v1-kling.kechuangai.com/kcdn/cdn-kcdn112452/kling-homepage-aio-prod_aio/assets/videos/model-video-5.259f7e695133e49c.mp4")
+    static let custom = URL(string: "https://v1-kling.kechuangai.com/kcdn/cdn-kcdn112452/kling-homepage-aio-prod_aio/assets/videos/model-video-2.f136dcee53d42781.mp4")
+    static let video = URL(string: "https://v16-kling.klingai.com/kos/s101/nlav112918/kling-website/page1-v3-2.mp4")
 }
 
 private struct HomeMediaItem: Identifiable {
