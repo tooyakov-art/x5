@@ -390,6 +390,12 @@ enum HomeContent {
               icon: "text.alignleft", videoFile: nil,
               gradientStart: X5Style.blue.opacity(0.30),
               gradientEnd: .black,
-              tag: "LIVE", tagColor: X5Style.blue)
+              tag: "LIVE", tagColor: X5Style.blue),
+
+        .init(id: "startup_chat", title: "Startup Chat", subtitle: "Business AI assistant",
+              icon: "sparkles.rectangle.stack.fill", videoFile: nil,
+              gradientStart: X5Style.backgroundBlue.opacity(0.44),
+              gradientEnd: .black,
+              tag: "SOON", tagColor: X5Style.blue)
     ]
 }

@@ -81,6 +81,9 @@ struct HomeView: View {
                     case .video:
                         DiagnosticLogger.log(event: "home_media_video_tap")
                         openTool = HomeContent.tools.first(where: { $0.id == "video_gen" })
+                    case .tool(let id):
+                        DiagnosticLogger.log(event: "home_media_\(id)_tap")
+                        openTool = HomeContent.tools.first(where: { $0.id == id })
                     }
                 } label: {
                     HomeMediaCard(item: item)
@@ -191,6 +194,17 @@ struct HomeView: View {
                 gradientStart: X5Style.blue.opacity(0.38),
                 gradientEnd: .black,
                 action: .video
+            ),
+            HomeMediaItem(
+                id: "startup_chat",
+                title: localized("home_media_startup_chat_title", fallback: "Стартап чат"),
+                subtitle: localized("home_media_startup_chat_subtitle", fallback: "ИИ-помощник для бизнеса"),
+                kicker: "SOON",
+                systemImage: "sparkles.rectangle.stack.fill",
+                videoURL: nil,
+                gradientStart: X5Style.backgroundBlue.opacity(0.44),
+                gradientEnd: .black,
+                action: .tool("startup_chat")
             )
         ]
     }
@@ -213,6 +227,7 @@ struct HomeView: View {
 private enum HomeMediaAction {
     case image(ImageGenerationCategory)
     case video
+    case tool(String)
 }
 
 private struct HomeMediaItem: Identifiable {
