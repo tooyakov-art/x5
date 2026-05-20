@@ -427,9 +427,13 @@ struct ImageGeneratorView: View {
     }
 
     private var canGenerate: Bool {
-        !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        hasValidPromptOrReferences &&
         currentCredits != nil &&
         hasEnoughCredits
+    }
+
+    private var hasValidPromptOrReferences: Bool {
+        prompt.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 || !referenceImages.isEmpty
     }
 
     private var balanceText: String {
@@ -441,6 +445,7 @@ struct ImageGeneratorView: View {
         if isGenerating { return loc.t("gen_generating") }
         if currentCredits == nil { return loc.t("gen_loading_balance") }
         if !hasEnoughCredits { return "\(loc.t("gen_need")) \(totalCreditCost) \(loc.t("gen_credits"))" }
+        if !hasValidPromptOrReferences { return loc.t("gen_prompt_required") }
         return loc.t("gen_generate")
     }
 
@@ -496,8 +501,12 @@ struct ImageGeneratorView: View {
         promptOverride: String? = nil,
         referencesOverride: [ImageGenerationReference]? = nil
     ) async {
-        let cleanPrompt = (promptOverride ?? prompt).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanPrompt.isEmpty else { return }
+        let currentReferences = referencesOverride ?? referenceImages.map { $0.reference }
+        let cleanPrompt = effectivePrompt(promptOverride ?? prompt, hasReferences: !currentReferences.isEmpty)
+        guard !cleanPrompt.isEmpty else {
+            errorMessage = loc.t("gen_prompt_required")
+            return
+        }
         guard !isGenerating else { return }
 
         promptFocused = false
@@ -528,7 +537,7 @@ struct ImageGeneratorView: View {
                 category: category,
                 quantity: requestQuantity,
                 size: selectedSize,
-                referenceImages: referencesOverride ?? referenceImages.map { $0.reference }
+                referenceImages: currentReferences
             )
             let encodedImages = response.imageBase64s?.isEmpty == false ? response.imageBase64s! : [response.imageBase64]
             let images = encodedImages.compactMap { encoded -> UIImage? in
@@ -597,6 +606,12 @@ struct ImageGeneratorView: View {
             )
         }
         referenceImages = loaded
+    }
+
+    private func effectivePrompt(_ rawPrompt: String, hasReferences: Bool) -> String {
+        let clean = rawPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.count >= 3 { return clean }
+        return hasReferences ? "Improve the provided image." : ""
     }
 
     private func makeReference(from image: UIImage) -> ImageGenerationReference? {

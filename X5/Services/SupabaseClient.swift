@@ -262,6 +262,8 @@ enum SupabaseError: LocalizedError {
         }
 
         switch payload["error"] as? String {
+        case "prompt_required":
+            return "Write a prompt or add a photo."
         case "provider_not_configured":
             return "Image provider is not configured."
         case "insufficient_credits":

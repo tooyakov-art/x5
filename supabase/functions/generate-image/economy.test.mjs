@@ -97,6 +97,18 @@ test("rejects missing prompts", () => {
   );
 });
 
+test("allows image edit requests without a prompt", () => {
+  const request = normalizeGenerationRequest({
+    model: "gemini-3.1-flash-image-preview",
+    category: "custom",
+    prompt: "",
+    images: [{ mimeType: "image/png", data: "abc123" }],
+  });
+
+  assert.equal(request.prompt, "Improve the provided image.");
+  assert.equal(request.images.length, 1);
+});
+
 test("builds category-specific generation prompt", () => {
   const logo = generationCategories.find((category) => category.id === "logo");
   const finalPrompt = buildFinalPrompt("minimal coffee brand", logo);

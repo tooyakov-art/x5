@@ -93,7 +93,11 @@ export class GenerationRequestError extends Error {
 }
 
 export function normalizeGenerationRequest(body) {
+  const images = normalizeImages(body?.images);
   let prompt = String(body?.prompt || "").trim();
+  if (prompt.length < 3 && images.length > 0) {
+    prompt = "Improve the provided image.";
+  }
   if (prompt.length < 3) {
     throw new GenerationRequestError("prompt_required", 400);
   }
@@ -110,7 +114,6 @@ export function normalizeGenerationRequest(body) {
   const category =
     generationCategories.find((item) => item.id === body?.category) ||
     generationCategories[0];
-  const images = normalizeImages(body?.images);
   const quantity = normalizeQuantity(body?.quantity);
   const size =
     generationSizes.find((item) => item.id === body?.size) ||
