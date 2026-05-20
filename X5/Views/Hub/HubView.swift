@@ -41,17 +41,17 @@ struct HubView: View {
 
                 if segment == .specialists {
                     addPortfolioButton
+                    countrySelector(messageKey: "hub_country_specialists")
                 } else if segment == .tasks {
                     createTaskButton
-                    countrySelector
+                    countrySelector(messageKey: "hub_country_orders")
+                    categoryRail
                 }
-
-                categoryRail
 
                 Group {
                     switch segment {
                     case .specialists:
-                        specialistsList
+                        specialistsContent
                     case .tasks:
                         tasksList
                     }
@@ -169,7 +169,7 @@ struct HubView: View {
         .padding(.bottom, 6)
     }
 
-    private var countrySelector: some View {
+    private func countrySelector(messageKey: String) -> some View {
         HStack(spacing: 8) {
             Menu {
                 Button {
@@ -190,7 +190,7 @@ struct HubView: View {
             .buttonStyle(.bordered)
             .tint(.white.opacity(0.18))
 
-            Text(loc.t("hub_country_orders"))
+            Text(loc.t(messageKey))
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.white.opacity(0.52))
             Spacer()
@@ -253,28 +253,88 @@ struct HubView: View {
 
     // MARK: - Сетка категорий (главный экран Hub)
 
-    private var categoriesGrid: some View {
+    private var specialistsContent: some View {
         ScrollView {
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(minimum: 62, maximum: 92), spacing: 8), count: 4),
-                spacing: 8
-            ) {
-                ForEach(HubCategories.all) { cat in
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { category = cat.id }
-                    } label: {
-                        CategoryTile(cat: cat, count: countForCategory(cat.id))
+            VStack(spacing: 14) {
+                specialistCategoryGrid
+
+                LazyVStack(spacing: 10) {
+                    ForEach(filteredSpecialists) { person in
+                        HStack(spacing: 8) {
+                            NavigationLink {
+                                UserProfileView(userId: person.id, fallback: person)
+                            } label: {
+                                SpecialistRow(person: person)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                startChat(with: person)
+                            } label: {
+                                Group {
+                                    if openingChatWith == person.id {
+                                        ProgressView().tint(.accentColor)
+                                    } else {
+                                        Image(systemName: "message.fill")
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundColor(.accentColor)
+                                    }
+                                }
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(openingChatWith != nil)
+                        }
                     }
-                    .buttonStyle(.plain)
+                    if filteredSpecialists.isEmpty && !service.isLoading {
+                        EmptyState(systemImage: "person.crop.circle.badge.questionmark",
+                                   title: loc.t("hub_no_specialists"),
+                                   subtitle: loc.t("hub_no_specialists_sub"))
+                            .padding(.top, 40)
+                    }
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 12)
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
             .padding(.bottom, 32)
-            .frame(maxWidth: 430)
+            .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)
         }
-        .refreshable { await refreshCurrentHubSegment() }
+        .refreshable { await service.loadSpecialists() }
+    }
+
+    private var specialistCategoryGrid: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(minimum: 64, maximum: 100), spacing: 8), count: 4),
+            spacing: 8
+        ) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { category = nil }
+            } label: {
+                CategoryTile(
+                    title: loc.t("hub_all"),
+                    systemImage: "line.3.horizontal.decrease.circle",
+                    count: totalVisibleCount,
+                    isSelected: category == nil
+                )
+            }
+            .buttonStyle(.plain)
+
+            ForEach(HubCategories.all) { cat in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { category = cat.id }
+                } label: {
+                    CategoryTile(
+                        title: HubCategories.label(for: cat.id, language: loc.current),
+                        systemImage: hubCategorySymbol(for: cat.id),
+                        count: countForCategory(cat.id),
+                        isSelected: category == cat.id
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private func countForCategory(_ id: String) -> Int {
@@ -504,25 +564,27 @@ private struct CategoryChip: View {
 }
 
 private struct CategoryTile: View {
-    let cat: HubCategory
+    let title: String
+    let systemImage: String
     let count: Int
+    let isSelected: Bool
 
     var body: some View {
         VStack(spacing: 7) {
-            Image(systemName: hubCategorySymbol(for: cat.id))
+            Image(systemName: systemImage)
                 .font(.system(size: 24, weight: .semibold))
-                .foregroundColor(.white.opacity(0.74))
+                .foregroundColor(isSelected ? .black : .white.opacity(0.74))
                 .frame(height: 26)
-            Text(cat.labelRu)
+            Text(title)
                 .font(.system(size: 10.5, weight: .heavy))
-                .foregroundColor(.white)
+                .foregroundColor(isSelected ? .black : .white)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
                 .minimumScaleFactor(0.68)
             if count > 0 {
                 Text("\(count)")
                     .font(.system(size: 10, weight: .heavy))
-                    .foregroundColor(.white.opacity(0.62))
+                    .foregroundColor(isSelected ? .black.opacity(0.72) : .white.opacity(0.62))
             }
         }
         .frame(maxWidth: .infinity)
@@ -530,11 +592,11 @@ private struct CategoryTile: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 19, style: .continuous)
-                .fill(Color.white.opacity(0.075))
+                .fill(isSelected ? Color.accentColor : Color.white.opacity(0.075))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 19, style: .continuous)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                .stroke(isSelected ? Color.accentColor.opacity(0.40) : Color.white.opacity(0.12), lineWidth: 1)
         )
     }
 }
