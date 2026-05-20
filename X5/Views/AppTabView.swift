@@ -36,6 +36,7 @@ struct AppTabView: View {
         }
         .tint(.accentColor)
         .onChange(of: selectedTab) { newValue in
+            X5Feedback.selection()
             DiagnosticLogger.log(event: "tab_switched",
                                  extra: ["tab": String(newValue)])
         }

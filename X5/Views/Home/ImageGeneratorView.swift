@@ -23,6 +23,9 @@ struct ImageGeneratorView: View {
     @State private var referenceItems: [PhotosPickerItem] = []
     @State private var referenceImages: [ImageReferenceAsset] = []
     @State private var isLoadingReferences = false
+    @State private var generationProgress: Double = 0
+    @State private var generationProgressTask: Task<Void, Never>?
+    @State private var showGenerationComplete = false
     @StateObject private var gallery = GeneratedGalleryStore()
     @FocusState private var promptFocused: Bool
 
@@ -43,8 +46,15 @@ struct ImageGeneratorView: View {
                 generateButton
 
                 if isGenerating {
-                    GenerationAnimationView(provider: selectedProvider, category: category)
+                    GenerationAnimationView(provider: selectedProvider,
+                                            category: category,
+                                            progress: generationProgress)
                         .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                }
+
+                if showGenerationComplete {
+                    generationCompleteBanner
+                        .transition(.move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.96)))
                 }
 
                 resultPanel
@@ -63,7 +73,10 @@ struct ImageGeneratorView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showingGallery = true } label: {
+                Button {
+                    X5Feedback.impact()
+                    showingGallery = true
+                } label: {
                     Image(systemName: "photo.stack")
                 }
                 .accessibilityLabel(loc.t("gen_gallery"))
@@ -151,6 +164,7 @@ struct ImageGeneratorView: View {
                         .disabled(true)
                     } else {
                         Button {
+                            X5Feedback.selection()
                             selectedProvider = model
                         } label: {
                             Label(model.title, systemImage: model == selectedProvider ? "checkmark" : "cpu")
@@ -220,6 +234,7 @@ struct ImageGeneratorView: View {
                         .disabled(true)
                     } else {
                         Button {
+                            X5Feedback.selection()
                             selectedSize = size
                         } label: {
                             Label("\(size.title) · \(size.subtitle)", systemImage: size == selectedSize ? "checkmark" : "rectangle")
@@ -348,6 +363,7 @@ struct ImageGeneratorView: View {
 
     private var generateButton: some View {
         Button {
+            X5Feedback.impact(.medium)
             Task { await generate() }
         } label: {
             HStack(spacing: 8) {
@@ -455,6 +471,7 @@ struct ImageGeneratorView: View {
 
     private func generatedImageButton(_ asset: GeneratedImageAsset, compact: Bool) -> some View {
         Button {
+            X5Feedback.impact()
             viewerAsset = asset
         } label: {
             Image(uiImage: asset.image)
@@ -479,6 +496,7 @@ struct ImageGeneratorView: View {
 
     private func quickPrompt(_ text: String) -> some View {
         Button {
+            X5Feedback.selection()
             prompt = text == categoryTitle ? category.examplePrompt : "\(text) for \(category.title.lowercased()), premium X5 style"
             promptFocused = true
         } label: {
@@ -514,12 +532,19 @@ struct ImageGeneratorView: View {
         errorMessage = nil
         generatedAsset = nil
         generatedAssets = []
-        defer { isGenerating = false }
+        showGenerationComplete = false
+        startGenerationProgress()
+        defer {
+            generationProgressTask?.cancel()
+            generationProgressTask = nil
+            isGenerating = false
+        }
 
         await refreshProfileIfPossible()
 
         guard currentCredits != nil else {
             errorMessage = loc.t("gen_loading_balance")
+            X5Feedback.warning()
             return
         }
         let creditsBefore = currentCredits ?? 0
@@ -527,6 +552,7 @@ struct ImageGeneratorView: View {
         let requestCreditCost = ImageGenerationCatalog.creditCost * requestQuantity
         guard creditsBefore >= requestCreditCost else {
             errorMessage = loc.t("gen_not_enough_credits")
+            X5Feedback.warning()
             return
         }
 
@@ -566,7 +592,17 @@ struct ImageGeneratorView: View {
             assets.forEach { asset in
                 _ = saveAssetToGallery(asset, image: asset.image)
             }
-            viewerAsset = firstAsset
+            generationProgressTask?.cancel()
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
+                generationProgress = 1.0
+                showGenerationComplete = true
+            }
+            X5Feedback.successWithSound()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.9) {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    showGenerationComplete = false
+                }
+            }
             let remainingCredits = response.creditsRemaining ?? max(creditsBefore - requestCreditCost, 0)
             currentUser.applyCreditsRemaining(remainingCredits)
             DiagnosticLogger.log(event: "image_generated", extra: [
@@ -581,7 +617,45 @@ struct ImageGeneratorView: View {
                 "provider": selectedProvider.rawValue,
                 "category": category.id
             ])
+            X5Feedback.error()
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private var generationCompleteBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 30, weight: .bold))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.black, Color.accentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(localized("gen_ready", fallback: "Готово"))
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundColor(.white)
+                Text(loc.t("gen_saved_gallery"))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.58))
+            }
+            Spacer()
+        }
+        .padding(14)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.15)
+    }
+
+    private func startGenerationProgress() {
+        generationProgressTask?.cancel()
+        generationProgress = 0.03
+        generationProgressTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 320_000_000)
+                await MainActor.run {
+                    guard isGenerating else { return }
+                    let next = generationProgress + max(0.015, (0.92 - generationProgress) * 0.16)
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        generationProgress = min(next, 0.92)
+                    }
+                }
+            }
         }
     }
 
@@ -674,6 +748,7 @@ private struct GenerationAnimationView: View {
 
     let provider: ImageGenerationProvider
     let category: ImageGenerationCategory
+    let progress: Double
 
     @State private var rotating = false
     @State private var pulsing = false
@@ -701,12 +776,22 @@ private struct GenerationAnimationView: View {
             .frame(width: 74, height: 74)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text("\(provider.title) \(loc.t("gen_is_generating"))")
-                    .font(.system(size: 15, weight: .heavy))
-                    .foregroundColor(.white)
+                HStack {
+                    Text("\(provider.title) \(loc.t("gen_is_generating"))")
+                        .font(.system(size: 15, weight: .heavy))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Text("\(Int(progress * 100))%")
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundColor(Color.accentColor)
+                }
                 Text("\(loc.t("gen_building")) \(localizedCategoryTitle.lowercased())")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white.opacity(0.58))
+                ProgressView(value: progress)
+                    .tint(Color.accentColor)
+                    .scaleEffect(x: 1, y: 1.3, anchor: .center)
+                    .padding(.top, 3)
                 generationPulseBars
                     .padding(.top, 4)
             }
@@ -814,7 +899,10 @@ private struct GeneratedImageViewer: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(loc.t("btn_done")) { dismiss() }
+                    Button(loc.t("btn_done")) {
+                        X5Feedback.selection()
+                        dismiss()
+                    }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { saveToPhotos() } label: {
@@ -825,15 +913,24 @@ private struct GeneratedImageViewer: View {
                         Image(systemName: "photo.stack")
                     }
                     .accessibilityLabel(loc.t("gen_gallery"))
-                    Button { showingShare = true } label: {
+                    Button {
+                        X5Feedback.impact()
+                        showingShare = true
+                    } label: {
                         Image(systemName: "square.and.arrow.up")
                     }
                     .accessibilityLabel(loc.t("gen_action_share"))
-                    Button { showingEditor = true } label: {
+                    Button {
+                        X5Feedback.impact()
+                        showingEditor = true
+                    } label: {
                         Image(systemName: "pencil")
                     }
                     .accessibilityLabel(loc.t("gen_action_edit"))
-                    Button { showingEditor = true } label: {
+                    Button {
+                        X5Feedback.impact()
+                        showingEditor = true
+                    } label: {
                         Image(systemName: "paintbrush")
                     }
                     .accessibilityLabel(loc.t("gen_action_draw"))
@@ -906,6 +1003,7 @@ private struct GeneratedImageViewer: View {
     }
 
     private func saveToPhotos() {
+        X5Feedback.success()
         UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
         withAnimation { saveMessage = loc.t("gen_saved_photos") }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
@@ -915,6 +1013,7 @@ private struct GeneratedImageViewer: View {
 
     private func saveToGallery() {
         let saved = onSaveToGallery(image)
+        saved ? X5Feedback.success() : X5Feedback.error()
         withAnimation { saveMessage = saved ? loc.t("gen_saved_gallery") : loc.t("gen_save_failed") }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
             withAnimation { saveMessage = nil }

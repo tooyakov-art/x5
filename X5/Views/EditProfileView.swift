@@ -26,15 +26,7 @@ struct EditProfileView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text(loc.t("edit_specialist")),
-                        footer: Text(loc.t("edit_hub_footer")).font(.caption)) {
-                    Toggle(isOn: $showInHub) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(loc.t("edit_show_in_hub")).bold()
-                            Text(loc.t("edit_public_profile"))
-                                .font(.caption).foregroundColor(.secondary)
-                        }
-                    }
+                Section(header: Text(loc.t("edit_specialist"))) {
                     NavigationLink {
                         CategoriesPicker(selected: $pickedCategories)
                     } label: {
@@ -90,6 +82,7 @@ struct EditProfileView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
+                        X5Feedback.impact()
                         Task { await save() }
                     } label: {
                         if saving { ProgressView() } else { Text(loc.t("common_save")).bold() }
@@ -181,6 +174,7 @@ struct EditProfileView: View {
             fields["user_role"] = AnyEncodable("specialist")
         }
         await currentUser.patchMany(fields, accessToken: token)
+        X5Feedback.success()
         dismiss()
     }
 
@@ -199,6 +193,7 @@ private struct CategoriesPicker: View {
         List {
             ForEach(HubCategories.all) { cat in
                 Button {
+                    X5Feedback.selection()
                     toggle(cat.id)
                 } label: {
                     HStack {
@@ -220,7 +215,10 @@ private struct CategoriesPicker: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button(loc.t("btn_done")) { dismiss() }
+                Button(loc.t("btn_done")) {
+                    X5Feedback.selection()
+                    dismiss()
+                }
             }
         }
     }

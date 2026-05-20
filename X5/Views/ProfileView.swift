@@ -19,6 +19,8 @@ struct ProfileView: View {
     @State private var uploadingAvatar = false
     @State private var avatarError: String?
     @State private var isRefreshing = false
+    @State private var showInHubToggle = false
+    @State private var savingShowInHub = false
 
     var body: some View {
         NavigationStack {
@@ -73,7 +75,10 @@ struct ProfileView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if showsDoneButton {
-                        Button(loc.t("btn_done")) { dismiss() }
+                        Button(loc.t("btn_done")) {
+                            X5Feedback.selection()
+                            dismiss()
+                        }
                     } else {
                         PhotosPicker(selection: $avatarPickerItem, matching: .images) {
                             Image(systemName: uploadingAvatar ? "hourglass" : "camera.fill")
@@ -84,6 +89,7 @@ struct ProfileView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        X5Feedback.impact()
                         showingSettings = true
                     } label: {
                         Image(systemName: "gearshape")
@@ -106,9 +112,16 @@ struct ProfileView: View {
             }
             .onChange(of: avatarPickerItem) { newItem in
                 guard let item = newItem else { return }
+                X5Feedback.selection()
                 Task { await uploadAvatar(item) }
             }
+            .onChange(of: currentUser.profile?.showInHub) { value in
+                if !savingShowInHub {
+                    showInHubToggle = value ?? false
+                }
+            }
             .task { await iap.loadProducts() }
+            .onAppear { showInHubToggle = currentUser.profile?.showInHub ?? false }
         }
     }
 
@@ -180,7 +193,10 @@ struct ProfileView: View {
                             .foregroundColor(.white.opacity(0.66))
                     }
 
+                    hubVisibilityToggle
+
                     Button {
+                        X5Feedback.impact()
                         showingEdit = true
                     } label: {
                         HStack(spacing: 8) {
@@ -241,9 +257,13 @@ struct ProfileView: View {
            let jpeg = image.jpegData(compressionQuality: 0.85) {
             let url = await currentUser.uploadAvatar(jpeg, accessToken: token)
             if url == nil {
+                X5Feedback.error()
                 avatarError = "Сервер не принял фото. Проверь доступ к аккаунту и попробуй еще раз."
+            } else {
+                X5Feedback.success()
             }
         } else {
+            X5Feedback.error()
             avatarError = "Не удалось прочитать фото."
         }
         avatarPickerItem = nil
@@ -257,6 +277,41 @@ struct ProfileView: View {
             StatBubble(value: "0", label: loc.t("profile_followers"))
             StatBubble(value: "0", label: loc.t("profile_following"))
         }
+    }
+
+    private var hubVisibilityToggle: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(loc.t("edit_show_in_hub"))
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundColor(.white)
+                Text(loc.t("edit_public_profile"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.56))
+            }
+            Spacer()
+            if savingShowInHub {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(0.8)
+            }
+            Toggle("", isOn: Binding(
+                get: { showInHubToggle },
+                set: { value in
+                    guard value != showInHubToggle else { return }
+                    showInHubToggle = value
+                    X5Feedback.selection()
+                    Task { await updateHubVisibility(value) }
+                }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .tint(Color.accentColor)
+            .disabled(savingShowInHub)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.12)
     }
 
     private var heroHeight: CGFloat {
@@ -274,10 +329,31 @@ struct ProfileView: View {
             return
         }
         await currentUser.load(userId: uid, accessToken: token)
+        showInHubToggle = currentUser.profile?.showInHub ?? false
         subscription.sync(from: currentUser.profile)
         await iap.loadProducts()
         try? await Task.sleep(nanoseconds: 450_000_000)
         isRefreshing = false
+    }
+
+    private func updateHubVisibility(_ value: Bool) async {
+        guard let token = await auth.freshAccessToken() else {
+            X5Feedback.error()
+            showInHubToggle = currentUser.profile?.showInHub ?? false
+            return
+        }
+        savingShowInHub = true
+        defer { savingShowInHub = false }
+
+        var fields: [String: AnyEncodable] = [
+            "show_in_hub": AnyEncodable(value)
+        ]
+        if value && (currentUser.profile?.userRole ?? "").isEmpty {
+            fields["user_role"] = AnyEncodable("specialist")
+        }
+        await currentUser.patchMany(fields, accessToken: token)
+        showInHubToggle = currentUser.profile?.showInHub ?? value
+        X5Feedback.success()
     }
 
     private var displayName: String {
