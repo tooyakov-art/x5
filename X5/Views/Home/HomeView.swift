@@ -96,16 +96,6 @@ struct HomeView: View {
 
     private var homeMediaItems: [HomeMediaItem] {
         let categories = Dictionary(uniqueKeysWithValues: ImageGenerationCatalog.categories.map { ($0.id, $0) })
-        let klingVideos = [
-            "https://v1-kling.kechuangai.com/kcdn/cdn-kcdn112452/kling-website/dev-home/demo-1-global.308958a99ecaeaf6.mp4",
-            "https://v1-kling.kechuangai.com/kcdn/cdn-kcdn112452/kling-website/dev-home/demo-2-global.3d9f73e4e7668b72.mp4",
-            "https://v1-kling.kechuangai.com/kcdn/cdn-kcdn112452/kling-website/dev-home/demo-3-global.038434fdc4f93199.mp4",
-            "https://v1-kling.kechuangai.com/kcdn/cdn-kcdn112452/kling-website/dev-home/page3-video-en.37caf59c5ac36bc6.mp4",
-            "https://v16-kling.klingai.com/kos/s101/nlav112918/kling-website/page1-v3-1.mp4",
-            "https://v16-kling.klingai.com/kos/s101/nlav112918/kling-website/page1-v3-2.mp4",
-            "https://v16-kling.klingai.com/kos/s101/nlav112918/kling-website/page1-v3-3.mp4"
-        ]
-
         return [
             HomeMediaItem(
                 id: "logo",
@@ -113,7 +103,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_logo_subtitle", fallback: "Логотип для бренда"),
                 kicker: "LOGO",
                 systemImage: "seal.fill",
-                videoURL: URL(string: klingVideos[0]),
+                videoURL: nil,
                 gradientStart: X5Style.blue.opacity(0.40),
                 gradientEnd: .black,
                 action: categories["logo"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
@@ -124,7 +114,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_story_subtitle", fallback: "Вертикальный креатив 9:16"),
                 kicker: "STORY",
                 systemImage: "rectangle.portrait.fill",
-                videoURL: URL(string: klingVideos[1]),
+                videoURL: nil,
                 gradientStart: X5Style.backgroundCyan.opacity(0.42),
                 gradientEnd: .black,
                 action: categories["story"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
@@ -135,7 +125,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_post_subtitle", fallback: "Пост для ленты"),
                 kicker: "POST",
                 systemImage: "square.grid.2x2.fill",
-                videoURL: URL(string: klingVideos[2]),
+                videoURL: nil,
                 gradientStart: Color(red: 0.20, green: 0.42, blue: 0.95).opacity(0.42),
                 gradientEnd: .black,
                 action: categories["post"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
@@ -146,7 +136,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_instapack_subtitle", fallback: "Посты и сторис в одном стиле"),
                 kicker: "INSTA",
                 systemImage: "square.stack.3d.up.fill",
-                videoURL: URL(string: klingVideos[3]),
+                videoURL: nil,
                 gradientStart: Color(red: 0.42, green: 0.55, blue: 1.0).opacity(0.40),
                 gradientEnd: .black,
                 action: categories["insta_pack"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
@@ -157,7 +147,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_product_subtitle", fallback: "Кадр для рекламы"),
                 kicker: "PRODUCT",
                 systemImage: "shippingbox.fill",
-                videoURL: URL(string: klingVideos[4]),
+                videoURL: nil,
                 gradientStart: X5Style.blue.opacity(0.34),
                 gradientEnd: .black,
                 action: categories["product"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
@@ -168,7 +158,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_packaging_subtitle", fallback: "Коробка, этикетка, мокап"),
                 kicker: "PACK",
                 systemImage: "cube.box.fill",
-                videoURL: URL(string: klingVideos[5]),
+                videoURL: nil,
                 gradientStart: Color(red: 0.72, green: 0.82, blue: 0.92).opacity(0.30),
                 gradientEnd: .black,
                 action: categories["packaging"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
@@ -179,7 +169,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_custom_subtitle", fallback: "Загрузи фото или напиши промпт"),
                 kicker: "AI",
                 systemImage: "photo",
-                videoURL: URL(string: klingVideos[6]),
+                videoURL: nil,
                 gradientStart: X5Style.backgroundBlue.opacity(0.48),
                 gradientEnd: .black,
                 action: .image(ImageGenerationCatalog.custom)
@@ -190,7 +180,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_video_subtitle", fallback: "Kling: текст или фото в видео"),
                 kicker: "KLING",
                 systemImage: "video.fill",
-                videoURL: URL(string: klingVideos[1]),
+                videoURL: nil,
                 gradientStart: X5Style.blue.opacity(0.38),
                 gradientEnd: .black,
                 action: .video
