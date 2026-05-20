@@ -77,8 +77,8 @@ struct ImageGeneratorView: View {
             Task { await loadReferenceImages(newItems) }
         }
         .onChange(of: selectedProvider) { provider in
-            if provider.provider == "gpt", selectedSize == .wide {
-                selectedSize = .landscape
+            if provider.provider == "gpt", selectedSize.isGoogleOnly {
+                selectedSize = .square
             }
         }
         .fullScreenCover(item: $viewerAsset) { asset in
@@ -213,9 +213,9 @@ struct ImageGeneratorView: View {
 
             Menu {
                 ForEach(ImageGenerationSize.allCases) { size in
-                    if selectedProvider.provider == "gpt", size == .wide {
+                    if selectedProvider.provider == "gpt", size.isGoogleOnly {
                         Button {} label: {
-                            Label("\(size.title) · Gemini 2K", systemImage: "lock")
+                            Label("\(size.title) · Nano Banana", systemImage: "lock")
                         }
                         .disabled(true)
                     } else {

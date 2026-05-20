@@ -114,7 +114,15 @@ enum ImageGenerationSize: String, CaseIterable, Identifiable, Hashable {
     case square = "square"
     case portrait = "portrait"
     case landscape = "landscape"
+    case vertical23 = "vertical_2_3"
+    case portrait34 = "portrait_3_4"
+    case portrait45 = "portrait_4_5"
+    case landscape32 = "landscape_3_2"
+    case landscape43 = "landscape_4_3"
     case wide = "wide"
+    case square2K = "square_2k"
+    case portrait2K = "portrait_2k"
+    case landscape2K = "landscape_2k"
 
     var id: String { rawValue }
 
@@ -123,7 +131,15 @@ enum ImageGenerationSize: String, CaseIterable, Identifiable, Hashable {
         case .square: return "1:1"
         case .portrait: return "9:16"
         case .landscape: return "16:9"
+        case .vertical23: return "2:3"
+        case .portrait34: return "3:4"
+        case .portrait45: return "4:5"
+        case .landscape32: return "3:2"
+        case .landscape43: return "4:3"
         case .wide: return "21:9"
+        case .square2K: return "1:1 2K"
+        case .portrait2K: return "9:16 2K"
+        case .landscape2K: return "16:9 2K"
         }
     }
 
@@ -132,31 +148,56 @@ enum ImageGenerationSize: String, CaseIterable, Identifiable, Hashable {
         case .square: return "1024 x 1024"
         case .portrait: return "1024 x 1536"
         case .landscape: return "1536 x 1024"
-        case .wide: return "2K wide"
+        case .vertical23: return "832 x 1248"
+        case .portrait34: return "864 x 1184"
+        case .portrait45: return "896 x 1152"
+        case .landscape32: return "1248 x 832"
+        case .landscape43: return "1184 x 864"
+        case .wide: return "1536 x 672"
+        case .square2K: return "2048 x 2048"
+        case .portrait2K: return "1536 x 2752"
+        case .landscape2K: return "2752 x 1536"
         }
     }
 
     var openAISize: String {
         switch self {
-        case .square, .wide: return "1024x1024"
-        case .portrait: return "1024x1536"
-        case .landscape: return "1536x1024"
+        case .square, .square2K:
+            return "1024x1024"
+        case .portrait, .vertical23, .portrait34, .portrait45, .portrait2K:
+            return "1024x1536"
+        case .landscape, .landscape32, .landscape43, .wide, .landscape2K:
+            return "1536x1024"
         }
     }
 
     var googleAspectRatio: String {
         switch self {
-        case .square: return "1:1"
-        case .portrait: return "9:16"
-        case .landscape: return "16:9"
+        case .square, .square2K: return "1:1"
+        case .portrait, .portrait2K: return "9:16"
+        case .landscape, .landscape2K: return "16:9"
+        case .vertical23: return "2:3"
+        case .portrait34: return "3:4"
+        case .portrait45: return "4:5"
+        case .landscape32: return "3:2"
+        case .landscape43: return "4:3"
         case .wide: return "21:9"
         }
     }
 
     var googleImageSize: String? {
         switch self {
-        case .wide: return "2K"
+        case .square2K, .portrait2K, .landscape2K: return "2K"
         default: return nil
+        }
+    }
+
+    var isGoogleOnly: Bool {
+        switch self {
+        case .square, .portrait, .landscape:
+            return false
+        case .vertical23, .portrait34, .portrait45, .landscape32, .landscape43, .wide, .square2K, .portrait2K, .landscape2K:
+            return true
         }
     }
 }

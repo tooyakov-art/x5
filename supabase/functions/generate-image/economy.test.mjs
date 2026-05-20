@@ -86,7 +86,20 @@ test("clamps generation quantity to supported UI range", () => {
 test("defines supported generation sizes", () => {
   assert.deepEqual(
     generationSizes.map((size) => size.id),
-    ["square", "portrait", "landscape", "wide"],
+    [
+      "square",
+      "portrait",
+      "landscape",
+      "vertical_2_3",
+      "portrait_3_4",
+      "portrait_4_5",
+      "landscape_3_2",
+      "landscape_4_3",
+      "wide",
+      "square_2k",
+      "portrait_2k",
+      "landscape_2k",
+    ],
   );
 });
 
