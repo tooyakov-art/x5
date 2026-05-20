@@ -1,56 +1,19 @@
 import SwiftUI
 
-/// AI generation hub — banner carousel + tool cards.
-///
-/// Apple Review build 50 was rejected (Guideline 2.1a) because the Home
-/// tab "fetched no contents" on iPad — that was the showsTools/showsBanners
-/// gate hiding everything from non-developer accounts and leaving an empty
-/// screen.
-///
-/// Build 53 fix: ALWAYS show a populated Home. Non-developer accounts
-/// (incl. Apple's appreview tester) see only the live tools (Captions
-/// templates, Academy). Developer accounts still see the full grid with
-/// in-development tools for QA.
+/// Home is intentionally reduced to two creation surfaces: photo and video.
 struct HomeView: View {
-    @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var loc: LocalizationService
 
-    @State private var bannerIndex: Int = 0
     @State private var openTool: HomeTool?
-    @State private var openCaptions: Bool = false
     @State private var openImageCategory: ImageGenerationCategory?
-    @State private var selectedGenerationProvider: ImageGenerationProvider = .gptImage2
-    @State private var showingNotifications: Bool = false
     @State private var showingGeneratedGallery: Bool = false
-
-    private var isDeveloper: Bool { Roles.isDeveloper(auth.userEmail) }
-    /// Apple-safe live tool IDs — these have working functionality.
-    private static let liveToolIDs: Set<String> = ["photo", "captions", "academy"]
-    private var visibleTools: [HomeTool] {
-        if isDeveloper { return HomeContent.tools }
-        return HomeContent.tools.filter { Self.liveToolIDs.contains($0.id) }
-    }
-    private var visibleBanners: [HomeBanner] {
-        // Banners hidden for everyone — Apple flagged the AI-generated
-        // face imagery as objectionable content (Guideline 1.1.1) and
-        // banners deep-link to in-development tools anyway. Developer
-        // accounts can still QA the tool grid below.
-        []
-    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     homeTitle
-                    if !visibleBanners.isEmpty {
-                        bannerCarousel
-                    }
-                    sectionHeader(isDeveloper ? loc.t("home_ai_tools") : loc.t("home_live_now"))
-                    toolGrid
-                    generationHeader
-                    generationProviderPicker
-                    generationCategoryStrip
+                    mediaStack
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, -18)
@@ -64,35 +27,22 @@ struct HomeView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button { showingGeneratedGallery = true } label: {
                         Image(systemName: "photo.stack")
                             .foregroundColor(.white.opacity(0.7))
                     }
                     .accessibilityLabel(loc.t("gen_gallery"))
-
-                    Button { showingNotifications = true } label: {
-                        Image(systemName: "bell")
-                            .foregroundColor(.white.opacity(0.7))
-                    }
-                    .accessibilityLabel(loc.t("notif_title"))
                 }
             }
             .sheet(item: $openTool) { tool in
                 ToolDetailView(tool: tool)
             }
-            .sheet(isPresented: $openCaptions) {
-                NavigationStack { MainView() }
-                    .preferredColorScheme(.dark)
-            }
             .navigationDestination(isPresented: imageCategoryNavigationBinding) {
                 if let category = openImageCategory {
-                    ImageGeneratorView(category: category, provider: selectedGenerationProvider)
+                    ImageGeneratorView(category: category, provider: .gptImage2)
                         .preferredColorScheme(.dark)
                 }
-            }
-            .sheet(isPresented: $showingNotifications) {
-                NotificationsView()
             }
             .sheet(isPresented: $showingGeneratedGallery) {
                 GeneratedGalleryView()
@@ -114,163 +64,57 @@ struct HomeView: View {
         .padding(.leading, 2)
     }
 
-    private var bannerCarousel: some View {
-        VStack(spacing: 8) {
-            TabView(selection: $bannerIndex) {
-                ForEach(Array(visibleBanners.enumerated()), id: \.element.id) { idx, banner in
-                    HomeBannerCard(banner: banner) {
-                        if let tool = HomeContent.tools.first(where: { $0.id == banner.toolID }) {
-                            openTool = tool
-                        }
-                    }
-                    .tag(idx)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 180)
-
-            HStack(spacing: 6) {
-                ForEach(0..<visibleBanners.count, id: \.self) { i in
-                    Capsule()
-                        .fill(i == bannerIndex ? Color.accentColor : Color.white.opacity(0.18))
-                        .frame(width: i == bannerIndex ? 18 : 6, height: 6)
-                        .animation(.easeInOut(duration: 0.2), value: bannerIndex)
-                }
-            }
-        }
-    }
-
-    private var toolGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            ForEach(visibleTools) { tool in
+    private var mediaStack: some View {
+        VStack(spacing: 14) {
+            ForEach(homeMediaItems) { item in
                 Button {
-                    DiagnosticLogger.log(event: "home_tool_tap",
-                                         extra: ["tool_id": tool.id])
-                    if tool.id == "captions" {
-                        openCaptions = true
-                    } else if tool.id == "photo" {
+                    switch item.action {
+                    case .photo:
+                        DiagnosticLogger.log(event: "home_media_photo_tap")
                         openImageCategory = ImageGenerationCatalog.custom
-                    } else if tool.id == "academy" {
-                        // Live: deep-link to Courses tab via NotificationCenter.
-                        NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "courses"])
-                    } else {
-                        openTool = tool
+                    case .video:
+                        DiagnosticLogger.log(event: "home_media_video_tap")
+                        openTool = HomeContent.tools.first(where: { $0.id == "video_gen" })
                     }
                 } label: {
-                    HomeToolCard(
-                        tool: tool,
-                        title: localized("home_tool_\(tool.id)_title", fallback: tool.title),
-                        subtitle: localized("home_tool_\(tool.id)_subtitle", fallback: tool.subtitle)
-                    )
+                    HomeMediaCard(item: item)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(item.title)
             }
         }
     }
 
-    private var generationCategoryStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(ImageGenerationCatalog.categories) { category in
-                    Button {
-                        DiagnosticLogger.log(event: "home_generation_category_tap",
-                                             extra: ["category": category.id])
-                        openImageCategory = category
-                    } label: {
-                        GenerationCategoryCard(
-                            category: category,
-                            title: categoryTitle(category),
-                            subtitle: categorySubtitle(category),
-                            provider: selectedGenerationProvider
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 2)
-        }
-    }
-
-    private var generationHeader: some View {
-        HStack {
-            sectionHeader(loc.t("home_generate"))
-            Spacer()
-            Button {
-                showingGeneratedGallery = true
-            } label: {
-                Label(loc.t("gen_gallery"), systemImage: "photo.stack")
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            .buttonStyle(.bordered)
-            .tint(.white.opacity(0.18))
-        }
-        .padding(.trailing, 2)
-    }
-
-    private var generationProviderPicker: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader(loc.t("gen_model"))
-
-            Menu {
-                ForEach(ImageGenerationProvider.allCases) { model in
-                    if model.isComingSoon {
-                        Button {} label: {
-                            Label("\(model.title) · скоро", systemImage: "clock")
-                        }
-                        .disabled(true)
-                    } else {
-                        Button {
-                            selectedGenerationProvider = model
-                        } label: {
-                            Label(model.title, systemImage: model == selectedGenerationProvider ? "checkmark" : "cpu")
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "cpu")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(selectedGenerationProvider.title)
-                            .font(.system(size: 14, weight: .heavy))
-                        Text(selectedGenerationProvider.subtitle)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.56))
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.white.opacity(0.52))
-                }
-                .foregroundColor(.white)
-                .padding(12)
-                .background(Color.white.opacity(0.07))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-        }
-        .padding(12)
-        .x5ClearGlass(cornerRadius: 16, highlight: 0.10)
-    }
-
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title.uppercased())
-            .font(.system(size: 11, weight: .bold))
-            .tracking(1.4)
-            .foregroundColor(.white.opacity(0.45))
-            .padding(.leading, 4)
+    private var homeMediaItems: [HomeMediaItem] {
+        [
+            HomeMediaItem(
+                id: "photo",
+                title: localized("home_media_photo_title", fallback: "Фото"),
+                subtitle: localized("home_media_photo_subtitle", fallback: "Генерация и редактирование изображений"),
+                kicker: "IMAGE",
+                systemImage: "photo",
+                videoURL: URL(string: "https://v1-kling.kechuangai.com/kcdn/cdn-kcdn112452/kling-homepage-aio-prod_aio/assets/videos/model-video-1.6900686236fd8a15.mp4"),
+                gradientStart: X5Style.blue.opacity(0.48),
+                gradientEnd: .black,
+                action: .photo
+            ),
+            HomeMediaItem(
+                id: "video",
+                title: localized("home_media_video_title", fallback: "Видео"),
+                subtitle: localized("home_media_video_subtitle", fallback: "Kling AI: text/image to video"),
+                kicker: "KLING",
+                systemImage: "video.fill",
+                videoURL: URL(string: "https://v16-kling.klingai.com/kos/s101/nlav112918/kling-website/page1-v3-0-en.mp4"),
+                gradientStart: Color(red: 0.62, green: 1.0, blue: 0.0).opacity(0.36),
+                gradientEnd: Color.black,
+                action: .video
+            )
+        ]
     }
 
     private func localized(_ key: String, fallback: String) -> String {
         let value = loc.t(key)
         return value == key ? fallback : value
-    }
-
-    private func categoryTitle(_ category: ImageGenerationCategory) -> String {
-        localized("gen_category_\(category.id)_title", fallback: category.title)
-    }
-
-    private func categorySubtitle(_ category: ImageGenerationCategory) -> String {
-        localized("gen_category_\(category.id)_subtitle", fallback: category.subtitle)
     }
 
     private var imageCategoryNavigationBinding: Binding<Bool> {
@@ -279,6 +123,84 @@ struct HomeView: View {
             set: { isPresented in
                 if !isPresented { openImageCategory = nil }
             }
+        )
+    }
+}
+
+private enum HomeMediaAction {
+    case photo
+    case video
+}
+
+private struct HomeMediaItem: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let kicker: String
+    let systemImage: String
+    let videoURL: URL?
+    let gradientStart: Color
+    let gradientEnd: Color
+    let action: HomeMediaAction
+}
+
+private struct HomeMediaCard: View {
+    let item: HomeMediaItem
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            LinearGradient(colors: [item.gradientStart, item.gradientEnd],
+                           startPoint: .topLeading,
+                           endPoint: .bottomTrailing)
+
+            if let url = item.videoURL {
+                LoopingVideo(url: url, fallback: item.gradientStart.opacity(0.18))
+                    .overlay(Color.black.opacity(0.24))
+            }
+
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.12),
+                    Color.black.opacity(0.12),
+                    Color.black.opacity(0.78)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            HStack(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(item.kicker)
+                        .font(.system(size: 11, weight: .heavy))
+                        .tracking(1.6)
+                        .foregroundColor(.white.opacity(0.62))
+
+                    Text(item.title)
+                        .font(.system(size: 34, weight: .black))
+                        .foregroundColor(.white)
+
+                    Text(item.subtitle)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.76))
+                        .lineLimit(2)
+                }
+                Spacer()
+
+                Image(systemName: item.systemImage)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 48, height: 48)
+                    .background(Color.white.opacity(0.14))
+                    .clipShape(Circle())
+            }
+            .padding(20)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 236)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
         )
     }
 }
