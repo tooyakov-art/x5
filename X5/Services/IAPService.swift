@@ -76,7 +76,7 @@ final class IAPService: ObservableObject {
             switch result {
             case .success(let verification):
                 if case .verified(let transaction) = verification {
-                    await applyEntitlement(transaction: transaction)
+                    await applyEntitlement(transaction: transaction, grantCredits: true)
                     await transaction.finish()
                     return true
                 } else {
@@ -102,7 +102,7 @@ final class IAPService: ObservableObject {
             try await AppStore.sync()
             for await result in Transaction.currentEntitlements {
                 if case .verified(let t) = result, t.productID == Self.monthlyProductID {
-                    await applyEntitlement(transaction: t)
+                    await applyEntitlement(transaction: t, grantCredits: false)
                 }
             }
         } catch {
@@ -114,7 +114,7 @@ final class IAPService: ObservableObject {
         updatesTask = Task.detached { [weak self] in
             for await update in Transaction.updates {
                 if case .verified(let transaction) = update {
-                    await self?.applyEntitlement(transaction: transaction)
+                    await self?.applyEntitlement(transaction: transaction, grantCredits: false)
                     await transaction.finish()
                 }
             }
@@ -131,19 +131,16 @@ final class IAPService: ObservableObject {
         return UUID(uuidString: raw)
     }
 
-    /// Marks the user as Pro on the server, granting +1000 credits per renewal period.
+    /// Marks the user as Pro on the server.
     ///
-    /// Idempotent: this method runs from THREE entry points (purchase success,
-    /// `Transaction.updates` listener, manual `restore()`), and StoreKit
-    /// sandbox renews monthly subscriptions every ~5 minutes. Without a guard
-    /// each restore/relaunch/renewal would credit another +1000 — that's the
-    /// bug behind the 6500-credit balance Diaz hit in build 41.
+    /// Credits are granted only from the direct purchase success path. Restore,
+    /// relaunch, and StoreKit re-delivery only refresh Pro state.
     ///
     /// Guard: only credit when the incoming `expirationDate` is later than the
     /// `subscription_end_date` already stored. A renewal that doesn't extend
     /// the period (re-delivery of a known transaction) is treated as a no-op
     /// for credits. Plan/end-date are still refreshed so isPro stays true.
-    private func applyEntitlement(transaction: StoreKit.Transaction) async {
+    private func applyEntitlement(transaction: StoreKit.Transaction, grantCredits: Bool) async {
         guard
             let userId = UserDefaults.standard.string(forKey: "x5.session.user_id"),
             let accessToken = Keychain.string(for: "x5.session.access_token")
@@ -212,7 +209,7 @@ final class IAPService: ObservableObject {
             "subscription_date": startIso,
             "subscription_end_date": endIso
         ]
-        if !alreadyCredited {
+        if grantCredits && !alreadyCredited {
             body["credits"] = currentCredits + 1000
         }
 

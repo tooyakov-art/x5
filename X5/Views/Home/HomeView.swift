@@ -103,7 +103,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_logo_subtitle", fallback: "Логотип для бренда"),
                 kicker: "LOGO",
                 systemImage: "seal.fill",
-                videoURL: nil,
+                videoURL: HomeMediaVideos.logo,
                 gradientStart: X5Style.blue.opacity(0.40),
                 gradientEnd: .black,
                 action: categories["logo"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
@@ -114,7 +114,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_story_subtitle", fallback: "Вертикальный креатив 9:16"),
                 kicker: "STORY",
                 systemImage: "rectangle.portrait.fill",
-                videoURL: nil,
+                videoURL: HomeMediaVideos.story,
                 gradientStart: X5Style.backgroundCyan.opacity(0.42),
                 gradientEnd: .black,
                 action: categories["story"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
@@ -125,7 +125,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_post_subtitle", fallback: "Пост для ленты"),
                 kicker: "POST",
                 systemImage: "square.grid.2x2.fill",
-                videoURL: nil,
+                videoURL: HomeMediaVideos.post,
                 gradientStart: Color(red: 0.20, green: 0.42, blue: 0.95).opacity(0.42),
                 gradientEnd: .black,
                 action: categories["post"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
@@ -136,7 +136,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_instapack_subtitle", fallback: "Посты и сторис в одном стиле"),
                 kicker: "INSTA",
                 systemImage: "square.stack.3d.up.fill",
-                videoURL: nil,
+                videoURL: HomeMediaVideos.instaPack,
                 gradientStart: Color(red: 0.42, green: 0.55, blue: 1.0).opacity(0.40),
                 gradientEnd: .black,
                 action: categories["insta_pack"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
@@ -147,7 +147,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_product_subtitle", fallback: "Кадр для рекламы"),
                 kicker: "PRODUCT",
                 systemImage: "shippingbox.fill",
-                videoURL: nil,
+                videoURL: HomeMediaVideos.product,
                 gradientStart: X5Style.blue.opacity(0.34),
                 gradientEnd: .black,
                 action: categories["product"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
@@ -158,7 +158,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_packaging_subtitle", fallback: "Коробка, этикетка, мокап"),
                 kicker: "PACK",
                 systemImage: "cube.box.fill",
-                videoURL: nil,
+                videoURL: HomeMediaVideos.packaging,
                 gradientStart: Color(red: 0.72, green: 0.82, blue: 0.92).opacity(0.30),
                 gradientEnd: .black,
                 action: categories["packaging"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
@@ -169,7 +169,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_custom_subtitle", fallback: "Загрузи фото или напиши промпт"),
                 kicker: "AI",
                 systemImage: "photo",
-                videoURL: nil,
+                videoURL: HomeMediaVideos.custom,
                 gradientStart: X5Style.backgroundBlue.opacity(0.48),
                 gradientEnd: .black,
                 action: .image(ImageGenerationCatalog.custom)
@@ -180,7 +180,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_video_subtitle", fallback: "Kling: текст или фото в видео"),
                 kicker: "KLING",
                 systemImage: "video.fill",
-                videoURL: nil,
+                videoURL: HomeMediaVideos.video,
                 gradientStart: X5Style.blue.opacity(0.38),
                 gradientEnd: .black,
                 action: .video
@@ -218,6 +218,17 @@ private enum HomeMediaAction {
     case image(ImageGenerationCategory)
     case video
     case tool(String)
+}
+
+private enum HomeMediaVideos {
+    static let logo = URL(string: "https://videos.pexels.com/video-files/17461591/17461591-hd_1920_1080_30fps.mp4")
+    static let story = URL(string: "https://videos.pexels.com/video-files/4232959/4232959-hd_1920_1080_24fps.mp4")
+    static let post = URL(string: "https://videos.pexels.com/video-files/6756651/6756651-hd_1920_1080_24fps.mp4")
+    static let instaPack = URL(string: "https://videos.pexels.com/video-files/854321/854321-hd_1920_1080_24fps.mp4")
+    static let product = URL(string: "https://videos.pexels.com/video-files/6802234/6802234-hd_1920_1080_30fps.mp4")
+    static let packaging = URL(string: "https://videos.pexels.com/video-files/5051027/5051027-hd_1920_1080_25fps.mp4")
+    static let custom = URL(string: "https://videos.pexels.com/video-files/7409223/7409223-hd_1920_1080_24fps.mp4")
+    static let video = URL(string: "https://videos.pexels.com/video-files/7287517/7287517-hd_1920_1080_25fps.mp4")
 }
 
 private struct HomeMediaItem: Identifiable {
