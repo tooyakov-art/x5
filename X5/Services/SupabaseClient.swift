@@ -148,13 +148,17 @@ final class SupabaseClient {
         prompt: String,
         provider: ImageGenerationProvider,
         category: ImageGenerationCategory,
+        quantity: Int = 1,
+        size: ImageGenerationSize = .square,
         referenceImages: [ImageGenerationReference] = []
     ) async throws -> GeneratedImage {
         var payload: [String: Any] = [
             "prompt": prompt,
             "provider": provider.provider,
             "model": provider.rawValue,
-            "category": category.id
+            "category": category.id,
+            "quantity": quantity,
+            "size": size.rawValue
         ]
         if !referenceImages.isEmpty {
             payload["images"] = referenceImages.map { image in
@@ -218,10 +222,13 @@ struct ImageGenerationReference {
 
 struct GeneratedImage: Decodable {
     let imageBase64: String
+    let imageBase64s: [String]?
     let prompt: String
     let provider: String?
     let model: String?
     let category: String?
+    let size: String?
+    let quantity: Int?
     let costCredits: Int?
     let creditsRemaining: Int?
 }

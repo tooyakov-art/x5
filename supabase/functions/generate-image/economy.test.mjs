@@ -5,8 +5,10 @@ import {
   IMAGE_CREDIT_COST,
   buildFinalPrompt,
   generationCategories,
+  generationSizes,
   normalizeImages,
   normalizeGenerationRequest,
+  normalizeQuantity,
 } from "./economy.mjs";
 
 test("normalizes provider, category, prompt, and fixed credit cost", () => {
@@ -57,6 +59,35 @@ test("falls back to GPT and custom category for unknown values", () => {
 
   assert.equal(request.provider, "gpt");
   assert.equal(request.category.id, "custom");
+});
+
+test("normalizes quantity, size, and multiplied credit cost", () => {
+  const request = normalizeGenerationRequest({
+    model: "gemini-3.1-flash-image-preview",
+    category: "post",
+    prompt: "make three vertical posts",
+    quantity: 3,
+    size: "portrait",
+  });
+
+  assert.equal(request.quantity, 3);
+  assert.equal(request.costCredits, IMAGE_CREDIT_COST * 3);
+  assert.equal(request.size.id, "portrait");
+  assert.equal(request.size.openaiSize, "1024x1536");
+  assert.equal(request.size.googleAspectRatio, "9:16");
+});
+
+test("clamps generation quantity to supported UI range", () => {
+  assert.equal(normalizeQuantity(0), 1);
+  assert.equal(normalizeQuantity(99), 4);
+  assert.equal(normalizeQuantity("bad"), 1);
+});
+
+test("defines supported generation sizes", () => {
+  assert.deepEqual(
+    generationSizes.map((size) => size.id),
+    ["square", "portrait", "landscape", "wide"],
+  );
 });
 
 test("rejects missing prompts", () => {

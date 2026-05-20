@@ -80,17 +80,34 @@ Deno.serve(async (req) => {
       normalized.category,
       normalized.images.length > 0,
     );
-    const imageBase64 =
+    const imageBase64s =
       normalized.provider === "google"
-        ? await generateWithGoogle(providerKey, finalPrompt, normalized.model, normalized.images)
-        : await generateWithGPT(providerKey, finalPrompt, normalized.model, normalized.images);
+        ? await generateWithGoogle(
+          providerKey,
+          finalPrompt,
+          normalized.model,
+          normalized.images,
+          normalized.quantity,
+          normalized.size,
+        )
+        : await generateWithGPT(
+          providerKey,
+          finalPrompt,
+          normalized.model,
+          normalized.images,
+          normalized.quantity,
+          normalized.size,
+        );
 
     return json({
-      imageBase64,
+      imageBase64: imageBase64s[0],
+      imageBase64s,
       prompt: normalized.prompt,
       provider: normalized.provider,
       model: normalized.model,
       category: normalized.category.id,
+      size: normalized.size.id,
+      quantity: imageBase64s.length,
       costCredits: normalized.costCredits,
       creditsRemaining: spent.credits,
     }, 200);
@@ -111,9 +128,20 @@ function getProviderKey(provider: string): string | undefined {
   return Deno.env.get("OPENAI_API_KEY") || undefined;
 }
 
-async function generateWithGPT(apiKey: string, finalPrompt: string, model: string, images: any[] = []): Promise<string> {
+async function generateWithGPT(
+  apiKey: string,
+  finalPrompt: string,
+  model: string,
+  images: any[] = [],
+  quantity = 1,
+  size: any = {},
+): Promise<string[]> {
   if (images.length > 0) {
-    return await editWithGPT(apiKey, finalPrompt, model, images);
+    const results = [];
+    for (let index = 0; index < quantity; index += 1) {
+      results.push(await editWithGPT(apiKey, finalPrompt, model, images, size));
+    }
+    return results;
   }
 
   const response = await fetch(OPENAI_URL, {
@@ -125,9 +153,9 @@ async function generateWithGPT(apiKey: string, finalPrompt: string, model: strin
     body: JSON.stringify({
       model: model || Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-2",
       prompt: finalPrompt,
-      size: "1024x1024",
+      size: size.openaiSize || "1024x1024",
       quality: "low",
-      n: 1,
+      n: quantity,
     }),
   });
 
@@ -136,18 +164,18 @@ async function generateWithGPT(apiKey: string, finalPrompt: string, model: strin
     throw new Error(payload?.error?.message || `OpenAI error ${response.status}`);
   }
 
-  const imageBase64 = payload?.data?.[0]?.b64_json;
-  if (!imageBase64) {
+  const imageBase64s = (payload?.data || []).map((item: any) => item?.b64_json).filter(Boolean);
+  if (imageBase64s.length === 0) {
     throw new Error("OpenAI returned no image");
   }
-  return imageBase64;
+  return imageBase64s;
 }
 
-async function editWithGPT(apiKey: string, finalPrompt: string, model: string, images: any[]): Promise<string> {
+async function editWithGPT(apiKey: string, finalPrompt: string, model: string, images: any[], size: any): Promise<string> {
   const form = new FormData();
   form.append("model", model || Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-2");
   form.append("prompt", finalPrompt);
-  form.append("size", "1024x1024");
+  form.append("size", size.openaiSize || "1024x1024");
   form.append("quality", "low");
 
   images.slice(0, 6).forEach((image, index) => {
@@ -177,7 +205,28 @@ async function editWithGPT(apiKey: string, finalPrompt: string, model: string, i
   return imageBase64;
 }
 
-async function generateWithGoogle(apiKey: string, finalPrompt: string, requestedModel: string, images: any[] = []): Promise<string> {
+async function generateWithGoogle(
+  apiKey: string,
+  finalPrompt: string,
+  requestedModel: string,
+  images: any[] = [],
+  quantity = 1,
+  size: any = {},
+): Promise<string[]> {
+  const results = [];
+  for (let index = 0; index < quantity; index += 1) {
+    results.push(await generateOneWithGoogle(apiKey, finalPrompt, requestedModel, images, size));
+  }
+  return results;
+}
+
+async function generateOneWithGoogle(
+  apiKey: string,
+  finalPrompt: string,
+  requestedModel: string,
+  images: any[] = [],
+  size: any = {},
+): Promise<string> {
   const model = requestedModel || Deno.env.get("GOOGLE_IMAGE_MODEL") || GOOGLE_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const requestParts = [
@@ -189,21 +238,26 @@ async function generateWithGoogle(apiKey: string, finalPrompt: string, requested
       },
     })),
   ];
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "x-goog-api-key": apiKey,
-      "Content-Type": "application/json",
+  const bodyWithSize = {
+    contents: [{ parts: requestParts }],
+    generationConfig: {
+      responseModalities: ["TEXT", "IMAGE"],
+      imageConfig: googleImageConfig(size),
     },
-    body: JSON.stringify({
-      contents: [{ parts: requestParts }],
-      generationConfig: {
-        responseModalities: ["TEXT", "IMAGE"],
-      },
-    }),
-  });
+  };
+  const bodyWithoutSize = {
+    contents: [{ parts: requestParts }],
+    generationConfig: {
+      responseModalities: ["TEXT", "IMAGE"],
+    },
+  };
+  let response = await postGoogleImageRequest(url, apiKey, bodyWithSize);
+  let payload = await response.json().catch(() => ({}));
+  if (!response.ok && shouldRetryGoogleWithoutImageConfig(payload)) {
+    response = await postGoogleImageRequest(url, apiKey, bodyWithoutSize);
+    payload = await response.json().catch(() => ({}));
+  }
 
-  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(payload?.error?.message || `Google error ${response.status}`);
   }
@@ -215,6 +269,37 @@ async function generateWithGoogle(apiKey: string, finalPrompt: string, requested
     throw new Error("Google returned no image");
   }
   return imageBase64;
+}
+
+function postGoogleImageRequest(url: string, apiKey: string, body: Record<string, unknown>): Promise<Response> {
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      "x-goog-api-key": apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+function googleImageConfig(size: any): Record<string, string> {
+  const config: Record<string, string> = {
+    aspectRatio: size.googleAspectRatio || "1:1",
+  };
+  if (size.googleImageSize) {
+    config.imageSize = size.googleImageSize;
+  }
+  return config;
+}
+
+function shouldRetryGoogleWithoutImageConfig(payload: any): boolean {
+  const message = String(payload?.error?.message || "").toLowerCase();
+  return message.includes("imageconfig") ||
+    message.includes("image_config") ||
+    message.includes("imagesize") ||
+    message.includes("image_size") ||
+    message.includes("unknown field") ||
+    message.includes("unsupported");
 }
 
 function decodeBase64(data: string): Uint8Array {

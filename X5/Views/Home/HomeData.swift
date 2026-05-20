@@ -110,6 +110,57 @@ enum ImageGenerationProvider: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
+enum ImageGenerationSize: String, CaseIterable, Identifiable, Hashable {
+    case square = "square"
+    case portrait = "portrait"
+    case landscape = "landscape"
+    case wide = "wide"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .square: return "1:1"
+        case .portrait: return "9:16"
+        case .landscape: return "16:9"
+        case .wide: return "21:9"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .square: return "1024 x 1024"
+        case .portrait: return "1024 x 1536"
+        case .landscape: return "1536 x 1024"
+        case .wide: return "2K wide"
+        }
+    }
+
+    var openAISize: String {
+        switch self {
+        case .square, .wide: return "1024x1024"
+        case .portrait: return "1024x1536"
+        case .landscape: return "1536x1024"
+        }
+    }
+
+    var googleAspectRatio: String {
+        switch self {
+        case .square: return "1:1"
+        case .portrait: return "9:16"
+        case .landscape: return "16:9"
+        case .wide: return "21:9"
+        }
+    }
+
+    var googleImageSize: String? {
+        switch self {
+        case .wide: return "2K"
+        default: return nil
+        }
+    }
+}
+
 struct ImageGenerationCategory: Identifiable, Hashable {
     let id: String
     let title: String

@@ -1,4 +1,6 @@
 export const IMAGE_CREDIT_COST = 10;
+export const MIN_IMAGE_QUANTITY = 1;
+export const MAX_IMAGE_QUANTITY = 4;
 
 export const generationModels = [
   { id: "gpt-image-2", provider: "gpt", title: "GPT Image 2" },
@@ -13,6 +15,34 @@ export const generationModels = [
 export const generationProviders = [
   { id: "gpt", title: "GPT" },
   { id: "google", title: "Google" },
+];
+
+export const generationSizes = [
+  {
+    id: "square",
+    title: "1:1",
+    openaiSize: "1024x1024",
+    googleAspectRatio: "1:1",
+  },
+  {
+    id: "portrait",
+    title: "9:16",
+    openaiSize: "1024x1536",
+    googleAspectRatio: "9:16",
+  },
+  {
+    id: "landscape",
+    title: "16:9",
+    openaiSize: "1536x1024",
+    googleAspectRatio: "16:9",
+  },
+  {
+    id: "wide",
+    title: "21:9",
+    openaiSize: "1024x1024",
+    googleAspectRatio: "21:9",
+    googleImageSize: "2K",
+  },
 ];
 
 export const generationCategories = [
@@ -81,6 +111,10 @@ export function normalizeGenerationRequest(body) {
     generationCategories.find((item) => item.id === body?.category) ||
     generationCategories[0];
   const images = normalizeImages(body?.images);
+  const quantity = normalizeQuantity(body?.quantity);
+  const size =
+    generationSizes.find((item) => item.id === body?.size) ||
+    generationSizes[0];
 
   return {
     prompt,
@@ -88,8 +122,16 @@ export function normalizeGenerationRequest(body) {
     model: model.id,
     category,
     images,
-    costCredits: IMAGE_CREDIT_COST,
+    quantity,
+    size,
+    costCredits: IMAGE_CREDIT_COST * quantity,
   };
+}
+
+export function normalizeQuantity(rawQuantity) {
+  const parsed = Number.parseInt(String(rawQuantity ?? MIN_IMAGE_QUANTITY), 10);
+  if (Number.isNaN(parsed)) return MIN_IMAGE_QUANTITY;
+  return Math.min(MAX_IMAGE_QUANTITY, Math.max(MIN_IMAGE_QUANTITY, parsed));
 }
 
 export function normalizeImages(rawImages) {

@@ -15,7 +15,10 @@ struct ImageGeneratorView: View {
     @State private var isGenerating = false
     @State private var errorMessage: String?
     @State private var generatedAsset: GeneratedImageAsset?
+    @State private var generatedAssets: [GeneratedImageAsset] = []
     @State private var viewerAsset: GeneratedImageAsset?
+    @State private var selectedQuantity = 1
+    @State private var selectedSize: ImageGenerationSize = .square
     @State private var showingGallery = false
     @State private var referenceItems: [PhotosPickerItem] = []
     @State private var referenceImages: [ImageReferenceAsset] = []
@@ -34,6 +37,7 @@ struct ImageGeneratorView: View {
             VStack(alignment: .leading, spacing: 18) {
                 hero
                 providerPanel
+                settingsPanel
                 promptPanel
                 referencePanel
                 generateButton
@@ -72,11 +76,19 @@ struct ImageGeneratorView: View {
         .onChange(of: referenceItems) { newItems in
             Task { await loadReferenceImages(newItems) }
         }
+        .onChange(of: selectedProvider) { provider in
+            if provider.provider == "gpt", selectedSize == .wide {
+                selectedSize = .landscape
+            }
+        }
         .fullScreenCover(item: $viewerAsset) { asset in
             GeneratedImageViewer(asset: asset, onImageUpdated: { image in
                 if var updated = generatedAsset {
                     updated.image = image
                     generatedAsset = updated
+                }
+                if let index = generatedAssets.firstIndex(where: { $0.id == asset.id }) {
+                    generatedAssets[index].image = image
                 }
             }, onSaveToGallery: { image in
                 saveAssetToGallery(asset, image: image)
@@ -104,7 +116,7 @@ struct ImageGeneratorView: View {
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 Spacer()
-                Text("\(ImageGenerationCatalog.creditCost) \(loc.t("gen_credits"))")
+                Text("\(totalCreditCost) \(loc.t("gen_credits"))")
                     .font(.system(size: 11, weight: .heavy))
                     .foregroundColor(.black)
                     .padding(.horizontal, 10)
@@ -169,12 +181,73 @@ struct ImageGeneratorView: View {
             .disabled(isGenerating)
 
             HStack {
-                Label("\(ImageGenerationCatalog.creditCost)", systemImage: "creditcard")
+                Label("\(totalCreditCost)", systemImage: "creditcard")
                 Spacer()
                 Text(balanceText)
             }
             .font(.system(size: 12, weight: .semibold))
             .foregroundColor(.white.opacity(0.58))
+        }
+        .padding(14)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
+    }
+
+    private var settingsPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel(loc.t("gen_settings"))
+
+            Stepper(value: $selectedQuantity, in: 1...4) {
+                HStack(spacing: 10) {
+                    Image(systemName: "number")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(loc.t("gen_quantity"))
+                            .font(.system(size: 15, weight: .heavy))
+                        Text("\(selectedQuantity) x \(ImageGenerationCatalog.creditCost) = \(totalCreditCost) \(loc.t("gen_credits"))")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.58))
+                    }
+                }
+                .foregroundColor(.white)
+            }
+            .disabled(isGenerating)
+
+            Menu {
+                ForEach(ImageGenerationSize.allCases) { size in
+                    if selectedProvider.provider == "gpt", size == .wide {
+                        Button {} label: {
+                            Label("\(size.title) · Gemini 2K", systemImage: "lock")
+                        }
+                        .disabled(true)
+                    } else {
+                        Button {
+                            selectedSize = size
+                        } label: {
+                            Label("\(size.title) · \(size.subtitle)", systemImage: size == selectedSize ? "checkmark" : "rectangle")
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "aspectratio")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(loc.t("gen_size"))
+                            .font(.system(size: 15, weight: .heavy))
+                        Text("\(selectedSize.title) · \(selectedSize.subtitle)")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.58))
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.52))
+                }
+                .foregroundColor(.white)
+                .padding(12)
+                .background(Color.white.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .disabled(isGenerating)
         }
         .padding(14)
         .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
@@ -299,32 +372,27 @@ struct ImageGeneratorView: View {
     @ViewBuilder
     private var resultPanel: some View {
         if let generatedAsset {
-            Button {
-                viewerAsset = generatedAsset
-            } label: {
-                VStack(alignment: .leading, spacing: 12) {
-                    Image(uiImage: generatedAsset.image)
-                        .resizable()
-                        .scaledToFill()
-                        .aspectRatio(1, contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                        )
-
-                    HStack {
-                        Label(loc.t("gen_open_viewer"), systemImage: "arrow.up.left.and.arrow.down.right")
-                        Spacer()
-                        Text("\(generatedAsset.costCredits) \(loc.t("gen_credits"))")
+            VStack(alignment: .leading, spacing: 12) {
+                if generatedAssets.count > 1 {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        ForEach(generatedAssets) { asset in
+                            generatedImageButton(asset, compact: true)
+                        }
                     }
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(.white.opacity(0.82))
+                } else {
+                    generatedImageButton(generatedAsset, compact: false)
                 }
-                .padding(12)
-                .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
+
+                HStack {
+                    Label(loc.t("gen_open_viewer"), systemImage: "arrow.up.left.and.arrow.down.right")
+                    Spacer()
+                    Text("\(generatedAssets.count) / \(generatedAsset.sizeLabel)")
+                }
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(.white.opacity(0.82))
             }
-            .buttonStyle(.plain)
+            .padding(12)
+            .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
         } else if let errorMessage {
             Text(errorMessage)
                 .font(.system(size: 13, weight: .semibold))
@@ -355,7 +423,7 @@ struct ImageGeneratorView: View {
 
     private var hasEnoughCredits: Bool {
         guard let currentCredits else { return false }
-        return currentCredits >= ImageGenerationCatalog.creditCost
+        return currentCredits >= totalCreditCost
     }
 
     private var canGenerate: Bool {
@@ -372,8 +440,29 @@ struct ImageGeneratorView: View {
     private var generateButtonTitle: String {
         if isGenerating { return loc.t("gen_generating") }
         if currentCredits == nil { return loc.t("gen_loading_balance") }
-        if !hasEnoughCredits { return "\(loc.t("gen_need")) \(ImageGenerationCatalog.creditCost) \(loc.t("gen_credits"))" }
+        if !hasEnoughCredits { return "\(loc.t("gen_need")) \(totalCreditCost) \(loc.t("gen_credits"))" }
         return loc.t("gen_generate")
+    }
+
+    private var totalCreditCost: Int {
+        ImageGenerationCatalog.creditCost * selectedQuantity
+    }
+
+    private func generatedImageButton(_ asset: GeneratedImageAsset, compact: Bool) -> some View {
+        Button {
+            viewerAsset = asset
+        } label: {
+            Image(uiImage: asset.image)
+                .resizable()
+                .scaledToFill()
+                .aspectRatio(asset.aspectRatio, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: compact ? 14 : 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: compact ? 14 : 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     private func sectionLabel(_ text: String) -> some View {
@@ -415,6 +504,7 @@ struct ImageGeneratorView: View {
         isGenerating = true
         errorMessage = nil
         generatedAsset = nil
+        generatedAssets = []
         defer { isGenerating = false }
 
         await refreshProfileIfPossible()
@@ -424,7 +514,9 @@ struct ImageGeneratorView: View {
             return
         }
         let creditsBefore = currentCredits ?? 0
-        guard creditsBefore >= ImageGenerationCatalog.creditCost else {
+        let requestQuantity = referencesOverride == nil ? selectedQuantity : 1
+        let requestCreditCost = ImageGenerationCatalog.creditCost * requestQuantity
+        guard creditsBefore >= requestCreditCost else {
             errorMessage = loc.t("gen_not_enough_credits")
             return
         }
@@ -434,30 +526,45 @@ struct ImageGeneratorView: View {
                 prompt: cleanPrompt,
                 provider: selectedProvider,
                 category: category,
+                quantity: requestQuantity,
+                size: selectedSize,
                 referenceImages: referencesOverride ?? referenceImages.map { $0.reference }
             )
-            guard let data = Data(base64Encoded: response.imageBase64),
-                  let image = UIImage(data: data)
-            else {
+            let encodedImages = response.imageBase64s?.isEmpty == false ? response.imageBase64s! : [response.imageBase64]
+            let images = encodedImages.compactMap { encoded -> UIImage? in
+                guard let data = Data(base64Encoded: encoded) else { return nil }
+                return UIImage(data: data)
+            }
+            guard !images.isEmpty else {
                 throw ImageGeneratorError.invalidImage
             }
 
-            let asset = GeneratedImageAsset(
-                image: image,
-                prompt: response.prompt,
-                provider: response.model ?? selectedProvider.rawValue,
-                category: response.category ?? category.id,
-                costCredits: response.costCredits ?? ImageGenerationCatalog.creditCost,
-                creditsRemaining: response.creditsRemaining
-            )
-            generatedAsset = asset
-            _ = saveAssetToGallery(asset, image: image)
-            viewerAsset = asset
-            let remainingCredits = response.creditsRemaining ?? max(creditsBefore - ImageGenerationCatalog.creditCost, 0)
+            let costPerImage = max(1, (response.costCredits ?? requestCreditCost) / max(1, images.count))
+            let assets = images.map { image in
+                GeneratedImageAsset(
+                    image: image,
+                    prompt: response.prompt,
+                    provider: response.model ?? selectedProvider.rawValue,
+                    category: response.category ?? category.id,
+                    sizeLabel: response.size ?? "\(selectedSize.title) \(selectedSize.subtitle)",
+                    costCredits: costPerImage,
+                    creditsRemaining: response.creditsRemaining
+                )
+            }
+            guard let firstAsset = assets.first else { throw ImageGeneratorError.invalidImage }
+            generatedAsset = firstAsset
+            generatedAssets = assets
+            assets.forEach { asset in
+                _ = saveAssetToGallery(asset, image: asset.image)
+            }
+            viewerAsset = firstAsset
+            let remainingCredits = response.creditsRemaining ?? max(creditsBefore - requestCreditCost, 0)
             currentUser.applyCreditsRemaining(remainingCredits)
             DiagnosticLogger.log(event: "image_generated", extra: [
                 "provider": selectedProvider.rawValue,
-                "category": category.id
+                "category": category.id,
+                "quantity": "\(assets.count)",
+                "size": selectedSize.rawValue
             ])
         } catch {
             DiagnosticLogger.log(event: "image_generation_failed", extra: [
@@ -531,8 +638,14 @@ private struct GeneratedImageAsset: Identifiable {
     let prompt: String
     let provider: String
     let category: String
+    let sizeLabel: String
     let costCredits: Int
     let creditsRemaining: Int?
+
+    var aspectRatio: CGFloat {
+        guard image.size.height > 0 else { return 1 }
+        return image.size.width / image.size.height
+    }
 }
 
 private struct ImageReferenceAsset: Identifiable {
@@ -727,6 +840,7 @@ private struct GeneratedImageViewer: View {
     private var metaBar: some View {
         HStack(spacing: 10) {
             Label(asset.provider.uppercased(), systemImage: "cpu")
+            Label(asset.sizeLabel, systemImage: "aspectratio")
             Label("\(asset.costCredits)", systemImage: "creditcard")
             if let credits = asset.creditsRemaining {
                 Label("\(credits)", systemImage: "banknote")
