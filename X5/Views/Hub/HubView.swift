@@ -193,6 +193,8 @@ struct HubView: View {
             Text(loc.t(messageKey))
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.white.opacity(0.52))
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -257,42 +259,11 @@ struct HubView: View {
         ScrollView {
             VStack(spacing: 14) {
                 specialistCategoryGrid
-
-                LazyVStack(spacing: 10) {
-                    ForEach(filteredSpecialists) { person in
-                        HStack(spacing: 8) {
-                            NavigationLink {
-                                UserProfileView(userId: person.id, fallback: person)
-                            } label: {
-                                SpecialistRow(person: person)
-                            }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                startChat(with: person)
-                            } label: {
-                                Group {
-                                    if openingChatWith == person.id {
-                                        ProgressView().tint(.accentColor)
-                                    } else {
-                                        Image(systemName: "message.fill")
-                                            .font(.system(size: 16, weight: .semibold))
-                                            .foregroundColor(.accentColor)
-                                    }
-                                }
-                                .frame(width: 44, height: 44)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(openingChatWith != nil)
-                        }
-                    }
-                    if filteredSpecialists.isEmpty && !service.isLoading {
-                        EmptyState(systemImage: "person.crop.circle.badge.questionmark",
-                                   title: loc.t("hub_no_specialists"),
-                                   subtitle: loc.t("hub_no_specialists_sub"))
-                            .padding(.top, 40)
-                    }
+                if totalVisibleCount == 0 && !service.isLoading {
+                    EmptyState(systemImage: "person.crop.circle.badge.questionmark",
+                               title: loc.t("hub_no_specialists"),
+                               subtitle: loc.t("hub_no_specialists_sub"))
+                        .padding(.top, 40)
                 }
             }
             .padding(.horizontal, 16)
@@ -306,35 +277,93 @@ struct HubView: View {
 
     private var specialistCategoryGrid: some View {
         LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(minimum: 64, maximum: 100), spacing: 8), count: 4),
+            columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 4),
             spacing: 8
         ) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) { category = nil }
+            NavigationLink {
+                specialistCategoryPage(categoryId: nil, title: loc.t("hub_all"))
             } label: {
                 CategoryTile(
                     title: loc.t("hub_all"),
                     systemImage: "line.3.horizontal.decrease.circle",
                     count: totalVisibleCount,
-                    isSelected: category == nil
+                    isSelected: false
                 )
             }
             .buttonStyle(.plain)
 
             ForEach(HubCategories.all) { cat in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { category = cat.id }
+                NavigationLink {
+                    specialistCategoryPage(
+                        categoryId: cat.id,
+                        title: HubCategories.label(for: cat.id, language: loc.current)
+                    )
                 } label: {
                     CategoryTile(
                         title: HubCategories.label(for: cat.id, language: loc.current),
                         systemImage: hubCategorySymbol(for: cat.id),
                         count: countForCategory(cat.id),
-                        isSelected: category == cat.id
+                        isSelected: false
                     )
                 }
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    private func specialistCategoryPage(categoryId: String?, title: String) -> some View {
+        let people = specialists(matching: categoryId)
+
+        return ScrollView {
+            LazyVStack(spacing: 10) {
+                ForEach(people) { person in
+                    HStack(spacing: 8) {
+                        NavigationLink {
+                            UserProfileView(userId: person.id, fallback: person)
+                        } label: {
+                            SpecialistRow(person: person)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            startChat(with: person)
+                        } label: {
+                            Group {
+                                if openingChatWith == person.id {
+                                    ProgressView().tint(.accentColor)
+                                } else {
+                                    Image(systemName: "message.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.accentColor)
+                                }
+                            }
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(openingChatWith != nil)
+                    }
+                }
+
+                if people.isEmpty && !service.isLoading {
+                    EmptyState(systemImage: "person.crop.circle.badge.questionmark",
+                               title: loc.t("hub_no_specialists"),
+                               subtitle: loc.t("hub_no_specialists_sub"))
+                        .padding(.top, 60)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 32)
+            .frame(maxWidth: 640)
+            .frame(maxWidth: .infinity)
+        }
+        .background { X5Background() }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .refreshable { await service.loadSpecialists() }
     }
 
     private func countForCategory(_ id: String) -> Int {
@@ -360,7 +389,7 @@ struct HubView: View {
 
     private var specialistCategoryCounts: [String: Int] {
         var counts: [String: Int] = [:]
-        for person in service.specialists where !BlockList.contains(person.id) {
+        for person in visibleSpecialists {
             for id in person.specialistCategory ?? [] {
                 counts[normalizedHubCategory(id), default: 0] += 1
             }
@@ -453,12 +482,19 @@ struct HubView: View {
     }
 
     private var filteredSpecialists: [HubSpecialist] {
-        let visible = service.specialists
+        specialists(matching: category)
+    }
+
+    private var visibleSpecialists: [HubSpecialist] {
+        service.specialists
             .filter { !BlockList.contains($0.id) }
             .filter { $0.id != auth.userId }
-        guard let category else { return visible }
-        return visible.filter { person in
-            (person.specialistCategory ?? []).contains { normalizedHubCategory($0) == category }
+    }
+
+    private func specialists(matching categoryId: String?) -> [HubSpecialist] {
+        guard let categoryId else { return visibleSpecialists }
+        return visibleSpecialists.filter { person in
+            (person.specialistCategory ?? []).contains { normalizedHubCategory($0) == categoryId }
         }
     }
 
