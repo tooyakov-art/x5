@@ -3,8 +3,6 @@ import SwiftUI
 /// Premium black/navy background with a controlled blue glow.
 /// Apply with `.x5Background()` to any root view.
 struct X5Background: View {
-    var showMark: Bool = true
-
     var body: some View {
         ZStack {
             X5Style.ink
@@ -28,16 +26,6 @@ struct X5Background: View {
                 startRadius: 10,
                 endRadius: 360
             )
-
-            if showMark {
-                Text("X5")
-                    .font(.system(size: 230, weight: .black))
-                    .italic()
-                    .foregroundColor(.white.opacity(0.035))
-                    .kerning(-10)
-                    .offset(x: -12, y: -120)
-                    .allowsHitTesting(false)
-            }
 
             RadialGradient(
                 colors: [
