@@ -11,7 +11,8 @@ struct PortfolioGrid: View {
     @EnvironmentObject private var auth: Auth
     @StateObject private var service = PortfolioService()
     @State private var showingAdd = false
-    @State private var selectedPost: PortfolioItem?
+    @State private var selectedIndex: Int?
+    @State private var showingPostViewer = false
     @State private var pinnedTick = 0
 
     private var orderedItems: [PortfolioItem] {
@@ -57,20 +58,18 @@ struct PortfolioGrid: View {
                 .background(Color.white.opacity(0.04))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             } else {
-                LazyVStack(spacing: 16) {
-                    ForEach(orderedItems) { item in
-                        PortfolioFeedCard(
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 3),
+                    spacing: 3
+                ) {
+                    ForEach(Array(orderedItems.enumerated()), id: \.element.id) { index, item in
+                        PortfolioGridCell(
                             item: item,
-                            canEdit: canEdit,
                             isPinned: PortfolioPinnedStore.isPinned(item.id),
-                            onOpen: { selectedPost = item },
-                            onDelete: {
-                                guard let token = auth.accessToken else { return }
-                                Task { await service.delete(itemId: item.id, accessToken: token) }
-                            },
-                            onTogglePin: {
-                                PortfolioPinnedStore.toggle(item.id)
-                                pinnedTick += 1
+                            onOpen: {
+                                X5Feedback.selection()
+                                selectedIndex = index
+                                showingPostViewer = true
                             }
                         )
                     }
@@ -88,30 +87,42 @@ struct PortfolioGrid: View {
             }
             .preferredColorScheme(.dark)
         }
-        .fullScreenCover(item: $selectedPost) { item in
-            PortfolioPostViewer(
-                item: item,
+        .fullScreenCover(isPresented: $showingPostViewer) {
+            PortfolioInstagramViewer(
+                items: orderedItems,
+                initialIndex: selectedIndex ?? 0,
                 canEdit: canEdit,
-                onDelete: {
+                onDelete: { item in
                     guard let token = auth.accessToken else { return }
                     Task { await service.delete(itemId: item.id, accessToken: token) }
-                    selectedPost = nil
+                    showingPostViewer = false
                 },
-                onLoadLike: {
+                onTogglePin: { item in
+                    PortfolioPinnedStore.toggle(item.id)
+                    pinnedTick += 1
+                },
+                onUpdateDetails: { item, title, description in
+                    guard let token = auth.accessToken else { return nil }
+                    return await service.updateDetails(itemId: item.id, title: title, description: description, accessToken: token)
+                },
+                isPinned: { item in
+                    PortfolioPinnedStore.isPinned(item.id)
+                },
+                onLoadLike: { item in
                     guard let token = auth.accessToken, let uid = auth.userId else {
                         return PortfolioLikeState(isLiked: false, count: 0)
                     }
                     return await service.likeState(itemId: item.id, currentUserId: uid, accessToken: token)
                 },
-                onSetLiked: { liked in
+                onSetLiked: { item, liked in
                     guard let token = auth.accessToken, let uid = auth.userId else { return false }
                     return await service.setLiked(itemId: item.id, liked: liked, currentUserId: uid, accessToken: token)
                 },
-                onLoadComments: {
+                onLoadComments: { item in
                     guard let token = auth.accessToken else { return [] }
                     return await service.loadComments(itemId: item.id, accessToken: token)
                 },
-                onAddComment: { text in
+                onAddComment: { item, text in
                     guard let token = auth.accessToken, let uid = auth.userId else { return nil }
                     return await service.addComment(itemId: item.id,
                                                     userId: uid,
@@ -150,6 +161,81 @@ private enum PortfolioPinnedStore {
             current = Array(current.prefix(3))
         }
         UserDefaults.standard.set(current, forKey: key)
+    }
+}
+
+private struct PortfolioGridCell: View {
+    let item: PortfolioItem
+    let isPinned: Bool
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            ZStack {
+                Color.white.opacity(0.055)
+
+                if item.type == "video", let s = item.mediaUrl, let url = URL(string: s) {
+                    LoopingVideo(url: url, fallback: Color.white.opacity(0.05))
+                } else if let s = imageURLString, let url = URL(string: s) {
+                    CachedAsyncImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        ProgressView().tint(.white.opacity(0.5))
+                    }
+                } else {
+                    Image(systemName: "photo")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.42))
+                }
+
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.48)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                VStack {
+                    HStack {
+                        if isPinned {
+                            Image(systemName: "pin.fill")
+                                .font(.system(size: 12, weight: .black))
+                                .foregroundColor(.white)
+                                .padding(6)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Circle())
+                        }
+                        Spacer()
+                        if item.type == "video" {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 12, weight: .black))
+                                .foregroundColor(.white)
+                                .padding(6)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Circle())
+                        }
+                    }
+                    Spacer()
+                    if let title = item.title, !title.isEmpty {
+                        Text(title)
+                            .font(.system(size: 11, weight: .heavy))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .shadow(color: .black.opacity(0.7), radius: 4, x: 0, y: 2)
+                    }
+                }
+                .padding(7)
+            }
+            .aspectRatio(3 / 4, contentMode: .fit)
+            .clipped()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var imageURLString: String? {
+        if let thumbnail = item.thumbnailUrl, !thumbnail.isEmpty { return thumbnail }
+        return item.mediaUrl
     }
 }
 
@@ -332,6 +418,330 @@ private struct PortfolioCell: View {
     }
 }
 
+private struct PortfolioInstagramViewer: View {
+    let items: [PortfolioItem]
+    let initialIndex: Int
+    let canEdit: Bool
+    let onDelete: (PortfolioItem) -> Void
+    let onTogglePin: (PortfolioItem) -> Void
+    let onUpdateDetails: (PortfolioItem, String?, String?) async -> PortfolioItem?
+    let isPinned: (PortfolioItem) -> Bool
+    let onLoadLike: (PortfolioItem) async -> PortfolioLikeState
+    let onSetLiked: (PortfolioItem, Bool) async -> Bool
+    let onLoadComments: (PortfolioItem) async -> [PortfolioComment]
+    let onAddComment: (PortfolioItem, String) async -> PortfolioComment?
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(items) { item in
+                            PortfolioInstagramPostPage(
+                                item: item,
+                                canEdit: canEdit,
+                                isPinned: isPinned(item),
+                                onDelete: { onDelete(item) },
+                                onTogglePin: { onTogglePin(item) },
+                                onUpdateDetails: { title, description in await onUpdateDetails(item, title, description) },
+                                onLoadLike: { await onLoadLike(item) },
+                                onSetLiked: { liked in await onSetLiked(item, liked) },
+                                onLoadComments: { await onLoadComments(item) },
+                                onAddComment: { text in await onAddComment(item, text) }
+                            )
+                            .id(item.id)
+                            .frame(width: UIScreen.main.bounds.width)
+                            .frame(minHeight: UIScreen.main.bounds.height)
+                        }
+                    }
+                }
+                .scrollIndicators(.hidden)
+                .background(Color.black)
+                .ignoresSafeArea(edges: .bottom)
+                .onAppear {
+                    guard items.indices.contains(initialIndex) else { return }
+                    proxy.scrollTo(items[initialIndex].id, anchor: .top)
+                }
+            }
+            .navigationTitle("Портфолио")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Готово") {
+                        X5Feedback.selection()
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct PortfolioInstagramPostPage: View {
+    let item: PortfolioItem
+    let canEdit: Bool
+    let isPinned: Bool
+    let onDelete: () -> Void
+    let onTogglePin: () -> Void
+    let onUpdateDetails: (String?, String?) async -> PortfolioItem?
+    let onLoadLike: () async -> PortfolioLikeState
+    let onSetLiked: (Bool) async -> Bool
+    let onLoadComments: () async -> [PortfolioComment]
+    let onAddComment: (String) async -> PortfolioComment?
+
+    @State private var likeState = PortfolioLikeState(isLiked: false, count: 0)
+    @State private var comments: [PortfolioComment] = []
+    @State private var commentDraft = ""
+    @State private var busyLike = false
+    @State private var sendingComment = false
+    @State private var isSaved = false
+    @State private var confirmDelete = false
+    @State private var showingEdit = false
+    @State private var showVideoEditorNotice = false
+    @State private var localLikedComments: Set<String> = []
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            media
+                .frame(maxWidth: .infinity)
+                .aspectRatio(3 / 4, contentMode: .fit)
+                .background(Color.white.opacity(0.04))
+                .clipped()
+
+            VStack(alignment: .leading, spacing: 12) {
+                actionRow
+                captionBlock
+                commentsView
+                commentInput
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 24)
+        }
+        .background(Color.black)
+        .task {
+            likeState = await onLoadLike()
+            comments = await onLoadComments()
+            if item.type == "video", let s = item.mediaUrl, let url = URL(string: s) {
+                player = AVPlayer(url: url)
+                player?.play()
+            }
+        }
+        .onDisappear { player?.pause() }
+        .confirmationDialog("Удалить кейс?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Удалить", role: .destructive) {
+                X5Feedback.warning()
+                onDelete()
+            }
+            Button("Отмена", role: .cancel) {}
+        }
+        .alert("Video editor", isPresented: $showVideoEditorNotice) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Монтаж видео будет открыт для этого кейса.")
+        }
+        .sheet(isPresented: $showingEdit) {
+            EditPortfolioItemView(item: item, onSave: onUpdateDetails)
+                .preferredColorScheme(.dark)
+        }
+    }
+
+    @ViewBuilder
+    private var media: some View {
+        if item.type == "video", let player {
+            VideoPlayer(player: player)
+        } else if let s = item.mediaUrl, let url = URL(string: s) {
+            CachedAsyncImage(url: url) { image in
+                image.resizable().scaledToFill()
+            } placeholder: {
+                ProgressView().tint(.white)
+            }
+        } else {
+            Image(systemName: "photo")
+                .font(.system(size: 56, weight: .light))
+                .foregroundColor(.white.opacity(0.45))
+        }
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: 16) {
+            Button {
+                Task { await toggleLike() }
+            } label: {
+                Image(systemName: likeState.isLiked ? "heart.fill" : "heart")
+                    .foregroundStyle(likeState.isLiked ? Color.red : Color.white)
+            }
+            .disabled(busyLike)
+
+            Image(systemName: "bubble.right")
+
+            ShareLink(item: item.mediaUrl ?? "") {
+                Image(systemName: "paperplane")
+            }
+
+            Spacer()
+
+            Button {
+                isSaved.toggle()
+                X5Feedback.selection()
+            } label: {
+                Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
+            }
+
+            if canEdit {
+                Button {
+                    showingEdit = true
+                } label: {
+                    Image(systemName: "pencil")
+                }
+
+                Menu {
+                    Button {
+                        X5Feedback.selection()
+                        onTogglePin()
+                    } label: {
+                        Label(isPinned ? "Открепить" : "Закрепить", systemImage: isPinned ? "pin.slash" : "pin")
+                    }
+                    if item.type == "video" {
+                        Button {
+                            showVideoEditorNotice = true
+                        } label: {
+                            Label("Монтаж видео", systemImage: "wand.and.stars")
+                        }
+                    }
+                    Button(role: .destructive) {
+                        confirmDelete = true
+                    } label: {
+                        Label("Удалить", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+            }
+        }
+        .font(.system(size: 25, weight: .semibold))
+        .foregroundColor(.white)
+    }
+
+    private var captionBlock: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if likeState.count > 0 {
+                Text("\(likeState.count) отметок \"Нравится\"")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            if let title = item.title, !title.isEmpty {
+                Text(title)
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundColor(.white)
+            }
+            if let description = item.description, !description.isEmpty {
+                Text(description)
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundColor(.white.opacity(0.82))
+            }
+            if item.type == "video", canEdit {
+                Button {
+                    showVideoEditorNotice = true
+                } label: {
+                    Label("Открыть монтаж видео", systemImage: "wand.and.stars")
+                        .font(.system(size: 13, weight: .bold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(.white)
+            }
+        }
+    }
+
+    private var commentsView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if comments.count > 4 {
+                Text("Посмотреть все комментарии: \(comments.count)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.52))
+            }
+            ForEach(comments.prefix(6)) { comment in
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "person.crop.circle.fill")
+                        .foregroundColor(.white.opacity(0.5))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(comment.userName?.isEmpty == false ? comment.userName! : "X5")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white.opacity(0.65))
+                        Text(comment.text)
+                            .font(.system(size: 13))
+                            .foregroundColor(.white)
+                        HStack(spacing: 12) {
+                            Button("Ответить") {
+                                commentDraft = "@\(comment.userName?.isEmpty == false ? comment.userName! : "x5") "
+                            }
+                            Button(localLikedComments.contains(comment.id) ? "Нравится" : "Лайк") {
+                                if localLikedComments.contains(comment.id) {
+                                    localLikedComments.remove(comment.id)
+                                } else {
+                                    localLikedComments.insert(comment.id)
+                                }
+                                X5Feedback.selection()
+                            }
+                        }
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.48))
+                    }
+                    Spacer()
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var commentInput: some View {
+        HStack(spacing: 8) {
+            TextField("Комментарий...", text: $commentDraft)
+                .textFieldStyle(.plain)
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.10))
+                .clipShape(Capsule())
+            Button {
+                Task { await sendComment() }
+            } label: {
+                Image(systemName: sendingComment ? "hourglass" : "arrow.up.circle.fill")
+                    .font(.system(size: 28))
+            }
+            .disabled(commentDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sendingComment)
+        }
+        .foregroundColor(.accentColor)
+    }
+
+    private func toggleLike() async {
+        guard !busyLike else { return }
+        busyLike = true
+        defer { busyLike = false }
+        let next = !likeState.isLiked
+        X5Feedback.selection()
+        guard await onSetLiked(next) else { return }
+        likeState = PortfolioLikeState(isLiked: next, count: max(0, likeState.count + (next ? 1 : -1)))
+    }
+
+    private func sendComment() async {
+        let text = commentDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !sendingComment else { return }
+        sendingComment = true
+        defer { sendingComment = false }
+        if let comment = await onAddComment(text) {
+            comments.append(comment)
+            commentDraft = ""
+            X5Feedback.success()
+        }
+    }
+}
+
 private struct PortfolioPostViewer: View {
     let item: PortfolioItem
     let canEdit: Bool
@@ -503,6 +913,80 @@ private struct PortfolioPostViewer: View {
         if let comment = await onAddComment(text) {
             comments.append(comment)
             commentDraft = ""
+        }
+    }
+}
+
+private struct EditPortfolioItemView: View {
+    let item: PortfolioItem
+    let onSave: (String?, String?) async -> PortfolioItem?
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var description: String
+    @State private var saving = false
+    @State private var errorText: String?
+
+    init(item: PortfolioItem, onSave: @escaping (String?, String?) async -> PortfolioItem?) {
+        self.item = item
+        self.onSave = onSave
+        _title = State(initialValue: item.title ?? "")
+        _description = State(initialValue: item.description ?? "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Кейс") {
+                    TextField("Название", text: $title)
+                    TextField("Описание", text: $description, axis: .vertical)
+                        .lineLimit(3...7)
+                }
+                if item.type == "video" {
+                    Section {
+                        Label("Видео можно отправить в монтаж из меню поста.", systemImage: "wand.and.stars")
+                    }
+                }
+                if let errorText {
+                    Section {
+                        Text(errorText)
+                            .foregroundColor(.red)
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color(red: 0.04, green: 0.05, blue: 0.10))
+            .navigationTitle("Редактировать")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Отмена") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        if saving { ProgressView() } else { Text("Сохранить").bold() }
+                    }
+                    .disabled(saving)
+                }
+            }
+        }
+    }
+
+    private func save() async {
+        saving = true
+        defer { saving = false }
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        if await onSave(cleanTitle.isEmpty ? nil : cleanTitle,
+                        cleanDescription.isEmpty ? nil : cleanDescription) != nil {
+            X5Feedback.success()
+            dismiss()
+        } else {
+            X5Feedback.error()
+            errorText = "Не удалось сохранить."
         }
     }
 }

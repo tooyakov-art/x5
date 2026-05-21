@@ -57,6 +57,8 @@ struct HubView: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .clipped()
             .background { X5Background() }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
@@ -256,7 +258,7 @@ struct HubView: View {
     // MARK: - Сетка категорий (главный экран Hub)
 
     private var specialistsContent: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: true) {
             VStack(spacing: 14) {
                 specialistCategoryGrid
                 if totalVisibleCount == 0 && !service.isLoading {
@@ -269,9 +271,10 @@ struct HubView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 32)
-            .frame(maxWidth: 640)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
+            .frame(maxWidth: .infinity, alignment: .center)
         }
+        .clipped()
         .refreshable { await service.loadSpecialists() }
     }
 
@@ -314,7 +317,7 @@ struct HubView: View {
     private func specialistCategoryPage(categoryId: String?, title: String) -> some View {
         let people = specialists(matching: categoryId)
 
-        return ScrollView {
+        return ScrollView(.vertical, showsIndicators: true) {
             LazyVStack(spacing: 10) {
                 ForEach(people) { person in
                     HStack(spacing: 8) {
@@ -355,9 +358,10 @@ struct HubView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 32)
-            .frame(maxWidth: 640)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
+            .frame(maxWidth: .infinity, alignment: .center)
         }
+        .clipped()
         .background { X5Background() }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
@@ -408,7 +412,7 @@ struct HubView: View {
     }
 
     private var specialistsList: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: true) {
             LazyVStack(spacing: 10) {
                 ForEach(filteredSpecialists) { person in
                     HStack(spacing: 8) {
@@ -448,14 +452,15 @@ struct HubView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 32)
-            .frame(maxWidth: 640)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
+            .frame(maxWidth: .infinity, alignment: .center)
         }
+        .clipped()
         .refreshable { await service.loadSpecialists() }
     }
 
     private var tasksList: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: true) {
             LazyVStack(spacing: 10) {
                 ForEach(filteredTasks) { task in
                     NavigationLink {
@@ -475,9 +480,10 @@ struct HubView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 32)
-            .frame(maxWidth: 640)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
+            .frame(maxWidth: .infinity, alignment: .center)
         }
+        .clipped()
         .refreshable { await service.loadTasks() }
     }
 

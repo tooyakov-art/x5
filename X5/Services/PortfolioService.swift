@@ -185,6 +185,35 @@ final class PortfolioService: ObservableObject {
         }
     }
 
+    func updateDetails(itemId: String, title: String?, description: String?, accessToken: String) async -> PortfolioItem? {
+        guard var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/portfolio_items"), resolvingAgainstBaseURL: false) else { return nil }
+        components.queryItems = [URLQueryItem(name: "id", value: "eq.\(itemId)")]
+        guard let reqURL = components.url else { return nil }
+
+        var request = URLRequest(url: reqURL)
+        request.httpMethod = "PATCH"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("return=representation", forHTTPHeaderField: "Prefer")
+        request.httpBody = try? JSONEncoder().encode([
+            "title": AnyEncodable(title ?? ""),
+            "description": AnyEncodable(description ?? "")
+        ])
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let rows = try? JSONDecoder().decode([PortfolioItem].self, from: data),
+              let updated = rows.first
+        else { return nil }
+
+        if let index = items.firstIndex(where: { $0.id == itemId }) {
+            items[index] = updated
+        }
+        return updated
+    }
+
     func likeState(itemId: String, currentUserId: String, accessToken: String) async -> PortfolioLikeState {
         guard var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/portfolio_item_likes"), resolvingAgainstBaseURL: false) else {
             return PortfolioLikeState(isLiked: false, count: 0)
