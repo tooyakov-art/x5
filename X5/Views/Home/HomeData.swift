@@ -217,8 +217,8 @@ enum ImageGenerationCatalog {
 
     static let custom = ImageGenerationCategory(
         id: "custom",
-        title: "Custom",
-        subtitle: "Any marketing visual",
+        title: "Image generation",
+        subtitle: "Flexible prompt generation",
         icon: "sparkles",
         examplePrompt: "Premium Instagram ad for a coffee brand, dark studio light, blue glass details",
         gradientStart: X5Style.blue.opacity(0.34),

@@ -98,6 +98,17 @@ struct HomeView: View {
         let categories = Dictionary(uniqueKeysWithValues: ImageGenerationCatalog.categories.map { ($0.id, $0) })
         return [
             HomeMediaItem(
+                id: "custom",
+                title: localized("home_media_custom_title", fallback: "Генерация изображения"),
+                subtitle: localized("home_media_custom_subtitle", fallback: "Любой промпт, фото или идея"),
+                kicker: "IMAGE",
+                systemImage: "sparkles",
+                videoURL: HomeMediaVideos.custom,
+                gradientStart: X5Style.backgroundBlue.opacity(0.48),
+                gradientEnd: .black,
+                action: .image(ImageGenerationCatalog.custom)
+            ),
+            HomeMediaItem(
                 id: "logo",
                 title: localized("home_media_logo_title", fallback: "Генерация лого"),
                 subtitle: localized("home_media_logo_subtitle", fallback: "Логотип для бренда"),
@@ -162,17 +173,6 @@ struct HomeView: View {
                 gradientStart: Color(red: 0.72, green: 0.82, blue: 0.92).opacity(0.30),
                 gradientEnd: .black,
                 action: categories["packaging"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
-            ),
-            HomeMediaItem(
-                id: "custom",
-                title: localized("home_media_custom_title", fallback: "Своя идея"),
-                subtitle: localized("home_media_custom_subtitle", fallback: "Загрузи фото или напиши промпт"),
-                kicker: "AI",
-                systemImage: "photo",
-                videoURL: HomeMediaVideos.custom,
-                gradientStart: X5Style.backgroundBlue.opacity(0.48),
-                gradientEnd: .black,
-                action: .image(ImageGenerationCatalog.custom)
             ),
             HomeMediaItem(
                 id: "video",

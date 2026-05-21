@@ -644,15 +644,19 @@ struct ImageGeneratorView: View {
 
     private func startGenerationProgress() {
         generationProgressTask?.cancel()
-        generationProgress = 0.03
+        generationProgress = 0.02
         generationProgressTask = Task {
+            let startedAt = Date()
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 320_000_000)
+                try? await Task.sleep(nanoseconds: 180_000_000)
                 await MainActor.run {
                     guard isGenerating else { return }
-                    let next = generationProgress + max(0.015, (0.92 - generationProgress) * 0.16)
-                    withAnimation(.easeOut(duration: 0.28)) {
-                        generationProgress = min(next, 0.92)
+                    let elapsed = Date().timeIntervalSince(startedAt)
+                    let curve = 1 - exp(-elapsed / 24)
+                    let target = min(0.985, 0.02 + curve * 0.965)
+                    let next = max(generationProgress + 0.001, target)
+                    withAnimation(.linear(duration: 0.18)) {
+                        generationProgress = min(next, 0.985)
                     }
                 }
             }
@@ -781,7 +785,7 @@ private struct GenerationAnimationView: View {
                         .font(.system(size: 15, weight: .heavy))
                         .foregroundColor(.white)
                     Spacer()
-                    Text("\(Int(progress * 100))%")
+                    Text(progressText)
                         .font(.system(size: 15, weight: .black))
                         .foregroundColor(Color.accentColor)
                 }
@@ -827,6 +831,14 @@ private struct GenerationAnimationView: View {
             }
         }
         .frame(height: 28, alignment: .bottom)
+    }
+
+    private var progressText: String {
+        if progress >= 0.96 {
+            let text = loc.t("gen_finishing")
+            return text == "gen_finishing" ? "Почти готово" : text
+        }
+        return "\(Int(progress * 100))%"
     }
 
     private var localizedCategoryTitle: String {
