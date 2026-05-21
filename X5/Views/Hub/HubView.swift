@@ -157,7 +157,7 @@ struct HubView: View {
         Button {
             showingAddPortfolio = true
         } label: {
-            Label(loc.t("hub_add_portfolio"), systemImage: "photo.badge.plus")
+            Label(loc.t("hub_add_portfolio"), systemImage: "person.crop.circle")
                 .font(.system(size: 16, weight: .black))
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)
@@ -187,14 +187,22 @@ struct HubView: View {
                 }
             } label: {
                 Label(loc.t(selectedCountry.titleKey), systemImage: "location.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundColor(.white.opacity(0.94))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                    )
             }
-            .buttonStyle(.bordered)
-            .tint(.white.opacity(0.18))
+            .buttonStyle(.plain)
 
             Text(loc.t(messageKey))
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.white.opacity(0.52))
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(.white.opacity(0.76))
                 .lineLimit(2)
                 .minimumScaleFactor(0.82)
             Spacer()
