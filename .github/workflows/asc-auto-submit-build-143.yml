@@ -1,0 +1,261 @@
+name: ASC auto attach and submit build 143
+
+on:
+  push:
+    branches: [restore-native-ui]
+  workflow_dispatch:
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      BUNDLE_ID: com.x5studio.app
+      VERSION: "1.1.1"
+      BUILD_NUMBER: "143"
+      SUBSCRIPTION_ID: "6765650866"
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install pyjwt[crypto] requests
+
+      - name: Wait for TestFlight build, attach, and submit
+        run: |
+          python <<'PY'
+          import base64, json, os, sys, time
+
+          import jwt
+          import requests
+
+          base = "https://api.appstoreconnect.apple.com/v1"
+          version_string = os.environ["VERSION"]
+          build_number = os.environ["BUILD_NUMBER"]
+          bundle_id = os.environ["BUNDLE_ID"]
+          subscription_id = os.environ.get("SUBSCRIPTION_ID", "").strip()
+
+          def token():
+              return jwt.encode(
+                  {
+                      "iss": os.environ["ASC_API_ISSUER_ID"],
+                      "iat": int(time.time()),
+                      "exp": int(time.time()) + 60 * 5,
+                      "aud": "appstoreconnect-v1",
+                  },
+                  base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+                  algorithm="ES256",
+                  headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+              )
+
+          def headers():
+              return {"Authorization": f"Bearer {token()}"}
+
+          def request(method, path, **kwargs):
+              h = headers()
+              if "json" in kwargs or "data" in kwargs:
+                  h["Content-Type"] = "application/json"
+              response = requests.request(method, f"{base}{path}", headers=h, **kwargs)
+              if response.status_code >= 300:
+                  print(f"{method} {path} -> HTTP {response.status_code}")
+                  print(response.text)
+                  response.raise_for_status()
+              return response
+
+          app_response = request("GET", f"/apps?filter[bundleId]={bundle_id}")
+          apps = app_response.json().get("data", [])
+          if not apps:
+              sys.exit(f"No App Store Connect app for {bundle_id}")
+          app_id = apps[0]["id"]
+          print(f"App: {apps[0]['attributes']['name']} ({app_id})")
+
+          versions_response = request("GET", f"/apps/{app_id}/appStoreVersions")
+          versions = versions_response.json().get("data", [])
+          version = next(
+              (
+                  item
+                  for item in versions
+                  if item["attributes"].get("versionString") == version_string
+                  and item["attributes"].get("platform") == "IOS"
+              ),
+              None,
+          )
+
+          if version is None:
+              print(f"Creating App Store version {version_string}")
+              payload = {
+                  "data": {
+                      "type": "appStoreVersions",
+                      "attributes": {"platform": "IOS", "versionString": version_string},
+                      "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
+                  }
+              }
+              version = request("POST", "/appStoreVersions", data=json.dumps(payload)).json()["data"]
+
+          version_id = version["id"]
+          print(
+              f"Version {version_string}: {version_id} "
+              f"state={version['attributes'].get('appStoreState')}"
+          )
+
+          build = None
+          deadline = time.time() + 25 * 60
+          while time.time() < deadline:
+              builds_response = request(
+                  "GET",
+                  "/builds",
+                  params={
+                      "filter[app]": app_id,
+                      "filter[preReleaseVersion.platform]": "IOS",
+                      "limit": 50,
+                      "sort": "-uploadedDate",
+                  },
+              )
+              builds = builds_response.json().get("data", [])
+              candidates = [
+                  item
+                  for item in builds
+                  if item["attributes"].get("version") == build_number
+              ]
+              if candidates:
+                  candidate = candidates[0]
+                  attrs = candidate["attributes"]
+                  print(
+                      f"Build {build_number}: "
+                      f"state={attrs.get('processingState')} expired={attrs.get('expired')}"
+                  )
+                  if attrs.get("processingState") == "VALID" and not attrs.get("expired"):
+                      build = candidate
+                      break
+              else:
+                  print(f"Build {build_number}: not visible yet")
+              time.sleep(60)
+
+          if build is None:
+              sys.exit(f"Build {build_number} did not become VALID in time")
+
+          build_id = build["id"]
+          attach_payload = {"data": {"type": "builds", "id": build_id}}
+          request(
+              "PATCH",
+              f"/appStoreVersions/{version_id}/relationships/build",
+              data=json.dumps(attach_payload),
+          )
+          print(f"Attached build {build_number} ({build_id}) to version {version_string}")
+
+          submissions_response = request(
+              "GET",
+              "/reviewSubmissions",
+              params={
+                  "filter[app]": app_id,
+                  "filter[platform]": "IOS",
+                  "include": "items",
+              },
+          )
+          submissions = submissions_response.json().get("data", [])
+          for submission in submissions:
+              state = submission["attributes"].get("state")
+              print(f"Existing submission {submission['id']} state={state}")
+              if state in ("WAITING_FOR_REVIEW", "IN_REVIEW"):
+                  print("Already submitted.")
+                  raise SystemExit(0)
+
+          submission = next(
+              (
+                  item
+                  for item in submissions
+                  if item["attributes"].get("state") == "READY_FOR_REVIEW"
+              ),
+              None,
+          )
+          if submission is None:
+              submission_payload = {
+                  "data": {
+                      "type": "reviewSubmissions",
+                      "attributes": {"platform": "IOS"},
+                      "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
+                  }
+              }
+              submission = request(
+                  "POST",
+                  "/reviewSubmissions",
+                  data=json.dumps(submission_payload),
+              ).json()["data"]
+              print(f"Created review submission {submission['id']}")
+
+          submission_id = submission["id"]
+          app_item_payload = {
+              "data": {
+                  "type": "reviewSubmissionItems",
+                  "relationships": {
+                      "reviewSubmission": {
+                          "data": {"type": "reviewSubmissions", "id": submission_id}
+                      },
+                      "appStoreVersion": {
+                          "data": {"type": "appStoreVersions", "id": version_id}
+                      },
+                  },
+              }
+          }
+          app_item_response = requests.post(
+              f"{base}/reviewSubmissionItems",
+              headers={**headers(), "Content-Type": "application/json"},
+              data=json.dumps(app_item_payload),
+          )
+          if app_item_response.status_code >= 300:
+              print(
+                  f"Add app review item HTTP {app_item_response.status_code}: "
+                  f"{app_item_response.text[:500]}"
+              )
+          else:
+              print("Added app version review item")
+
+          if subscription_id:
+              subscription_payload = {
+                  "data": {
+                      "type": "reviewSubmissionItems",
+                      "relationships": {
+                          "reviewSubmission": {
+                              "data": {"type": "reviewSubmissions", "id": submission_id}
+                          },
+                          "subscription": {
+                              "data": {"type": "subscriptions", "id": subscription_id}
+                          },
+                      },
+                  }
+              }
+              subscription_response = requests.post(
+                  f"{base}/reviewSubmissionItems",
+                  headers={**headers(), "Content-Type": "application/json"},
+                  data=json.dumps(subscription_payload),
+              )
+              if subscription_response.status_code >= 300:
+                  print(
+                      f"Add subscription review item HTTP {subscription_response.status_code}: "
+                      f"{subscription_response.text[:500]}"
+                  )
+              else:
+                  print(f"Added subscription review item {subscription_id}")
+
+          submit_payload = {
+              "data": {
+                  "type": "reviewSubmissions",
+                  "id": submission_id,
+                  "attributes": {"submitted": True},
+                  "relationships": {
+                      "appStoreVersionForReview": {
+                          "data": {"type": "appStoreVersions", "id": version_id}
+                      }
+                  },
+              }
+          }
+          submitted = request(
+              "PATCH",
+              f"/reviewSubmissions/{submission_id}",
+              data=json.dumps(submit_payload),
+          ).json()["data"]
+          print(f"Submission state: {submitted['attributes'].get('state')}")
+          PY
