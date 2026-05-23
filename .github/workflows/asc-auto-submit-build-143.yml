@@ -1,19 +1,20 @@
 name: ASC auto attach and submit build 143
 
 on:
-  push:
-    branches: [restore-native-ui]
+  workflow_run:
+    workflows: ["ASC ship (screenshots + submit for review)"]
+    types: [completed]
   workflow_dispatch:
 
 jobs:
   submit:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
       BUNDLE_ID: com.x5studio.app
       VERSION: "1.1.1"
       BUILD_NUMBER: "143"
-      SUBSCRIPTION_ID: "6765650866"
       ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
       ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
       ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
@@ -36,7 +37,6 @@ jobs:
           version_string = os.environ["VERSION"]
           build_number = os.environ["BUILD_NUMBER"]
           bundle_id = os.environ["BUNDLE_ID"]
-          subscription_id = os.environ.get("SUBSCRIPTION_ID", "").strip()
 
           def token():
               return jwt.encode(
@@ -213,43 +213,11 @@ jobs:
           else:
               print("Added app version review item")
 
-          if subscription_id:
-              subscription_payload = {
-                  "data": {
-                      "type": "reviewSubmissionItems",
-                      "relationships": {
-                          "reviewSubmission": {
-                              "data": {"type": "reviewSubmissions", "id": submission_id}
-                          },
-                          "subscription": {
-                              "data": {"type": "subscriptions", "id": subscription_id}
-                          },
-                      },
-                  }
-              }
-              subscription_response = requests.post(
-                  f"{base}/reviewSubmissionItems",
-                  headers={**headers(), "Content-Type": "application/json"},
-                  data=json.dumps(subscription_payload),
-              )
-              if subscription_response.status_code >= 300:
-                  print(
-                      f"Add subscription review item HTTP {subscription_response.status_code}: "
-                      f"{subscription_response.text[:500]}"
-                  )
-              else:
-                  print(f"Added subscription review item {subscription_id}")
-
           submit_payload = {
               "data": {
                   "type": "reviewSubmissions",
                   "id": submission_id,
                   "attributes": {"submitted": True},
-                  "relationships": {
-                      "appStoreVersionForReview": {
-                          "data": {"type": "appStoreVersions", "id": version_id}
-                      }
-                  },
               }
           }
           submitted = request(
