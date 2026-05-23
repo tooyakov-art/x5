@@ -1,6 +1,8 @@
 name: ASC auto attach and submit build 143
 
 on:
+  push:
+    branches: [restore-native-ui]
   workflow_run:
     workflows: ["ASC ship (screenshots + submit for review)"]
     types: [completed]
