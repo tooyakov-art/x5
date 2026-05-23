@@ -17,8 +17,6 @@ struct ImageGeneratorView: View {
     @State private var generatedAsset: GeneratedImageAsset?
     @State private var generatedAssets: [GeneratedImageAsset] = []
     @State private var viewerAsset: GeneratedImageAsset?
-    @State private var negativePrompt = ""
-    @State private var selectedStyle: ImageGenerationStyle = .none
     @State private var selectedQuantity = 1
     @State private var selectedSize: ImageGenerationSize = .square
     @State private var showingGallery = false
@@ -40,10 +38,12 @@ struct ImageGeneratorView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                referenceUploadPanel
-                promptComposerPanel
-                stylePanel
-                negativePromptPanel
+                hero
+                providerPanel
+                settingsPanel
+                promptPanel
+                referencePanel
+                generateButton
 
                 if isGenerating {
                     GenerationAnimationView(provider: selectedProvider,
@@ -61,37 +61,17 @@ struct ImageGeneratorView: View {
             }
             .padding(.horizontal, 18)
             .padding(.top, 10)
-            .padding(.bottom, 118)
+            .padding(.bottom, 32)
             .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)
         }
         .scrollDismissesKeyboard(.interactively)
         .background(generatorBackdrop)
-        .navigationTitle("Создать изображение")
+        .navigationTitle(categoryTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                Menu {
-                    Button(categoryTitle) {}
-                        .disabled(true)
-                    Divider()
-                    ForEach(ImageGenerationCatalog.categories) { item in
-                        Button(item.title) {}
-                            .disabled(true)
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("Создать изображение")
-                            .font(.system(size: 17, weight: .heavy))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white.opacity(0.58))
-                    }
-                    .foregroundColor(.white)
-                }
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     X5Feedback.impact()
@@ -101,9 +81,6 @@ struct ImageGeneratorView: View {
                 }
                 .accessibilityLabel(loc.t("gen_gallery"))
             }
-        }
-        .safeAreaInset(edge: .bottom) {
-            bottomGenerationBar
         }
         .task { await refreshProfileIfPossible() }
         .sheet(isPresented: $showingGallery) {
@@ -172,273 +149,6 @@ struct ImageGeneratorView: View {
         }
         .padding(18)
         .x5ClearGlass(cornerRadius: 20, highlight: 0.13)
-    }
-
-    private var referenceUploadPanel: some View {
-        VStack(spacing: 14) {
-            PhotosPicker(selection: $referenceItems, maxSelectionCount: 14, matching: .images) {
-                VStack(spacing: 12) {
-                    if isLoadingReferences {
-                        ProgressView()
-                            .tint(.white)
-                            .scaleEffect(1.05)
-                    } else {
-                        Image(systemName: referenceImages.isEmpty ? "photo" : "photo.stack")
-                            .font(.system(size: 24, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.72))
-                            .frame(width: 58, height: 58)
-                            .background(Color.white.opacity(0.08))
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    }
-
-                    Text(referenceImages.isEmpty ? "Загрузить фото (до 14)" : "Изменить фото (\(referenceImages.count))")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white.opacity(0.58))
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 154)
-                .background(Color.white.opacity(0.055))
-                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(isGenerating || isLoadingReferences)
-
-            if !referenceImages.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(referenceImages) { item in
-                            ZStack(alignment: .topTrailing) {
-                                Image(uiImage: item.image)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 68, height: 68)
-                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                            .stroke(Color.white.opacity(0.14), lineWidth: 1)
-                                    )
-
-                                Button {
-                                    referenceImages.removeAll { $0.id == item.id }
-                                    if referenceImages.isEmpty { referenceItems = [] }
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 20, weight: .bold))
-                                        .symbolRenderingMode(.palette)
-                                        .foregroundStyle(.white, .black.opacity(0.68))
-                                }
-                                .buttonStyle(.plain)
-                                .offset(x: 7, y: -7)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
-        }
-    }
-
-    private var promptComposerPanel: some View {
-        VStack(spacing: 0) {
-            TextField("Опишите концепт, сцену или идею", text: $prompt, axis: .vertical)
-                .focused($promptFocused)
-                .lineLimit(5...8)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(.white)
-                .padding(18)
-                .frame(minHeight: 162, alignment: .topLeading)
-
-            Divider()
-                .background(Color.white.opacity(0.10))
-
-            Menu {
-                ForEach(ImageGenerationProvider.allCases) { model in
-                    if model.isComingSoon {
-                        Button {} label: {
-                            Label("\(model.title) · скоро", systemImage: "clock")
-                        }
-                        .disabled(true)
-                    } else {
-                        Button {
-                            X5Feedback.selection()
-                            selectedProvider = model
-                        } label: {
-                            Label(model.title, systemImage: model == selectedProvider ? "checkmark" : "cpu")
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    Label(loc.t("gen_model"), systemImage: "cpu")
-                        .foregroundColor(.white.opacity(0.56))
-                    Spacer()
-                    Text(selectedProvider.title)
-                        .foregroundColor(.white)
-                        .fontWeight(.heavy)
-                        .lineLimit(1)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.white.opacity(0.45))
-                }
-                .font(.system(size: 15, weight: .semibold))
-                .padding(.horizontal, 18)
-                .padding(.vertical, 16)
-                .contentShape(Rectangle())
-            }
-            .disabled(isGenerating)
-        }
-        .background(Color.white.opacity(0.055))
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
-    }
-
-    private var stylePanel: some View {
-        Menu {
-            ForEach(ImageGenerationStyle.allCases) { style in
-                Button {
-                    X5Feedback.selection()
-                    selectedStyle = style
-                } label: {
-                    Label(style.title, systemImage: style == selectedStyle ? "checkmark" : "paintbrush")
-                }
-            }
-        } label: {
-            HStack(spacing: 12) {
-                Label("Стиль", systemImage: "paintbrush.pointed")
-                    .foregroundColor(.white.opacity(0.56))
-                Spacer()
-                Text(selectedStyle.title)
-                    .fontWeight(.heavy)
-                    .foregroundColor(.white.opacity(selectedStyle == .none ? 0.62 : 0.96))
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white.opacity(0.45))
-            }
-            .font(.system(size: 15, weight: .semibold))
-            .padding(.horizontal, 18)
-            .padding(.vertical, 17)
-            .background(Color.white.opacity(0.055))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
-            )
-        }
-        .disabled(isGenerating)
-    }
-
-    private var negativePromptPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Негативный промпт (что исключить)", systemImage: "xmark")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(.white.opacity(0.42))
-
-            TextField("Размытие, текст, водяной знак, низкое качество", text: $negativePrompt, axis: .vertical)
-                .lineLimit(2...4)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.white)
-        }
-        .padding(18)
-        .background(Color.white.opacity(0.045))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.09), lineWidth: 1)
-        )
-    }
-
-    private var bottomGenerationBar: some View {
-        HStack(spacing: 10) {
-            Menu {
-                ForEach(ImageGenerationSize.allCases) { size in
-                    if selectedProvider.provider == "gpt", size.isGoogleOnly {
-                        Button {} label: {
-                            Label("\(size.title) · Nano Banana", systemImage: "lock")
-                        }
-                        .disabled(true)
-                    } else {
-                        Button {
-                            X5Feedback.selection()
-                            selectedSize = size
-                        } label: {
-                            Label("\(size.title) · \(size.subtitle)", systemImage: size == selectedSize ? "checkmark" : "rectangle")
-                        }
-                    }
-                }
-            } label: {
-                Label(selectedSize.title, systemImage: "rectangle")
-                    .frame(width: 74)
-            }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.roundedRectangle(radius: 14))
-            .controlSize(.large)
-            .disabled(isGenerating)
-
-            Button {
-                X5Feedback.selection()
-            } label: {
-                Text(qualityTitle)
-                    .fontWeight(.heavy)
-                    .frame(width: 44)
-            }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.roundedRectangle(radius: 14))
-            .controlSize(.large)
-            .disabled(true)
-
-            Menu {
-                ForEach(1...4, id: \.self) { count in
-                    Button {
-                        X5Feedback.selection()
-                        selectedQuantity = count
-                    } label: {
-                        Label("\(count)", systemImage: count == selectedQuantity ? "checkmark" : "circle")
-                    }
-                }
-            } label: {
-                Text(quantityDots)
-                    .font(.system(size: 16, weight: .heavy))
-                    .monospaced()
-                    .frame(width: 58)
-            }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.roundedRectangle(radius: 14))
-            .controlSize(.large)
-            .disabled(isGenerating)
-
-            Button {
-                X5Feedback.impact(.medium)
-                Task { await generate() }
-            } label: {
-                HStack(spacing: 7) {
-                    Image(systemName: "sparkles")
-                    Text(bottomCreateTitle)
-                    Image(systemName: "bolt.fill")
-                    Text("\(totalCreditCost)")
-                }
-                .lineLimit(1)
-                .minimumScaleFactor(0.76)
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.roundedRectangle(radius: 14))
-            .controlSize(.large)
-            .disabled(!canGenerate || isGenerating)
-        }
-        .font(.system(size: 14, weight: .bold))
-        .padding(.horizontal, 18)
-        .padding(.top, 10)
-        .padding(.bottom, 10)
-        .frame(maxWidth: .infinity)
-        .background(.ultraThinMaterial)
     }
 
     private var providerPanel: some View {
@@ -810,7 +520,7 @@ struct ImageGeneratorView: View {
         referencesOverride: [ImageGenerationReference]? = nil
     ) async {
         let currentReferences = referencesOverride ?? referenceImages.map { $0.reference }
-        let cleanPrompt = composedPrompt(promptOverride ?? prompt, hasReferences: !currentReferences.isEmpty)
+        let cleanPrompt = effectivePrompt(promptOverride ?? prompt, hasReferences: !currentReferences.isEmpty)
         guard !cleanPrompt.isEmpty else {
             errorMessage = loc.t("gen_prompt_required")
             return
@@ -958,7 +668,7 @@ struct ImageGeneratorView: View {
         defer { isLoadingReferences = false }
 
         var loaded: [ImageReferenceAsset] = []
-        for item in items.prefix(14) {
+        for item in items.prefix(6) {
             guard let data = try? await item.loadTransferable(type: Data.self),
                   let uiImage = UIImage(data: data),
                   let jpegData = uiImage.jpegData(compressionQuality: 0.88)
@@ -980,37 +690,6 @@ struct ImageGeneratorView: View {
         let clean = rawPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         if clean.count >= 3 { return clean }
         return hasReferences ? "Improve the provided image." : ""
-    }
-
-    private func composedPrompt(_ rawPrompt: String, hasReferences: Bool) -> String {
-        var parts = [effectivePrompt(rawPrompt, hasReferences: hasReferences)]
-        if let styleInstruction = selectedStyle.promptInstruction {
-            parts.append(styleInstruction)
-        }
-        let cleanNegative = negativePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !cleanNegative.isEmpty {
-            parts.append("Avoid: \(cleanNegative).")
-        }
-        return parts
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
-    }
-
-    private var quantityDots: String {
-        let active = String(repeating: "●", count: selectedQuantity)
-        let inactive = String(repeating: "○", count: max(0, 4 - selectedQuantity))
-        return active + inactive
-    }
-
-    private var qualityTitle: String {
-        selectedSize.googleImageSize ?? "1K"
-    }
-
-    private var bottomCreateTitle: String {
-        if isGenerating { return loc.t("gen_generating") }
-        if !hasEnoughCredits { return loc.t("gen_need") }
-        return "Создать"
     }
 
     private func makeReference(from image: UIImage) -> ImageGenerationReference? {
@@ -1066,45 +745,6 @@ private struct ImageReferenceAsset: Identifiable {
     let id = UUID()
     let image: UIImage
     let reference: ImageGenerationReference
-}
-
-private enum ImageGenerationStyle: String, CaseIterable, Identifiable {
-    case none
-    case photoreal
-    case cinematic
-    case luxuryProduct
-    case cleanSocial
-    case logoMark
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .none: return "Без стиля"
-        case .photoreal: return "Фотореализм"
-        case .cinematic: return "Кино"
-        case .luxuryProduct: return "Премиум товар"
-        case .cleanSocial: return "Соцсети"
-        case .logoMark: return "Лого"
-        }
-    }
-
-    var promptInstruction: String? {
-        switch self {
-        case .none:
-            return nil
-        case .photoreal:
-            return "Style: photorealistic, natural light, high detail, realistic materials."
-        case .cinematic:
-            return "Style: cinematic lighting, premium color grade, strong composition, high contrast."
-        case .luxuryProduct:
-            return "Style: luxury product advertising, clean studio setup, premium reflections, crisp details."
-        case .cleanSocial:
-            return "Style: polished social media creative, clear focal point, strong mobile composition."
-        case .logoMark:
-            return "Style: clean premium logo mark, simple geometry, readable shape, black background."
-        }
-    }
 }
 
 private struct GenerationAnimationView: View {
