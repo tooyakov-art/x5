@@ -1,8 +1,6 @@
 name: ASC ship (screenshots + submit for review)
 
 on:
-  push:
-    branches: [restore-native-ui]
   workflow_dispatch:
     inputs:
       action:
@@ -41,4 +39,4 @@ jobs:
       - name: Run fastlane
         run: |
           cd "$GITHUB_WORKSPACE"
-          fastlane ios ${{ inputs.action || 'ship' }}
+          fastlane ios ${{ inputs.action || 'upload' }}
