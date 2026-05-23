@@ -65,7 +65,60 @@ Authentication → Providers → Google: убедиться что Client ID/Sec
 
 ## 3. App Store Connect metadata (App Information)
 
-### 3.1 Версия 1.1.x — что описать
+### 3.1 Build 143 override — использовать вместо старого marketplace-only текста
+
+Перед любым upload в ASC сверить `APP_STORE_BUILD_143_AUDIT.md`.
+
+Build 143 нельзя описывать как AI app или AI creator studio:
+- главный экран теперь creator tools screen;
+- есть image generation с prompt/reference images, но это второстепенный инструмент;
+- в customer-facing metadata упоминать генерацию картинок только один раз;
+- есть generated gallery, preview, edit, share и save to Photos;
+- генерация работает по credits;
+- Hub, chats, portfolio и CourseUP остаются основной частью продукта;
+- Verified Badge в этом билде активируется кредитами, а не отдельным IAP.
+
+**Subtitle**:
+```
+Creator workspace
+```
+
+**Promotional Text**:
+```
+Build your portfolio, learn in CourseUP, find specialists in Hub, post tasks, and chat with clients in one creator workspace.
+```
+
+**What's New in This Version**:
+```
+This update expands X5 into a fuller creator workspace.
+
+New in this version:
+- Updated Home screen with creator and marketing tools.
+- Image generation for marketing creatives, logos, stories, posts, product photos and packaging ideas.
+- Hub improvements for specialists, tasks and proposals.
+- Direct chats with text, photos, voice messages, search, replies, pin, mute, archive, report and block controls.
+- Portfolio improvements with photos, videos, likes, comments and pinned work.
+- CourseUP video lessons and Pro-gated course access.
+- Profile, onboarding, language, Face ID lock, push notification and subscription improvements.
+```
+
+**Keywords**:
+```
+creator,chat,hub,courses,portfolio,marketing,smm,freelance,kazakhstan,tasks,clients
+```
+
+**Screenshots for build 143**:
+1. Login or onboarding
+2. Home creator tools screen
+3. Image generator with prompt/reference images/model/size/credits
+4. Generated result viewer or Generated Gallery
+5. Hub specialists/tasks
+6. Chat thread
+7. Portfolio/Profile
+8. CourseUP course/lesson
+9. X5 Pro paywall
+
+### 3.2 Старый draft ниже оставить только как historical reference
 
 **Promotional Text** (170 chars):
 ```

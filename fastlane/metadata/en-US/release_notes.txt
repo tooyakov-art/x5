@@ -1,1 +1,10 @@
-First public release. Hub for creator work, chats with photos / voice / search / pin / mute, portfolio, courses, multi-language UI (Russian / English / Kazakh), Sign in with Apple / Google / email, push notifications.
+This update expands X5 into a fuller creator workspace.
+
+New in this version:
+- Updated Home screen with creator and marketing tools.
+- Image generation for marketing creatives, logos, stories, posts, product photos and packaging ideas.
+- Hub improvements for specialists, tasks and proposals.
+- Direct chats with text, photos, voice messages, search, replies, pin, mute, archive, report and block controls.
+- Portfolio improvements with photos, videos, likes, comments and pinned work.
+- CourseUP video lessons and Pro-gated course access.
+- Profile, onboarding, language, Face ID lock, push notification and subscription improvements.
