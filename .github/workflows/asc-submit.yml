@@ -1,8 +1,6 @@
 name: ASC ship (screenshots + submit for review)
 
 on:
-  push:
-    branches: [restore-native-ui]
   workflow_dispatch:
     inputs:
       action:

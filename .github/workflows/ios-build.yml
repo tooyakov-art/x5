@@ -2,7 +2,7 @@ name: iOS build & TestFlight upload
 
 on:
   push:
-    branches: [main, restore-native-ui]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
