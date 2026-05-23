@@ -57,23 +57,31 @@ jobs:
                   return {}
               return response.json()
 
-          def dump(title, payload):
-              print(f"\n=== {title} ===")
-              print(json.dumps(payload, ensure_ascii=False, indent=2)[:12000])
-
           app_payload = get("/apps", **{"filter[bundleId]": os.environ["BUNDLE_ID"]})
           apps = app_payload.get("data", [])
-          dump("apps", app_payload)
           if not apps:
               raise SystemExit("No app found")
           app_id = apps[0]["id"]
+          app_attrs = apps[0]["attributes"]
+          print(f"APP id={app_id} name={app_attrs.get('name')} bundle={app_attrs.get('bundleId')} primaryLocale={app_attrs.get('primaryLocale')}")
 
           versions_payload = get(
               f"/apps/{app_id}/appStoreVersions",
               include="build,appStoreVersionLocalizations,appStoreReviewDetail",
               limit=20,
           )
-          dump("appStoreVersions", versions_payload)
+          print("\nVERSIONS")
+          included = {(i["type"], i["id"]): i for i in versions_payload.get("included", [])}
+          for version in versions_payload.get("data", []):
+              attrs = version["attributes"]
+              build_ref = version.get("relationships", {}).get("build", {}).get("data")
+              build = included.get((build_ref["type"], build_ref["id"])) if build_ref else None
+              print(
+                  f"- {attrs.get('versionString')} platform={attrs.get('platform')} "
+                  f"state={attrs.get('appStoreState')} "
+                  f"reviewType={attrs.get('appStoreReviewType')} "
+                  f"build={build.get('attributes', {}).get('version') if build else None}"
+              )
 
           submissions_payload = get(
               "/reviewSubmissions",
@@ -84,7 +92,16 @@ jobs:
                   "limit": 20,
               },
           )
-          dump("reviewSubmissions", submissions_payload)
+          print("\nREVIEW SUBMISSIONS")
+          included_items = {(i["type"], i["id"]): i for i in submissions_payload.get("included", [])}
+          for submission in submissions_payload.get("data", []):
+              attrs = submission["attributes"]
+              item_refs = submission.get("relationships", {}).get("items", {}).get("data", []) or []
+              item_states = []
+              for ref in item_refs:
+                  item = included_items.get((ref["type"], ref["id"]))
+                  item_states.append(f"{ref['type']}:{item.get('attributes', {}).get('state') if item else '?'}")
+              print(f"- id={submission['id']} state={attrs.get('state')} submittedDate={attrs.get('submittedDate')} items={item_states}")
 
           builds_payload = get(
               "/builds",
@@ -95,21 +112,49 @@ jobs:
                   "limit": 20,
               },
           )
-          dump("builds", builds_payload)
+          print("\nBUILDS")
+          for build in builds_payload.get("data", []):
+              attrs = build["attributes"]
+              print(
+                  f"- build={attrs.get('version')} processing={attrs.get('processingState')} "
+                  f"expired={attrs.get('expired')} uploaded={attrs.get('uploadedDate')} "
+                  f"usesNonExemptEncryption={attrs.get('usesNonExemptEncryption')}"
+              )
 
           for version in versions_payload.get("data", []):
               attrs = version.get("attributes", {})
-              if attrs.get("platform") != "IOS":
+              if attrs.get("platform") != "IOS" or attrs.get("versionString") != "1.1.1":
                   continue
               version_id = version["id"]
               version_string = attrs.get("versionString")
               print(f"\n### Version {version_string} ({version_id}) state={attrs.get('appStoreState')} ###")
 
               loc_payload = get(f"/appStoreVersions/{version_id}/appStoreVersionLocalizations", limit=20)
-              dump(f"localizations {version_string}", loc_payload)
+              print("\nLOCALIZATIONS")
+              for loc in loc_payload.get("data", []):
+                  a = loc["attributes"]
+                  print(f"- locale={a.get('locale')}")
+                  print(f"  description={a.get('description')}")
+                  print(f"  keywords={a.get('keywords')}")
+                  print(f"  marketingUrl={a.get('marketingUrl')}")
+                  print(f"  promotionalText={a.get('promotionalText')}")
+                  print(f"  supportUrl={a.get('supportUrl')}")
+                  print(f"  whatsNew={a.get('whatsNew')}")
 
               review_payload = get(f"/appStoreVersions/{version_id}/appStoreReviewDetail")
-              dump(f"review detail {version_string}", review_payload)
+              print("\nREVIEW DETAIL")
+              review_attrs = review_payload.get("data", {}).get("attributes", {})
+              for key in [
+                  "contactFirstName",
+                  "contactLastName",
+                  "contactPhone",
+                  "contactEmail",
+                  "demoAccountName",
+                  "demoAccountPassword",
+                  "demoAccountRequired",
+                  "notes",
+              ]:
+                  print(f"- {key}={review_attrs.get(key)}")
 
               for loc in loc_payload.get("data", []):
                   loc_id = loc["id"]
@@ -119,5 +164,16 @@ jobs:
                       include="appScreenshots",
                       limit=50,
                   )
-                  dump(f"screenshot sets {version_string} {locale}", sets_payload)
+                  print(f"\nSCREENSHOTS {version_string} {locale}")
+                  for screenshot_set in sets_payload.get("data", []):
+                      set_attrs = screenshot_set["attributes"]
+                      refs = screenshot_set.get("relationships", {}).get("appScreenshots", {}).get("data", [])
+                      print(f"- set={set_attrs.get('screenshotDisplayType')} total={len(refs)}")
+                  for item in sets_payload.get("included", []):
+                      a = item["attributes"]
+                      print(
+                          f"  file={a.get('fileName')} size={a.get('fileSize')} "
+                          f"state={a.get('assetDeliveryState', {}).get('state')} "
+                          f"{a.get('imageAsset', {}).get('width')}x{a.get('imageAsset', {}).get('height')}"
+                      )
           PY
