@@ -1,106 +1,63 @@
-X5 Creators is a creator workspace and marketplace app for creators,
-marketers, specialists and clients. Build 143 includes image generation,
-Generated Gallery, Hub, Chats, Portfolio, CourseUP, Profile, subscriptions,
-credits, report/block controls and account deletion.
+X5 Creators is a creator workspace and marketplace for creators, marketers,
+specialists and clients. Version 1.1.1 build 143 includes Home creator tools,
+image generation, Generated Gallery, Hub, Chats, Portfolio, CourseUP, Profile,
+X5 Pro, credits, report/block controls and account deletion.
 
-CURRENT APP VERSION
-
-Version: 1.1.1
-Build: 143
-
-DEMO ACCOUNT
-
+Demo account:
 Use the credentials in the Apple Demo Account fields:
 appreview@x5studio.app
 
 The account has a profile, sample portfolio content, chats and credits for
 testing image generation. Sign in with Apple or Google may also be used.
 
-QUICK TEST FLOW
-
+Quick test flow:
 1. Sign in with the demo email and password, Apple or Google.
-2. Home tab - tap "Image generation", "Logo", "Story", "Post", "Insta Pack",
-   "Product photo" or "Packaging".
-3. Image generator - enter a prompt, optionally attach reference images,
-   choose model/size/quantity and tap Generate.
-4. Generated result - preview the image, save it to the in-app Generated
-   Gallery, save to Photos, share it, draw/markup it or regenerate from edits.
-5. Generated Gallery - open the photo-stack button from Home or the generator,
-   preview previous generated images, edit, share or delete them.
-6. Hub tab - switch between Specialists and Tasks, open a specialist/task,
-   start a chat or send a proposal.
-7. Chats tab - open a conversation, send text, attach a photo, record a voice
-   message, search, reply, pin, mute, archive, report or block.
-8. Portfolio/Profile - add photos or videos, edit profile, public visibility
-   and social links.
-9. CourseUP tab - open a course and play a lesson. Pro-gated courses show the
-   paywall.
-10. Profile -> Upgrade to Pro - review subscription terms, purchase, restore
-    and manage subscription controls.
-11. Profile -> Settings - test language, Face ID app lock, cache, notifications,
-    sign out and Delete Account.
+2. Home tab - open Image generation, Logo, Story, Post, Product photo or
+   Packaging.
+3. Image generator - enter a prompt, optionally attach reference images, choose
+   model/size/quantity and tap Generate.
+4. Generated result - preview, save to in-app gallery, save to Photos, share,
+   markup or regenerate from edits.
+5. Hub - switch between Specialists and Tasks, open a specialist/task, start a
+   chat or send a proposal.
+6. Chats - send text, attach a photo, record voice, search, reply, pin, mute,
+   archive, report or block.
+7. Portfolio/Profile - add photos or videos, edit public visibility and social
+   links.
+8. CourseUP - open a course and play a lesson. Pro-gated courses show paywall.
+9. Profile -> Upgrade to Pro - review terms, purchase, restore and manage.
+10. Profile -> Settings - language, Face ID lock, cache, notifications, sign
+    out and Delete Account.
 
-IMAGE GENERATION
+Image generation:
+The app sends the user's prompt and optional reference images to the X5 Supabase
+Edge Function generate-image. Generation is credit-based and the UI shows cost
+before generation. Generated images can be kept on-device, saved to Photos or
+shared. Reference images are chosen by the user through the iOS photo picker.
+Unfinished video/startup-chat cards are marked as in development.
 
-- The app sends the user's prompt and optional reference images to the X5
-  Supabase Edge Function `generate-image`.
-- Generation is credit-based. The UI shows the credit cost before generation.
-- Generated images are returned to the app, saved in an on-device generated
-  gallery and can optionally be saved to the user's Photos library.
-- Reference images are chosen by the user through the iOS photo picker.
-- Video generation and startup-chat tool cards that are not ready are marked
-  in the app as in development / coming soon and are not sold as active
-  functionality.
+Subscription:
+X5 Pro Monthly: com.x5studio.app.pro.monthly. The paywall is available from
+Profile -> Upgrade to Pro. X5 Pro grants Pro access and credits for creator
+tools. Verified badge is activated with in-app credits and is not a separate
+IAP in this build.
 
-SUBSCRIPTION AND CREDITS
+UGC safety:
+Every chat user can be blocked or reported from the chat header menu. Hub users
+and task authors can be reported. Reports open an email to support and are
+reviewed within 24 hours. Users can delete their account from Settings; the app
+calls Supabase delete_own_account and signs the user out.
 
-- X5 Pro Monthly: com.x5studio.app.pro.monthly
-- The paywall is available from Profile -> Upgrade to Pro.
-- X5 Pro grants Pro access and credits for creator tools.
-- The paywall displays subscription length, price, auto-renewal terms, Apple's
-  Standard EULA link, Privacy Policy, Restore Purchases and Manage Subscription.
-- The verified badge is activated with in-app credits and is not a separate IAP
-  in this build.
-
-USER-GENERATED CONTENT AND SAFETY - GUIDELINE 1.2
-
-- Every chat user can be blocked or reported from the chat header menu.
-- Hub users and task authors can be contacted through chat and reported.
-- Reports open an email to the moderation team and are reviewed within
-  24 hours.
-- Account deletion in Settings is two-step and removes auth, profile,
-  portfolio, tasks and messages permanently.
-
-FACE ID / BIOMETRICS
-
+Biometrics:
 The app does not collect, store, transmit or process face data. Apple's
-LocalAuthentication framework is used only for optional App Lock in Settings.
-Apple handles biometric matching on device; X5 receives only a Boolean
-success/fail result and no biometric data.
+LocalAuthentication framework is used only for optional App Lock. X5 receives
+only success/fail result and no biometric data.
 
-PHOTOS, MICROPHONE AND NOTIFICATIONS
+Permissions:
+Photos are used for avatars, portfolio, chat attachments, reference images and
+saving generated images. Microphone is used only for chat voice messages. APNs
+is used for message, proposal and optional promo alerts.
 
-- Photos access is used for avatars, portfolio uploads, chat attachments,
-  reference images for image generation and saving generated images.
-- Microphone access is used only for chat voice messages.
-- APNs is used for new-message, accepted-proposal and optional promo alerts.
-  Notification permission is requested only after the user signs in.
-
-ACCOUNT DELETION - GUIDELINE 5.1.1(v)
-
-1. Profile tab -> top-right gear icon -> Settings.
-2. Scroll to Danger zone.
-3. Tap Delete Account and confirm twice.
-4. The app calls the Supabase `delete_own_account` RPC and signs the user out.
-
-PRIVACY
-
-Sign in with Apple is offered alongside Google and email. X5 does not use ads
-or third-party advertising SDKs. The privacy policy lists photos, microphone,
-notifications, profile, chat, portfolio and app functionality data:
-https://tooyakov-art.github.io/x5site/privacy.html
-
-Terms:
-https://tooyakov-art.github.io/x5site/terms.html
-
-If anything is unclear: support@x5studio.app.
+Privacy: https://tooyakov-art.github.io/x5site/privacy.html
+Terms: https://tooyakov-art.github.io/x5site/terms.html
+Support: support@x5studio.app
