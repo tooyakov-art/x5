@@ -58,22 +58,29 @@ struct PortfolioGrid: View {
                 .background(Color.white.opacity(0.04))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             } else {
-                LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 3),
-                    spacing: 3
-                ) {
-                    ForEach(Array(orderedItems.enumerated()), id: \.element.id) { index, item in
-                        PortfolioGridCell(
-                            item: item,
-                            isPinned: PortfolioPinnedStore.isPinned(item.id),
-                            onOpen: {
-                                X5Feedback.selection()
-                                selectedIndex = index
-                                showingPostViewer = true
-                            }
-                        )
+                GeometryReader { proxy in
+                    let spacing: CGFloat = 6
+                    let cellWidth = max(0, floor((proxy.size.width - spacing * 2) / 3))
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.fixed(cellWidth), spacing: spacing), count: 3),
+                        spacing: spacing
+                    ) {
+                        ForEach(Array(orderedItems.enumerated()), id: \.element.id) { index, item in
+                            PortfolioGridCell(
+                                item: item,
+                                isPinned: PortfolioPinnedStore.isPinned(item.id),
+                                onOpen: {
+                                    X5Feedback.selection()
+                                    selectedIndex = index
+                                    showingPostViewer = true
+                                }
+                            )
+                            .frame(width: cellWidth, height: cellWidth * 1.22)
+                        }
                     }
+                    .frame(width: proxy.size.width, alignment: .leading)
                 }
+                .frame(height: portfolioGridHeight(itemCount: orderedItems.count))
             }
         }
         .task {
@@ -138,6 +145,14 @@ struct PortfolioGrid: View {
             )
             .preferredColorScheme(.dark)
         }
+    }
+
+    private func portfolioGridHeight(itemCount: Int) -> CGFloat {
+        let availableWidth = min(UIScreen.main.bounds.width - 32, 390)
+        let spacing: CGFloat = 6
+        let cellWidth = max(0, floor((availableWidth - spacing * 2) / 3))
+        let rows = CGFloat(max(1, Int(ceil(Double(itemCount) / 3.0))))
+        return rows * (cellWidth * 1.22) + max(0, rows - 1) * spacing
     }
 }
 
