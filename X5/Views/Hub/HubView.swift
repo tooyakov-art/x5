@@ -1,7 +1,7 @@
-import SwiftUI
-import UIKit
+﻿import SwiftUI
 
-/// Hub bottom tab: specialists marketplace and open tasks.
+/// Hub — bottom tab matching web HireView. Two segmented sub-tabs:
+/// Specialists (profiles where show_in_hub=true) and Tasks (open task marketplace).
 struct HubView: View {
     enum Segment: String, CaseIterable, Identifiable {
         case specialists, tasks
@@ -13,61 +13,69 @@ struct HubView: View {
     @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = HubService()
     @StateObject private var chats = ChatsService()
+    @StateObject private var portfolio = PortfolioService()
     @State private var segment: Segment = .specialists
+    @State private var category: String? = nil
     @State private var showingPostTask = false
+    @State private var showingAddPortfolio = false
     @State private var showingEditProfile = false
-    @State private var showingNotifications = false
     @State private var openingChatWith: String? = nil
     @State private var startingChat: ChatRoom? = nil
     @State private var chatError: String? = nil
-
-    init() {
-        UISegmentedControl.appearance().selectedSegmentTintColor = UIColor.systemBlue
-        UISegmentedControl.appearance().setTitleTextAttributes([
-            .foregroundColor: UIColor.white,
-            .font: UIFont.systemFont(ofSize: 14, weight: .semibold)
-        ], for: .selected)
-        UISegmentedControl.appearance().setTitleTextAttributes([
-            .foregroundColor: UIColor.white.withAlphaComponent(0.78),
-            .font: UIFont.systemFont(ofSize: 14, weight: .semibold)
-        ], for: .normal)
-    }
+    @State private var selectedCountry: HubCountry = .kazakhstan
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                HubBackdrop()
+            VStack(spacing: 0) {
+                hubHeader
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        hubHeader
-
-                        HubSegmentedControl(
-                            selected: $segment,
-                            specialistsTitle: loc.t("hub_specialists"),
-                            tasksTitle: loc.t("hub_tasks")
-                        )
-
-                        Text("CATEGORIES")
-                            .font(.system(size: 11, weight: .heavy, design: .rounded))
-                            .foregroundColor(.white.opacity(0.34))
-                            .tracking(1.2)
-
-                        categoryGrid
+                Picker("", selection: $segment) {
+                    ForEach(Segment.allCases) { s in
+                        Text(s == .specialists ? loc.t("hub_specialists") : loc.t("hub_tasks")).tag(s)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 18)
-                    .padding(.bottom, 36)
-                    .frame(maxWidth: 640)
-                    .frame(maxWidth: .infinity)
                 }
-                .refreshable {
-                    await service.loadSpecialists()
-                    await service.loadTasks()
+                .pickerStyle(.segmented)
+                .onChange(of: segment) { _ in category = nil }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+
+                if segment == .specialists {
+                    specialistProfileCard
+                    countrySelector(messageKey: "hub_country_specialists")
+                } else if segment == .tasks {
+                    createTaskButton
+                    countrySelector(messageKey: "hub_country_orders")
+                    categoryRail
+                }
+
+                Group {
+                    switch segment {
+                    case .specialists:
+                        specialistsContent
+                    case .tasks:
+                        tasksList
+                    }
                 }
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .clipped()
+            .background { X5Background() }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if segment == .specialists {
+                        Button {
+                            showingEditProfile = true
+                        } label: {
+                            Image(systemName: "person.crop.circle.badge.plus")
+                        }
+                    }
+                }
+            }
             .task {
                 await service.loadSpecialists()
                 await service.loadTasks()
@@ -77,17 +85,33 @@ struct HubView: View {
                     Task { await service.loadTasks() }
                 })
             }
+            .sheet(isPresented: $showingAddPortfolio) {
+                AddPortfolioItemView { data, mediaType, mime, ext, title, desc in
+                    guard let token = auth.accessToken, let userId = auth.userId else {
+                        chatError = "Сначала войди в аккаунт."
+                        return false
+                    }
+                    return await portfolio.addMedia(
+                        data: data,
+                        type: mediaType,
+                        mime: mime,
+                        ext: ext,
+                        userId: userId,
+                        title: title,
+                        description: desc,
+                        accessToken: token
+                    )
+                }
+                .preferredColorScheme(.dark)
+            }
             .sheet(isPresented: $showingEditProfile) {
                 EditProfileView()
-            }
-            .sheet(isPresented: $showingNotifications) {
-                NotificationsView()
             }
             .sheet(item: $startingChat) { chat in
                 NavigationStack { ChatThreadView(chat: chat) }
                     .preferredColorScheme(.dark)
             }
-            .alert("Chat did not open", isPresented: Binding(
+            .alert("Чат не открылся", isPresented: Binding(
                 get: { chatError != nil },
                 set: { if !$0 { chatError = nil } }
             )) {
@@ -99,88 +123,176 @@ struct HubView: View {
     }
 
     private var hubHeader: some View {
-        HStack(alignment: .center) {
-            Text(loc.t("hub_title"))
-                .font(.system(size: 34, weight: .heavy, design: .rounded))
-                .foregroundColor(.white)
-
+        HStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(segment == .specialists ? loc.t("hub_specialists") : loc.t("hub_tasks"))
+                    .font(.system(size: 34, weight: .black))
+                    .foregroundColor(.white)
+                    .shadow(color: X5Style.blueSoft.opacity(0.32), radius: 14, x: 0, y: 0)
+                Text(segment == .specialists ? "Публичные профили для клиентов" : "Заказы по категориям")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white.opacity(0.58))
+            }
             Spacer()
-
-            headerButton
         }
+        .padding(.horizontal, 24)
+        .padding(.top, -12)
+        .padding(.bottom, 4)
     }
 
-    @ViewBuilder
-    private var headerButton: some View {
-        if segment == .tasks {
-            Button {
-                showingPostTask = true
-            } label: {
-                Image(systemName: "plus")
-            }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.circle)
-            .controlSize(.large)
-            .tint(.blue)
-        } else if !(currentUser.profile?.showInHub ?? false) {
-            Button {
-                NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
-            } label: {
-                Image(systemName: "person.badge.plus")
-            }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.circle)
-            .controlSize(.large)
-            .tint(.blue)
-        } else {
-            Button {
-                showingNotifications = true
-            } label: {
-                Image(systemName: "bell")
-            }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.circle)
-            .controlSize(.large)
-            .tint(.blue)
+    private var createTaskButton: some View {
+        Button {
+            showingPostTask = true
+        } label: {
+            Label(loc.t("hub_create_task"), systemImage: "plus.circle.fill")
+                .font(.system(size: 16, weight: .black))
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Color.accentColor)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
     }
 
-    private var categoryGrid: some View {
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+    private var specialistProfileCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: currentUser.profile?.showInHub == true ? "checkmark.seal.fill" : "person.crop.circle.badge.plus")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.black)
+                    .frame(width: 42, height: 42)
+                    .background(Color.accentColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(currentUser.profile?.showInHub == true ? "Профиль специалиста активен" : "Создать профиль специалиста")
+                        .font(.system(size: 15, weight: .heavy))
+                        .foregroundColor(.white)
+                    Text(currentUser.profile?.showInHub == true ? "Клиенты видят ваш публичный профиль. Управляйте описанием, категориями и портфолио." : "Если при регистрации выбрали обычный аккаунт или компанию, профиль специалиста можно настроить здесь.")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.62))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+            }
 
-        return LazyVGrid(columns: columns, spacing: 8) {
-            ForEach(HubCategories.all) { cat in
-                NavigationLink {
-                    HubCategoryDetailView(
-                        segment: segment,
-                        category: cat,
-                        specialists: specialists(for: cat.id),
-                        tasks: tasks(for: cat.id),
-                        openingChatWith: $openingChatWith,
-                        startChat: { person in startChat(with: person) }
-                    )
+            HStack(spacing: 10) {
+                Button {
+                    showingEditProfile = true
                 } label: {
-                    HubCategoryCard(
-                        title: cat.labelEn,
-                        systemImage: categoryIcon(for: cat.id),
-                        count: categoryCount(for: cat.id)
+                    Label(currentUser.profile?.showInHub == true ? "Настроить профиль" : "Создать профиль", systemImage: "slider.horizontal.3")
+                        .font(.system(size: 13, weight: .bold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .tint(Color.accentColor)
+                .foregroundStyle(.black)
+
+                if currentUser.profile?.showInHub == true {
+                    Button {
+                        showingAddPortfolio = true
+                    } label: {
+                        Label("Кейс", systemImage: "plus")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .tint(.white)
+                    .foregroundStyle(.white)
+                }
+            }
+        }
+        .padding(14)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.12)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
+    }
+
+    private func countrySelector(messageKey: String) -> some View {
+        HStack(spacing: 8) {
+            Menu {
+                Button {
+                    selectedCountry = .kazakhstan
+                } label: {
+                    Label(loc.t(HubCountry.kazakhstan.titleKey), systemImage: "checkmark")
+                }
+                Section(loc.t("hub_country_soon")) {
+                    ForEach(HubCountry.comingSoon) { country in
+                        Button(loc.t(country.titleKey)) {}
+                            .disabled(true)
+                    }
+                }
+            } label: {
+                Label(loc.t(selectedCountry.titleKey), systemImage: "location.fill")
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundColor(.white.opacity(0.94))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.18), lineWidth: 1)
                     )
+            }
+            .buttonStyle(.plain)
+
+            Text(loc.t(messageKey))
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(.white.opacity(0.76))
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 2)
+    }
+
+    private var categoryRail: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 9) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) { category = nil }
+                } label: {
+                    CategoryChip(title: loc.t("hub_all"),
+                                 systemImage: "line.3.horizontal.decrease.circle",
+                                 count: totalVisibleCount,
+                                 isSelected: category == nil)
                 }
                 .buttonStyle(.plain)
+
+                ForEach(visibleTaskCategories) { cat in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) { category = cat.id }
+                    } label: {
+                        CategoryChip(title: HubCategories.label(for: cat.id, language: loc.current),
+                                     systemImage: hubCategorySymbol(for: cat.id),
+                                     count: countForCategory(cat.id),
+                                     isSelected: category == cat.id)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
     }
 
     private func startChat(with person: HubSpecialist) {
         guard let myId = auth.userId else {
-            chatError = "Sign in first."
+            chatError = "Сначала войди в аккаунт."
             return
         }
         openingChatWith = person.id
         Task {
             guard let token = await auth.freshAccessToken() else {
                 openingChatWith = nil
-                chatError = "Sign in first."
+                chatError = "Сначала войди в аккаунт."
                 return
             }
             let chat = await chats.ensureChat(otherUserId: person.id, currentUserId: myId, taskId: nil, taskTitle: nil, accessToken: token)
@@ -188,354 +300,406 @@ struct HubView: View {
             if let chat {
                 startingChat = chat
             } else {
-                chatError = chats.error ?? "Could not open chat. Try again."
+                chatError = chats.error ?? "Не удалось открыть чат. Попробуй ещё раз."
             }
         }
     }
 
-    private func categoryCount(for id: String) -> Int {
-        switch segment {
-        case .specialists:
-            return specialists(for: id).count
-        case .tasks:
-            return tasks(for: id).count
+    // MARK: - Сетка категорий (главный экран Hub)
+
+    private var specialistsContent: some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(spacing: 14) {
+                specialistCategoryGrid
+                if totalVisibleCount == 0 && !service.isLoading {
+                    EmptyState(systemImage: "person.crop.circle.badge.questionmark",
+                               title: loc.t("hub_no_specialists"),
+                               subtitle: loc.t("hub_no_specialists_sub"))
+                        .padding(.top, 40)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
+            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
+            .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .clipped()
+        .refreshable { await service.loadSpecialists() }
+    }
+
+    private var specialistCategoryGrid: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 4),
+            spacing: 8
+        ) {
+            NavigationLink {
+                specialistCategoryPage(categoryId: nil, title: loc.t("hub_all"))
+            } label: {
+                CategoryTile(
+                    title: loc.t("hub_all"),
+                    systemImage: "line.3.horizontal.decrease.circle",
+                    count: totalVisibleCount,
+                    isSelected: false
+                )
+            }
+            .buttonStyle(.plain)
+
+            ForEach(visibleSpecialistCategories) { cat in
+                NavigationLink {
+                    specialistCategoryPage(
+                        categoryId: cat.id,
+                        title: HubCategories.label(for: cat.id, language: loc.current)
+                    )
+                } label: {
+                    CategoryTile(
+                        title: HubCategories.label(for: cat.id, language: loc.current),
+                        systemImage: hubCategorySymbol(for: cat.id),
+                        count: countForCategory(cat.id),
+                        isSelected: false
+                    )
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
-    private func specialists(for id: String) -> [HubSpecialist] {
+    private func specialistCategoryPage(categoryId: String?, title: String) -> some View {
+        let people = specialists(matching: categoryId)
+
+        return ScrollView(.vertical, showsIndicators: true) {
+            LazyVStack(spacing: 10) {
+                ForEach(people) { person in
+                    HStack(spacing: 8) {
+                        NavigationLink {
+                            UserProfileView(userId: person.id, fallback: person)
+                        } label: {
+                            SpecialistRow(person: person)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            startChat(with: person)
+                        } label: {
+                            Group {
+                                if openingChatWith == person.id {
+                                    ProgressView().tint(.accentColor)
+                                } else {
+                                    Image(systemName: "message.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.accentColor)
+                                }
+                            }
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(openingChatWith != nil)
+                    }
+                }
+
+                if people.isEmpty && !service.isLoading {
+                    EmptyState(systemImage: "person.crop.circle.badge.questionmark",
+                               title: loc.t("hub_no_specialists"),
+                               subtitle: loc.t("hub_no_specialists_sub"))
+                        .padding(.top, 60)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 32)
+            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
+            .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .clipped()
+        .background { X5Background() }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .refreshable { await service.loadSpecialists() }
+    }
+
+    private func countForCategory(_ id: String) -> Int {
+        if segment == .tasks {
+            return taskCategoryCounts[id] ?? 0
+        }
+        return specialistCategoryCounts[id] ?? 0
+    }
+
+    private var totalVisibleCount: Int {
+        switch segment {
+        case .specialists:
+            return service.specialists
+                .filter { !BlockList.contains($0.id) }
+                .filter { $0.id != auth.userId }
+                .count
+        case .tasks:
+            return service.tasks
+                .filter { !BlockList.contains($0.authorId) }
+                .count
+        }
+    }
+
+    private var specialistCategoryCounts: [String: Int] {
+        var counts: [String: Int] = [:]
+        for person in visibleSpecialists {
+            for id in person.specialistCategory ?? [] {
+                counts[normalizedHubCategory(id), default: 0] += 1
+            }
+        }
+        return counts
+    }
+
+    private var taskCategoryCounts: [String: Int] {
+        var counts: [String: Int] = [:]
+        for task in service.tasks where !BlockList.contains(task.authorId) {
+            if let category = task.category {
+                counts[normalizedHubCategory(category), default: 0] += 1
+            }
+        }
+        return counts
+    }
+
+    private var visibleSpecialistCategories: [HubCategory] {
+        let counts = specialistCategoryCounts
+        return HubCategories.all.filter { (counts[$0.id] ?? 0) > 0 }
+    }
+
+    private var visibleTaskCategories: [HubCategory] {
+        let counts = taskCategoryCounts
+        return HubCategories.all.filter { (counts[$0.id] ?? 0) > 0 }
+    }
+
+    private var specialistsList: some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            LazyVStack(spacing: 10) {
+                ForEach(filteredSpecialists) { person in
+                    HStack(spacing: 8) {
+                        NavigationLink {
+                            UserProfileView(userId: person.id, fallback: person)
+                        } label: {
+                            SpecialistRow(person: person)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            startChat(with: person)
+                        } label: {
+                            Group {
+                                if openingChatWith == person.id {
+                                    ProgressView().tint(.accentColor)
+                                } else {
+                                    Image(systemName: "message.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.accentColor)
+                                }
+                            }
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(openingChatWith != nil)
+                    }
+                }
+                if filteredSpecialists.isEmpty && !service.isLoading {
+                    EmptyState(systemImage: "person.crop.circle.badge.questionmark",
+                               title: loc.t("hub_no_specialists"),
+                               subtitle: loc.t("hub_no_specialists_sub"))
+                        .padding(.top, 60)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
+            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
+            .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .clipped()
+        .refreshable { await service.loadSpecialists() }
+    }
+
+    private var tasksList: some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            LazyVStack(spacing: 10) {
+                ForEach(filteredTasks) { task in
+                    NavigationLink {
+                        TaskDetailView(task: task)
+                    } label: {
+                        TaskRow(task: task)
+                    }
+                    .buttonStyle(.plain)
+                }
+                if filteredTasks.isEmpty && !service.isLoading {
+                    EmptyState(systemImage: "tray",
+                               title: loc.t("hub_no_tasks"),
+                               subtitle: loc.t("hub_no_tasks_sub"))
+                        .padding(.top, 60)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
+            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
+            .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .clipped()
+        .refreshable { await service.loadTasks() }
+    }
+
+    private var filteredSpecialists: [HubSpecialist] {
+        specialists(matching: category)
+    }
+
+    private var visibleSpecialists: [HubSpecialist] {
         service.specialists
             .filter { !BlockList.contains($0.id) }
-            .filter { ($0.specialistCategory ?? []).contains(id) }
+            .filter { $0.id != auth.userId }
     }
 
-    private func tasks(for id: String) -> [HubTask] {
-        service.tasks
-            .filter { !BlockList.contains($0.authorId) }
-            .filter { $0.category == id }
+    private func specialists(matching categoryId: String?) -> [HubSpecialist] {
+        guard let categoryId else { return visibleSpecialists }
+        return visibleSpecialists.filter { person in
+            (person.specialistCategory ?? []).contains { normalizedHubCategory($0) == categoryId }
+        }
     }
 
-    private func categoryIcon(for id: String) -> String {
-        switch id {
-        case "marketing": return "megaphone.fill"
-        case "smm": return "iphone"
-        case "targeting": return "scope"
-        case "seo": return "magnifyingglass"
-        case "sales": return "dollarsign.circle.fill"
-        case "design": return "paintpalette.fill"
-        case "ui_ux": return "ruler.fill"
-        case "motion": return "sparkles"
-        case "3d": return "cube.transparent.fill"
-        case "web_dev": return "globe"
-        case "mobile_dev": return "apps.iphone"
-        case "bot_dev": return "cpu.fill"
-        case "ai_ml": return "brain.head.profile"
-        case "gamedev": return "gamecontroller.fill"
-        case "ugc": return "video.fill"
-        case "copy": return "pencil.and.outline"
-        case "video": return "clapperboard.fill"
-        case "photo": return "camera.fill"
-        case "audio": return "waveform"
-        case "animation": return "film.fill"
-        case "translation": return "textformat"
-        case "consulting": return "briefcase.fill"
-        case "finance": return "chart.bar.fill"
-        case "legal": return "scale.3d"
-        case "hr": return "person.2.fill"
-        case "education": return "graduationcap.fill"
-        case "assistant": return "list.clipboard.fill"
-        default: return "wrench.adjustable.fill"
+    private var filteredTasks: [HubTask] {
+        let visible = service.tasks.filter { !BlockList.contains($0.authorId) }
+        guard let category else { return visible }
+        return visible.filter { normalizedHubCategory($0.category) == category }
+    }
+
+    private func refreshCurrentHubSegment() async {
+        switch segment {
+        case .specialists:
+            await service.loadSpecialists()
+        case .tasks:
+            await service.loadTasks()
         }
     }
 }
 
 // MARK: - Background
 
-private enum HubPalette {
-    static let cyan = Color(red: 0.0, green: 0.478, blue: 1.0)
-    static let silver = Color(red: 0.78, green: 0.82, blue: 0.88)
-    static let panel = Color(red: 0.045, green: 0.05, blue: 0.075)
+private struct HubCountry: Identifiable, Hashable {
+    let id: String
+    let titleKey: String
+
+    static let kazakhstan = HubCountry(id: "kz", titleKey: "country_kazakhstan")
+    static let comingSoon: [HubCountry] = [
+        HubCountry(id: "uz", titleKey: "country_uzbekistan"),
+        HubCountry(id: "kg", titleKey: "country_kyrgyzstan"),
+        HubCountry(id: "ae", titleKey: "country_uae"),
+        HubCountry(id: "tr", titleKey: "country_turkey"),
+        HubCountry(id: "us", titleKey: "country_usa")
+    ]
 }
 
-private struct HubBackdrop: View {
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
+// MARK: - Tile категории
 
-            X5LogoText(size: 168)
-                .opacity(0.11)
-                .blur(radius: 1.5)
-                .offset(x: -52, y: -248)
+private func hubCategorySymbol(for id: String) -> String {
+    HubCategories.symbol(for: id)
+}
 
-            RadialGradient(colors: [
-                HubPalette.cyan.opacity(0.38),
-                HubPalette.cyan.opacity(0.12),
-                Color.clear
-            ], center: .topTrailing, startRadius: 14, endRadius: 360)
-            .ignoresSafeArea()
+private func normalizedHubCategory(_ value: String?) -> String {
+    guard let value else { return "other" }
+    let cleaned = value
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+        .replacingOccurrences(of: "-", with: "_")
+        .replacingOccurrences(of: " ", with: "_")
 
-            RadialGradient(colors: [
-                Color.white.opacity(0.18),
-                Color.clear
-            ], center: UnitPoint(x: 0.18, y: 0.11), startRadius: 8, endRadius: 180)
-            .ignoresSafeArea()
-
-            LinearGradient(colors: [
-                Color.black.opacity(0.18),
-                Color(red: 0.02, green: 0.025, blue: 0.04).opacity(0.72),
-                Color.black
-            ], startPoint: .top, endPoint: .bottom)
-            .ignoresSafeArea()
-        }
-        .allowsHitTesting(false)
+    switch cleaned {
+    case "ads", "ad", "target", "target_ads", "targeting_ads", "reklama", "реклама", "таргет", "таргет_реклама":
+        return "targeting"
+    case "chatbot", "chatbots", "bot", "bots", "botdev", "bot_dev":
+        return "bot_dev"
+    case "web", "webdev", "web_development":
+        return "web_dev"
+    case "mobile", "mobiledev", "mobile_development":
+        return "mobile_dev"
+    case "ai", "ml", "ai_ml", "ai_neural", "нейросети":
+        return "ai_ml"
+    case "game", "game_dev":
+        return "gamedev"
+    case "uiux", "ui/ux", "ux_ui":
+        return "ui_ux"
+    default:
+        return cleaned
     }
 }
 
-private struct HubGlassModifier: ViewModifier {
-    let cornerRadius: CGFloat
-    let accent: Color
-
-    func body(content: Content) -> some View {
-        content
-            .background(.ultraThinMaterial)
-            .background(
-                LinearGradient(colors: [
-                    Color.white.opacity(0.10),
-                    HubPalette.panel.opacity(0.34),
-                    Color.black.opacity(0.18)
-                ], startPoint: .topLeading, endPoint: .bottomTrailing)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(
-                        LinearGradient(colors: [
-                            Color.white.opacity(0.22),
-                            accent.opacity(0.70),
-                            Color.white.opacity(0.06)
-                        ], startPoint: .topLeading, endPoint: .bottomTrailing),
-                        lineWidth: 1
-                    )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .shadow(color: Color.black.opacity(0.22), radius: 14, x: 0, y: 9)
-    }
-}
-
-private extension View {
-    func hubGlass(cornerRadius: CGFloat, accent: Color = Color.white.opacity(0.18)) -> some View {
-        modifier(HubGlassModifier(cornerRadius: cornerRadius, accent: accent))
-    }
-}
-
-// MARK: - Controls
-
-private struct HubSegmentedControl: View {
-    @Binding var selected: HubView.Segment
-    let specialistsTitle: String
-    let tasksTitle: String
-
-    var body: some View {
-        Picker("", selection: $selected) {
-            Text(specialistsTitle).tag(HubView.Segment.specialists)
-            Text(tasksTitle).tag(HubView.Segment.tasks)
-        }
-        .pickerStyle(.segmented)
-        .tint(HubPalette.cyan)
-        .colorScheme(.dark)
-        .frame(height: 44)
-    }
-}
-
-private struct HubCategoryCard: View {
+private struct CategoryChip: View {
     let title: String
     let systemImage: String
     let count: Int
+    let isSelected: Bool
 
     var body: some View {
-        VStack(spacing: 8) {
+        HStack(spacing: 7) {
             Image(systemName: systemImage)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(HubPalette.silver)
-                .frame(height: 26)
-
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(.white.opacity(0.72))
             Text(title)
-                .font(.system(size: 12, weight: .heavy, design: .rounded))
-                .foregroundColor(.white.opacity(0.90))
+                .font(.system(size: 14, weight: .heavy))
+                .lineLimit(1)
+                .foregroundColor(isSelected ? .black : .white.opacity(0.76))
+            if count > 0 {
+                Text("\(count)")
+                    .font(.system(size: 12, weight: .black))
+                    .padding(.leading, 1)
+                    .foregroundColor(isSelected ? .black.opacity(0.78) : .white.opacity(0.60))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            Capsule(style: .continuous)
+                .fill(isSelected ? Color.accentColor : Color.white.opacity(0.075))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.white.opacity(0.10), lineWidth: 1)
+        )
+    }
+}
+
+private struct CategoryTile: View {
+    let title: String
+    let systemImage: String
+    let count: Int
+    let isSelected: Bool
+
+    var body: some View {
+        VStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundColor(isSelected ? .black : .white.opacity(0.74))
+                .frame(height: 26)
+            Text(title)
+                .font(.system(size: 10.5, weight: .heavy))
+                .foregroundColor(isSelected ? .black : .white)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
-                .minimumScaleFactor(0.74)
-                .frame(maxWidth: .infinity, minHeight: 30)
-
-            Text("\(count)")
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
-                .foregroundColor(HubPalette.cyan.opacity(count > 0 ? 0.88 : 0.28))
-                .opacity(count > 0 ? 1 : 0)
+                .minimumScaleFactor(0.68)
+            if count > 0 {
+                Text("\(count)")
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundColor(isSelected ? .black.opacity(0.72) : .white.opacity(0.62))
+            }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 106)
-        .hubGlass(cornerRadius: 16, accent: Color.white.opacity(0.13))
-    }
-}
-
-private struct HubListHeader: View {
-    let title: String
-    let isFiltered: Bool
-    let clear: () -> Void
-
-    var body: some View {
-        HStack {
-            Text(title)
-                .font(.system(size: 16, weight: .heavy, design: .rounded))
-                .foregroundColor(.white)
-                .lineLimit(1)
-
-            Spacer()
-
-            if isFiltered {
-                Button(action: clear) {
-                    Text("All")
-                        .font(.system(size: 12, weight: .heavy, design: .rounded))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .hubGlass(cornerRadius: 12, accent: HubPalette.cyan.opacity(0.24))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.top, 4)
-    }
-}
-
-private struct HubCategoryDetailView: View {
-    let segment: HubView.Segment
-    let category: HubCategory
-    let specialists: [HubSpecialist]
-    let tasks: [HubTask]
-    @Binding var openingChatWith: String?
-    let startChat: (HubSpecialist) -> Void
-
-    var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 12) {
-                    Image(systemName: icon)
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 50, height: 50)
-                        .hubGlass(cornerRadius: 18, accent: Color.white.opacity(0.12))
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(category.labelEn)
-                            .font(.system(size: 28, weight: .heavy, design: .rounded))
-                            .foregroundColor(.white)
-                        Text(segment == .specialists ? "Specialists" : "Tasks")
-                            .font(.system(size: 12, weight: .heavy, design: .rounded))
-                            .foregroundColor(.white.opacity(0.48))
-                            .tracking(1.1)
-                    }
-                }
-                .padding(.bottom, 10)
-
-                switch segment {
-                case .specialists:
-                    specialistsContent
-                case .tasks:
-                    tasksContent
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 18)
-            .padding(.bottom, 34)
-            .frame(maxWidth: 640)
-            .frame(maxWidth: .infinity)
-        }
-        .background(HubBackdrop())
-        .navigationTitle(category.labelEn)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-    }
-
-    private var specialistsContent: some View {
-        Group {
-            ForEach(specialists) { person in
-                HStack(spacing: 8) {
-                    NavigationLink {
-                        UserProfileView(userId: person.id, fallback: person)
-                    } label: {
-                        SpecialistRow(person: person)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        startChat(person)
-                    } label: {
-                        Group {
-                            if openingChatWith == person.id {
-                                ProgressView().tint(.white)
-                            } else {
-                                Image(systemName: "message.fill")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(.white)
-                            }
-                        }
-                        .frame(width: 46, height: 46)
-                        .hubGlass(cornerRadius: 18, accent: Color.white.opacity(0.14))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(openingChatWith != nil)
-                }
-            }
-
-            if specialists.isEmpty {
-                EmptyState(systemImage: "person.crop.circle.badge.questionmark",
-                           title: "No specialists",
-                           subtitle: "This category is empty.")
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 42)
-            }
-        }
-    }
-
-    private var tasksContent: some View {
-        Group {
-            ForEach(tasks) { task in
-                NavigationLink {
-                    TaskDetailView(task: task)
-                } label: {
-                    TaskRow(task: task)
-                }
-                .buttonStyle(.plain)
-            }
-
-            if tasks.isEmpty {
-                EmptyState(systemImage: "tray",
-                           title: "No tasks",
-                           subtitle: "This category is empty.")
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 42)
-            }
-        }
-    }
-
-    private var icon: String {
-        switch category.id {
-        case "marketing": return "megaphone.fill"
-        case "smm": return "iphone"
-        case "targeting": return "scope"
-        case "seo": return "magnifyingglass"
-        case "sales": return "dollarsign.circle.fill"
-        case "design": return "paintpalette.fill"
-        case "ui_ux": return "ruler.fill"
-        case "motion": return "sparkles"
-        case "3d": return "cube.transparent.fill"
-        case "web_dev": return "globe"
-        case "mobile_dev": return "apps.iphone"
-        case "bot_dev": return "cpu.fill"
-        case "ai_ml": return "brain.head.profile"
-        case "gamedev": return "gamecontroller.fill"
-        case "ugc": return "video.fill"
-        default: return "square.grid.2x2.fill"
-        }
+        .frame(height: 92)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 19, style: .continuous)
+                .fill(isSelected ? Color.accentColor : Color.white.opacity(0.075))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 19, style: .continuous)
+                .stroke(isSelected ? Color.accentColor.opacity(0.40) : Color.white.opacity(0.12), lineWidth: 1)
+        )
     }
 }
 
@@ -543,114 +707,109 @@ private struct HubCategoryDetailView: View {
 
 private struct SpecialistRow: View {
     let person: HubSpecialist
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         HStack(spacing: 12) {
             AvatarView(urlString: person.avatar, name: person.name, size: 48)
-
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(person.name ?? person.nickname ?? "User")
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    Text(person.name ?? person.nickname ?? "X5")
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
-                        .lineLimit(1)
-
                     if person.isVerified == true {
                         VerifiedChip(size: 12)
                     }
-
                     if person.plan == "pro" {
-                        Text("PRO")
-                            .font(.system(size: 9, weight: .heavy, design: .rounded))
+                        Text("PRO").font(.system(size: 9, weight: .heavy))
                             .foregroundColor(.black)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(HubPalette.cyan)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.accentColor)
                             .clipShape(Capsule())
                     }
                 }
-
-                Text(categoryLabel.isEmpty ? "Specialist" : categoryLabel)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundColor(HubPalette.cyan.opacity(0.86))
-
+                Text(categoryLabel)
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.58))
                 if let bio = person.bio, !bio.isEmpty {
                     Text(bio)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(.white.opacity(0.56))
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.55))
                         .lineLimit(2)
                 }
             }
-
             Spacer()
-
             Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.white.opacity(0.34))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white.opacity(0.3))
         }
         .padding(12)
-        .hubGlass(cornerRadius: 18, accent: Color.white.opacity(0.13))
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.065))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     private var categoryLabel: String {
         let ids = person.specialistCategory ?? []
-        return ids.prefix(2).map { HubCategories.label(for: $0) }.joined(separator: " / ")
+        return ids.prefix(2).map { HubCategories.label(for: $0, language: loc.current) }.joined(separator: " · ")
     }
 }
 
 private struct TaskRow: View {
     let task: HubTask
+    @EnvironmentObject private var loc: LocalizationService
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(task.title)
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
                         .lineLimit(2)
-
-                    Text(HubCategories.label(for: task.category))
-                        .font(.system(size: 11, weight: .heavy, design: .rounded))
-                        .foregroundColor(HubPalette.cyan)
+                    Text(HubCategories.label(for: task.category, language: loc.current))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.58))
                 }
-
                 Spacer()
-
                 if let budget = task.budget, !budget.isEmpty {
                     Text(budget)
-                        .font(.system(size: 13, weight: .heavy, design: .rounded))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundColor(.white)
                 }
             }
-
             if let desc = task.description, !desc.isEmpty {
-                Text(desc)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundColor(.white.opacity(0.56))
-                    .lineLimit(2)
+                Text(desc).font(.system(size: 12)).foregroundColor(.white.opacity(0.55)).lineLimit(2)
             }
-
             HStack(spacing: 8) {
                 AvatarView(urlString: task.authorAvatar, name: task.authorName, size: 22)
                 Text(task.authorName ?? "Anonymous")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white.opacity(0.56))
-
+                    .font(.system(size: 11)).foregroundColor(.white.opacity(0.55))
                 Spacer()
-
                 if let deadline = task.deadline, !deadline.isEmpty {
                     Image(systemName: "clock")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.white.opacity(0.42))
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.4))
                     Text(formatDate(deadline))
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundColor(.white.opacity(0.42))
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.4))
                 }
             }
         }
         .padding(12)
-        .hubGlass(cornerRadius: 18, accent: Color.white.opacity(0.13))
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.065))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     private func formatDate(_ iso: String) -> String {
@@ -663,7 +822,7 @@ private struct TaskRow: View {
     }
 }
 
-// MARK: - Shared helpers
+// MARK: - Helpers
 
 struct AvatarView: View {
     let urlString: String?
@@ -684,15 +843,14 @@ struct AvatarView: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay(Circle().stroke(Color.white.opacity(0.22), lineWidth: 1))
     }
 
     private var placeholder: some View {
         ZStack {
-            LinearGradient(colors: [HubPalette.cyan, .white.opacity(0.78)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            LinearGradient(colors: [.blue, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing)
             Text(initials)
-                .font(.system(size: size * 0.4, weight: .heavy, design: .rounded))
-                .foregroundColor(.black)
+                .font(.system(size: size * 0.4, weight: .bold))
+                .foregroundColor(.white)
         }
     }
 
@@ -713,13 +871,13 @@ struct EmptyState: View {
         VStack(spacing: 10) {
             Image(systemName: systemImage)
                 .font(.system(size: 38, weight: .light))
-                .foregroundColor(.white.opacity(0.44))
+                .foregroundColor(.white.opacity(0.4))
             Text(title)
-                .font(.system(size: 15, weight: .heavy, design: .rounded))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(.white)
             Text(subtitle)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundColor(.white.opacity(0.55))
+                .font(.system(size: 12))
+                .foregroundColor(.white.opacity(0.5))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
         }

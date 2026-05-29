@@ -41,7 +41,11 @@ struct CoursesView: View {
                             ForEach(service.courses) { course in
                                 ZStack(alignment: .topLeading) {
                                     NavigationLink {
-                                        CourseDetailView(course: course, openPaywall: { showingPaywall = true })
+                                        CourseDetailView(
+                                            course: course,
+                                            openPaywall: { showingPaywall = true },
+                                            editCourse: isDev ? { editorTarget = .edit(course) } : nil
+                                        )
                                     } label: {
                                         CourseCard(course: course, showHiddenBadge: isDev && course.isPublic == false)
                                     }
@@ -160,9 +164,7 @@ private struct CourseCard: View {
                             .foregroundColor(.white.opacity(0.7))
                     }
                 } else {
-                    Image(systemName: "play.circle")
-                        .font(.system(size: 60, weight: .ultraLight))
-                        .foregroundColor(.white.opacity(0.85))
+                    X5LogoMark(size: 58)
                 }
             }
             .frame(height: 220)
@@ -317,11 +319,15 @@ private struct CourseRow: View {
 struct CourseDetailView: View {
     let course: Course
     var openPaywall: () -> Void
+    var editCourse: (() -> Void)? = nil
 
     @EnvironmentObject private var sub: Subscription
+    @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var loc: LocalizationService
 
-    var hasFullAccess: Bool { (course.isFree ?? false) || (course.price ?? 0) == 0 || sub.isPro }
+    var hasFullAccess: Bool {
+        Roles.isDeveloper(auth.userEmail) || (course.isFree ?? false) || (course.price ?? 0) == 0 || sub.isPro
+    }
 
     var body: some View {
         ScrollView {
@@ -397,6 +403,15 @@ struct CourseDetailView: View {
         .background(X5Background())
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            if let editCourse {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: editCourse) {
+                        Label("Редактировать", systemImage: "pencil")
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -482,12 +497,13 @@ private struct LessonRow: View {
     private var content: some View {
         HStack(spacing: 12) {
             ZStack {
-                Circle().fill(Color.white.opacity(0.06))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(canPlay ? Color.accentColor.opacity(0.18) : Color.white.opacity(0.06))
                 Image(systemName: !hasVideo ? "doc.text" : (canPlay ? "play.fill" : "lock.fill"))
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundColor(canPlay ? .accentColor : .white.opacity(0.45))
             }
-            .frame(width: 32, height: 32)
+            .frame(width: 42, height: 42)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(lesson.title)
@@ -517,8 +533,8 @@ private struct LessonRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color.white.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Color.white.opacity(0.055))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 

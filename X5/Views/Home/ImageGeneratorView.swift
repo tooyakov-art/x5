@@ -1,105 +1,278 @@
 import SwiftUI
 import UIKit
+import PencilKit
+import PhotosUI
 
 struct ImageGeneratorView: View {
     @EnvironmentObject private var auth: Auth
-    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var currentUser: CurrentUser
+    @EnvironmentObject private var loc: LocalizationService
 
-    @State private var prompt = ""
+    let category: ImageGenerationCategory
+
+    @State private var prompt: String
+    @State private var selectedProvider: ImageGenerationProvider
     @State private var isGenerating = false
     @State private var errorMessage: String?
-    @State private var generatedImage: UIImage?
-    @State private var shareImage: UIImage?
-    @State private var showingShare = false
+    @State private var generatedAsset: GeneratedImageAsset?
+    @State private var generatedAssets: [GeneratedImageAsset] = []
+    @State private var viewerAsset: GeneratedImageAsset?
+    @State private var selectedQuantity = 1
+    @State private var selectedSize: ImageGenerationSize = .square
+    @State private var showingGallery = false
+    @State private var referenceItems: [PhotosPickerItem] = []
+    @State private var referenceImages: [ImageReferenceAsset] = []
+    @State private var isLoadingReferences = false
+    @State private var generationProgress: Double = 0
+    @State private var generationProgressTask: Task<Void, Never>?
+    @State private var showGenerationComplete = false
+    @StateObject private var gallery = GeneratedGalleryStore()
     @FocusState private var promptFocused: Bool
 
+    init(category: ImageGenerationCategory = ImageGenerationCatalog.custom, provider: ImageGenerationProvider = .gptImage2) {
+        self.category = category
+        _prompt = State(initialValue: category.examplePrompt)
+        _selectedProvider = State(initialValue: provider)
+    }
+
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    hero
-                    promptPanel
-                    generateButton
-                    resultPanel
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                hero
+                providerPanel
+                settingsPanel
+                promptPanel
+                referencePanel
+                generateButton
+
+                if isGenerating {
+                    GenerationAnimationView(provider: selectedProvider,
+                                            category: category,
+                                            progress: generationProgress)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 10)
-                .padding(.bottom, 32)
-                .frame(maxWidth: 640)
-                .frame(maxWidth: .infinity)
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .background(generatorBackdrop)
-            .navigationTitle("Create Image")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+
+                if showGenerationComplete {
+                    generationCompleteBanner
+                        .transition(.move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.96)))
                 }
+
+                resultPanel
             }
-            .sheet(isPresented: $showingShare) {
-                if let shareImage {
-                    ImageActivityViewController(image: shareImage)
+            .padding(.horizontal, 18)
+            .padding(.top, 10)
+            .padding(.bottom, 32)
+            .frame(maxWidth: 640)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .background(generatorBackdrop)
+        .navigationTitle(categoryTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    X5Feedback.impact()
+                    showingGallery = true
+                } label: {
+                    Image(systemName: "photo.stack")
                 }
+                .accessibilityLabel(loc.t("gen_gallery"))
             }
+        }
+        .task { await refreshProfileIfPossible() }
+        .sheet(isPresented: $showingGallery) {
+            GeneratedGalleryView()
+        }
+        .onChange(of: referenceItems) { newItems in
+            Task { await loadReferenceImages(newItems) }
+        }
+        .onChange(of: selectedProvider) { provider in
+            if provider.provider == "gpt", selectedSize.isGoogleOnly {
+                selectedSize = .square
+            }
+        }
+        .fullScreenCover(item: $viewerAsset) { asset in
+            GeneratedImageViewer(asset: asset, onImageUpdated: { image in
+                if var updated = generatedAsset {
+                    updated.image = image
+                    generatedAsset = updated
+                }
+                if let index = generatedAssets.firstIndex(where: { $0.id == asset.id }) {
+                    generatedAssets[index].image = image
+                }
+            }, onSaveToGallery: { image in
+                saveAssetToGallery(asset, image: image)
+            }, onRegenerate: { editPrompt, image in
+                let clean = editPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !clean.isEmpty, let reference = makeReference(from: image) else { return }
+                prompt = clean
+                Task { await generate(promptOverride: clean, referencesOverride: [reference]) }
+            })
+            .environmentObject(loc)
         }
     }
 
     private var hero: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: "sparkles")
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                Image(systemName: category.icon)
                     .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(.black)
-                    .frame(width: 44, height: 44)
-                    .background(Color.accentColor)
+                    .foregroundColor(.white)
+                    .frame(width: 46, height: 46)
+                    .background(
+                        LinearGradient(colors: [category.gradientStart, X5Style.blue.opacity(0.28)],
+                                       startPoint: .topLeading,
+                                       endPoint: .bottomTrailing)
+                    )
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 Spacer()
-                Text("AI")
+                Text("\(totalCreditCost) \(loc.t("gen_credits"))")
                     .font(.system(size: 11, weight: .heavy))
-                    .tracking(1.4)
                     .foregroundColor(.black)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Color.accentColor)
+                    .background(Color.white.opacity(0.88))
                     .clipShape(Capsule())
             }
 
-            Text("Generate ad-ready visuals")
-                .font(.system(size: 28, weight: .heavy))
+            Text(categoryTitle)
+                .font(.system(size: 30, weight: .heavy))
                 .foregroundColor(.white)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("Describe a product, offer, scene, or creative idea. X5 returns a square image ready for content and ads.")
-                .font(.system(size: 14))
-                .lineSpacing(3)
-                .foregroundColor(.white.opacity(0.66))
+            Text(categorySubtitle)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white.opacity(0.62))
         }
         .padding(18)
-        .background(.ultraThinMaterial)
-        .background(
-            LinearGradient(colors: [
-                Color.white.opacity(0.12),
-                Color.accentColor.opacity(0.08),
-                Color.white.opacity(0.03)
-            ], startPoint: .topLeading, endPoint: .bottomTrailing)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .x5ClearGlass(cornerRadius: 20, highlight: 0.13)
+    }
+
+    private var providerPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel(loc.t("gen_model"))
+
+            Menu {
+                ForEach(ImageGenerationProvider.allCases) { model in
+                    if model.isComingSoon {
+                        Button {} label: {
+                            Label("\(model.title) · скоро", systemImage: "clock")
+                        }
+                        .disabled(true)
+                    } else {
+                        Button {
+                            X5Feedback.selection()
+                            selectedProvider = model
+                        } label: {
+                            Label(model.title, systemImage: model == selectedProvider ? "checkmark" : "cpu")
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "cpu")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(selectedProvider.title)
+                            .font(.system(size: 15, weight: .heavy))
+                        Text(selectedProvider.subtitle)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.58))
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.52))
+                }
+                .foregroundColor(.white)
+                .padding(12)
+                .background(Color.white.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .disabled(isGenerating)
+
+            HStack {
+                Label("\(totalCreditCost)", systemImage: "creditcard")
+                Spacer()
+                Text(balanceText)
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundColor(.white.opacity(0.58))
+        }
+        .padding(14)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
+    }
+
+    private var settingsPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel(loc.t("gen_settings"))
+
+            Stepper(value: $selectedQuantity, in: 1...4) {
+                HStack(spacing: 10) {
+                    Image(systemName: "number")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(loc.t("gen_quantity"))
+                            .font(.system(size: 15, weight: .heavy))
+                        Text("\(selectedQuantity) x \(ImageGenerationCatalog.creditCost) = \(totalCreditCost) \(loc.t("gen_credits"))")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.58))
+                    }
+                }
+                .foregroundColor(.white)
+            }
+            .disabled(isGenerating)
+
+            Menu {
+                ForEach(ImageGenerationSize.allCases) { size in
+                    if selectedProvider.provider == "gpt", size.isGoogleOnly {
+                        Button {} label: {
+                            Label("\(size.title) · Nano Banana", systemImage: "lock")
+                        }
+                        .disabled(true)
+                    } else {
+                        Button {
+                            X5Feedback.selection()
+                            selectedSize = size
+                        } label: {
+                            Label("\(size.title) · \(size.subtitle)", systemImage: size == selectedSize ? "checkmark" : "rectangle")
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "aspectratio")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(loc.t("gen_size"))
+                            .font(.system(size: 15, weight: .heavy))
+                        Text("\(selectedSize.title) · \(selectedSize.subtitle)")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.58))
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.52))
+                }
+                .foregroundColor(.white)
+                .padding(12)
+                .background(Color.white.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .disabled(isGenerating)
+        }
+        .padding(14)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
     }
 
     private var promptPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("PROMPT")
-                .font(.system(size: 10, weight: .heavy))
-                .tracking(1.2)
-                .foregroundColor(.white.opacity(0.45))
+            sectionLabel(loc.t("gen_prompt"))
 
-            TextField("Premium Instagram ad for a coffee brand, dark studio light, neon lime details", text: $prompt, axis: .vertical)
+            TextField(category.examplePrompt, text: $prompt, axis: .vertical)
                 .focused($promptFocused)
                 .lineLimit(4...7)
                 .font(.system(size: 15))
@@ -113,18 +286,84 @@ struct ImageGeneratorView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             HStack(spacing: 8) {
-                quickPrompt("Product ad")
-                quickPrompt("SMM post")
-                quickPrompt("Luxury banner")
+                quickPrompt(categoryTitle)
+                quickPrompt(loc.t("gen_product_ad"))
+                quickPrompt(loc.t("gen_clean_layout"))
             }
         }
         .padding(14)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.11)
+    }
+
+    private var referencePanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                sectionLabel("Референсы")
+                Spacer()
+                if isLoadingReferences {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(0.8)
+                }
+            }
+
+            PhotosPicker(selection: $referenceItems, maxSelectionCount: 6, matching: .images) {
+                Label(referenceImages.isEmpty ? "Добавить фото" : "Изменить фото", systemImage: "photo.badge.plus")
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(isGenerating || isLoadingReferences)
+
+            if !referenceImages.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(referenceImages) { item in
+                            ZStack(alignment: .topTrailing) {
+                                Image(uiImage: item.image)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 76, height: 76)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                                    )
+
+                                Button {
+                                    referenceImages.removeAll { $0.id == item.id }
+                                    if referenceImages.isEmpty { referenceItems = [] }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 20, weight: .bold))
+                                        .symbolRenderingMode(.palette)
+                                        .foregroundStyle(.white, .black.opacity(0.62))
+                                }
+                                .buttonStyle(.plain)
+                                .offset(x: 7, y: -7)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                    .padding(.trailing, 8)
+                }
+
+                Text("AI будет использовать эти фото как референсы: изменить, добавить, убрать или сгенерировать похожую картинку.")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.54))
+            }
+        }
+        .padding(14)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
     }
 
     private var generateButton: some View {
         Button {
+            X5Feedback.impact(.medium)
             Task { await generate() }
         } label: {
             HStack(spacing: 8) {
@@ -133,13 +372,13 @@ struct ImageGeneratorView: View {
                 } else {
                     Image(systemName: "wand.and.stars")
                 }
-                Text(isGenerating ? "Generating..." : "Generate image")
+                Text(generateButtonTitle)
             }
             .font(.system(size: 16, weight: .heavy))
             .foregroundColor(.black)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
-            .background(canGenerate ? Color.accentColor : Color.gray.opacity(0.35))
+            .background(canGenerate ? Color.white.opacity(0.92) : Color.gray.opacity(0.35))
             .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -148,32 +387,28 @@ struct ImageGeneratorView: View {
 
     @ViewBuilder
     private var resultPanel: some View {
-        if let generatedImage {
+        if let generatedAsset {
             VStack(alignment: .leading, spacing: 12) {
-                Image(uiImage: generatedImage)
-                    .resizable()
-                    .scaledToFill()
-                    .aspectRatio(1, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                    )
-
-                Button {
-                    shareImage = generatedImage
-                    showingShare = true
-                } label: {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(.ultraThinMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                if generatedAssets.count > 1 {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        ForEach(generatedAssets) { asset in
+                            generatedImageButton(asset, compact: true)
+                        }
+                    }
+                } else {
+                    generatedImageButton(generatedAsset, compact: false)
                 }
-                .buttonStyle(.plain)
+
+                HStack {
+                    Label(loc.t("gen_open_viewer"), systemImage: "arrow.up.left.and.arrow.down.right")
+                    Spacer()
+                    Text("\(generatedAssets.count) / \(generatedAsset.sizeLabel)")
+                }
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(.white.opacity(0.82))
             }
+            .padding(12)
+            .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
         } else if let errorMessage {
             Text(errorMessage)
                 .font(.system(size: 13, weight: .semibold))
@@ -187,23 +422,82 @@ struct ImageGeneratorView: View {
 
     private var generatorBackdrop: some View {
         ZStack {
-            Color(red: 0.025, green: 0.03, blue: 0.07).ignoresSafeArea()
-            RadialGradient(colors: [Color.accentColor.opacity(0.22), Color.clear],
+            X5Background()
+            RadialGradient(colors: [category.gradientStart.opacity(0.45), Color.clear],
                            center: .topTrailing, startRadius: 10, endRadius: 280)
                 .ignoresSafeArea()
-            RadialGradient(colors: [Color(red: 0.13, green: 0.33, blue: 0.55).opacity(0.28), Color.clear],
+            RadialGradient(colors: [Color(red: 0.13, green: 0.33, blue: 0.55).opacity(0.24), Color.clear],
                            center: .bottomLeading, startRadius: 20, endRadius: 320)
                 .ignoresSafeArea()
         }
     }
 
+    private var currentCredits: Int? {
+        guard let profile = currentUser.profile else { return nil }
+        return profile.credits ?? 0
+    }
+
+    private var hasEnoughCredits: Bool {
+        guard let currentCredits else { return false }
+        return currentCredits >= totalCreditCost
+    }
+
     private var canGenerate: Bool {
-        !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        hasValidPromptOrReferences &&
+        currentCredits != nil &&
+        hasEnoughCredits
+    }
+
+    private var hasValidPromptOrReferences: Bool {
+        prompt.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 || !referenceImages.isEmpty
+    }
+
+    private var balanceText: String {
+        guard let currentCredits else { return loc.t("gen_loading_balance") }
+        return "\(loc.t("gen_balance")): \(currentCredits)"
+    }
+
+    private var generateButtonTitle: String {
+        if isGenerating { return loc.t("gen_generating") }
+        if currentCredits == nil { return loc.t("gen_loading_balance") }
+        if !hasEnoughCredits { return "\(loc.t("gen_need")) \(totalCreditCost) \(loc.t("gen_credits"))" }
+        if !hasValidPromptOrReferences { return loc.t("gen_prompt_required") }
+        return loc.t("gen_generate")
+    }
+
+    private var totalCreditCost: Int {
+        ImageGenerationCatalog.creditCost * selectedQuantity
+    }
+
+    private func generatedImageButton(_ asset: GeneratedImageAsset, compact: Bool) -> some View {
+        Button {
+            X5Feedback.impact()
+            viewerAsset = asset
+        } label: {
+            Image(uiImage: asset.image)
+                .resizable()
+                .scaledToFill()
+                .aspectRatio(asset.aspectRatio, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: compact ? 14 : 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: compact ? 14 : 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 10, weight: .heavy))
+            .tracking(1.2)
+            .foregroundColor(.white.opacity(0.45))
     }
 
     private func quickPrompt(_ text: String) -> some View {
         Button {
-            prompt = text
+            X5Feedback.selection()
+            prompt = text == categoryTitle ? category.examplePrompt : "\(text) for \(category.title.lowercased()), premium X5 style"
             promptFocused = true
         } label: {
             Text(text)
@@ -211,36 +505,629 @@ struct ImageGeneratorView: View {
                 .foregroundColor(.white.opacity(0.82))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
-                .background(.ultraThinMaterial)
-                .clipShape(Capsule())
+                .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
         }
         .buttonStyle(.plain)
     }
 
-    private func generate() async {
-        let cleanPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanPrompt.isEmpty else { return }
+    private func refreshProfileIfPossible() async {
+        guard let uid = auth.userId, let token = await auth.freshAccessToken() else { return }
+        await currentUser.load(userId: uid, accessToken: token)
+    }
+
+    private func generate(
+        promptOverride: String? = nil,
+        referencesOverride: [ImageGenerationReference]? = nil
+    ) async {
+        let currentReferences = referencesOverride ?? referenceImages.map { $0.reference }
+        let cleanPrompt = effectivePrompt(promptOverride ?? prompt, hasReferences: !currentReferences.isEmpty)
+        guard !cleanPrompt.isEmpty else {
+            errorMessage = loc.t("gen_prompt_required")
+            return
+        }
+        guard !isGenerating else { return }
+
         promptFocused = false
         isGenerating = true
         errorMessage = nil
-        defer { isGenerating = false }
+        generatedAsset = nil
+        generatedAssets = []
+        showGenerationComplete = false
+        startGenerationProgress()
+        defer {
+            generationProgressTask?.cancel()
+            generationProgressTask = nil
+            isGenerating = false
+        }
+
+        await refreshProfileIfPossible()
+
+        guard currentCredits != nil else {
+            errorMessage = loc.t("gen_loading_balance")
+            X5Feedback.warning()
+            return
+        }
+        let creditsBefore = currentCredits ?? 0
+        let requestQuantity = referencesOverride == nil ? selectedQuantity : 1
+        let requestCreditCost = ImageGenerationCatalog.creditCost * requestQuantity
+        guard creditsBefore >= requestCreditCost else {
+            errorMessage = loc.t("gen_not_enough_credits")
+            X5Feedback.warning()
+            return
+        }
 
         do {
-            let response = try await auth.supabase.generateImage(prompt: cleanPrompt)
-            guard let data = Data(base64Encoded: response.imageBase64),
-                  let image = UIImage(data: data)
-            else {
+            let response = try await auth.supabase.generateImage(
+                prompt: cleanPrompt,
+                provider: selectedProvider,
+                category: category,
+                quantity: requestQuantity,
+                size: selectedSize,
+                referenceImages: currentReferences
+            )
+            let encodedImages = response.imageBase64s?.isEmpty == false ? response.imageBase64s! : [response.imageBase64]
+            let images = encodedImages.compactMap { encoded -> UIImage? in
+                guard let data = Data(base64Encoded: encoded) else { return nil }
+                return UIImage(data: data)
+            }
+            guard !images.isEmpty else {
                 throw ImageGeneratorError.invalidImage
             }
-            generatedImage = image
-            DiagnosticLogger.log(event: "image_generated")
+
+            let costPerImage = max(1, (response.costCredits ?? requestCreditCost) / max(1, images.count))
+            let assets = images.map { image in
+                GeneratedImageAsset(
+                    image: image,
+                    prompt: response.prompt,
+                    provider: response.model ?? selectedProvider.rawValue,
+                    category: response.category ?? category.id,
+                    sizeLabel: response.size ?? "\(selectedSize.title) \(selectedSize.subtitle)",
+                    costCredits: costPerImage,
+                    creditsRemaining: response.creditsRemaining
+                )
+            }
+            guard let firstAsset = assets.first else { throw ImageGeneratorError.invalidImage }
+            generatedAsset = firstAsset
+            generatedAssets = assets
+            assets.forEach { asset in
+                _ = saveAssetToGallery(asset, image: asset.image)
+            }
+            generationProgressTask?.cancel()
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
+                generationProgress = 1.0
+                showGenerationComplete = true
+            }
+            X5Feedback.successWithSound()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.9) {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    showGenerationComplete = false
+                }
+            }
+            let remainingCredits = response.creditsRemaining ?? max(creditsBefore - requestCreditCost, 0)
+            currentUser.applyCreditsRemaining(remainingCredits)
+            DiagnosticLogger.log(event: "image_generated", extra: [
+                "provider": selectedProvider.rawValue,
+                "category": category.id,
+                "quantity": "\(assets.count)",
+                "size": selectedSize.rawValue
+            ])
         } catch {
             DiagnosticLogger.log(event: "image_generation_failed", extra: [
-                "summary": error.localizedDescription
+                "summary": error.localizedDescription,
+                "provider": selectedProvider.rawValue,
+                "category": category.id
             ])
+            X5Feedback.error()
             errorMessage = error.localizedDescription
         }
     }
+
+    private var generationCompleteBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 30, weight: .bold))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.black, Color.accentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(localized("gen_ready", fallback: "Готово"))
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundColor(.white)
+                Text(loc.t("gen_saved_gallery"))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.58))
+            }
+            Spacer()
+        }
+        .padding(14)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.15)
+    }
+
+    private func startGenerationProgress() {
+        generationProgressTask?.cancel()
+        generationProgress = 0.02
+        generationProgressTask = Task {
+            let startedAt = Date()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 180_000_000)
+                await MainActor.run {
+                    guard isGenerating else { return }
+                    let elapsed = Date().timeIntervalSince(startedAt)
+                    let curve = 1 - exp(-elapsed / 24)
+                    let target = min(0.985, 0.02 + curve * 0.965)
+                    let next = max(generationProgress + 0.001, target)
+                    withAnimation(.linear(duration: 0.18)) {
+                        generationProgress = min(next, 0.985)
+                    }
+                }
+            }
+        }
+    }
+
+    private func loadReferenceImages(_ items: [PhotosPickerItem]) async {
+        isLoadingReferences = true
+        defer { isLoadingReferences = false }
+
+        var loaded: [ImageReferenceAsset] = []
+        for item in items.prefix(6) {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let uiImage = UIImage(data: data),
+                  let jpegData = uiImage.jpegData(compressionQuality: 0.88)
+            else { continue }
+            loaded.append(
+                ImageReferenceAsset(
+                    image: uiImage,
+                    reference: ImageGenerationReference(
+                        mimeType: "image/jpeg",
+                        base64: jpegData.base64EncodedString()
+                    )
+                )
+            )
+        }
+        referenceImages = loaded
+    }
+
+    private func effectivePrompt(_ rawPrompt: String, hasReferences: Bool) -> String {
+        let clean = rawPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.count >= 3 { return clean }
+        return hasReferences ? "Improve the provided image." : ""
+    }
+
+    private func makeReference(from image: UIImage) -> ImageGenerationReference? {
+        guard let jpegData = image.jpegData(compressionQuality: 0.88) else { return nil }
+        return ImageGenerationReference(
+            mimeType: "image/jpeg",
+            base64: jpegData.base64EncodedString()
+        )
+    }
+
+    private var categoryTitle: String {
+        localized("gen_category_\(category.id)_title", fallback: category.title)
+    }
+
+    private var categorySubtitle: String {
+        localized("gen_category_\(category.id)_subtitle", fallback: category.subtitle)
+    }
+
+    private func localized(_ key: String, fallback: String) -> String {
+        let value = loc.t(key)
+        return value == key ? fallback : value
+    }
+
+    @discardableResult
+    private func saveAssetToGallery(_ asset: GeneratedImageAsset, image: UIImage) -> Bool {
+        gallery.save(
+            image: image,
+            prompt: asset.prompt,
+            provider: asset.provider,
+            category: asset.category,
+            costCredits: asset.costCredits
+        ) != nil
+    }
+}
+
+private struct GeneratedImageAsset: Identifiable {
+    let id = UUID()
+    var image: UIImage
+    let prompt: String
+    let provider: String
+    let category: String
+    let sizeLabel: String
+    let costCredits: Int
+    let creditsRemaining: Int?
+
+    var aspectRatio: CGFloat {
+        guard image.size.height > 0 else { return 1 }
+        return image.size.width / image.size.height
+    }
+}
+
+private struct ImageReferenceAsset: Identifiable {
+    let id = UUID()
+    let image: UIImage
+    let reference: ImageGenerationReference
+}
+
+private struct GenerationAnimationView: View {
+    @EnvironmentObject private var loc: LocalizationService
+
+    let provider: ImageGenerationProvider
+    let category: ImageGenerationCategory
+    let progress: Double
+
+    @State private var rotating = false
+    @State private var pulsing = false
+    @State private var scanning = false
+
+    var body: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.10), lineWidth: 8)
+                Circle()
+                    .trim(from: 0.08, to: 0.72)
+                    .stroke(
+                        LinearGradient(colors: [Color.white, X5Style.blue],
+                                       startPoint: .leading,
+                                       endPoint: .trailing),
+                        style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(rotating ? 360 : 0))
+                Image(systemName: category.icon)
+                    .font(.system(size: pulsing ? 24 : 20, weight: .bold))
+                    .foregroundColor(.white)
+                    .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulsing)
+            }
+            .frame(width: 74, height: 74)
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text("\(provider.title) \(loc.t("gen_is_generating"))")
+                        .font(.system(size: 15, weight: .heavy))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Text(progressText)
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundColor(Color.accentColor)
+                }
+                Text("\(loc.t("gen_building")) \(localizedCategoryTitle.lowercased())")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.58))
+                ProgressView(value: progress)
+                    .tint(Color.accentColor)
+                    .scaleEffect(x: 1, y: 1.3, anchor: .center)
+                    .padding(.top, 3)
+                generationPulseBars
+                    .padding(.top, 4)
+            }
+            Spacer()
+        }
+        .padding(16)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.12)
+        .onAppear {
+            rotating = true
+            pulsing = true
+            scanning = true
+        }
+        .animation(.linear(duration: 1.25).repeatForever(autoreverses: false), value: rotating)
+    }
+
+    private var generationPulseBars: some View {
+        HStack(alignment: .bottom, spacing: 4) {
+            ForEach(0..<7, id: \.self) { index in
+                Capsule()
+                    .fill(
+                        LinearGradient(colors: [Color.white.opacity(0.92), X5Style.blue.opacity(0.85)],
+                                       startPoint: .top,
+                                       endPoint: .bottom)
+                    )
+                    .frame(width: 8, height: scanning ? CGFloat(8 + (index % 4) * 5) : 6)
+                    .opacity(scanning ? 0.95 : 0.35)
+                    .animation(
+                        .easeInOut(duration: 0.55)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(index) * 0.07),
+                        value: scanning
+                    )
+            }
+        }
+        .frame(height: 28, alignment: .bottom)
+    }
+
+    private var progressText: String {
+        if progress >= 0.96 {
+            let text = loc.t("gen_finishing")
+            return text == "gen_finishing" ? "Почти готово" : text
+        }
+        return "\(Int(progress * 100))%"
+    }
+
+    private var localizedCategoryTitle: String {
+        let key = "gen_category_\(category.id)_title"
+        let value = loc.t(key)
+        return value == key ? category.title : value
+    }
+}
+
+private struct GeneratedImageViewer: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var loc: LocalizationService
+
+    let asset: GeneratedImageAsset
+    let onImageUpdated: (UIImage) -> Void
+    let onSaveToGallery: (UIImage) -> Bool
+    let onRegenerate: (String, UIImage) -> Void
+
+    @State private var image: UIImage
+    @State private var showingShare = false
+    @State private var showingEditor = false
+    @State private var regeneratePrompt = ""
+    @State private var saveMessage: String?
+
+    init(
+        asset: GeneratedImageAsset,
+        onImageUpdated: @escaping (UIImage) -> Void,
+        onSaveToGallery: @escaping (UIImage) -> Bool,
+        onRegenerate: @escaping (String, UIImage) -> Void
+    ) {
+        self.asset = asset
+        self.onImageUpdated = onImageUpdated
+        self.onSaveToGallery = onSaveToGallery
+        self.onRegenerate = onRegenerate
+        _image = State(initialValue: asset.image)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                VStack(spacing: 18) {
+                    Spacer(minLength: 0)
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .padding(.horizontal, 14)
+                    metaBar
+                    regenerateBar
+                    Spacer(minLength: 0)
+                }
+
+                if let saveMessage {
+                    Text(saveMessage)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.9))
+                        .clipShape(Capsule())
+                        .transition(.opacity)
+                        .padding(.bottom, 30)
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                }
+            }
+            .navigationTitle(loc.t("gen_result"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(loc.t("btn_done")) {
+                        X5Feedback.selection()
+                        dismiss()
+                    }
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button { saveToPhotos() } label: {
+                        Image(systemName: "arrow.down.circle")
+                    }
+                    .accessibilityLabel(loc.t("common_save"))
+                    Button { saveToGallery() } label: {
+                        Image(systemName: "photo.stack")
+                    }
+                    .accessibilityLabel(loc.t("gen_gallery"))
+                    Button {
+                        X5Feedback.impact()
+                        showingShare = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .accessibilityLabel(loc.t("gen_action_share"))
+                    Button {
+                        X5Feedback.impact()
+                        showingEditor = true
+                    } label: {
+                        Image(systemName: "pencil")
+                    }
+                    .accessibilityLabel(loc.t("gen_action_edit"))
+                    Button {
+                        X5Feedback.impact()
+                        showingEditor = true
+                    } label: {
+                        Image(systemName: "paintbrush")
+                    }
+                    .accessibilityLabel(loc.t("gen_action_draw"))
+                }
+            }
+            .sheet(isPresented: $showingShare) {
+                ImageActivityViewController(image: image)
+            }
+            .fullScreenCover(isPresented: $showingEditor) {
+                ImageMarkupEditorView(source: image) { edited in
+                    image = edited
+                    onImageUpdated(edited)
+                }
+                .environmentObject(loc)
+            }
+        }
+    }
+
+    private var metaBar: some View {
+        HStack(spacing: 10) {
+            Label(asset.provider.uppercased(), systemImage: "cpu")
+            Label(asset.sizeLabel, systemImage: "aspectratio")
+            Label("\(asset.costCredits)", systemImage: "creditcard")
+            if let credits = asset.creditsRemaining {
+                Label("\(credits)", systemImage: "banknote")
+            }
+        }
+        .font(.system(size: 12, weight: .bold))
+        .foregroundColor(.white.opacity(0.62))
+        .padding(.horizontal, 14)
+    }
+
+    private var regenerateBar: some View {
+        VStack(spacing: 10) {
+            TextField("Что изменить? Например: улучши текст на коробке", text: $regeneratePrompt, axis: .vertical)
+                .lineLimit(2...4)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(12)
+                .background(Color.white.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            HStack(spacing: 10) {
+                Button {
+                    showingEditor = true
+                } label: {
+                    Label("Отметить", systemImage: "pencil.tip.crop.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    let clean = regeneratePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !clean.isEmpty else { return }
+                    onRegenerate(clean, image)
+                    dismiss()
+                } label: {
+                    Label("Перегенерировать", systemImage: "wand.and.stars")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(regeneratePrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .controlSize(.regular)
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 14)
+    }
+
+    private func saveToPhotos() {
+        X5Feedback.success()
+        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+        withAnimation { saveMessage = loc.t("gen_saved_photos") }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            withAnimation { saveMessage = nil }
+        }
+    }
+
+    private func saveToGallery() {
+        let saved = onSaveToGallery(image)
+        saved ? X5Feedback.success() : X5Feedback.error()
+        withAnimation { saveMessage = saved ? loc.t("gen_saved_gallery") : loc.t("gen_save_failed") }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            withAnimation { saveMessage = nil }
+        }
+    }
+}
+
+private final class DrawingCanvasState: ObservableObject {
+    let canvasView = PKCanvasView()
+}
+
+struct ImageMarkupEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var loc: LocalizationService
+
+    let source: UIImage
+    let onDone: (UIImage) -> Void
+
+    @StateObject private var canvas = DrawingCanvasState()
+
+    var body: some View {
+        NavigationStack {
+            GeometryReader { proxy in
+                let side = max(180, min(proxy.size.width - 24, proxy.size.height - 48))
+                ZStack {
+                    Color.black.ignoresSafeArea()
+
+                    ZStack {
+                        Image(uiImage: source)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: side, height: side)
+
+                        PencilCanvasRepresentable(canvasView: canvas.canvasView)
+                            .frame(width: side, height: side)
+                    }
+                    .frame(width: side, height: side)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .navigationTitle(loc.t("gen_draw"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(loc.t("btn_cancel")) { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(loc.t("btn_done")) {
+                        onDone(renderEditedImage())
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    private func renderEditedImage() -> UIImage {
+        let bounds = canvas.canvasView.bounds
+        guard bounds.width > 1, bounds.height > 1 else { return source }
+
+        let renderer = UIGraphicsImageRenderer(size: bounds.size)
+        return renderer.image { context in
+            UIColor.black.setFill()
+            context.cgContext.fill(bounds)
+
+            source.draw(in: aspectFitRect(imageSize: source.size, bounds: bounds))
+            let drawing = canvas.canvasView.drawing.image(from: bounds, scale: UIScreen.main.scale)
+            drawing.draw(in: bounds)
+        }
+    }
+
+    private func aspectFitRect(imageSize: CGSize, bounds: CGRect) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0 else { return bounds }
+        let scale = min(bounds.width / imageSize.width, bounds.height / imageSize.height)
+        let size = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        return CGRect(
+            x: bounds.midX - size.width / 2,
+            y: bounds.midY - size.height / 2,
+            width: size.width,
+            height: size.height
+        )
+    }
+}
+
+private struct PencilCanvasRepresentable: UIViewRepresentable {
+    let canvasView: PKCanvasView
+
+    func makeUIView(context: Context) -> PKCanvasView {
+        canvasView.backgroundColor = .clear
+        canvasView.isOpaque = false
+        canvasView.drawingPolicy = .anyInput
+        canvasView.tool = PKInkingTool(.pen, color: .white, width: 6)
+        return canvasView
+    }
+
+    func updateUIView(_ uiView: PKCanvasView, context: Context) {}
 }
 
 private struct ImageActivityViewController: UIViewControllerRepresentable {

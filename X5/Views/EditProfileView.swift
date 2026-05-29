@@ -183,7 +183,8 @@ struct EditProfileView: View {
             "bio": AnyEncodable(nilIfEmpty(bio)),
             "social_links": AnyEncodable(socials),
             "specialist_category": AnyEncodable(Array(pickedCategories)),
-            "show_in_hub": AnyEncodable(showInHub)
+            "show_in_hub": AnyEncodable(showInHub),
+            "is_public": AnyEncodable(showInHub ? true : (currentUser.profile?.isPublic ?? true))
         ]
         // Auto-set role to specialist when toggling Show in Hub on for the first time
         if showInHub && (currentUser.profile?.userRole ?? "").isEmpty {

@@ -1,44 +1,24 @@
--- Harden account deletion for App Store Guideline 5.1.1(v).
--- Handles optional tables/columns and uuid/text owner id variants.
-
-create or replace function public.x5_delete_eq_if_exists(
-  p_table_name text,
-  p_column_name text,
-  p_owner_id uuid
-)
-returns void
-language plpgsql
+create or replace function public.is_x5_developer()
+returns boolean
+language sql
+stable
 security definer
-set search_path = public
-as $$
-declare
-  col_type text;
-begin
-  select c.udt_name
-    into col_type
-  from information_schema.columns c
-  where c.table_schema = 'public'
-    and c.table_name = p_table_name
-    and c.column_name = p_column_name;
+set search_path = ''
+as $function$
+  select (auth.jwt() ->> 'email') in (
+    'tuakov.ursa@gmail.com',
+    'tuakov.ursa@icloud.com',
+    'tooyakov.icloud@gmail.com',
+    'tooyakov@icloud.com',
+    'tooyakov.art@gmail.com',
+    'h-a-n-1@mail.ru',
+    'adilkhanskii@gmail.com'
+  );
+$function$;
 
-  if col_type is null then
-    return;
-  end if;
-
-  if col_type = 'uuid' then
-    execute format('delete from public.%I where %I = $1', p_table_name, p_column_name)
-      using p_owner_id;
-  else
-    execute format('delete from public.%I where %I = $1', p_table_name, p_column_name)
-      using p_owner_id::text;
-  end if;
-exception
-  when undefined_table or undefined_column or undefined_function
-    or datatype_mismatch or invalid_text_representation
-    or foreign_key_violation then
-      return;
-end;
-$$;
+drop policy if exists "Anyone can create courses" on public.courses;
+drop policy if exists "Anyone can update courses" on public.courses;
+drop policy if exists "Anyone can delete courses" on public.courses;
 
 create or replace function public.delete_own_account()
 returns void

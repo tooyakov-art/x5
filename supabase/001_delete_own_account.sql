@@ -76,6 +76,7 @@ begin
   perform public.x5_delete_eq_if_exists('course_submissions', 'authorId', uid);
   perform public.x5_delete_eq_if_exists('courses', 'author_id', uid);
   perform public.x5_delete_eq_if_exists('courses', 'user_id', uid);
+  perform public.x5_delete_eq_if_exists('generation_history', 'user_id', uid);
 
   begin
     delete from public.followers

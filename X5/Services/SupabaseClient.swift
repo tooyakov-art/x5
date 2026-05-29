@@ -17,6 +17,16 @@ struct SupabaseSession: Decodable {
     }
 }
 
+private struct OwnedStorageObject: Decodable {
+    let bucketId: String
+    let name: String
+
+    enum CodingKeys: String, CodingKey {
+        case bucketId = "bucket_id"
+        case name
+    }
+}
+
 final class SupabaseClient {
     private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
     private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
@@ -144,8 +154,71 @@ final class SupabaseClient {
         }
     }
 
-    func generateImage(prompt: String) async throws -> GeneratedImage {
-        let body = try JSONSerialization.data(withJSONObject: ["prompt": prompt])
+    func deleteOwnedStorageObjects() async throws {
+        let data = try await runAuthed { token in
+            let url = self.baseURL.appendingPathComponent("rest/v1/rpc/x5_owned_storage_objects")
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(self.anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.httpBody = "{}".data(using: .utf8)
+            return request
+        }
+
+        let objects = try JSONDecoder().decode([OwnedStorageObject].self, from: data)
+        let grouped = Dictionary(grouping: objects, by: { $0.bucketId })
+
+        for (bucket, rows) in grouped {
+            let names = rows.map(\.name)
+            for start in stride(from: 0, to: names.count, by: 1000) {
+                let chunk = Array(names[start..<min(start + 1000, names.count)])
+                try await removeStorageObjects(bucket: bucket, names: chunk)
+            }
+        }
+    }
+
+    private func removeStorageObjects(bucket: String, names: [String]) async throws {
+        guard !names.isEmpty else { return }
+        let body = try JSONSerialization.data(withJSONObject: ["prefixes": names])
+
+        try await runAuthed { token in
+            let url = self.baseURL.appendingPathComponent("storage/v1/object/\(bucket)")
+            var request = URLRequest(url: url)
+            request.httpMethod = "DELETE"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(self.anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.httpBody = body
+            return request
+        }
+    }
+
+    func generateImage(
+        prompt: String,
+        provider: ImageGenerationProvider,
+        category: ImageGenerationCategory,
+        quantity: Int = 1,
+        size: ImageGenerationSize = .square,
+        referenceImages: [ImageGenerationReference] = []
+    ) async throws -> GeneratedImage {
+        var payload: [String: Any] = [
+            "prompt": prompt,
+            "provider": provider.provider,
+            "model": provider.rawValue,
+            "category": category.id,
+            "quantity": quantity,
+            "size": size.rawValue
+        ]
+        if !referenceImages.isEmpty {
+            payload["images"] = referenceImages.map { image in
+                [
+                    "mimeType": image.mimeType,
+                    "data": image.base64
+                ]
+            }
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload)
         let data = try await runAuthed { token in
             let url = self.baseURL.appendingPathComponent("functions/v1/generate-image")
             var request = URLRequest(url: url)
@@ -192,9 +265,22 @@ final class SupabaseClient {
     }
 }
 
+struct ImageGenerationReference {
+    let mimeType: String
+    let base64: String
+}
+
 struct GeneratedImage: Decodable {
     let imageBase64: String
+    let imageBase64s: [String]?
     let prompt: String
+    let provider: String?
+    let model: String?
+    let category: String?
+    let size: String?
+    let quantity: Int?
+    let costCredits: Int?
+    let creditsRemaining: Int?
 }
 
 enum SupabaseError: LocalizedError {
@@ -209,7 +295,35 @@ enum SupabaseError: LocalizedError {
         case .invalidResponse:
             return "Invalid response from server."
         case .serverError(let status, let body):
-            return "Server error \(status): \(body)"
+            if let message = Self.serverMessage(from: body) {
+                return message
+            }
+            return "Server error \(status)."
+        }
+    }
+
+    private static func serverMessage(from body: String) -> String? {
+        guard let data = body.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+
+        if let message = payload["message"] as? String, !message.isEmpty {
+            return message
+        }
+
+        switch payload["error"] as? String {
+        case "prompt_required":
+            return "Write a prompt or add a photo."
+        case "provider_not_configured":
+            return "Image provider is not configured."
+        case "insufficient_credits":
+            return "Not enough credits."
+        case "credit_service_unavailable":
+            return "Credit service is unavailable."
+        case "provider_error":
+            return "Image provider error."
+        default:
+            return nil
         }
     }
 }

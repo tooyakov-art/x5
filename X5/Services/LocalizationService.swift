@@ -146,7 +146,7 @@ extension LocalizationService {
             "tab_profile": "Профиль",
 
             // Login
-            "login_title": "Welcome to X5",
+            "login_title": "Welcome to Xfive",
             "login_subtitle": "Маркетинг студия для креаторов.\nСоздавай, учись и нанимай — в одном приложении.",
             "login_signin": "Войти в X5",
             "login_signup": "Создать аккаунт",
@@ -465,7 +465,7 @@ extension LocalizationService {
             "tab_hub": "Hub",
             "tab_profile": "Profile",
 
-            "login_title": "Welcome to X5",
+            "login_title": "Welcome to Xfive",
             "login_subtitle": "Marketing studio for creators.\nGenerate, learn, and hire — in one app.",
             "login_signin": "Sign in to X5",
             "login_signup": "Create your account",
@@ -778,7 +778,7 @@ extension LocalizationService {
             "tab_hub": "Hub",
             "tab_profile": "Профиль",
 
-            "login_title": "X5-ке қош келдің",
+            "login_title": "Xfive-қа қош келдің",
             "login_subtitle": "Креаторларға арналған маркетинг студиясы.\nГенерациялау, оқу, жалдау — бір қосымшада.",
             "login_signin": "X5-ке кіру",
             "login_signup": "Аккаунт құру",

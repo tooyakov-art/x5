@@ -11,6 +11,7 @@ enum Roles {
         "tooyakov@icloud.com",
         "tuakov.ursa@icloud.com",
         "adilkhanskii@gmail.com",
+        "h-a-n-1@mail.ru",
     ]
 
     static func isDeveloper(_ email: String?) -> Bool {

@@ -1,44 +1,23 @@
--- Harden account deletion for App Store Guideline 5.1.1(v).
--- Handles optional tables/columns and uuid/text owner id variants.
-
-create or replace function public.x5_delete_eq_if_exists(
-  p_table_name text,
-  p_column_name text,
-  p_owner_id uuid
-)
-returns void
-language plpgsql
+create or replace function public.x5_owned_storage_objects()
+returns table(bucket_id text, name text)
+language sql
+stable
 security definer
-set search_path = public
+set search_path = ''
 as $$
-declare
-  col_type text;
-begin
-  select c.udt_name
-    into col_type
-  from information_schema.columns c
-  where c.table_schema = 'public'
-    and c.table_name = p_table_name
-    and c.column_name = p_column_name;
-
-  if col_type is null then
-    return;
-  end if;
-
-  if col_type = 'uuid' then
-    execute format('delete from public.%I where %I = $1', p_table_name, p_column_name)
-      using p_owner_id;
-  else
-    execute format('delete from public.%I where %I = $1', p_table_name, p_column_name)
-      using p_owner_id::text;
-  end if;
-exception
-  when undefined_table or undefined_column or undefined_function
-    or datatype_mismatch or invalid_text_representation
-    or foreign_key_violation then
-      return;
-end;
+  select o.bucket_id, o.name
+  from storage.objects o
+  where auth.uid() is not null
+    and o.bucket_id in ('avatars', 'portfolio', 'chat-media', 'course-covers', 'videos')
+    and (
+      o.owner = auth.uid()
+      or o.owner_id = auth.uid()::text
+      or o.name like auth.uid()::text || '/%'
+    )
+  order by o.bucket_id, o.name;
 $$;
+
+grant execute on function public.x5_owned_storage_objects() to authenticated;
 
 create or replace function public.delete_own_account()
 returns void

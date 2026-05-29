@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 import PhotosUI
 
 struct ProfileView: View {
@@ -17,65 +17,85 @@ struct ProfileView: View {
     @State private var showingEdit = false
     @State private var avatarPickerItem: PhotosPickerItem?
     @State private var uploadingAvatar = false
-    @State private var uploadError: String?
+    @State private var avatarError: String?
+    @State private var isRefreshing = false
+    @State private var showInHubToggle = false
+    @State private var savingShowInHub = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 0) {
-                    header
-                    VStack(spacing: 22) {
-                    statsRow
-                    if currentUser.profile?.isPro == true {
-                        proHero
-                    } else {
-                        upgradeCard
+                VStack(spacing: 18) {
+                    hero
+
+                    VStack(spacing: 16) {
+                        if currentUser.profile?.isPro == true {
+                            proHero
+                        } else {
+                            upgradeCard
+                        }
+                        if let bio = currentUser.profile?.bio, !bio.isEmpty {
+                            BioCard(text: bio)
+                        }
+                        if currentUser.profile?.showInHub != true {
+                            becomeSpecialistCard
+                        }
+                        if let uid = currentUser.profile?.id {
+                            PortfolioGrid(userId: uid, canEdit: true)
+                        }
+                        socialLinks
+                        if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
+                            specialistCard(cats: cats)
+                        }
+                        if !(currentUser.profile?.hasActiveVerifiedBadge ?? false) {
+                            verifiedCard
+                        }
                     }
-                    if let bio = currentUser.profile?.bio, !bio.isEmpty {
-                        BioCard(text: bio)
-                    }
-                    // CTA: become a specialist if not yet on Hub
-                    if currentUser.profile?.showInHub != true {
-                        becomeSpecialistCard
-                    }
-                    // Portfolio goes BEFORE verified card so the "+ Добавить" button is reachable
-                    if let uid = currentUser.profile?.id {
-                        PortfolioGrid(userId: uid, canEdit: true)
-                    }
-                    socialLinks
-                    if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
-                        specialistCard(cats: cats)
-                    }
-                    // Verified upsell at the bottom — non-blocking
-                    if !(currentUser.profile?.hasActiveVerifiedBadge ?? false) {
-                        verifiedCard
-                    }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 18)
+                    .frame(maxWidth: profileContentWidth)
+                    .frame(maxWidth: .infinity)
                 }
                 .padding(.bottom, 32)
-                .frame(maxWidth: 640)
-                .frame(maxWidth: .infinity)
             }
-            .background(ProfileAmbientBackground().ignoresSafeArea())
+            .coordinateSpace(name: "profileScroll")
+            .scrollIndicators(.hidden)
+            .refreshable { await refreshProfile() }
+            .background { X5Background() }
+            .ignoresSafeArea(edges: .top)
+            .overlay(alignment: .top) {
+                if isRefreshing {
+                    ProgressView()
+                        .tint(.white)
+                        .padding(.top, 58)
+                }
+            }
             .navigationTitle(loc.t("profile_title"))
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if showsDoneButton {
+                        Button(loc.t("btn_done")) {
+                            X5Feedback.selection()
+                            dismiss()
+                        }
+                    } else {
+                        PhotosPicker(selection: $avatarPickerItem, matching: .images) {
+                            Image(systemName: uploadingAvatar ? "hourglass" : "camera.fill")
+                                .font(.system(size: 20, weight: .semibold))
+                        }
+                        .disabled(uploadingAvatar)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        X5Feedback.impact()
                         showingSettings = true
                     } label: {
                         Image(systemName: "gearshape")
-                            .foregroundColor(.white.opacity(0.7))
+                            .font(.system(size: 20, weight: .semibold))
                     }
                     .accessibilityLabel("Settings")
-                }
-                if showsDoneButton {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button(loc.t("btn_done")) { dismiss() }
-                    }
                 }
             }
             .sheet(isPresented: $showingSettings) { SettingsView() }
@@ -83,142 +103,277 @@ struct ProfileView: View {
             .sheet(isPresented: $showingVerified) { VerifiedBadgeView() }
             .sheet(isPresented: $showingEdit) { EditProfileView() }
             .alert("Фото не сохранилось", isPresented: Binding(
-                get: { uploadError != nil },
-                set: { if !$0 { uploadError = nil } }
+                get: { avatarError != nil },
+                set: { if !$0 { avatarError = nil } }
             )) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text(uploadError ?? "")
+                Text(avatarError ?? "")
+            }
+            .onChange(of: avatarPickerItem) { newItem in
+                guard let item = newItem else { return }
+                X5Feedback.selection()
+                Task { await uploadAvatar(item) }
+            }
+            .onChange(of: currentUser.profile?.showInHub) { value in
+                if !savingShowInHub {
+                    showInHubToggle = value ?? false
+                }
             }
             .task { await iap.loadProducts() }
+            .onAppear { showInHubToggle = currentUser.profile?.showInHub ?? false }
         }
     }
 
-    // MARK: - Header
+    // MARK: - Hero
 
-    private var header: some View {
-        ZStack(alignment: .bottom) {
-            ProfilePortrait(urlString: currentUser.profile?.avatar,
-                            name: profileDisplayName)
+    private var hero: some View {
+        GeometryReader { proxy in
+            let pull = max(proxy.frame(in: .named("profileScroll")).minY, 0)
+            let height = heroHeight + pull
 
-            LinearGradient(colors: [
-                .clear,
-                Color.black.opacity(0.18),
-                Color.black.opacity(0.82)
-            ], startPoint: .center, endPoint: .bottom)
+            ZStack(alignment: .bottom) {
+                ProfileCoverPhoto(urlString: currentUser.profile?.avatar,
+                                  name: displayName)
+                    .frame(width: proxy.size.width, height: height)
+                    .clipped()
 
-            VStack(spacing: 12) {
-                VStack(spacing: 4) {
-                    HStack(spacing: 7) {
-                        Text(profileDisplayName)
-                            .font(.system(size: 30, weight: .heavy, design: .rounded))
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.10),
+                        Color.clear,
+                        Color.black.opacity(0.12),
+                        Color.black.opacity(0.70)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: proxy.size.width, height: height)
+                .allowsHitTesting(false)
+
+                ProfileCoverPhoto(urlString: currentUser.profile?.avatar,
+                                  name: displayName)
+                    .frame(width: proxy.size.width, height: height)
+                    .clipped()
+                    .blur(radius: 22)
+                    .scaleEffect(1.04)
+                    .overlay(Color.black.opacity(0.10))
+                    .mask(
+                        VStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            LinearGradient(
+                                colors: [.clear, .black.opacity(0.72), .black],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .frame(height: 300)
+                        }
+                    )
+                    .allowsHitTesting(false)
+
+                ProfileHeroBottomFade()
+                    .frame(width: proxy.size.width, height: 300)
+                    .position(x: proxy.size.width / 2, y: height - 150)
+
+                VStack(spacing: 14) {
+                    HStack(spacing: 6) {
+                        Text(displayName)
+                            .font(.system(size: 42, weight: .black))
                             .foregroundColor(.white)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.78)
+                            .minimumScaleFactor(0.72)
+                            .shadow(color: Color.black.opacity(0.5), radius: 10, x: 0, y: 4)
                         if currentUser.profile?.hasActiveVerifiedBadge == true {
-                            VerifiedChip(size: 19)
+                            VerifiedChip(size: 18)
                         }
                     }
-                    if let nick = currentUser.profile?.nickname, !nick.isEmpty {
-                        Text("@\(nick)")
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    if !handleText.isEmpty {
+                        Text(handleText)
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(.white.opacity(0.66))
                     }
-                }
 
-                Button {
-                    showingEdit = true
-                } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: "pencil")
-                        Text("Edit profile")
+                    hubVisibilityToggle
+
+                    Button {
+                        X5Feedback.impact()
+                        showingEdit = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "pencil")
+                            Text(loc.t("profile_edit"))
+                        }
+                        .font(.system(size: 16, weight: .bold))
+                        .frame(maxWidth: .infinity)
                     }
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .x5Glass(cornerRadius: 24)
-                }
-                .buttonStyle(.plain)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .tint(.white)
+                    .foregroundStyle(.black)
 
-                HStack(spacing: 8) {
-                    HeroPill(text: planLabel, highlighted: currentUser.profile?.isPro == true)
-                    if let n = currentUser.profile?.signupNumber {
-                        HeroPill(text: "#\(n)", highlighted: false)
+                    HStack(spacing: 6) {
+                        Text(planLabel)
+                            .font(.system(size: 10, weight: .heavy))
+                            .tracking(0.8)
+                            .foregroundColor(currentUser.profile?.isPro == true ? .black : .white)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(currentUser.profile?.isPro == true ? Color.accentColor : Color.white.opacity(0.1))
+                            .clipShape(Capsule())
+                        if let n = currentUser.profile?.signupNumber {
+                            Text("#\(n)")
+                                .font(.system(size: 10, weight: .heavy))
+                                .tracking(0.8)
+                                .foregroundColor(.white.opacity(0.6))
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(Color.white.opacity(0.06))
+                                .clipShape(Capsule())
+                        }
                     }
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 22)
 
-            if uploadingAvatar {
-                Color.black.opacity(0.42)
-                ProgressView().tint(.white)
-            }
-
-            VStack {
-                HStack {
-                    PhotosPicker(selection: $avatarPickerItem, matching: .images) {
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 46, height: 46)
-                    .x5Glass(cornerRadius: 23)
-                    }
-                    .disabled(uploadingAvatar)
-                    Spacer()
+                    heroStatsRow
                 }
-                Spacer()
+                .padding(.horizontal, 24)
+                .padding(.bottom, 28)
+                .frame(maxWidth: profileContentWidth)
+                .frame(maxWidth: .infinity)
             }
-            .padding(16)
+            .frame(width: proxy.size.width, height: height)
+            .offset(y: -pull)
         }
-        .frame(height: min(UIScreen.main.bounds.height * 0.80, 700))
         .frame(maxWidth: .infinity)
-        .ignoresSafeArea(edges: .top)
-        .onChange(of: avatarPickerItem) { newItem in
-            guard let item = newItem else { return }
-            Task { await uploadAvatar(item) }
-        }
+        .frame(height: heroHeight)
     }
 
     private func uploadAvatar(_ item: PhotosPickerItem) async {
         guard let token = await auth.freshAccessToken() else {
-            uploadError = "Сначала войди в аккаунт."
+            avatarError = "Сессия устарела. Войди заново и попробуй еще раз."
+            avatarPickerItem = nil
             return
         }
         uploadingAvatar = true
         defer { uploadingAvatar = false }
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let image = UIImage(data: data),
-              let jpeg = resizedJPEG(image, maxSide: 1800, quality: 0.82) else {
-            uploadError = "Не удалось прочитать выбранное фото."
-            avatarPickerItem = nil
-            return
-        }
-        let url = await currentUser.uploadAvatar(jpeg, userId: auth.userId, accessToken: token)
-        if url == nil {
-            uploadError = currentUser.error ?? "Сервер не принял фото. Попробуй другое изображение."
+        if let data = try? await item.loadTransferable(type: Data.self),
+           let image = UIImage(data: data),
+           let jpeg = image.jpegData(compressionQuality: 0.85) {
+            let url = await currentUser.uploadAvatar(jpeg, accessToken: token)
+            if url == nil {
+                X5Feedback.error()
+                avatarError = "Сервер не принял фото. Проверь доступ к аккаунту и попробуй еще раз."
+            } else {
+                X5Feedback.success()
+            }
+        } else {
+            X5Feedback.error()
+            avatarError = "Не удалось прочитать фото."
         }
         avatarPickerItem = nil
     }
 
-    private func resizedJPEG(_ image: UIImage, maxSide: CGFloat, quality: CGFloat) -> Data? {
-        let size = image.size
-        let scale = min(maxSide / max(size.width, size.height), 1)
-        let target = CGSize(width: size.width * scale, height: size.height * scale)
-        let renderer = UIGraphicsImageRenderer(size: target)
-        let resized = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: target)) }
-        return resized.jpegData(compressionQuality: quality)
-    }
-
     // MARK: - Stats
 
-    private var statsRow: some View {
+    private var heroStatsRow: some View {
         HStack(spacing: 8) {
-            StatBubble(value: "\(currentUser.profile?.credits ?? 0)", label: "Credits")
-            StatBubble(value: "0", label: "Followers")
-            StatBubble(value: "0", label: "Following")
+            StatBubble(value: "\(currentUser.profile?.credits ?? 0)", label: loc.t("profile_credits"))
+            StatBubble(value: "0", label: loc.t("profile_followers"))
+            StatBubble(value: "0", label: loc.t("profile_following"))
         }
+    }
+
+    private var hubVisibilityToggle: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(loc.t("edit_show_in_hub"))
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundColor(.white)
+                Text(loc.t("edit_public_profile"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.56))
+            }
+            Spacer()
+            if savingShowInHub {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(0.8)
+            }
+            Toggle("", isOn: Binding(
+                get: { showInHubToggle },
+                set: { value in
+                    guard value != showInHubToggle else { return }
+                    showInHubToggle = value
+                    X5Feedback.selection()
+                    Task { await updateHubVisibility(value) }
+                }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .tint(Color.accentColor)
+            .disabled(savingShowInHub)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.12)
+    }
+
+    private var heroHeight: CGFloat {
+        max(UIScreen.main.bounds.height * 0.78, 640)
+    }
+
+    private var profileContentWidth: CGFloat {
+        min(UIScreen.main.bounds.width - 32, 390)
+    }
+
+    private func refreshProfile() async {
+        isRefreshing = true
+        guard let uid = auth.userId, let token = await auth.freshAccessToken() else {
+            isRefreshing = false
+            return
+        }
+        await currentUser.load(userId: uid, accessToken: token)
+        showInHubToggle = currentUser.profile?.showInHub ?? false
+        subscription.sync(from: currentUser.profile)
+        await iap.loadProducts()
+        try? await Task.sleep(nanoseconds: 450_000_000)
+        isRefreshing = false
+    }
+
+    private func updateHubVisibility(_ value: Bool) async {
+        guard let token = await auth.freshAccessToken() else {
+            X5Feedback.error()
+            showInHubToggle = currentUser.profile?.showInHub ?? false
+            return
+        }
+        savingShowInHub = true
+        defer { savingShowInHub = false }
+
+        var fields: [String: AnyEncodable] = [
+            "show_in_hub": AnyEncodable(value),
+            "is_public": AnyEncodable(value ? true : (currentUser.profile?.isPublic ?? true))
+        ]
+        if value && (currentUser.profile?.userRole ?? "").isEmpty {
+            fields["user_role"] = AnyEncodable("specialist")
+        }
+        await currentUser.patchMany(fields, accessToken: token)
+        showInHubToggle = currentUser.profile?.showInHub ?? value
+        X5Feedback.success()
+    }
+
+    private var displayName: String {
+        let raw = currentUser.profile?.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let raw, !raw.isEmpty, raw != "User", raw != "X5" { return raw }
+        if let emailName = emailPrefix { return emailName }
+        return "X5"
+    }
+
+    private var handleText: String {
+        if let nick = currentUser.profile?.nickname, !nick.isEmpty { return "@\(nick)" }
+        if let emailName = emailPrefix { return "@\(emailName.lowercased())" }
+        return ""
+    }
+
+    private var emailPrefix: String? {
+        guard let email = auth.userEmail, let prefix = email.split(separator: "@").first else { return nil }
+        let cleaned = String(prefix).replacingOccurrences(of: ".", with: " ")
+        return cleaned.isEmpty ? nil : cleaned.capitalized
     }
 
     // MARK: - Pro hero / upgrade card
@@ -227,11 +382,11 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Image(systemName: "sparkles").foregroundColor(.accentColor)
-                Text("X5 Pro · active")
+                Text(loc.t("profile_pro_active"))
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.white)
                 Spacer()
-                Button("Manage") {
+                Button(loc.t("profile_manage")) {
                     if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
                         UIApplication.shared.open(url)
                     }
@@ -240,13 +395,13 @@ struct ProfileView: View {
                 .foregroundColor(.accentColor)
             }
             if let end = currentUser.profile?.subscriptionEndDate {
-                Text("Renews \(formatDate(end))")
+                Text("\(loc.t("profile_renews")) \(formatDate(end))")
                     .font(.system(size: 12))
                     .foregroundColor(.white.opacity(0.55))
             }
         }
         .padding(14)
-        .profilePanel(cornerRadius: 18, accent: Color.accentColor.opacity(0.32))
+        .x5ClearGlass(cornerRadius: 16, highlight: 0.12)
     }
 
     private var upgradeCard: some View {
@@ -261,14 +416,14 @@ struct ProfileView: View {
                     .background(Color.accentColor)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Upgrade to Pro").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
+                    Text(loc.t("profile_upgrade")).font(.system(size: 15, weight: .bold)).foregroundColor(.white)
                     Text(upgradeSubtitle).font(.system(size: 12)).foregroundColor(.white.opacity(0.55))
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundColor(.white.opacity(0.4))
             }
             .padding(14)
-            .profilePanel(cornerRadius: 18, accent: Color.accentColor.opacity(0.30))
+            .x5ClearGlass(cornerRadius: 16, highlight: 0.12)
         }
         .buttonStyle(.plain)
     }
@@ -287,10 +442,10 @@ struct ProfileView: View {
                     .background(Color.accentColor)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Стать специалистом")
+                    Text(loc.t("profile_become_specialist_title"))
                         .font(.system(size: 15, weight: .bold))
                         .foregroundColor(.white)
-                    Text("Включи публичный профиль — клиенты найдут тебя в Hub и напишут в чат")
+                    Text(loc.t("profile_become_specialist_sub"))
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.55))
                 }
@@ -300,7 +455,7 @@ struct ProfileView: View {
                     .foregroundColor(.white.opacity(0.4))
             }
             .padding(14)
-            .profilePanel(cornerRadius: 18, accent: Color.accentColor.opacity(0.30))
+            .x5ClearGlass(cornerRadius: 16, highlight: 0.12)
         }
         .buttonStyle(.plain)
     }
@@ -320,15 +475,15 @@ struct ProfileView: View {
                                                startPoint: .topLeading, endPoint: .bottomTrailing))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Получить галочку").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
-                    Text("Синяя ☑ рядом с именем — больше доверия и приоритет в Hub")
+                    Text(loc.t("profile_get_verified")).font(.system(size: 15, weight: .bold)).foregroundColor(.white)
+                    Text(loc.t("profile_verified_sub"))
                         .font(.system(size: 12)).foregroundColor(.white.opacity(0.55))
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundColor(.white.opacity(0.4))
             }
             .padding(14)
-            .profilePanel(cornerRadius: 18, accent: Color.cyan.opacity(0.24))
+            .x5ClearGlass(cornerRadius: 16, highlight: 0.12)
         }
         .buttonStyle(.plain)
     }
@@ -339,19 +494,19 @@ struct ProfileView: View {
     private var socialLinks: some View {
         if let links = currentUser.profile?.socialLinks {
             VStack(alignment: .leading, spacing: 10) {
-                Text("SOCIAL")
+                Text(loc.t("profile_social").uppercased())
                     .font(.system(size: 11, weight: .bold))
                     .tracking(1.4)
                     .foregroundColor(.white.opacity(0.45))
                 HStack(spacing: 8) {
                     if let v = links.telegram, !v.isEmpty {
-                        SocialChip(label: "Telegram", value: v, systemImage: "paperplane.fill") { open(telegram: v) }
+                        SocialChip(label: "Telegram", value: v, brand: .telegram) { open(telegram: v) }
                     }
                     if let v = links.whatsapp, !v.isEmpty {
-                        SocialChip(label: "WhatsApp", value: v, systemImage: "phone.fill") { open(whatsapp: v) }
+                        SocialChip(label: "WhatsApp", value: v, brand: .whatsapp) { open(whatsapp: v) }
                     }
                     if let v = links.instagram, !v.isEmpty {
-                        SocialChip(label: "Instagram", value: v, systemImage: "camera.fill") { open(instagram: v) }
+                        SocialChip(label: "Instagram", value: v, brand: .instagram) { open(instagram: v) }
                     }
                 }
             }
@@ -361,12 +516,12 @@ struct ProfileView: View {
     private func specialistCard(cats: [String]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("SPECIALIST")
+                Text(loc.t("profile_specialist").uppercased())
                     .font(.system(size: 11, weight: .bold))
                     .tracking(1.4)
                     .foregroundColor(.white.opacity(0.45))
                 Spacer()
-                Text(currentUser.profile?.showInHub == true ? "On Hub" : "Hidden")
+                Text(currentUser.profile?.showInHub == true ? loc.t("profile_on_hub") : loc.t("profile_hidden"))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(currentUser.profile?.showInHub == true ? .accentColor : .white.opacity(0.5))
             }
@@ -382,7 +537,7 @@ struct ProfileView: View {
             }
         }
         .padding(14)
-        .profilePanel(cornerRadius: 18)
+        .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
     }
 
     // MARK: - Helpers
@@ -391,26 +546,12 @@ struct ProfileView: View {
         currentUser.profile?.planLabel.uppercased() ?? "FREE"
     }
 
-    private var profileDisplayName: String {
-        if let name = currentUser.profile?.name, !name.isEmpty { return name }
-        if let nickname = currentUser.profile?.nickname, !nickname.isEmpty { return nickname }
-        if let email = currentUser.profile?.email, !email.isEmpty { return login(from: email) }
-        if let email = auth.userEmail, !email.isEmpty { return login(from: email) }
-        return "X5"
-    }
-
-    private func login(from email: String) -> String {
-        let raw = email.split(separator: "@").first.map(String.init) ?? ""
-        let allowed = raw.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "." }
-        return allowed.isEmpty ? "x5_user" : allowed
-    }
-
     /// Real subscription price from StoreKit / ASC. Loaded once on appear.
     private var upgradeSubtitle: String {
         if let p = iap.product {
-            return "\(p.displayPrice) / month — 1000 credits + all tools"
+            return "\(p.displayPrice) / \(loc.t("profile_month")) - \(loc.t("profile_upgrade_sub"))"
         }
-        return "1000 credits + all tools"
+        return loc.t("profile_upgrade_sub")
     }
 
     private func formatDate(_ iso: String) -> String {
@@ -443,154 +584,6 @@ struct ProfileView: View {
 
 // MARK: - Components
 
-struct ProfileAmbientBackground: View {
-    var body: some View {
-        ZStack {
-            Color.black
-            RadialGradient(
-                colors: [
-                    Color(red: 0.05, green: 0.50, blue: 0.78).opacity(0.34),
-                    Color.clear
-                ],
-                center: .init(x: 0.50, y: -0.08),
-                startRadius: 20,
-                endRadius: 430
-            )
-            RadialGradient(
-                colors: [
-                    Color(red: 0.52, green: 0.72, blue: 0.95).opacity(0.12),
-                    Color.clear
-                ],
-                center: .init(x: 0.12, y: 0.16),
-                startRadius: 10,
-                endRadius: 340
-            )
-            LinearGradient(
-                colors: [.clear, Color.black.opacity(0.88)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-    }
-}
-
-struct ProfilePortrait: View {
-    let urlString: String?
-    let name: String?
-
-    var body: some View {
-        ZStack {
-            backgroundPortrait
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .scaleEffect(1.02)
-                .blur(radius: 18)
-                .opacity(0.54)
-
-            foregroundPortrait
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .saturation(1.05)
-                .contrast(1.04)
-        }
-        .clipped()
-    }
-
-    @ViewBuilder
-    private var backgroundPortrait: some View {
-        if let raw = urlString, !raw.isEmpty, let url = URL(string: raw) {
-            CachedAsyncImage(url: url) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-            } placeholder: {
-                placeholder
-            }
-        } else {
-            placeholder
-        }
-    }
-
-    @ViewBuilder
-    private var foregroundPortrait: some View {
-        if let raw = urlString, !raw.isEmpty, let url = URL(string: raw) {
-            CachedAsyncImage(url: url) { image in
-                image
-                    .resizable()
-                    .scaledToFit()
-            } placeholder: {
-                placeholder
-            }
-        } else {
-            placeholder
-        }
-    }
-
-    private var placeholder: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.02, green: 0.09, blue: 0.15),
-                    Color(red: 0.05, green: 0.40, blue: 0.62),
-                    Color(red: 0.86, green: 0.90, blue: 0.94).opacity(0.74)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            Text(profileInitials(name))
-                .font(.system(size: 74, weight: .black, design: .rounded))
-                .foregroundColor(.white.opacity(0.92))
-        }
-    }
-}
-
-struct HeroPill: View {
-    let text: String
-    let highlighted: Bool
-
-    var body: some View {
-        Text(text)
-            .font(.system(size: 11, weight: .heavy, design: .rounded))
-            .tracking(0.6)
-            .foregroundColor(highlighted ? .black : .white.opacity(0.82))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(highlighted ? Color.white : Color.white.opacity(0.12))
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(Color.white.opacity(0.16), lineWidth: 1))
-    }
-}
-
-struct ProfilePanelModifier: ViewModifier {
-    let cornerRadius: CGFloat
-    let accent: Color
-
-    func body(content: Content) -> some View {
-        content
-            .background {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay(Color.white.opacity(0.035))
-            }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(accent, lineWidth: 1)
-            }
-    }
-}
-
-extension View {
-    func profilePanel(cornerRadius: CGFloat, accent: Color = Color.white.opacity(0.10)) -> some View {
-        modifier(ProfilePanelModifier(cornerRadius: cornerRadius, accent: accent))
-    }
-}
-
-private func profileInitials(_ name: String?) -> String {
-    let parts = (name ?? "?").split(separator: " ")
-    let first = parts.first?.first.map(String.init) ?? "?"
-    let last = parts.dropFirst().first?.first.map(String.init) ?? ""
-    return (first + last).uppercased()
-}
-
 private struct StatBubble: View {
     let value: String
     let label: String
@@ -601,7 +594,7 @@ private struct StatBubble: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-        .profilePanel(cornerRadius: 18)
+        .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
     }
 }
 
@@ -613,28 +606,92 @@ private struct BioCard: View {
             .foregroundColor(.white.opacity(0.75))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .profilePanel(cornerRadius: 18)
+            .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
     }
 }
 
 private struct SocialChip: View {
     let label: String
     let value: String
-    let systemImage: String
+    let brand: SocialBrand
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: systemImage).font(.system(size: 12, weight: .semibold))
+                SocialBrandIcon(brand, size: 16)
                 Text(label).font(.system(size: 12, weight: .semibold))
             }
             .foregroundColor(.white)
             .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(.ultraThinMaterial)
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
+            .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Profile cover helpers
+
+private struct ProfileCoverPhoto: View {
+    let urlString: String?
+    let name: String?
+
+    var body: some View {
+        Group {
+            if let s = urlString, !s.isEmpty, let url = URL(string: s) {
+                CachedAsyncImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    placeholder
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var placeholder: some View {
+        ZStack {
+            LinearGradient(colors: [
+                Color(red: 0.20, green: 0.45, blue: 0.85),
+                Color(red: 0.05, green: 0.12, blue: 0.40)
+            ], startPoint: .topLeading, endPoint: .bottomTrailing)
+            Text(initials)
+                .font(.system(size: 80, weight: .heavy))
+                .foregroundColor(.white.opacity(0.85))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var initials: String {
+        let parts = (name ?? "?").split(separator: " ")
+        let first = parts.first?.first.map(String.init) ?? "?"
+        let last = parts.dropFirst().first?.first.map(String.init) ?? ""
+        return (first + last).uppercased()
+    }
+}
+
+private struct ProfileStatCell: View {
+    let value: String
+    let label: String
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 22, weight: .heavy))
+                .foregroundColor(.white)
+            Text(label)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.white.opacity(0.6))
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct ProfileStatDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.12))
+            .frame(width: 1, height: 28)
     }
 }

@@ -55,10 +55,20 @@ struct UserProfile: Codable, Equatable, Identifiable {
     }
 
     var displayName: String {
-        if let n = name, !n.isEmpty { return n }
-        if let n = nickname, !n.isEmpty { return n }
-        if let e = email, !e.isEmpty { return e }
+        if let n = Self.cleanDisplayName(name) { return n }
+        if let n = Self.cleanDisplayName(nickname) { return n }
+        if let e = email, let prefix = e.split(separator: "@").first, !prefix.isEmpty {
+            let emailName = String(prefix).replacingOccurrences(of: ".", with: " ").capitalized
+            if let n = Self.cleanDisplayName(emailName) { return n }
+        }
         return "X5"
+    }
+
+    private static func cleanDisplayName(_ raw: String?) -> String? {
+        let value = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = value.lowercased()
+        guard !value.isEmpty, lower != "user", lower != "x5" else { return nil }
+        return value
     }
 
     var planLabel: String {
@@ -150,6 +160,12 @@ final class CurrentUser: ObservableObject {
         }
     }
 
+    func applyCreditsRemaining(_ credits: Int) {
+        guard var profile else { return }
+        profile.credits = credits
+        self.profile = profile
+    }
+
     deinit {
         if let observer { NotificationCenter.default.removeObserver(observer) }
     }
@@ -179,18 +195,17 @@ final class CurrentUser: ObservableObject {
             let rows = try JSONDecoder().decode([UserProfile].self, from: data)
             if let row = rows.first {
                 self.profile = row
-                await fillLoginIfNeeded(email: email, accessToken: accessToken)
             } else {
                 // Profile row missing — create one (covers users registered before the
                 // auth.users -> profiles Postgres trigger existed).
-                await ensureProfile(userId: userId, email: email, accessToken: accessToken)
+                await ensureProfile(userId: userId, accessToken: accessToken, email: email)
             }
         } catch {
             self.error = error.localizedDescription
         }
     }
 
-    private func ensureProfile(userId: String, email: String? = nil, accessToken: String) async {
+    private func ensureProfile(userId: String, accessToken: String, email: String?) async {
         var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/profiles"))
         request.httpMethod = "POST"
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -204,10 +219,7 @@ final class CurrentUser: ObservableObject {
             "is_public": true
         ]
         if let email, !email.isEmpty {
-            let login = Self.login(from: email)
             body["email"] = email
-            body["name"] = login
-            body["nickname"] = login
         }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
@@ -219,41 +231,11 @@ final class CurrentUser: ObservableObject {
         }
     }
 
-    private func fillLoginIfNeeded(email: String?, accessToken: String) async {
-        guard let email, !email.isEmpty, let profile else { return }
-        var fields: [String: AnyEncodable] = [:]
-        if profile.email?.isEmpty ?? true {
-            fields["email"] = AnyEncodable(email)
-        }
-        let login = Self.login(from: email)
-        if profile.name?.isEmpty ?? true {
-            fields["name"] = AnyEncodable(login)
-        }
-        if profile.nickname?.isEmpty ?? true {
-            fields["nickname"] = AnyEncodable(login)
-        }
-        guard !fields.isEmpty else { return }
-        await patchMany(fields, profileId: profile.id, accessToken: accessToken)
-    }
-
-    private static func login(from email: String) -> String {
-        let raw = email.split(separator: "@").first.map(String.init) ?? ""
-        let allowed = raw.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "." }
-        return allowed.isEmpty ? "x5_user" : allowed
-    }
-
     /// Uploads an avatar JPEG to Supabase Storage and patches profiles.avatar to the public URL.
     /// Returns the new URL on success.
     @discardableResult
-    func uploadAvatar(_ jpegData: Data, userId fallbackUserId: String?, accessToken: String) async -> String? {
-        let resolvedUserId = profile?.id ?? fallbackUserId
-        guard let userId = resolvedUserId, !userId.isEmpty else {
-            self.error = "Profile is not loaded yet"
-            return nil
-        }
-        if profile == nil {
-            await ensureProfile(userId: userId, accessToken: accessToken)
-        }
+    func uploadAvatar(_ jpegData: Data, accessToken: String) async -> String? {
+        guard let userId = profile?.id else { return nil }
         let path = "\(userId)/\(Int(Date().timeIntervalSince1970)).jpg"
         let uploadURL = baseURL.appendingPathComponent("storage/v1/object/avatars/\(path)")
 
@@ -266,44 +248,24 @@ final class CurrentUser: ObservableObject {
         request.setValue("true", forHTTPHeaderField: "x-upsert")
         request.httpBody = jpegData
 
-        guard let (uploadData, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse else {
-            self.error = "Upload failed: no server response"
-            return nil
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            let body = String(data: uploadData, encoding: .utf8) ?? ""
-            self.error = "Upload failed (\(http.statusCode)): \(body)"
-            return nil
-        }
+        guard let (_, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode)
+        else { return nil }
 
         let publicURL = baseURL.appendingPathComponent("storage/v1/object/public/avatars/\(path)").absoluteString
-        guard await patchMany(["avatar": AnyEncodable(publicURL)], profileId: userId, accessToken: accessToken) else {
-            if self.error == nil {
-                self.error = "Avatar uploaded, but profile update failed"
-            }
-            return nil
-        }
-        if var updated = self.profile {
-            updated.avatar = publicURL
-            self.profile = updated
-        }
+        await patch("avatar", value: publicURL, accessToken: accessToken)
         return publicURL
     }
 
     /// Patches a single field on the profile row.
-    @discardableResult
-    func patch<T: Encodable>(_ field: String, value: T, accessToken: String) async -> Bool {
+    func patch<T: Encodable>(_ field: String, value: T, accessToken: String) async {
         await patchMany([field: AnyEncodable(value)], accessToken: accessToken)
     }
 
     /// Patches several fields atomically.
-    @discardableResult
-    func patchMany(_ fields: [String: AnyEncodable], profileId: String? = nil, accessToken: String) async -> Bool {
-        guard let id = profileId ?? profile?.id else {
-            self.error = "Profile is not loaded yet"
-            return false
-        }
+    func patchMany(_ fields: [String: AnyEncodable], accessToken: String) async {
+        guard let id = profile?.id else { return }
         do {
             var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
             components.queryItems = [URLQueryItem(name: "id", value: "eq.\(id)")]
@@ -316,29 +278,13 @@ final class CurrentUser: ObservableObject {
             request.httpBody = try JSONEncoder().encode(fields)
 
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse else {
-                self.error = "Profile update failed: no server response"
-                return false
+            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+                if let rows = try? JSONDecoder().decode([UserProfile].self, from: data), let row = rows.first {
+                    self.profile = row
+                }
             }
-            guard (200..<300).contains(http.statusCode) else {
-                let body = String(data: data, encoding: .utf8) ?? ""
-                self.error = "Profile update failed (\(http.statusCode)): \(body)"
-                return false
-            }
-            guard !data.isEmpty else {
-                self.error = "Profile update returned empty response"
-                return false
-            }
-            guard let rows = try? JSONDecoder().decode([UserProfile].self, from: data), let row = rows.first else {
-                let body = String(data: data, encoding: .utf8) ?? ""
-                self.error = "Profile update returned no profile row: \(body)"
-                return false
-            }
-            self.profile = row
-            return true
         } catch {
             self.error = error.localizedDescription
-            return false
         }
     }
 }

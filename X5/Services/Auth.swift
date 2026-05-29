@@ -112,6 +112,7 @@ final class Auth: ObservableObject {
     }
 
     func deleteAccount() async throws {
+        try await supabase.deleteOwnedStorageObjects()
         try await supabase.deleteOwnAccount()
         await signOut()
     }
