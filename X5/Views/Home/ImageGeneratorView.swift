@@ -942,11 +942,19 @@ struct ImageGeneratorView: View {
                 await MainActor.run {
                     guard isGenerating else { return }
                     let elapsed = Date().timeIntervalSince(startedAt)
-                    let curve = 1 - exp(-elapsed / 24)
-                    let target = min(0.985, 0.02 + curve * 0.965)
-                    let next = max(generationProgress + 0.001, target)
+                    let target: Double
+                    if elapsed < 15 {
+                        target = 0.02 + (elapsed / 15) * 0.43
+                    } else if elapsed < 60 {
+                        target = 0.45 + ((elapsed - 15) / 45) * 0.23
+                    } else if elapsed < 180 {
+                        target = 0.68 + ((elapsed - 60) / 120) * 0.20
+                    } else {
+                        target = min(0.965, 0.88 + ((elapsed - 180) / 180) * 0.085)
+                    }
+                    let next = max(generationProgress + 0.0008, target)
                     withAnimation(.linear(duration: 0.18)) {
-                        generationProgress = min(next, 0.985)
+                        generationProgress = min(next, 0.965)
                     }
                 }
             }

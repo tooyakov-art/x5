@@ -109,6 +109,17 @@ struct HomeView: View {
                 action: .image(ImageGenerationCatalog.custom)
             ),
             HomeMediaItem(
+                id: "square_1_1",
+                title: localized("home_media_square_title", fallback: "Генерация 1:1"),
+                subtitle: localized("home_media_square_subtitle", fallback: "Квадратный креатив для рекламы"),
+                kicker: "1:1",
+                systemImage: "square.fill",
+                videoURL: nil,
+                gradientStart: Color.accentColor.opacity(0.36),
+                gradientEnd: .black,
+                action: categories["square_1_1"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
+            ),
+            HomeMediaItem(
                 id: "logo",
                 title: localized("home_media_logo_title", fallback: "Генерация лого"),
                 subtitle: localized("home_media_logo_subtitle", fallback: "Логотип для бренда"),
@@ -129,6 +140,28 @@ struct HomeView: View {
                 gradientStart: X5Style.backgroundCyan.opacity(0.42),
                 gradientEnd: .black,
                 action: categories["story"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
+            ),
+            HomeMediaItem(
+                id: "target_ad",
+                title: localized("home_media_target_title", fallback: "Реклама для таргета"),
+                subtitle: localized("home_media_target_subtitle", fallback: "Креатив для Instagram и TikTok"),
+                kicker: "ADS",
+                systemImage: "scope",
+                videoURL: nil,
+                gradientStart: Color.accentColor.opacity(0.34),
+                gradientEnd: .black,
+                action: categories["target_ad"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
+            ),
+            HomeMediaItem(
+                id: "youtube_cover",
+                title: localized("home_media_youtube_title", fallback: "Обложка YouTube"),
+                subtitle: localized("home_media_youtube_subtitle", fallback: "Кликабельная превью-картинка"),
+                kicker: "YOUTUBE",
+                systemImage: "play.rectangle.fill",
+                videoURL: nil,
+                gradientStart: X5Style.blue.opacity(0.36),
+                gradientEnd: .black,
+                action: categories["youtube_cover"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
             ),
             HomeMediaItem(
                 id: "post",
@@ -184,6 +217,39 @@ struct HomeView: View {
                 gradientStart: X5Style.blue.opacity(0.38),
                 gradientEnd: .black,
                 action: .video
+            ),
+            HomeMediaItem(
+                id: "video_trends",
+                title: localized("home_media_video_trends_title", fallback: "Тренды видео"),
+                subtitle: localized("home_media_video_trends_subtitle", fallback: "Короткие ролики под Reels и TikTok"),
+                kicker: "VIDEO",
+                systemImage: "chart.line.uptrend.xyaxis",
+                videoURL: HomeMediaVideos.video,
+                gradientStart: X5Style.blue.opacity(0.34),
+                gradientEnd: .black,
+                action: .video
+            ),
+            HomeMediaItem(
+                id: "fruit_video",
+                title: localized("home_media_fruit_video_title", fallback: "Фрукты видео"),
+                subtitle: localized("home_media_fruit_video_subtitle", fallback: "Свежий продуктовый ролик за минуту"),
+                kicker: "FOOD",
+                systemImage: "leaf.fill",
+                videoURL: nil,
+                gradientStart: Color.accentColor.opacity(0.32),
+                gradientEnd: .black,
+                action: .video
+            ),
+            HomeMediaItem(
+                id: "ai_influencer",
+                title: localized("home_media_ai_influencer_title", fallback: "AI-инфлюенсер"),
+                subtitle: localized("home_media_ai_influencer_subtitle", fallback: "Выбери фон и создай персонажа"),
+                kicker: "AI",
+                systemImage: "person.crop.circle",
+                videoURL: nil,
+                gradientStart: X5Style.backgroundBlue.opacity(0.42),
+                gradientEnd: .black,
+                action: .tool("ai_influencer")
             ),
             HomeMediaItem(
                 id: "startup_chat",

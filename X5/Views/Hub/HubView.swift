@@ -23,6 +23,19 @@ struct HubView: View {
     @State private var startingChat: ChatRoom? = nil
     @State private var chatError: String? = nil
     @State private var selectedCountry: HubCountry = .kazakhstan
+    @State private var taskCategoriesExpanded = false
+
+    private var currentRole: String {
+        (currentUser.profile?.userRole ?? "").lowercased()
+    }
+
+    private var canAddPortfolioFromHub: Bool {
+        currentRole == "entrepreneur" || currentRole == "creator"
+    }
+
+    private var visibleTaskCategories: [HubCategory] {
+        taskCategoriesExpanded ? HubCategories.all : Array(HubCategories.all.prefix(7))
+    }
 
     var body: some View {
         NavigationStack {
@@ -40,7 +53,9 @@ struct HubView: View {
                 .padding(.bottom, 4)
 
                 if segment == .specialists {
-                    addPortfolioButton
+                    if canAddPortfolioFromHub {
+                        addPortfolioButton
+                    }
                     countrySelector(messageKey: "hub_country_specialists")
                 } else if segment == .tasks {
                     createTaskButton
@@ -157,7 +172,7 @@ struct HubView: View {
         Button {
             showingAddPortfolio = true
         } label: {
-            Label(loc.t("hub_add_portfolio"), systemImage: "person.crop.circle")
+            Label(loc.t("hub_add_portfolio"), systemImage: "photo.badge.plus")
                 .font(.system(size: 16, weight: .black))
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)
@@ -215,7 +230,10 @@ struct HubView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 9) {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.18)) { category = nil }
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        category = nil
+                        taskCategoriesExpanded.toggle()
+                    }
                 } label: {
                     CategoryChip(title: loc.t("hub_all"),
                                  systemImage: "line.3.horizontal.decrease.circle",
@@ -224,7 +242,7 @@ struct HubView: View {
                 }
                 .buttonStyle(.plain)
 
-                ForEach(HubCategories.all) { cat in
+                ForEach(visibleTaskCategories) { cat in
                     Button {
                         withAnimation(.easeInOut(duration: 0.18)) { category = cat.id }
                     } label: {
@@ -232,6 +250,18 @@ struct HubView: View {
                                      systemImage: hubCategorySymbol(for: cat.id),
                                      count: countForCategory(cat.id),
                                      isSelected: category == cat.id)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if !taskCategoriesExpanded {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) { taskCategoriesExpanded = true }
+                    } label: {
+                        CategoryChip(title: loc.t("common_more"),
+                                     systemImage: "ellipsis.circle",
+                                     count: nil,
+                                     isSelected: false)
                     }
                     .buttonStyle(.plain)
                 }
@@ -279,7 +309,6 @@ struct HubView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 32)
-            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .clipped()
@@ -366,7 +395,6 @@ struct HubView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 32)
-            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .clipped()
@@ -460,7 +488,6 @@ struct HubView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 32)
-            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .clipped()
@@ -488,7 +515,6 @@ struct HubView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 32)
-            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .clipped()
@@ -581,7 +607,7 @@ private func normalizedHubCategory(_ value: String?) -> String {
 private struct CategoryChip: View {
     let title: String
     let systemImage: String
-    let count: Int
+    let count: Int?
     let isSelected: Bool
 
     var body: some View {
@@ -593,7 +619,7 @@ private struct CategoryChip: View {
                 .font(.system(size: 14, weight: .heavy))
                 .lineLimit(1)
                 .foregroundColor(isSelected ? .black : .white.opacity(0.76))
-            if count > 0 {
+            if let count, count > 0 {
                 Text("\(count)")
                     .font(.system(size: 12, weight: .black))
                     .padding(.leading, 1)
