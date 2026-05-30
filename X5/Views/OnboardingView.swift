@@ -6,6 +6,7 @@ struct OnboardingView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var loc: LocalizationService
+    private let maxPickedCategories = 8
 
     @State private var role: Role?
     @State private var name: String = ""
@@ -18,6 +19,7 @@ struct OnboardingView: View {
     enum Role: String, CaseIterable, Identifiable {
         case specialist
         case entrepreneur
+        case creator
 
         var id: String { rawValue }
     }
@@ -34,12 +36,12 @@ struct OnboardingView: View {
                 identitySection
                 roleSection
 
-                if role == .specialist {
+                if role == .specialist || role == .creator {
                     categoriesSection
                     bioSection
                 }
 
-                if role == .entrepreneur {
+                if role == .entrepreneur || role == .creator {
                     entrepreneurSection
                 }
 
@@ -101,6 +103,7 @@ struct OnboardingView: View {
             Picker(loc.t("onb_role_section"), selection: $role) {
                 Text(loc.t("onb_role_specialist")).tag(Role?.some(.specialist))
                 Text(loc.t("onb_role_entrepreneur")).tag(Role?.some(.entrepreneur))
+                Text(loc.t("onb_role_creator")).tag(Role?.some(.creator))
             }
             .pickerStyle(.segmented)
         } footer: {
@@ -113,14 +116,14 @@ struct OnboardingView: View {
             ForEach(HubCategories.all) { cat in
                 let selected = pickedCategories.contains(cat.id)
                 Toggle(isOn: categoryBinding(for: cat.id)) {
-                    Label(cat.labelEn, systemImage: HubCategories.symbol(for: cat.id))
+                    Label(HubCategories.label(for: cat.id, language: loc.current), systemImage: HubCategories.symbol(for: cat.id))
                 }
-                .disabled(!selected && pickedCategories.count >= 3)
+                .disabled(!selected && pickedCategories.count >= maxPickedCategories)
             }
         } header: {
             Text(loc.t("onb_pick_categories"))
         } footer: {
-            Text("\(pickedCategories.count)/3")
+            Text("\(pickedCategories.count)/\(maxPickedCategories)")
         }
     }
 
@@ -178,6 +181,8 @@ struct OnboardingView: View {
             return loc.t("onb_role_specialist_sub")
         case .entrepreneur:
             return loc.t("onb_role_entrepreneur_sub")
+        case .creator:
+            return loc.t("onb_role_creator_sub")
         case nil:
             return loc.t("onb_role_required")
         }
@@ -186,7 +191,7 @@ struct OnboardingView: View {
     private var canSubmit: Bool {
         guard let role else { return false }
         guard hasRealName, isValidNickname else { return false }
-        if role == .specialist { return !pickedCategories.isEmpty }
+        if role == .specialist || role == .creator { return !pickedCategories.isEmpty }
         return true
     }
 
@@ -217,7 +222,7 @@ struct OnboardingView: View {
             pickedCategories.contains(id)
         } set: { isSelected in
             if isSelected {
-                if pickedCategories.count < 3 {
+                if pickedCategories.count < maxPickedCategories {
                     pickedCategories.insert(id)
                 }
             } else {
@@ -272,7 +277,7 @@ struct OnboardingView: View {
             throw NSError(domain: "Onboarding", code: -1, userInfo: [NSLocalizedDescriptionKey: loc.t("onb_save_failed")])
         }
 
-        let categories = role == .specialist ? Array(pickedCategories) : []
+        let categories = role == .specialist || role == .creator ? Array(pickedCategories) : []
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
         request.setValue(anonKey, forHTTPHeaderField: "apikey")

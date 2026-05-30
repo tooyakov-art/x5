@@ -188,6 +188,7 @@ private struct CategoriesPicker: View {
     @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
     @Binding var selected: Set<String>
+    private let maxPickedCategories = 8
 
     var body: some View {
         List {
@@ -197,7 +198,7 @@ private struct CategoriesPicker: View {
                     toggle(cat.id)
                 } label: {
                     HStack {
-                        Label(cat.labelEn, systemImage: HubCategories.symbol(for: cat.id))
+                        Label(HubCategories.label(for: cat.id, language: loc.current), systemImage: HubCategories.symbol(for: cat.id))
                         Spacer()
                         if selected.contains(cat.id) {
                             Image(systemName: "checkmark")
@@ -225,6 +226,6 @@ private struct CategoriesPicker: View {
 
     private func toggle(_ id: String) {
         if selected.contains(id) { selected.remove(id) }
-        else if selected.count < 3 { selected.insert(id) }
+        else if selected.count < maxPickedCategories { selected.insert(id) }
     }
 }

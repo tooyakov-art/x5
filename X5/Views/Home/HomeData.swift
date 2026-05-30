@@ -227,6 +227,15 @@ enum ImageGenerationCatalog {
 
     static let categories: [ImageGenerationCategory] = [
         .init(
+            id: "square_1_1",
+            title: "1:1 Creative",
+            subtitle: "Square ad creative",
+            icon: "square.fill",
+            examplePrompt: "Square 1:1 Instagram ad creative for a local Kazakhstan business, clear offer, premium black and green visual style",
+            gradientStart: Color(red: 0.43, green: 0.95, blue: 0.12).opacity(0.36),
+            gradientEnd: .black
+        ),
+        .init(
             id: "logo",
             title: "Logo",
             subtitle: "Brand mark",
@@ -242,6 +251,24 @@ enum ImageGenerationCatalog {
             icon: "rectangle.portrait.fill",
             examplePrompt: "Instagram story for a luxury skincare launch, product glow, clean text space",
             gradientStart: X5Style.blue.opacity(0.40),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "target_ad",
+            title: "Target Ad",
+            subtitle: "Ads for launch",
+            icon: "scope",
+            examplePrompt: "High-converting targeted ad creative for Instagram and TikTok, clear product benefit, premium mobile-first layout",
+            gradientStart: Color(red: 0.43, green: 0.95, blue: 0.12).opacity(0.38),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "youtube_cover",
+            title: "YouTube Cover",
+            subtitle: "Clickable thumbnail",
+            icon: "play.rectangle.fill",
+            examplePrompt: "Clickable YouTube thumbnail with bold readable Russian headline, strong face/product focus, premium contrast",
+            gradientStart: X5Style.blue.opacity(0.34),
             gradientEnd: .black
         ),
         .init(

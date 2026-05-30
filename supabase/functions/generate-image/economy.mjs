@@ -107,9 +107,24 @@ export const generationCategories = [
     promptGuide: "Design a premium logo concept with clear shape, strong silhouette, and no tiny unreadable text.",
   },
   {
+    id: "square_1_1",
+    title: "1:1 Creative",
+    promptGuide: "Create a square 1:1 advertising creative with a clear product or offer, strong hierarchy, and readable mobile composition.",
+  },
+  {
     id: "story",
     title: "Story",
     promptGuide: "Create a vertical Instagram story creative with strong central composition and space for overlay text.",
+  },
+  {
+    id: "target_ad",
+    title: "Target Ad",
+    promptGuide: "Create a performance ad creative for Instagram or TikTok with a clear hook, benefit, and call-to-action area.",
+  },
+  {
+    id: "youtube_cover",
+    title: "YouTube Cover",
+    promptGuide: "Create a clickable YouTube thumbnail with bold readable headline space, strong subject focus, and high contrast.",
   },
   {
     id: "post",
