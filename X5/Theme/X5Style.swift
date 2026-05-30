@@ -5,7 +5,7 @@ enum X5Style {
     static let blueSoft = Color(red: 0.84, green: 1.00, blue: 0.22)
     static let backgroundBlue = Color(red: 0.04, green: 0.28, blue: 0.62)
     static let backgroundCyan = Color(red: 0.00, green: 0.68, blue: 0.92)
-    static let ink = Color(red: 0.02, green: 0.025, blue: 0.055)
+    static let ink = Color(red: 0.003, green: 0.005, blue: 0.010)
 
     static func glassStroke(_ opacity: Double = 0.22) -> LinearGradient {
         LinearGradient(
