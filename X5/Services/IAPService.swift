@@ -3,15 +3,20 @@ import StoreKit
 
 @MainActor
 final class IAPService: ObservableObject {
-    static let monthlyProductID = "com.x5studio.app.pro.monthly"
+    nonisolated static let liteMonthlyProductID = "com.x5studio.app.lite.monthly"
+    nonisolated static let proMonthlyProductID = "com.x5studio.app.pro.monthly"
+    nonisolated static let monthlyProductID = proMonthlyProductID
+    nonisolated static let monthlyProductIDs = [liteMonthlyProductID, proMonthlyProductID]
 
     /// Cost in credits to activate the verified badge for 30 days.
     /// Credits are earned via Pro subscription (1000 credits/month).
-    static let verifiedCostCredits: Int = 500
+    nonisolated static let verifiedCostCredits: Int = 500
 
-    @Published private(set) var product: Product?
+    @Published private(set) var products: [String: Product] = [:]
     @Published private(set) var isPurchasing: Bool = false
     @Published var lastError: String?
+
+    var product: Product? { products[Self.proMonthlyProductID] }
 
     private var updatesTask: Task<Void, Never>?
 
@@ -28,11 +33,15 @@ final class IAPService: ObservableObject {
 
     func loadProducts() async {
         do {
-            let products = try await Product.products(for: [Self.monthlyProductID])
-            product = products.first { $0.id == Self.monthlyProductID }
+            let loaded = try await Product.products(for: Self.monthlyProductIDs)
+            products = Dictionary(uniqueKeysWithValues: loaded.map { ($0.id, $0) })
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    func product(id: String) -> Product? {
+        products[id]
     }
 
     /// Spends `verifiedCostCredits` from the user's balance and activates the verified badge
@@ -62,7 +71,11 @@ final class IAPService: ObservableObject {
     /// "log in to a second X5 account on the same Apple ID and inherit Pro
     /// for free" exploit Diaz hit in build 43.
     func purchaseMonthly() async -> Bool {
-        guard let product else { return false }
+        await purchase(productID: Self.proMonthlyProductID)
+    }
+
+    func purchase(productID: String) async -> Bool {
+        guard let product = products[productID] else { return false }
         guard let appUserToken = currentUserToken() else {
             lastError = LocalizationService.shared.t("iap_signin_first")
             return false
@@ -101,7 +114,7 @@ final class IAPService: ObservableObject {
         do {
             try await AppStore.sync()
             for await result in Transaction.currentEntitlements {
-                if case .verified(let t) = result, t.productID == Self.monthlyProductID {
+                if case .verified(let t) = result, Self.monthlyProductIDs.contains(t.productID) {
                     await applyEntitlement(transaction: t, grantCredits: false)
                 }
             }
@@ -114,7 +127,9 @@ final class IAPService: ObservableObject {
         updatesTask = Task.detached { [weak self] in
             for await update in Transaction.updates {
                 if case .verified(let transaction) = update {
-                    await self?.applyEntitlement(transaction: transaction, grantCredits: false)
+                    if Self.monthlyProductIDs.contains(transaction.productID) {
+                        await self?.applyEntitlement(transaction: transaction, grantCredits: false)
+                    }
                     await transaction.finish()
                 }
             }
@@ -203,14 +218,17 @@ final class IAPService: ObservableObject {
             return stored.timeIntervalSince(endDate) >= -60
         }()
 
+        let monthlyCredits = Self.creditsGranted(for: transaction.productID)
+        let subscriptionType = transaction.productID == Self.liteMonthlyProductID ? "lite_monthly" : "pro_monthly"
+
         var body: [String: Any] = [
             "plan": "pro",
-            "subscription_type": "monthly",
+            "subscription_type": subscriptionType,
             "subscription_date": startIso,
             "subscription_end_date": endIso
         ]
         if grantCredits && !alreadyCredited {
-            body["credits"] = currentCredits + 1000
+            body["credits"] = currentCredits + monthlyCredits
         }
 
         guard var patchURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false) else {
@@ -228,6 +246,14 @@ final class IAPService: ObservableObject {
 
         // Notify Subscription so isPro flips immediately without waiting for profile reload
         NotificationCenter.default.post(name: .x5DidActivatePro, object: nil)
+    }
+
+    private static func creditsGranted(for productID: String) -> Int {
+        switch productID {
+        case liteMonthlyProductID: return 500
+        case proMonthlyProductID: return 2000
+        default: return 1000
+        }
     }
 }
 

@@ -314,7 +314,7 @@ extension LocalizationService {
             "paywall_unavailable": "Подписка сейчас недоступна. Попробуйте позже.",
             "paywall_cancel_anytime": "Отменить можно в любой момент в настройках iOS",
             "paywall_privacy_link": "Политика конфиденциальности",
-            "paywall_subscription_terms": "X5 Pro — автоматически продлеваемая ежемесячная подписка $9.99/мес. Оплата списывается с Apple ID при подтверждении покупки. Подписка продлевается автоматически, если не отменить её минимум за 24 часа до окончания периода. Управлять и отменить подписку можно в Настройках Apple ID. Любая неиспользованная часть бесплатного периода (если есть) сгорает при покупке подписки.",
+            "paywall_subscription_terms": "X5 Lite и X5 Pro — автоматически продлеваемые ежемесячные подписки от 1000 ₸ до 2000 ₸. Оплата списывается с Apple ID при подтверждении покупки. Подписка продлевается автоматически, если не отменить её минимум за 24 часа до окончания периода. Управлять и отменить подписку можно в Настройках Apple ID. Любая неиспользованная часть бесплатного периода (если есть) сгорает при покупке подписки.",
             "paywall_restore": "Восстановить покупки",
 
             // Profile
@@ -783,7 +783,7 @@ extension LocalizationService {
             "paywall_unavailable": "Subscription is not available right now. Please try again later.",
             "paywall_cancel_anytime": "Cancel anytime in iOS Settings",
             "paywall_privacy_link": "Privacy Policy",
-            "paywall_subscription_terms": "X5 Pro is an auto-renewing monthly subscription at $9.99/month. Payment will be charged to your Apple ID at purchase confirmation. Subscription auto-renews unless cancelled at least 24 hours before the end of the current period. Manage or cancel anytime in your Apple ID settings. Any unused portion of a free trial period, if offered, will be forfeited when you purchase a subscription.",
+            "paywall_subscription_terms": "X5 Lite and X5 Pro are auto-renewing monthly subscriptions from 1000 ₸ to 2000 ₸. Payment will be charged to your Apple ID at purchase confirmation. Subscription auto-renews unless cancelled at least 24 hours before the end of the current period. Manage or cancel anytime in your Apple ID settings. Any unused portion of a free trial period, if offered, will be forfeited when you purchase a subscription.",
             "paywall_restore": "Restore purchases",
 
             "profile_title": "Profile",
@@ -1249,7 +1249,7 @@ extension LocalizationService {
             "paywall_unavailable": "Жазылым қазір қол жетімсіз. Кейінірек көріңіз.",
             "paywall_cancel_anytime": "Кез келген уақытта iOS баптауларынан тоқтатуға болады",
             "paywall_privacy_link": "Құпиялылық саясаты",
-            "paywall_subscription_terms": "X5 Pro — автоматты жаңартылатын айлық жазылым $9.99/ай. Төлем сатып алуды растаған кезде Apple ID-ге жазылады. Ағымдағы кезеңнің аяқталуына кемінде 24 сағат қалғанда тоқтатылмаса, жазылым автоматты түрде жаңарады. Жазылымды Apple ID параметрлерінде басқаруға және тоқтатуға болады.",
+            "paywall_subscription_terms": "X5 Lite және X5 Pro — 1000 ₸-ден 2000 ₸-ге дейінгі автоматты жаңартылатын айлық жазылымдар. Төлем сатып алуды растаған кезде Apple ID-ге жазылады. Ағымдағы кезеңнің аяқталуына кемінде 24 сағат қалғанда тоқтатылмаса, жазылым автоматты түрде жаңарады. Жазылымды Apple ID параметрлерінде басқаруға және тоқтатуға болады.",
             "paywall_restore": "Сатып алуларды қалпына келтіру",
 
             "profile_title": "Профиль",

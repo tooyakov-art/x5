@@ -95,6 +95,6 @@ final class Subscription: ObservableObject {
         UserDefaults.standard.set(value, forKey: key)
     }
 
-    static let monthlyPrice = "$9.99"
-    static let monthlyProductID = "com.x5studio.app.pro.monthly"
+    static let monthlyPrice = "2000 ₸"
+    static let monthlyProductID = IAPService.proMonthlyProductID
 }
