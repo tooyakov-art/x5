@@ -541,6 +541,8 @@ private struct UpcomingCourseCard: View {
 
 struct CourseInDevelopmentView: View {
     let course: Course
+    @State private var expandedCategoryIds: Set<String> = []
+    @State private var expandedDayIds: Set<String> = []
 
     var body: some View {
         ScrollView {
@@ -596,35 +598,15 @@ struct CourseInDevelopmentView: View {
                 .background(Color.white.opacity(0.055))
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-                Text("Программа")
-                    .font(.system(size: 11, weight: .bold))
-                    .tracking(1.4)
-                    .foregroundColor(.white.opacity(0.45))
+                programHeader
 
-                ForEach(course.categories.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) })) { category in
-                    ForEach(category.days.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) })) { day in
-                        ForEach(day.lessons.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) })) { lesson in
-                            HStack(spacing: 12) {
-                                ZStack {
-                                    Circle().fill(Color.white.opacity(0.06))
-                                    Image(systemName: "lock.fill")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(.white.opacity(0.38))
-                                }
-                                .frame(width: 32, height: 32)
-                                Text(lesson.title)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.white.opacity(0.82))
-                                Spacer()
-                                Text("скоро")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(.white.opacity(0.36))
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(Color.white.opacity(0.04))
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
+                ForEach(sortedCategories) { category in
+                    CourseProgramCategorySection(
+                        category: category,
+                        isExpanded: categoryBinding(category.id),
+                        expandedDayIds: $expandedDayIds
+                    ) { lesson in
+                        LockedSoonLessonRow(lesson: lesson)
                     }
                 }
             }
@@ -638,6 +620,65 @@ struct CourseInDevelopmentView: View {
         .navigationTitle("В разработке")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .onAppear { expandAllIfNeeded() }
+    }
+
+    private var sortedCategories: [CourseCategory] {
+        course.categories.sorted { ($0.order ?? 0) < ($1.order ?? 0) }
+    }
+
+    private var allCategoryIds: Set<String> {
+        Set(sortedCategories.map(\.id))
+    }
+
+    private var allDayIds: Set<String> {
+        Set(sortedCategories.flatMap { $0.days.map(\.id) })
+    }
+
+    private var isFullyExpanded: Bool {
+        !allCategoryIds.isEmpty && expandedCategoryIds == allCategoryIds && expandedDayIds == allDayIds
+    }
+
+    private var programHeader: some View {
+        HStack {
+            Text("Программа")
+                .font(.system(size: 11, weight: .bold))
+                .tracking(1.4)
+                .foregroundColor(.white.opacity(0.45))
+            Spacer()
+            Button(isFullyExpanded ? "Свернуть все" : "Развернуть все") {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    if isFullyExpanded {
+                        expandedCategoryIds.removeAll()
+                        expandedDayIds.removeAll()
+                    } else {
+                        expandedCategoryIds = allCategoryIds
+                        expandedDayIds = allDayIds
+                    }
+                }
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundColor(.accentColor)
+        }
+    }
+
+    private func expandAllIfNeeded() {
+        guard expandedCategoryIds.isEmpty, expandedDayIds.isEmpty else { return }
+        expandedCategoryIds = allCategoryIds
+        expandedDayIds = allDayIds
+    }
+
+    private func categoryBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedCategoryIds.contains(id) },
+            set: { isExpanded in
+                if isExpanded {
+                    expandedCategoryIds.insert(id)
+                } else {
+                    expandedCategoryIds.remove(id)
+                }
+            }
+        )
     }
 }
 
@@ -647,6 +688,8 @@ struct CourseDetailView: View {
 
     @EnvironmentObject private var sub: Subscription
     @EnvironmentObject private var loc: LocalizationService
+    @State private var expandedCategoryIds: Set<String> = []
+    @State private var expandedDayIds: Set<String> = []
 
     var hasFullAccess: Bool { (course.isFree ?? false) || (course.price ?? 0) == 0 || sub.isPro }
 
@@ -706,14 +749,17 @@ struct CourseDetailView: View {
                     }
                 }
 
-                Text(loc.t("courses_lessons_section"))
-                    .font(.system(size: 11, weight: .bold))
-                    .tracking(1.4)
-                    .foregroundColor(.white.opacity(0.45))
+                lessonsHeader
                     .padding(.top, 8)
 
-                ForEach(course.categories.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) })) { category in
-                    CategorySection(category: category, hasFullAccess: hasFullAccess, openPaywall: openPaywall)
+                ForEach(sortedCategories) { category in
+                    CourseProgramCategorySection(
+                        category: category,
+                        isExpanded: categoryBinding(category.id),
+                        expandedDayIds: $expandedDayIds
+                    ) { lesson in
+                        LessonRow(lesson: lesson, hasFullAccess: hasFullAccess, openPaywall: openPaywall)
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -725,6 +771,65 @@ struct CourseDetailView: View {
         .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .onAppear { expandAllIfNeeded() }
+    }
+
+    private var sortedCategories: [CourseCategory] {
+        course.categories.sorted { ($0.order ?? 0) < ($1.order ?? 0) }
+    }
+
+    private var allCategoryIds: Set<String> {
+        Set(sortedCategories.map(\.id))
+    }
+
+    private var allDayIds: Set<String> {
+        Set(sortedCategories.flatMap { $0.days.map(\.id) })
+    }
+
+    private var isFullyExpanded: Bool {
+        !allCategoryIds.isEmpty && expandedCategoryIds == allCategoryIds && expandedDayIds == allDayIds
+    }
+
+    private var lessonsHeader: some View {
+        HStack {
+            Text(loc.t("courses_lessons_section"))
+                .font(.system(size: 11, weight: .bold))
+                .tracking(1.4)
+                .foregroundColor(.white.opacity(0.45))
+            Spacer()
+            Button(isFullyExpanded ? "Свернуть все" : "Развернуть все") {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    if isFullyExpanded {
+                        expandedCategoryIds.removeAll()
+                        expandedDayIds.removeAll()
+                    } else {
+                        expandedCategoryIds = allCategoryIds
+                        expandedDayIds = allDayIds
+                    }
+                }
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundColor(.accentColor)
+        }
+    }
+
+    private func expandAllIfNeeded() {
+        guard expandedCategoryIds.isEmpty, expandedDayIds.isEmpty else { return }
+        expandedCategoryIds = allCategoryIds
+        expandedDayIds = allDayIds
+    }
+
+    private func categoryBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedCategoryIds.contains(id) },
+            set: { isExpanded in
+                if isExpanded {
+                    expandedCategoryIds.insert(id)
+                } else {
+                    expandedCategoryIds.remove(id)
+                }
+            }
+        )
     }
 }
 
@@ -744,43 +849,157 @@ private struct StatBubble: View {
     }
 }
 
-private struct CategorySection: View {
+private struct CourseProgramCategorySection<LessonContent: View>: View {
     let category: CourseCategory
-    let hasFullAccess: Bool
-    let openPaywall: () -> Void
+    let isExpanded: Binding<Bool>
+    @Binding var expandedDayIds: Set<String>
+    @ViewBuilder let lessonContent: (CourseLesson) -> LessonContent
+
+    private var sortedDays: [CourseDay] {
+        category.days.sorted { ($0.order ?? 0) < ($1.order ?? 0) }
+    }
+
+    private var lessonsCount: Int {
+        category.days.reduce(0) { $0 + $1.lessons.count }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(category.title)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundColor(.white)
-                .padding(.top, 4)
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded.wrappedValue.toggle()
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: isExpanded.wrappedValue ? "chevron.down.circle.fill" : "chevron.right.circle.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.accentColor)
 
-            ForEach(category.days.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) })) { day in
-                DaySection(day: day, hasFullAccess: hasFullAccess, openPaywall: openPaywall)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(category.title)
+                            .font(.system(size: 17, weight: .heavy))
+                            .foregroundColor(.white)
+                        Text("\(sortedDays.count) дней · \(lessonsCount) уроков")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.45))
+                    }
+
+                    Spacer()
+                }
+                .padding(14)
+                .background(Color.white.opacity(0.055))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded.wrappedValue {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(sortedDays) { day in
+                        CourseProgramDaySection(
+                            day: day,
+                            isExpanded: dayBinding(day.id),
+                            lessonContent: lessonContent
+                        )
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private func dayBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedDayIds.contains(id) },
+            set: { isExpanded in
+                if isExpanded {
+                    expandedDayIds.insert(id)
+                } else {
+                    expandedDayIds.remove(id)
+                }
+            }
+        )
+    }
+}
+
+private struct CourseProgramDaySection<LessonContent: View>: View {
+    let day: CourseDay
+    let isExpanded: Binding<Bool>
+    @ViewBuilder let lessonContent: (CourseLesson) -> LessonContent
+
+    private var sortedLessons: [CourseLesson] {
+        day.lessons.sorted { ($0.order ?? 0) < ($1.order ?? 0) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isExpanded.wrappedValue.toggle()
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.white.opacity(0.44))
+                        .frame(width: 16)
+
+                    Text(day.title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white.opacity(0.72))
+
+                    Spacer()
+
+                    Text("\(sortedLessons.count)")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.white.opacity(0.38))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.035))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded.wrappedValue {
+                VStack(spacing: 6) {
+                    ForEach(sortedLessons) { lesson in
+                        lessonContent(lesson)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
     }
 }
 
-private struct DaySection: View {
-    let day: CourseDay
-    let hasFullAccess: Bool
-    let openPaywall: () -> Void
+private struct LockedSoonLessonRow: View {
+    let lesson: CourseLesson
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(day.title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.white.opacity(0.55))
-                .padding(.leading, 4)
-
-            VStack(spacing: 6) {
-                ForEach(day.lessons.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) })) { lesson in
-                    LessonRow(lesson: lesson, hasFullAccess: hasFullAccess, openPaywall: openPaywall)
-                }
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(Color.white.opacity(0.06))
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white.opacity(0.38))
             }
+            .frame(width: 32, height: 32)
+
+            Text(lesson.title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white.opacity(0.82))
+                .lineLimit(2)
+
+            Spacer()
+
+            Text("скоро")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.white.opacity(0.36))
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
