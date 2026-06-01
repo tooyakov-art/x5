@@ -60,7 +60,9 @@ struct HubView: View {
                 } else if segment == .tasks {
                     createTaskButton
                     countrySelector(messageKey: "hub_country_orders")
-                    categoryRail
+                    if category != nil {
+                        categoryRail
+                    }
                 }
 
                 Group {
@@ -232,7 +234,7 @@ struct HubView: View {
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
                         category = nil
-                        taskCategoriesExpanded.toggle()
+                        taskCategoriesExpanded = false
                     }
                 } label: {
                     CategoryChip(title: loc.t("hub_all"),
@@ -497,19 +499,29 @@ struct HubView: View {
     private var tasksList: some View {
         ScrollView(.vertical, showsIndicators: true) {
             LazyVStack(spacing: 10) {
-                ForEach(filteredTasks) { task in
-                    NavigationLink {
-                        TaskDetailView(task: task)
-                    } label: {
-                        TaskRow(task: task)
+                if category == nil {
+                    taskCategoryGrid
+                    if totalVisibleCount == 0 && !service.isLoading {
+                        EmptyState(systemImage: "tray",
+                                   title: loc.t("hub_no_tasks"),
+                                   subtitle: loc.t("hub_no_tasks_sub"))
+                            .padding(.top, 40)
                     }
-                    .buttonStyle(.plain)
-                }
-                if filteredTasks.isEmpty && !service.isLoading {
-                    EmptyState(systemImage: "tray",
-                               title: loc.t("hub_no_tasks"),
-                               subtitle: loc.t("hub_no_tasks_sub"))
-                        .padding(.top, 60)
+                } else {
+                    ForEach(filteredTasks) { task in
+                        NavigationLink {
+                            TaskDetailView(task: task)
+                        } label: {
+                            TaskRow(task: task)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if filteredTasks.isEmpty && !service.isLoading {
+                        EmptyState(systemImage: "tray",
+                                   title: loc.t("hub_no_tasks"),
+                                   subtitle: loc.t("hub_no_tasks_sub"))
+                            .padding(.top, 60)
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -519,6 +531,36 @@ struct HubView: View {
         }
         .clipped()
         .refreshable { await service.loadTasks() }
+    }
+
+    private var taskCategoryGrid: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 4),
+            spacing: 8
+        ) {
+            CategoryTile(
+                title: loc.t("hub_all"),
+                systemImage: "line.3.horizontal.decrease.circle",
+                count: totalVisibleCount,
+                isSelected: true
+            )
+
+            ForEach(HubCategories.all) { cat in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        category = cat.id
+                    }
+                } label: {
+                    CategoryTile(
+                        title: HubCategories.label(for: cat.id, language: loc.current),
+                        systemImage: hubCategorySymbol(for: cat.id),
+                        count: countForCategory(cat.id),
+                        isSelected: false
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private var filteredSpecialists: [HubSpecialist] {
