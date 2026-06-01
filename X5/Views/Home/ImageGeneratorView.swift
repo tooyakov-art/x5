@@ -497,7 +497,7 @@ struct ImageGeneratorView: View {
     private func quickPrompt(_ text: String) -> some View {
         Button {
             X5Feedback.selection()
-            prompt = text == categoryTitle ? category.examplePrompt : "\(text) for \(category.title.lowercased()), premium X5 style"
+            prompt = text == categoryTitle ? category.examplePrompt : "\(text) для раздела \(categoryTitle.lowercased()), премиальный стиль X5"
             promptFocused = true
         } label: {
             Text(text)

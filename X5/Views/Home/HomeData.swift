@@ -220,18 +220,27 @@ enum ImageGenerationCatalog {
         title: "Image generation",
         subtitle: "Flexible prompt generation",
         icon: "sparkles",
-        examplePrompt: "Premium Instagram ad for a coffee brand, dark studio light, blue glass details",
+        examplePrompt: "Премиальная реклама кофейни для Instagram, темная студийная сцена, синие стеклянные детали",
         gradientStart: X5Style.blue.opacity(0.34),
         gradientEnd: .black
     )
 
     static let categories: [ImageGenerationCategory] = [
         .init(
+            id: "square_1_1",
+            title: "1:1 Creative",
+            subtitle: "Square ad creative",
+            icon: "square.fill",
+            examplePrompt: "Квадратный рекламный креатив 1:1 для бизнеса в Казахстане, понятный оффер, премиальный черный стиль с ярким акцентом",
+            gradientStart: Color(red: 0.43, green: 0.95, blue: 0.12).opacity(0.36),
+            gradientEnd: .black
+        ),
+        .init(
             id: "logo",
             title: "Logo",
             subtitle: "Brand mark",
             icon: "seal.fill",
-            examplePrompt: "Minimal premium logo for a boutique coffee brand, silver and cyan, black background",
+            examplePrompt: "Минималистичный премиальный логотип для кофейного бренда, серебро и циан, черный фон",
             gradientStart: Color(red: 0.62, green: 0.70, blue: 0.82).opacity(0.42),
             gradientEnd: .black
         ),
@@ -240,8 +249,26 @@ enum ImageGenerationCatalog {
             title: "Story",
             subtitle: "Vertical creative",
             icon: "rectangle.portrait.fill",
-            examplePrompt: "Instagram story for a luxury skincare launch, product glow, clean text space",
+            examplePrompt: "Сторис для запуска премиальной косметики, сияющий продукт, чистое место под текст",
             gradientStart: X5Style.blue.opacity(0.40),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "target_ad",
+            title: "Target Ad",
+            subtitle: "Ads for launch",
+            icon: "scope",
+            examplePrompt: "Продающий креатив для таргета в Instagram и TikTok, четкая выгода продукта, премиальная мобильная композиция",
+            gradientStart: Color(red: 0.43, green: 0.95, blue: 0.12).opacity(0.38),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "youtube_cover",
+            title: "YouTube Cover",
+            subtitle: "Clickable thumbnail",
+            icon: "play.rectangle.fill",
+            examplePrompt: "Кликабельная обложка YouTube с крупным читаемым заголовком на русском, фокус на лице или продукте, высокий контраст",
+            gradientStart: X5Style.blue.opacity(0.34),
             gradientEnd: .black
         ),
         .init(
@@ -249,7 +276,7 @@ enum ImageGenerationCatalog {
             title: "Post",
             subtitle: "Square feed post",
             icon: "square.grid.2x2.fill",
-            examplePrompt: "Square Instagram post for a restaurant opening, cinematic table scene, premium lighting",
+            examplePrompt: "Квадратный пост Instagram для открытия ресторана, кинематографичная сервировка, премиальный свет",
             gradientStart: Color(red: 0.39, green: 0.40, blue: 0.94).opacity(0.42),
             gradientEnd: .black
         ),
@@ -258,7 +285,7 @@ enum ImageGenerationCatalog {
             title: "Insta Pack",
             subtitle: "Post + story mood",
             icon: "square.stack.3d.up.fill",
-            examplePrompt: "Cohesive Instagram visual package for a fashion brand, post cover, story mood, brand texture",
+            examplePrompt: "Единый визуальный пакет Instagram для fashion-бренда: обложка поста, настроение сторис, фирменная текстура",
             gradientStart: X5Style.blueSoft.opacity(0.42),
             gradientEnd: .black
         ),
@@ -267,8 +294,17 @@ enum ImageGenerationCatalog {
             title: "Product",
             subtitle: "Ad-ready shot",
             icon: "shippingbox.fill",
-            examplePrompt: "Premium product ad for wireless headphones, black acrylic surface, cyan rim light",
+            examplePrompt: "Премиальная реклама беспроводных наушников, черный акриловый стол, циановый контровой свет",
             gradientStart: Color(red: 0.23, green: 0.51, blue: 0.96).opacity(0.42),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "product_cards",
+            title: "Product Cards",
+            subtitle: "Marketplace cards",
+            icon: "rectangle.grid.2x2.fill",
+            examplePrompt: "Премиальная карточка товара для маркетплейса: beauty-продукт, чистый блок цены, короткие выгоды, черно-белый стиль с серебром и цианом",
+            gradientStart: Color(red: 0.56, green: 0.72, blue: 0.92).opacity(0.38),
             gradientEnd: .black
         ),
         .init(
@@ -276,7 +312,7 @@ enum ImageGenerationCatalog {
             title: "Packaging",
             subtitle: "Box and label",
             icon: "cube.box.fill",
-            examplePrompt: "Luxury packaging concept for artisan chocolate, matte black box, silver label, studio render",
+            examplePrompt: "Концепт люксовой упаковки для крафтового шоколада, матовая черная коробка, серебряная этикетка, студийный рендер",
             gradientStart: Color(red: 0.52, green: 0.57, blue: 0.68).opacity(0.42),
             gradientEnd: .black
         )
