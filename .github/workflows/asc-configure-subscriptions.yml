@@ -146,18 +146,21 @@ jobs:
               }
           }
           if en_group_loc:
-              api(
-                  "PATCH",
-                  f"/subscriptionGroupLocalizations/{en_group_loc['id']}",
-                  json={
-                      "data": {
-                          "type": "subscriptionGroupLocalizations",
-                          "id": en_group_loc["id"],
-                          "attributes": {"name": "X5 subscriptions"},
-                      }
-                  },
-              )
-              print("Updated subscription group localization en-US")
+              if en_group_loc["attributes"].get("state") == "ACTIVE":
+                  print("Subscription group localization en-US is ACTIVE, keeping existing name")
+              else:
+                  api(
+                      "PATCH",
+                      f"/subscriptionGroupLocalizations/{en_group_loc['id']}",
+                      json={
+                          "data": {
+                              "type": "subscriptionGroupLocalizations",
+                              "id": en_group_loc["id"],
+                              "attributes": {"name": "X5 subscriptions"},
+                          }
+                      },
+                  )
+                  print("Updated subscription group localization en-US")
           else:
               api("POST", "/subscriptionGroupLocalizations", expected=(201,), json=group_loc_payload)
               print("Created subscription group localization en-US")
