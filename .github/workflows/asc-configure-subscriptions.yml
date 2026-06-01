@@ -32,6 +32,7 @@ jobs:
           import os
           import sys
           import time
+          from datetime import date, timedelta
           from decimal import Decimal
 
           import jwt
@@ -280,14 +281,35 @@ jobs:
               if price_point_id in current_price_point_ids:
                   print(f"KAZ price already set for {spec['product_id']}: {spec['price_kaz']} KZT")
               else:
-                  api(
-                      "POST",
-                      "/subscriptionPrices",
-                      expected=(201,),
-                      json={
+                  price_payload = {
+                      "data": {
+                          "type": "subscriptionPrices",
+                          "attributes": {"startDate": None},
+                          "relationships": {
+                              "subscription": {"data": {"type": "subscriptions", "id": sub_id}},
+                              "subscriptionPricePoint": {
+                                  "data": {"type": "subscriptionPricePoints", "id": price_point_id}
+                              },
+                          },
+                      }
+                  }
+                  price_response = requests.post(
+                      f"{BASE}/subscriptionPrices",
+                      headers={**headers(), "Content-Type": "application/json"},
+                      json=price_payload,
+                      timeout=60,
+                  )
+                  if price_response.status_code == 201:
+                      print(f"Set KAZ price for {spec['product_id']}: {spec['price_kaz']} KZT")
+                  elif price_response.status_code == 409 and "Initial price cannot be created again" in price_response.text:
+                      start_date = (date.today() + timedelta(days=1)).isoformat()
+                      price_payload = {
                           "data": {
                               "type": "subscriptionPrices",
-                              "attributes": {"startDate": None},
+                              "attributes": {
+                                  "startDate": start_date,
+                                  "preserveCurrentPrice": False,
+                              },
                               "relationships": {
                                   "subscription": {"data": {"type": "subscriptions", "id": sub_id}},
                                   "subscriptionPricePoint": {
@@ -295,9 +317,22 @@ jobs:
                                   },
                               },
                           }
-                      },
-                  )
-                  print(f"Set KAZ price for {spec['product_id']}: {spec['price_kaz']} KZT")
+                      }
+                      scheduled = requests.post(
+                          f"{BASE}/subscriptionPrices",
+                          headers={**headers(), "Content-Type": "application/json"},
+                          json=price_payload,
+                          timeout=60,
+                      )
+                      if scheduled.status_code != 201:
+                          print(f"POST {BASE}/subscriptionPrices -> HTTP {scheduled.status_code}")
+                          print(scheduled.text[:2000])
+                          raise SystemExit(1)
+                      print(f"Scheduled KAZ price for {spec['product_id']}: {spec['price_kaz']} KZT from {start_date}")
+                  else:
+                      print(f"POST {BASE}/subscriptionPrices -> HTTP {price_response.status_code}")
+                      print(price_response.text[:2000])
+                      raise SystemExit(1)
 
               configured.append((spec, sub_id))
 
