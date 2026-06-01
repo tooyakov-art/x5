@@ -347,10 +347,9 @@ jobs:
               print(f"Review screenshot: {filename} size={size} md5={checksum} mime={mime}")
 
               for spec, sub_id in configured:
-                  reservation = api(
-                      "POST",
-                      "/subscriptionAppStoreReviewScreenshots",
-                      expected=(201,),
+                  reservation_response = requests.post(
+                      f"{BASE}/subscriptionAppStoreReviewScreenshots",
+                      headers={**headers(), "Content-Type": "application/json"},
                       json={
                           "data": {
                               "type": "subscriptionAppStoreReviewScreenshots",
@@ -360,7 +359,16 @@ jobs:
                               },
                           }
                       },
-                  )["data"]
+                      timeout=60,
+                  )
+                  if reservation_response.status_code == 409 and "Screenshot already exists" in reservation_response.text:
+                      print(f"Review screenshot already exists for {spec['product_id']}, keeping it")
+                      continue
+                  if reservation_response.status_code != 201:
+                      print(f"POST {BASE}/subscriptionAppStoreReviewScreenshots -> HTTP {reservation_response.status_code}")
+                      print(reservation_response.text[:2000])
+                      raise SystemExit(1)
+                  reservation = reservation_response.json()["data"]
                   asset_id = reservation["id"]
                   for op in reservation["attributes"]["uploadOperations"]:
                       chunk = data[op["offset"] : op["offset"] + op["length"]]
