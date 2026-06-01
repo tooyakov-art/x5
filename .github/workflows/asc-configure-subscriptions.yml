@@ -244,6 +244,25 @@ jobs:
                   )
                   print(f"Created localization en-US for {spec['product_id']}")
 
+              api(
+                  "POST",
+                  "/subscriptionAvailabilities",
+                  expected=(201,),
+                  json={
+                      "data": {
+                          "type": "subscriptionAvailabilities",
+                          "attributes": {"availableInNewTerritories": False},
+                          "relationships": {
+                              "availableTerritories": {
+                                  "data": [{"type": "territories", "id": "KAZ"}]
+                              },
+                              "subscription": {"data": {"type": "subscriptions", "id": sub_id}},
+                          },
+                      }
+                  },
+              )
+              print(f"Enabled KAZ availability for {spec['product_id']}")
+
               price_points = list_all(
                   f"/subscriptions/{sub_id}/pricePoints?include=territory&filter[territory]=KAZ&limit=8000"
               )
@@ -258,6 +277,7 @@ jobs:
                       f"No exact KAZ price point {spec['price_kaz']} for {spec['product_id']}. First values: {sample}"
                   )
               price_point_id = exact[0]["id"]
+              print(f"Using KAZ price point for {spec['product_id']}: {price_point_id}")
               prices = list_all(f"/subscriptions/{sub_id}/prices?include=subscriptionPricePoint,territory&filter[territory]=KAZ&limit=200")
               current_price_point_ids = {
                   price.get("relationships", {}).get("subscriptionPricePoint", {}).get("data", {}).get("id")
