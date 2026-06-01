@@ -171,7 +171,6 @@ jobs:
                                   "reviewNote": spec["review_note"],
                                   "groupLevel": spec["group_level"],
                                   "familySharable": False,
-                                  "availableInAllTerritories": True,
                               },
                           }
                       },
@@ -192,7 +191,6 @@ jobs:
                                   "familySharable": False,
                                   "reviewNote": spec["review_note"],
                                   "groupLevel": spec["group_level"],
-                                  "availableInAllTerritories": True,
                               },
                               "relationships": {
                                   "group": {"data": {"type": "subscriptionGroups", "id": group_id}}
