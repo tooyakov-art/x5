@@ -174,8 +174,11 @@ private struct PortfolioGridCell: View {
             ZStack {
                 Color.white.opacity(0.055)
 
-                if item.type == "video", let s = item.mediaUrl, let url = URL(string: s) {
-                    LoopingVideo(url: url, fallback: Color.white.opacity(0.05))
+                if item.type == "video" {
+                    Color.black.opacity(0.42)
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 30, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.92))
                 } else if let s = imageURLString, let url = URL(string: s) {
                     CachedAsyncImage(url: url) { image in
                         image.resizable().scaledToFill()
@@ -528,10 +531,12 @@ private struct PortfolioInstagramPostPage: View {
             comments = await onLoadComments()
             if item.type == "video", let s = item.mediaUrl, let url = URL(string: s) {
                 player = AVPlayer(url: url)
-                player?.play()
             }
         }
-        .onDisappear { player?.pause() }
+        .onDisappear {
+            player?.pause()
+            player = nil
+        }
         .confirmationDialog("Удалить кейс?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Удалить", role: .destructive) {
                 X5Feedback.warning()
@@ -788,10 +793,12 @@ private struct PortfolioPostViewer: View {
                 comments = await onLoadComments()
                 if item.type == "video", let s = item.mediaUrl, let url = URL(string: s) {
                     player = AVPlayer(url: url)
-                    player?.play()
                 }
             }
-            .onDisappear { player?.pause() }
+            .onDisappear {
+                player?.pause()
+                player = nil
+            }
         }
     }
 
