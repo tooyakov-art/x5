@@ -38,12 +38,16 @@ struct PaywallView: View {
                         .font(.system(size: 18, weight: .heavy))
                         .foregroundColor(.white)
 
-                    HStack(spacing: 10) {
-                        ForEach(PaywallPlan.allCases) { plan in
-                            PlanCard(plan: plan, isSelected: selectedPlan == plan) {
-                                selectedPlan = plan
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(PaywallPlan.allCases) { plan in
+                                PlanCard(plan: plan, isSelected: selectedPlan == plan) {
+                                    selectedPlan = plan
+                                }
+                                .frame(width: 178)
                             }
                         }
+                        .padding(.vertical, 2)
                     }
                 }
 
@@ -167,8 +171,8 @@ struct PaywallView: View {
 
     private var buttonTitle: String {
         if iap.isPurchasing { return loc.t("btn_loading") }
-        if let product = selectedProduct {
-            return "\(loc.t("paywall_subscribe")) — \(product.displayPrice) / мес"
+        if selectedProduct != nil {
+            return "\(loc.t("paywall_subscribe")) — \(selectedPlan.price) / мес"
         }
         return loc.t("paywall_loading")
     }
@@ -181,6 +185,7 @@ struct PaywallView: View {
 private enum PaywallPlan: String, CaseIterable, Identifiable {
     case lite
     case pro
+    case max
 
     var id: String { rawValue }
 
@@ -188,6 +193,7 @@ private enum PaywallPlan: String, CaseIterable, Identifiable {
         switch self {
         case .lite: return "X5 Lite"
         case .pro: return "X5 Pro"
+        case .max: return "X5 Max"
         }
     }
 
@@ -195,6 +201,7 @@ private enum PaywallPlan: String, CaseIterable, Identifiable {
         switch self {
         case .lite: return "1000 ₸"
         case .pro: return "2000 ₸"
+        case .max: return "5000 ₸"
         }
     }
 
@@ -202,6 +209,7 @@ private enum PaywallPlan: String, CaseIterable, Identifiable {
         switch self {
         case .lite: return IAPService.liteMonthlyProductID
         case .pro: return IAPService.proMonthlyProductID
+        case .max: return IAPService.maxMonthlyProductID
         }
     }
 
@@ -209,6 +217,7 @@ private enum PaywallPlan: String, CaseIterable, Identifiable {
         switch self {
         case .lite: return "для старта"
         case .pro: return "лучший выбор"
+        case .max: return "для команды"
         }
     }
 
@@ -224,6 +233,7 @@ private enum PaywallPlan: String, CaseIterable, Identifiable {
         switch self {
         case .lite: return 1000
         case .pro: return 2000
+        case .max: return 5000
         }
     }
 
@@ -233,6 +243,8 @@ private enum PaywallPlan: String, CaseIterable, Identifiable {
             return ["ИИ-картинки и тексты", "Базовые курсы", "Доступ к Hub"]
         case .pro:
             return ["Все AI-инструменты", "Премиум-курсы", "Приоритет в Hub"]
+        case .max:
+            return ["5000 кредитов", "Все курсы и инструменты", "Топ-приоритет в Hub"]
         }
     }
 }
@@ -309,7 +321,7 @@ private struct VerifiedAddonCard: View {
                     Text("Синяя галочка")
                         .font(.system(size: 18, weight: .heavy))
                         .foregroundColor(.white)
-                    Text("отдельно: 500 кредитов / 30 дней")
+                    Text("отдельно через App Store: \(IAPService.verifiedDisplayPrice) / мес")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.58))
                 }
@@ -319,7 +331,7 @@ private struct VerifiedAddonCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 Feature(text: "Профиль выглядит проверенным")
                 Feature(text: "Больше доверия в Hub и откликах")
-                Feature(text: "Отдельно от подписки, включается когда нужно")
+                Feature(text: "Покупается отдельно от тарифов")
             }
         }
         .padding(18)

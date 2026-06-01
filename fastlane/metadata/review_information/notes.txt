@@ -36,11 +36,14 @@ before generation. Generated images can be kept on-device, saved to Photos or
 shared. Reference images are chosen by the user through the iOS photo picker.
 Unfinished video/startup-chat cards are marked as in development.
 
-Subscription:
-X5 Pro Monthly: com.x5studio.app.pro.monthly. The paywall is available from
-Profile -> Upgrade to Pro. X5 Pro grants Pro access and credits for creator
-tools. Verified badge is activated with in-app credits and is not a separate
-IAP in this build.
+Subscriptions:
+X5 Lite Monthly: com.x5studio.app.lite.monthly.
+X5 Pro Monthly: com.x5studio.app.pro.monthly.
+X5 Max Monthly: com.x5studio.app.max.monthly.
+Verified Badge Monthly: com.x5studio.app.verified.monthly.
+The paywall is available from Profile -> Upgrade to Pro. Paid plans grant Pro
+access and credits for creator tools. The verified badge is a separate App
+Store subscription from Profile -> Get verified.
 
 UGC safety:
 Every chat user can be blocked or reported from the chat header menu. Hub users

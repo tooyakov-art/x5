@@ -306,7 +306,7 @@ extension LocalizationService {
 
             // Paywall (paywall_title is defined again below with "X5 Pro" — Swift dictionary literal dedup;
             // iOS 26.5 beta Swift runtime trap-s on duplicate keys, so we keep only one entry.)
-            "paywall_desc": "Доступ ко всем AI-инструментам, премиум-курсам и безлимитным генерациям.",
+            "paywall_desc": "Тарифы с кредитами 1:1 для AI-инструментов, курсов и Hub.",
             "paywall_active": "X5 Pro активна",
             "paywall_until": "До",
             "paywall_subscribe": "Подписаться",
@@ -314,7 +314,7 @@ extension LocalizationService {
             "paywall_unavailable": "Подписка сейчас недоступна. Попробуйте позже.",
             "paywall_cancel_anytime": "Отменить можно в любой момент в настройках iOS",
             "paywall_privacy_link": "Политика конфиденциальности",
-            "paywall_subscription_terms": "X5 Lite и X5 Pro — автоматически продлеваемые ежемесячные подписки от 1000 ₸ до 2000 ₸. Оплата списывается с Apple ID при подтверждении покупки. Подписка продлевается автоматически, если не отменить её минимум за 24 часа до окончания периода. Управлять и отменить подписку можно в Настройках Apple ID. Любая неиспользованная часть бесплатного периода (если есть) сгорает при покупке подписки.",
+            "paywall_subscription_terms": "X5 Lite, X5 Pro и X5 Max — автоматически продлеваемые ежемесячные подписки от 1000 ₸ до 5000 ₸. Синяя галочка покупается отдельно через App Store. Оплата списывается с Apple ID при подтверждении покупки. Подписки продлеваются автоматически, если не отменить их минимум за 24 часа до окончания периода. Управлять и отменить можно в Настройках Apple ID. Любая неиспользованная часть бесплатного периода (если есть) сгорает при покупке подписки.",
             "paywall_restore": "Восстановить покупки",
 
             // Profile
@@ -777,7 +777,7 @@ extension LocalizationService {
 
             // paywall_title is defined again below with "X5 Pro" — kept single to avoid
             // Swift duplicate-key dictionary trap on iOS 26.5 beta.
-            "paywall_desc": "Access all AI tools, premium courses, and unlimited generations.",
+            "paywall_desc": "Credit plans at 1:1 for AI tools, courses, and Hub.",
             "paywall_active": "X5 Pro Active",
             "paywall_until": "Until",
             "paywall_subscribe": "Subscribe",
@@ -785,7 +785,7 @@ extension LocalizationService {
             "paywall_unavailable": "Subscription is not available right now. Please try again later.",
             "paywall_cancel_anytime": "Cancel anytime in iOS Settings",
             "paywall_privacy_link": "Privacy Policy",
-            "paywall_subscription_terms": "X5 Lite and X5 Pro are auto-renewing monthly subscriptions from 1000 ₸ to 2000 ₸. Payment will be charged to your Apple ID at purchase confirmation. Subscription auto-renews unless cancelled at least 24 hours before the end of the current period. Manage or cancel anytime in your Apple ID settings. Any unused portion of a free trial period, if offered, will be forfeited when you purchase a subscription.",
+            "paywall_subscription_terms": "X5 Lite, X5 Pro, and X5 Max are auto-renewing monthly subscriptions from 1000 ₸ to 5000 ₸. The blue verified badge is purchased separately through the App Store. Payment will be charged to your Apple ID at purchase confirmation. Subscriptions auto-renew unless cancelled at least 24 hours before the end of the current period. Manage or cancel anytime in your Apple ID settings. Any unused portion of a free trial period, if offered, will be forfeited when you purchase a subscription.",
             "paywall_restore": "Restore purchases",
 
             "profile_title": "Profile",
@@ -1245,7 +1245,7 @@ extension LocalizationService {
 
             // paywall_title is defined again below with "X5 Pro" — kept single to avoid
             // Swift duplicate-key dictionary trap on iOS 26.5 beta.
-            "paywall_desc": "Барлық AI құралдарға, премиум курстарға және шексіз генерацияларға қол жетімділік.",
+            "paywall_desc": "AI-құралдар, курстар және Hub үшін 1:1 кредит тарифтері.",
             "paywall_active": "X5 Pro белсенді",
             "paywall_until": "Дейін",
             "paywall_subscribe": "Жазылу",
@@ -1253,7 +1253,7 @@ extension LocalizationService {
             "paywall_unavailable": "Жазылым қазір қол жетімсіз. Кейінірек көріңіз.",
             "paywall_cancel_anytime": "Кез келген уақытта iOS баптауларынан тоқтатуға болады",
             "paywall_privacy_link": "Құпиялылық саясаты",
-            "paywall_subscription_terms": "X5 Lite және X5 Pro — 1000 ₸-ден 2000 ₸-ге дейінгі автоматты жаңартылатын айлық жазылымдар. Төлем сатып алуды растаған кезде Apple ID-ге жазылады. Ағымдағы кезеңнің аяқталуына кемінде 24 сағат қалғанда тоқтатылмаса, жазылым автоматты түрде жаңарады. Жазылымды Apple ID параметрлерінде басқаруға және тоқтатуға болады.",
+            "paywall_subscription_terms": "X5 Lite, X5 Pro және X5 Max — 1000 ₸-ден 5000 ₸-ге дейінгі автоматты жаңартылатын айлық жазылымдар. Көк растау белгісі App Store арқылы бөлек сатып алынады. Төлем сатып алуды растаған кезде Apple ID-ге жазылады. Ағымдағы кезеңнің аяқталуына кемінде 24 сағат қалғанда тоқтатылмаса, жазылым автоматты түрде жаңарады. Жазылымды Apple ID параметрлерінде басқаруға және тоқтатуға болады.",
             "paywall_restore": "Сатып алуларды қалпына келтіру",
 
             "profile_title": "Профиль",

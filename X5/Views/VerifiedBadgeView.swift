@@ -1,7 +1,7 @@
 import SwiftUI
+import StoreKit
 
-/// Sells the blue ☑ verified badge for `IAPService.verifiedCostCredits` credits / 30 days.
-/// Credits come from the subscription balance — single store, no separate IAP.
+/// Sells the blue ☑ verified badge as a separate App Store subscription.
 struct VerifiedBadgeView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
@@ -9,12 +9,7 @@ struct VerifiedBadgeView: View {
     @StateObject private var iap = IAPService()
     @Environment(\.dismiss) private var dismiss
     @State private var showSuccess = false
-    @State private var showPaywall = false
-    @State private var working = false
     @State private var errorText: String?
-
-    private var credits: Int { currentUser.profile?.credits ?? 0 }
-    private var canAfford: Bool { credits >= IAPService.verifiedCostCredits }
 
     var body: some View {
         ScrollView {
@@ -85,27 +80,26 @@ struct VerifiedBadgeView: View {
             }
             .padding(20)
         }
-        .sheet(isPresented: $showPaywall) { PaywallView() }
+        .task { await iap.loadProducts() }
         .alert("Готово!", isPresented: $showSuccess) {
             Button("OK") { dismiss() }
         } message: {
-            Text("Синяя галочка теперь рядом с твоим именем. Списано \(IAPService.verifiedCostCredits) кредитов.")
+            Text("Синяя галочка теперь рядом с твоим именем.")
         }
     }
 
     private var purchaseBlock: some View {
         VStack(spacing: 10) {
-            // Cost block
             HStack(spacing: 8) {
-                Image(systemName: "creditcard.circle.fill")
+                Image(systemName: "checkmark.seal.fill")
                     .foregroundColor(.accentColor)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(IAPService.verifiedCostCredits) кредитов / 30 дней")
+                    Text("\(IAPService.verifiedDisplayPrice) / месяц")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
-                    Text("Твой баланс: \(credits)")
+                    Text("Отдельная покупка через App Store")
                         .font(.system(size: 12))
-                        .foregroundColor(canAfford ? .white.opacity(0.7) : .red.opacity(0.85))
+                        .foregroundColor(.white.opacity(0.7))
                 }
                 Spacer()
             }
@@ -113,36 +107,29 @@ struct VerifiedBadgeView: View {
             .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            if canAfford {
-                Button {
-                    activate()
-                } label: {
-                    Text(working ? "Списываем…" : "Активировать за \(IAPService.verifiedCostCredits) кредитов")
-                        .font(.system(size: 17, weight: .bold))
+            Button {
+                buyVerified()
+            } label: {
+                VStack(spacing: 4) {
+                    Text(iap.isPurchasing ? "Открываем App Store…" : "Купить галочку — \(IAPService.verifiedDisplayPrice) / мес")
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(working ? Color.accentColor.opacity(0.5) : Color.accentColor)
-                        .cornerRadius(14)
+                    Text("Отменить можно в настройках Apple ID")
+                        .font(.system(size: 11))
+                        .foregroundColor(.black.opacity(0.7))
                 }
-                .disabled(working)
-            } else {
-                Button {
-                    showPaywall = true
-                } label: {
-                    VStack(spacing: 4) {
-                        Text("Купить Pro и получить кредиты")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.black)
-                        Text("Pro = +2000 кредитов сразу")
-                            .font(.system(size: 11))
-                            .foregroundColor(.black.opacity(0.7))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.accentColor)
-                    .cornerRadius(14)
-                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(verifiedProduct != nil && !iap.isPurchasing ? Color.accentColor : Color.accentColor.opacity(0.5))
+                .cornerRadius(14)
+            }
+            .disabled(verifiedProduct == nil || iap.isPurchasing)
+
+            if verifiedProduct == nil && iap.lastError == nil {
+                Text("Покупка галочки сейчас недоступна. Проверь продукт в App Store Connect.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.5))
+                    .multilineTextAlignment(.center)
             }
 
             if let err = errorText {
@@ -167,17 +154,21 @@ struct VerifiedBadgeView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private func activate() {
-        guard let token = auth.accessToken else { return }
-        working = true
+    private var verifiedProduct: Product? {
+        iap.product(id: IAPService.verifiedMonthlyProductID)
+    }
+
+    private func buyVerified() {
         errorText = nil
         Task {
-            let ok = await iap.activateVerifiedWithCredits(currentUser: currentUser, accessToken: token)
-            working = false
+            let ok = await iap.purchase(productID: IAPService.verifiedMonthlyProductID)
             if ok {
+                if let uid = auth.userId, let token = auth.accessToken {
+                    await currentUser.load(userId: uid, accessToken: token)
+                }
                 showSuccess = true
             } else {
-                errorText = iap.lastError ?? "Не удалось активировать. Попробуй позже."
+                errorText = iap.lastError ?? "Не удалось купить галочку. Попробуй позже."
             }
         }
     }

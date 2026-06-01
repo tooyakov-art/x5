@@ -6,7 +6,6 @@ struct ProfileView: View {
     @EnvironmentObject private var subscription: Subscription
     @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var loc: LocalizationService
-    @StateObject private var iap = IAPService()
     @Environment(\.dismiss) private var dismiss
 
     var showsDoneButton: Bool = true
@@ -102,7 +101,6 @@ struct ProfileView: View {
                     showInHubToggle = value ?? false
                 }
             }
-            .task { await iap.loadProducts() }
             .onAppear { showInHubToggle = currentUser.profile?.showInHub ?? false }
         }
     }
@@ -366,7 +364,6 @@ struct ProfileView: View {
         await currentUser.load(userId: uid, accessToken: token)
         showInHubToggle = currentUser.profile?.showInHub ?? false
         subscription.sync(from: currentUser.profile)
-        await iap.loadProducts()
         try? await Task.sleep(nanoseconds: 450_000_000)
         isRefreshing = false
     }
@@ -562,12 +559,8 @@ struct ProfileView: View {
         currentUser.profile?.planLabel.uppercased() ?? "FREE"
     }
 
-    /// Real subscription price from StoreKit / ASC. Loaded once on appear.
     private var upgradeSubtitle: String {
-        if let p = iap.product {
-            return "\(p.displayPrice) / \(loc.t("profile_month")) - \(loc.t("profile_upgrade_sub"))"
-        }
-        return loc.t("profile_upgrade_sub")
+        "от 1000 ₸ / \(loc.t("profile_month")) - \(loc.t("profile_upgrade_sub"))"
     }
 
     private func formatDate(_ iso: String) -> String {

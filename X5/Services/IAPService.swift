@@ -5,12 +5,13 @@ import StoreKit
 final class IAPService: ObservableObject {
     nonisolated static let liteMonthlyProductID = "com.x5studio.app.lite.monthly"
     nonisolated static let proMonthlyProductID = "com.x5studio.app.pro.monthly"
+    nonisolated static let maxMonthlyProductID = "com.x5studio.app.max.monthly"
+    nonisolated static let verifiedMonthlyProductID = "com.x5studio.app.verified.monthly"
     nonisolated static let monthlyProductID = proMonthlyProductID
-    nonisolated static let monthlyProductIDs = [liteMonthlyProductID, proMonthlyProductID]
+    nonisolated static let monthlyProductIDs = [liteMonthlyProductID, proMonthlyProductID, maxMonthlyProductID]
+    nonisolated static let allProductIDs = monthlyProductIDs + [verifiedMonthlyProductID]
 
-    /// Cost in credits to activate the verified badge for 30 days.
-    /// Credits are earned via subscription: 1 credit = 1 KZT.
-    nonisolated static let verifiedCostCredits: Int = 500
+    nonisolated static let verifiedDisplayPrice = "500 ₸"
 
     @Published private(set) var products: [String: Product] = [:]
     @Published private(set) var isPurchasing: Bool = false
@@ -33,7 +34,7 @@ final class IAPService: ObservableObject {
 
     func loadProducts() async {
         do {
-            let loaded = try await Product.products(for: Self.monthlyProductIDs)
+            let loaded = try await Product.products(for: Self.allProductIDs)
             products = Dictionary(uniqueKeysWithValues: loaded.map { ($0.id, $0) })
         } catch {
             lastError = error.localizedDescription
@@ -42,26 +43,6 @@ final class IAPService: ObservableObject {
 
     func product(id: String) -> Product? {
         products[id]
-    }
-
-    /// Spends `verifiedCostCredits` from the user's balance and activates the verified badge
-    /// for 30 days. Returns false if the user has insufficient credits.
-    func activateVerifiedWithCredits(currentUser: CurrentUser, accessToken: String) async -> Bool {
-        guard let profile = currentUser.profile else { return false }
-        let credits = profile.credits ?? 0
-        guard credits >= Self.verifiedCostCredits else {
-            lastError = "Не хватает кредитов: нужно \(Self.verifiedCostCredits), у тебя \(credits). Купи Pro — получишь 2000 кредитов."
-            return false
-        }
-        let endIso = ISO8601DateFormatter().string(
-            from: Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date().addingTimeInterval(30 * 24 * 3600)
-        )
-        await currentUser.patchMany([
-            "is_verified": AnyEncodable(true),
-            "verified_until": AnyEncodable(endIso),
-            "credits": AnyEncodable(credits - Self.verifiedCostCredits)
-        ], accessToken: accessToken)
-        return true
     }
 
     /// Initiates purchase flow. On verified transaction, upgrades the local profile and credits.
@@ -89,7 +70,11 @@ final class IAPService: ObservableObject {
             switch result {
             case .success(let verification):
                 if case .verified(let transaction) = verification {
-                    await applyEntitlement(transaction: transaction, grantCredits: true)
+                    if Self.monthlyProductIDs.contains(transaction.productID) {
+                        await applySubscriptionEntitlement(transaction: transaction, grantCredits: true)
+                    } else if transaction.productID == Self.verifiedMonthlyProductID {
+                        await applyVerifiedEntitlement(transaction: transaction)
+                    }
                     await transaction.finish()
                     return true
                 } else {
@@ -115,7 +100,9 @@ final class IAPService: ObservableObject {
             try await AppStore.sync()
             for await result in Transaction.currentEntitlements {
                 if case .verified(let t) = result, Self.monthlyProductIDs.contains(t.productID) {
-                    await applyEntitlement(transaction: t, grantCredits: false)
+                    await applySubscriptionEntitlement(transaction: t, grantCredits: false)
+                } else if case .verified(let t) = result, t.productID == Self.verifiedMonthlyProductID {
+                    await applyVerifiedEntitlement(transaction: t)
                 }
             }
         } catch {
@@ -128,7 +115,9 @@ final class IAPService: ObservableObject {
             for await update in Transaction.updates {
                 if case .verified(let transaction) = update {
                     if Self.monthlyProductIDs.contains(transaction.productID) {
-                        await self?.applyEntitlement(transaction: transaction, grantCredits: false)
+                        await self?.applySubscriptionEntitlement(transaction: transaction, grantCredits: false)
+                    } else if transaction.productID == Self.verifiedMonthlyProductID {
+                        await self?.applyVerifiedEntitlement(transaction: transaction)
                     }
                     await transaction.finish()
                 }
@@ -155,7 +144,7 @@ final class IAPService: ObservableObject {
     /// `subscription_end_date` already stored. A renewal that doesn't extend
     /// the period (re-delivery of a known transaction) is treated as a no-op
     /// for credits. Plan/end-date are still refreshed so isPro stays true.
-    private func applyEntitlement(transaction: StoreKit.Transaction, grantCredits: Bool) async {
+    private func applySubscriptionEntitlement(transaction: StoreKit.Transaction, grantCredits: Bool) async {
         guard
             let userId = UserDefaults.standard.string(forKey: "x5.session.user_id"),
             let accessToken = Keychain.string(for: "x5.session.access_token")
@@ -219,7 +208,7 @@ final class IAPService: ObservableObject {
         }()
 
         let monthlyCredits = Self.creditsGranted(for: transaction.productID)
-        let subscriptionType = transaction.productID == Self.liteMonthlyProductID ? "lite_monthly" : "pro_monthly"
+        let subscriptionType = Self.subscriptionType(for: transaction.productID)
 
         var body: [String: Any] = [
             "plan": "pro",
@@ -248,11 +237,55 @@ final class IAPService: ObservableObject {
         NotificationCenter.default.post(name: .x5DidActivatePro, object: nil)
     }
 
+    private func applyVerifiedEntitlement(transaction: StoreKit.Transaction) async {
+        guard
+            let userId = UserDefaults.standard.string(forKey: "x5.session.user_id"),
+            let accessToken = Keychain.string(for: "x5.session.access_token")
+        else { return }
+
+        if let token = transaction.appAccountToken,
+           let buyerId = UUID(uuidString: userId),
+           token != buyerId {
+            return
+        }
+
+        let endDate = transaction.expirationDate
+            ?? Calendar.current.date(byAdding: .month, value: 1, to: Date())
+            ?? Date().addingTimeInterval(30 * 24 * 3600)
+        let endIso = ISO8601DateFormatter().string(from: endDate)
+
+        guard var patchURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false) else {
+            return
+        }
+        patchURL.queryItems = [URLQueryItem(name: "id", value: "eq.\(userId)")]
+        guard let patchReqURL = patchURL.url else { return }
+        var patch = URLRequest(url: patchReqURL)
+        patch.httpMethod = "PATCH"
+        patch.setValue(anonKey, forHTTPHeaderField: "apikey")
+        patch.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        patch.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        patch.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "is_verified": true,
+            "verified_until": endIso
+        ])
+        _ = try? await URLSession.shared.data(for: patch)
+    }
+
     private static func creditsGranted(for productID: String) -> Int {
         switch productID {
         case liteMonthlyProductID: return 1000
         case proMonthlyProductID: return 2000
+        case maxMonthlyProductID: return 5000
         default: return 1000
+        }
+    }
+
+    private static func subscriptionType(for productID: String) -> String {
+        switch productID {
+        case liteMonthlyProductID: return "lite_monthly"
+        case proMonthlyProductID: return "pro_monthly"
+        case maxMonthlyProductID: return "max_monthly"
+        default: return "lite_monthly"
         }
     }
 }
