@@ -230,24 +230,32 @@ jobs:
                   )
                   print(f"Created localization en-US for {spec['product_id']}")
 
-              api(
-                  "POST",
-                  "/subscriptionAvailabilities",
-                  expected=(201,),
-                  json={
-                      "data": {
-                          "type": "subscriptionAvailabilities",
-                          "attributes": {"availableInNewTerritories": False},
-                          "relationships": {
-                              "availableTerritories": {
-                                  "data": [{"type": "territories", "id": "KAZ"}]
-                              },
-                              "subscription": {"data": {"type": "subscriptions", "id": sub_id}},
+              availability_payload = {
+                  "data": {
+                      "type": "subscriptionAvailabilities",
+                      "attributes": {"availableInNewTerritories": False},
+                      "relationships": {
+                          "availableTerritories": {
+                              "data": [{"type": "territories", "id": "KAZ"}]
                           },
-                      }
-                  },
+                          "subscription": {"data": {"type": "subscriptions", "id": sub_id}},
+                      },
+                  }
+              }
+              availability = requests.post(
+                  f"{BASE}/subscriptionAvailabilities",
+                  headers={**headers(), "Content-Type": "application/json"},
+                  json=availability_payload,
+                  timeout=60,
               )
-              print(f"Enabled KAZ availability for {spec['product_id']}")
+              if availability.status_code == 201:
+                  print(f"Enabled KAZ availability for {spec['product_id']}")
+              elif availability.status_code == 409 and "AVAILABILITY_REMOVAL_NOT_ALLOWED" in availability.text:
+                  print(f"Keeping existing availability for {spec['product_id']} because Apple blocks removal")
+              else:
+                  print(f"POST {BASE}/subscriptionAvailabilities -> HTTP {availability.status_code}")
+                  print(availability.text[:2000])
+                  raise SystemExit(1)
 
               price_points = list_all(
                   f"/subscriptions/{sub_id}/pricePoints?include=territory&filter[territory]=KAZ&limit=8000"
