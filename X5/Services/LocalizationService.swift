@@ -175,6 +175,9 @@ extension LocalizationService {
             "login_invalid": "Неверный email или пароль.",
             "login_already": "Этот email уже зарегистрирован.",
             "login_password_short": "Пароль должен быть минимум 6 символов.",
+            "login_generic_failed": "Не удалось войти. Проверь данные и попробуй ещё раз.",
+            "login_apple_failed": "Не удалось войти через Apple. Попробуй ещё раз.",
+            "login_google_failed": "Не удалось войти через Google. Попробуй ещё раз.",
 
             // Settings
             "settings_title": "Настройки",
@@ -638,6 +641,9 @@ extension LocalizationService {
             "login_invalid": "Invalid email or password.",
             "login_already": "This email is already registered.",
             "login_password_short": "Password must be at least 6 characters.",
+            "login_generic_failed": "Could not sign in. Check your details and try again.",
+            "login_apple_failed": "Could not sign in with Apple. Please try again.",
+            "login_google_failed": "Could not sign in with Google. Please try again.",
 
             "settings_title": "Settings",
             "settings_account": "Account",
@@ -1095,6 +1101,9 @@ extension LocalizationService {
             "login_invalid": "Қате email немесе құпиясөз.",
             "login_already": "Бұл email тіркелген.",
             "login_password_short": "Құпиясөз кемінде 6 таңба болуы керек.",
+            "login_generic_failed": "Кіру мүмкін болмады. Деректерді тексеріп, қайталап көр.",
+            "login_apple_failed": "Apple арқылы кіру мүмкін болмады. Қайталап көр.",
+            "login_google_failed": "Google арқылы кіру мүмкін болмады. Қайталап көр.",
 
             "settings_title": "Баптаулар",
             "settings_account": "Аккаунт",
