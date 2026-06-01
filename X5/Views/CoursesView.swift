@@ -87,7 +87,7 @@ struct CoursesView: View {
                                         Text("Следующие курсы")
                                             .font(.system(size: 22, weight: .heavy))
                                             .foregroundColor(.white)
-                                        Text("Скоро в CourseUP")
+                                        Text("Уже в плане CourseUP")
                                             .font(.system(size: 13, weight: .semibold))
                                             .foregroundColor(.white.opacity(0.46))
                                     }
@@ -100,9 +100,9 @@ struct CoursesView: View {
 
                                 ForEach(Self.upcomingCourses) { course in
                                     NavigationLink {
-                                        CourseDetailView(course: course, openPaywall: { showingPaywall = true })
+                                        CourseInDevelopmentView(course: course)
                                     } label: {
-                                        CourseRow(course: course)
+                                        UpcomingCourseCard(course: course)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -427,6 +427,217 @@ private struct CourseRow: View {
         .padding(14)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+private struct UpcomingCourseCard: View {
+    let course: Course
+
+    private var accent: Color {
+        switch course.id {
+        case "upcoming-vibecoding": return X5Style.blue
+        case "upcoming-ai-reels": return Color.purple
+        case "upcoming-marketplace": return Color.cyan
+        case "upcoming-smm-system": return Color.green
+        case "upcoming-youtube": return Color.red
+        case "upcoming-target-analytics": return Color.orange
+        default: return Color.accentColor
+        }
+    }
+
+    private var icon: String {
+        switch course.id {
+        case "upcoming-vibecoding": return "curlybraces"
+        case "upcoming-ai-reels": return "play.rectangle.on.rectangle"
+        case "upcoming-marketplace": return "shippingbox"
+        case "upcoming-smm-system": return "calendar.badge.clock"
+        case "upcoming-youtube": return "rectangle.on.rectangle"
+        case "upcoming-target-analytics": return "scope"
+        default: return "graduationcap"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .bottomLeading) {
+                LinearGradient(
+                    colors: [
+                        accent.opacity(0.34),
+                        Color(red: 0.03, green: 0.04, blue: 0.07),
+                        Color.black.opacity(0.94)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                HStack(alignment: .center, spacing: 16) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(accent.opacity(0.18))
+                        Image(systemName: icon)
+                            .font(.system(size: 36, weight: .bold))
+                            .foregroundColor(accent)
+                    }
+                    .frame(width: 84, height: 84)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("COURSEUP")
+                            .font(.system(size: 11, weight: .heavy))
+                            .tracking(2.2)
+                            .foregroundColor(.white.opacity(0.45))
+
+                        Text(course.title)
+                            .font(.system(size: 23, weight: .heavy))
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.82)
+
+                        Text("В разработке")
+                            .font(.system(size: 11, weight: .heavy))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.accentColor)
+                            .clipShape(Capsule())
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(18)
+            }
+            .frame(height: 154)
+
+            VStack(alignment: .leading, spacing: 10) {
+                if let desc = course.description, !desc.isEmpty {
+                    Text(desc)
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.62))
+                        .lineLimit(2)
+                }
+
+                HStack(spacing: 14) {
+                    Label("\(course.totalLessons) урока", systemImage: "book")
+                    Label(course.totalDurationLabel.isEmpty ? "32 мин" : course.totalDurationLabel, systemImage: "clock")
+                    Spacer()
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 36, height: 36)
+                        .background(Color.accentColor)
+                        .clipShape(Circle())
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white.opacity(0.48))
+            }
+            .padding(16)
+        }
+        .background(Color.white.opacity(0.055))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
+struct CourseInDevelopmentView: View {
+    let course: Course
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("CourseUP")
+                        .font(.system(size: 12, weight: .heavy))
+                        .tracking(2)
+                        .foregroundColor(.accentColor)
+
+                    Text(course.title)
+                        .font(.system(size: 32, weight: .heavy))
+                        .foregroundColor(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let desc = course.description, !desc.isEmpty {
+                        Text(desc)
+                            .font(.system(size: 15))
+                            .foregroundColor(.white.opacity(0.66))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    LinearGradient(
+                        colors: [Color.accentColor.opacity(0.20), Color.white.opacity(0.055)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+
+                HStack(spacing: 12) {
+                    Image(systemName: "hammer.fill")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(Color.accentColor)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Курс в разработке")
+                            .font(.system(size: 18, weight: .heavy))
+                            .foregroundColor(.white)
+                        Text("Скоро добавим уроки, видео и материалы.")
+                            .font(.system(size: 13))
+                            .foregroundColor(.white.opacity(0.58))
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.white.opacity(0.055))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                Text("Программа")
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundColor(.white.opacity(0.45))
+
+                ForEach(course.categories.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) })) { category in
+                    ForEach(category.days.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) })) { day in
+                        ForEach(day.lessons.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) })) { lesson in
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    Circle().fill(Color.white.opacity(0.06))
+                                    Image(systemName: "lock.fill")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(.white.opacity(0.38))
+                                }
+                                .frame(width: 32, height: 32)
+                                Text(lesson.title)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.82))
+                                Spacer()
+                                Text("скоро")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.36))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(Color.white.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 32)
+            .frame(maxWidth: 640)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+        .navigationTitle("В разработке")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
     }
 }
 
