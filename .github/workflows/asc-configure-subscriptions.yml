@@ -208,21 +208,24 @@ jobs:
               localizations = list_all(f"/subscriptions/{sub_id}/subscriptionLocalizations?limit=200")
               en_loc = next((loc for loc in localizations if loc["attributes"].get("locale") == "en-US"), None)
               if en_loc:
-                  api(
-                      "PATCH",
-                      f"/subscriptionLocalizations/{en_loc['id']}",
-                      json={
-                          "data": {
-                              "type": "subscriptionLocalizations",
-                              "id": en_loc["id"],
-                              "attributes": {
-                                  "name": spec["display_name"],
-                                  "description": spec["description"],
-                              },
-                          }
-                      },
-                  )
-                  print(f"Updated localization en-US for {spec['product_id']}")
+                  if en_loc["attributes"].get("state") == "ACTIVE":
+                      print(f"Localization en-US is ACTIVE for {spec['product_id']}, keeping existing text")
+                  else:
+                      api(
+                          "PATCH",
+                          f"/subscriptionLocalizations/{en_loc['id']}",
+                          json={
+                              "data": {
+                                  "type": "subscriptionLocalizations",
+                                  "id": en_loc["id"],
+                                  "attributes": {
+                                      "name": spec["display_name"],
+                                      "description": spec["description"],
+                                  },
+                              }
+                          },
+                      )
+                      print(f"Updated localization en-US for {spec['product_id']}")
               else:
                   api(
                       "POST",
