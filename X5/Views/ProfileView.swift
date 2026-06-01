@@ -21,6 +21,7 @@ struct ProfileView: View {
     @State private var isRefreshing = false
     @State private var showInHubToggle = false
     @State private var savingShowInHub = false
+    @State private var selectedSection: ProfileSection = .overview
 
     var body: some View {
         NavigationStack {
@@ -29,27 +30,8 @@ struct ProfileView: View {
                     hero
 
                     VStack(spacing: 16) {
-                        if currentUser.profile?.isPro == true {
-                            proHero
-                        } else {
-                            upgradeCard
-                        }
-                        if let bio = currentUser.profile?.bio, !bio.isEmpty {
-                            BioCard(text: bio)
-                        }
-                        if currentUser.profile?.showInHub != true {
-                            becomeSpecialistCard
-                        }
-                        if let uid = currentUser.profile?.id {
-                            PortfolioGrid(userId: uid, canEdit: true)
-                        }
-                        socialLinks
-                        if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
-                            specialistCard(cats: cats)
-                        }
-                        if !(currentUser.profile?.hasActiveVerifiedBadge ?? false) {
-                            verifiedCard
-                        }
+                        sectionPicker
+                        selectedSectionContent
                     }
                     .frame(maxWidth: profileContentWidth)
                     .frame(maxWidth: .infinity)
@@ -211,6 +193,8 @@ struct ProfileView: View {
                     .tint(.white)
                     .foregroundStyle(.black)
 
+                    ProfileSocialLinksStrip(items: socialItems)
+
                     HStack(spacing: 6) {
                         Text(planLabel)
                             .font(.system(size: 10, weight: .heavy))
@@ -242,6 +226,57 @@ struct ProfileView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: heroHeight)
+    }
+
+    private var sectionPicker: some View {
+        Picker("", selection: $selectedSection) {
+            ForEach(ProfileSection.allCases) { section in
+                Text(section.title(loc)).tag(section)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(4)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var selectedSectionContent: some View {
+        switch selectedSection {
+        case .overview:
+            overviewSection
+        case .works:
+            worksSection
+        }
+    }
+
+    private var overviewSection: some View {
+        VStack(spacing: 16) {
+            if currentUser.profile?.isPro == true {
+                proHero
+            } else {
+                upgradeCard
+            }
+            if let bio = currentUser.profile?.bio, !bio.isEmpty {
+                BioCard(text: bio)
+            }
+            if currentUser.profile?.showInHub != true {
+                becomeSpecialistCard
+            }
+            if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
+                specialistCard(cats: cats)
+            }
+            if !(currentUser.profile?.hasActiveVerifiedBadge ?? false) {
+                verifiedCard
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var worksSection: some View {
+        if let uid = currentUser.profile?.id {
+            PortfolioGrid(userId: uid, canEdit: true)
+        }
     }
 
     private func uploadAvatar(_ item: PhotosPickerItem) async {
@@ -489,27 +524,9 @@ struct ProfileView: View {
 
     // MARK: - Social
 
-    @ViewBuilder
-    private var socialLinks: some View {
-        if let links = currentUser.profile?.socialLinks {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(loc.t("profile_social").uppercased())
-                    .font(.system(size: 11, weight: .bold))
-                    .tracking(1.4)
-                    .foregroundColor(.white.opacity(0.45))
-                HStack(spacing: 8) {
-                    if let v = links.telegram, !v.isEmpty {
-                        SocialChip(label: "Telegram", value: v, brand: .telegram) { open(telegram: v) }
-                    }
-                    if let v = links.whatsapp, !v.isEmpty {
-                        SocialChip(label: "WhatsApp", value: v, brand: .whatsapp) { open(whatsapp: v) }
-                    }
-                    if let v = links.instagram, !v.isEmpty {
-                        SocialChip(label: "Instagram", value: v, brand: .instagram) { open(instagram: v) }
-                    }
-                }
-            }
-        }
+    private var socialItems: [ProfileSocialLinkItem] {
+        guard let links = currentUser.profile?.socialLinks else { return [] }
+        return makeSocialItems(from: links)
     }
 
     private func specialistCard(cats: [String]) -> some View {
@@ -562,21 +579,86 @@ struct ProfileView: View {
         return out.string(from: d)
     }
 
-    private func open(telegram raw: String) {
-        let user = raw.replacingOccurrences(of: "@", with: "")
-        if let url = URL(string: raw.hasPrefix("http") ? raw : "https://t.me/\(user)") {
-            UIApplication.shared.open(url)
+    private func makeSocialItems(from links: SocialLinks) -> [ProfileSocialLinkItem] {
+        [
+            socialItem(id: "instagram", label: "Instagram", brand: .instagram, raw: links.instagram, fallbackHost: "https://instagram.com/"),
+            socialItem(id: "tiktok", label: "TikTok", brand: .tiktok, raw: links.tiktok, fallbackHost: "https://www.tiktok.com/@"),
+            socialItem(id: "telegram", label: "Telegram", brand: .telegram, raw: links.telegram, fallbackHost: "https://t.me/"),
+            socialItem(id: "whatsapp", label: "WhatsApp", brand: .whatsapp, raw: links.whatsapp, fallbackHost: "https://wa.me/", digitsOnly: true),
+            socialItem(id: "youtube", label: "YouTube", brand: .youtube, raw: links.youtube, fallbackHost: "https://youtube.com/"),
+            socialItem(id: "linkedin", label: "LinkedIn", brand: .linkedin, raw: links.linkedin, fallbackHost: "https://linkedin.com/in/"),
+            socialItem(id: "facebook", label: "Facebook", brand: .facebook, raw: links.facebook, fallbackHost: "https://facebook.com/")
+        ].compactMap { $0 }
+    }
+
+    private func socialItem(id: String, label: String, brand: SocialBrand, raw: String?, fallbackHost: String, digitsOnly: Bool = false) -> ProfileSocialLinkItem? {
+        let value = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        if value.hasPrefix("http"), let url = URL(string: value) {
+            return ProfileSocialLinkItem(id: id, label: label, brand: brand, url: url)
+        }
+        let cleaned = digitsOnly ? value.filter("0123456789".contains) : value.replacingOccurrences(of: "@", with: "")
+        guard !cleaned.isEmpty else { return nil }
+        return ProfileSocialLinkItem(id: id, label: label, brand: brand, url: URL(string: fallbackHost + cleaned))
+    }
+}
+
+struct ProfileSocialLinkItem: Identifiable, Hashable {
+    let id: String
+    let label: String
+    let brand: SocialBrand
+    let url: URL?
+}
+
+struct ProfileSocialLinksStrip: View {
+    let items: [ProfileSocialLinkItem]
+
+    var body: some View {
+        if !items.isEmpty {
+            GeometryReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(items) { item in
+                            Button {
+                                if let url = item.url {
+                                    UIApplication.shared.open(url)
+                                }
+                            } label: {
+                                HStack(spacing: 7) {
+                                    SocialBrandIcon(item.brand, size: 16)
+                                    Text(item.label)
+                                        .font(.system(size: 12, weight: .bold))
+                                        .lineLimit(1)
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 12)
+                                .frame(height: 38)
+                                .x5ClearGlass(cornerRadius: 19, highlight: 0.10)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(item.url == nil)
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .frame(minWidth: proxy.size.width, alignment: .center)
+                }
+            }
+            .frame(height: 42)
         }
     }
-    private func open(whatsapp raw: String) {
-        if raw.hasPrefix("http"), let url = URL(string: raw) { UIApplication.shared.open(url); return }
-        let digits = raw.filter("0123456789".contains)
-        if let url = URL(string: "https://wa.me/\(digits)") { UIApplication.shared.open(url) }
-    }
-    private func open(instagram raw: String) {
-        let user = raw.replacingOccurrences(of: "@", with: "")
-        if let url = URL(string: raw.hasPrefix("http") ? raw : "https://instagram.com/\(user)") {
-            UIApplication.shared.open(url)
+}
+
+private enum ProfileSection: String, CaseIterable, Identifiable {
+    case overview
+    case works
+
+    var id: String { rawValue }
+
+    @MainActor
+    func title(_ loc: LocalizationService) -> String {
+        switch self {
+        case .overview: return loc.t("profile_tab_overview")
+        case .works: return loc.t("profile_tab_works")
         }
     }
 }
@@ -606,26 +688,6 @@ private struct BioCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
             .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
-    }
-}
-
-private struct SocialChip: View {
-    let label: String
-    let value: String
-    let brand: SocialBrand
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                SocialBrandIcon(brand, size: 16)
-                Text(label).font(.system(size: 12, weight: .semibold))
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
-        }
-        .buttonStyle(.plain)
     }
 }
 

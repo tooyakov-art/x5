@@ -34,7 +34,6 @@ struct UserProfileView: View {
                 VStack(spacing: 16) {
                     publicBioCard
                     PortfolioGrid(userId: userId, canEdit: false)
-                    publicSocialLinks
                     publicSpecialistCard
                 }
                 .frame(maxWidth: profileContentWidth)
@@ -177,6 +176,8 @@ struct UserProfileView: View {
 
                     actionRow
 
+                    ProfileSocialLinksStrip(items: socialItems)
+
                     HStack(spacing: 6) {
                         if (profile?.plan ?? fallback?.plan) == "pro" || isMe {
                             Text("PRO")
@@ -309,35 +310,10 @@ struct UserProfileView: View {
         }
     }
 
-    @ViewBuilder
-    private var publicSocialLinks: some View {
+    private var socialItems: [ProfileSocialLinkItem] {
         let links = profile?.socialLinks ?? fallback?.socialLinks
-        if let links, hasSocialLinks(links) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(loc.t("profile_social").uppercased())
-                    .font(.system(size: 11, weight: .bold))
-                    .tracking(1.4)
-                    .foregroundColor(.white.opacity(0.45))
-
-                FlowLayout(spacing: 8) {
-                    if let v = links.telegram, !v.isEmpty {
-                        PublicSocialChip(label: "Telegram", brand: .telegram, url: makeTelegram(v))
-                    }
-                    if let v = links.whatsapp, !v.isEmpty {
-                        PublicSocialChip(label: "WhatsApp", brand: .whatsapp, url: makeWhatsApp(v))
-                    }
-                    if let v = links.instagram, !v.isEmpty {
-                        PublicSocialChip(label: "Instagram", brand: .instagram, url: makeInstagram(v))
-                    }
-                    if let v = links.youtube, !v.isEmpty, let url = URL(string: v) {
-                        PublicSocialChip(label: "YouTube", brand: .youtube, url: url)
-                    }
-                    if let v = links.tiktok, !v.isEmpty, let url = URL(string: v) {
-                        PublicSocialChip(label: "TikTok", brand: .tiktok, url: url)
-                    }
-                }
-            }
-        }
+        guard let links, hasSocialLinks(links) else { return [] }
+        return makeSocialItems(from: links)
     }
 
     private func hasSocialLinks(_ links: SocialLinks) -> Bool {
@@ -345,7 +321,9 @@ struct UserProfileView: View {
         !(links.whatsapp ?? "").isEmpty ||
         !(links.instagram ?? "").isEmpty ||
         !(links.youtube ?? "").isEmpty ||
-        !(links.tiktok ?? "").isEmpty
+        !(links.tiktok ?? "").isEmpty ||
+        !(links.linkedin ?? "").isEmpty ||
+        !(links.facebook ?? "").isEmpty
     }
 
     // MARK: - Helpers
@@ -511,20 +489,27 @@ struct UserProfileView: View {
         }
     }
 
-    private func makeTelegram(_ raw: String) -> URL? {
-        if raw.hasPrefix("http") { return URL(string: raw) }
-        let user = raw.replacingOccurrences(of: "@", with: "")
-        return URL(string: "https://t.me/\(user)")
+    private func makeSocialItems(from links: SocialLinks) -> [ProfileSocialLinkItem] {
+        [
+            socialItem(id: "instagram", label: "Instagram", brand: .instagram, raw: links.instagram, fallbackHost: "https://instagram.com/"),
+            socialItem(id: "tiktok", label: "TikTok", brand: .tiktok, raw: links.tiktok, fallbackHost: "https://www.tiktok.com/@"),
+            socialItem(id: "telegram", label: "Telegram", brand: .telegram, raw: links.telegram, fallbackHost: "https://t.me/"),
+            socialItem(id: "whatsapp", label: "WhatsApp", brand: .whatsapp, raw: links.whatsapp, fallbackHost: "https://wa.me/", digitsOnly: true),
+            socialItem(id: "youtube", label: "YouTube", brand: .youtube, raw: links.youtube, fallbackHost: "https://youtube.com/"),
+            socialItem(id: "linkedin", label: "LinkedIn", brand: .linkedin, raw: links.linkedin, fallbackHost: "https://linkedin.com/in/"),
+            socialItem(id: "facebook", label: "Facebook", brand: .facebook, raw: links.facebook, fallbackHost: "https://facebook.com/")
+        ].compactMap { $0 }
     }
-    private func makeWhatsApp(_ raw: String) -> URL? {
-        if raw.hasPrefix("http") { return URL(string: raw) }
-        let digits = raw.filter("0123456789".contains)
-        return URL(string: "https://wa.me/\(digits)")
-    }
-    private func makeInstagram(_ raw: String) -> URL? {
-        if raw.hasPrefix("http") { return URL(string: raw) }
-        let user = raw.replacingOccurrences(of: "@", with: "")
-        return URL(string: "https://instagram.com/\(user)")
+
+    private func socialItem(id: String, label: String, brand: SocialBrand, raw: String?, fallbackHost: String, digitsOnly: Bool = false) -> ProfileSocialLinkItem? {
+        let value = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        if value.hasPrefix("http"), let url = URL(string: value) {
+            return ProfileSocialLinkItem(id: id, label: label, brand: brand, url: url)
+        }
+        let cleaned = digitsOnly ? value.filter("0123456789".contains) : value.replacingOccurrences(of: "@", with: "")
+        guard !cleaned.isEmpty else { return nil }
+        return ProfileSocialLinkItem(id: id, label: label, brand: brand, url: URL(string: fallbackHost + cleaned))
     }
 }
 
@@ -586,48 +571,6 @@ private struct PublicStatBubble: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
-    }
-}
-
-private struct PublicSocialChip: View {
-    let label: String
-    let brand: SocialBrand
-    let url: URL?
-
-    var body: some View {
-        Button {
-            if let url { UIApplication.shared.open(url) }
-        } label: {
-            HStack(spacing: 6) {
-                SocialBrandIcon(brand, size: 16)
-                Text(label)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(1)
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
-        }
-        .buttonStyle(.plain)
-        .disabled(url == nil)
-    }
-}
-
-private struct SocialLink: View {
-    let brand: SocialBrand
-    let url: URL?
-
-    var body: some View {
-        Button {
-            if let url { UIApplication.shared.open(url) }
-        } label: {
-            SocialBrandIcon(brand, size: 22)
-                .frame(width: 40, height: 40)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(url == nil)
     }
 }
 
