@@ -32,10 +32,10 @@ struct UserProfileView: View {
             VStack(spacing: 18) {
                 coverHeader
                 VStack(spacing: 16) {
-                    bioBlock
-                    categoryChips
-                    socialButtons
+                    publicBioCard
                     PortfolioGrid(userId: userId, canEdit: false)
+                    publicSocialLinks
+                    publicSpecialistCard
                 }
                 .frame(maxWidth: profileContentWidth)
                 .frame(maxWidth: .infinity)
@@ -62,9 +62,8 @@ struct UserProfileView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Button { dismiss() } label: {
                     Image(systemName: "chevron.left")
+                        .font(.system(size: 20, weight: .semibold))
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
                 .accessibilityLabel("Back")
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -84,9 +83,8 @@ struct UserProfileView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
+                        .font(.system(size: 20, weight: .semibold))
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
             }
         }
         .alert(loc.t("hub_block_user_title"), isPresented: $confirmBlock) {
@@ -266,63 +264,88 @@ struct UserProfileView: View {
     private var followersValue: String { followersCount.map(String.init) ?? "—" }
     private var creationsValue: String { "\(portfolioCount)" }
 
-    private var bioBlock: some View {
-        Group {
-            if let bio = profile?.bio ?? fallback?.bio, !bio.isEmpty {
-                Text(bio)
-                    .font(.system(size: 14))
-                    .foregroundColor(.white.opacity(0.78))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18)
-                    .padding(.top, 14)
-            }
+    @ViewBuilder
+    private var publicBioCard: some View {
+        if let bio = profile?.bio ?? fallback?.bio, !bio.isEmpty {
+            Text(bio)
+                .font(.system(size: 13))
+                .foregroundColor(.white.opacity(0.75))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
         }
     }
 
     @ViewBuilder
-    private var categoryChips: some View {
+    private var publicSpecialistCard: some View {
         let cats = profile?.specialistCategory ?? fallback?.specialistCategory ?? []
         if !cats.isEmpty {
-            FlowLayout(spacing: 6) {
-                ForEach(cats, id: \.self) { id in
-                    Text(HubCategories.label(for: id))
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text(loc.t("profile_specialist").uppercased())
+                        .font(.system(size: 11, weight: .bold))
+                        .tracking(1.4)
+                        .foregroundColor(.white.opacity(0.45))
+                    Spacer()
+                    Text(loc.t("profile_on_hub"))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.accentColor)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(Color.accentColor.opacity(0.12))
-                        .clipShape(Capsule())
+                }
+
+                FlowLayout(spacing: 6) {
+                    ForEach(cats.prefix(6), id: \.self) { id in
+                        Text(HubCategories.label(for: id, language: loc.current))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.accentColor)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.accentColor.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(14)
+            .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
         }
     }
 
     @ViewBuilder
-    private var socialButtons: some View {
+    private var publicSocialLinks: some View {
         let links = profile?.socialLinks ?? fallback?.socialLinks
-        if let links {
-            HStack(spacing: 8) {
-                if let v = links.telegram, !v.isEmpty {
-                    SocialLink(brand: .telegram, url: makeTelegram(v))
+        if let links, hasSocialLinks(links) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(loc.t("profile_social").uppercased())
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundColor(.white.opacity(0.45))
+
+                FlowLayout(spacing: 8) {
+                    if let v = links.telegram, !v.isEmpty {
+                        PublicSocialChip(label: "Telegram", brand: .telegram, url: makeTelegram(v))
+                    }
+                    if let v = links.whatsapp, !v.isEmpty {
+                        PublicSocialChip(label: "WhatsApp", brand: .whatsapp, url: makeWhatsApp(v))
+                    }
+                    if let v = links.instagram, !v.isEmpty {
+                        PublicSocialChip(label: "Instagram", brand: .instagram, url: makeInstagram(v))
+                    }
+                    if let v = links.youtube, !v.isEmpty, let url = URL(string: v) {
+                        PublicSocialChip(label: "YouTube", brand: .youtube, url: url)
+                    }
+                    if let v = links.tiktok, !v.isEmpty, let url = URL(string: v) {
+                        PublicSocialChip(label: "TikTok", brand: .tiktok, url: url)
+                    }
                 }
-                if let v = links.whatsapp, !v.isEmpty {
-                    SocialLink(brand: .whatsapp, url: makeWhatsApp(v))
-                }
-                if let v = links.instagram, !v.isEmpty {
-                    SocialLink(brand: .instagram, url: makeInstagram(v))
-                }
-                if let v = links.youtube, !v.isEmpty, let u = URL(string: v) {
-                    SocialLink(brand: .youtube, url: u)
-                }
-                if let v = links.tiktok, !v.isEmpty, let u = URL(string: v) {
-                    SocialLink(brand: .tiktok, url: u)
-                }
-                Spacer()
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
         }
+    }
+
+    private func hasSocialLinks(_ links: SocialLinks) -> Bool {
+        !(links.telegram ?? "").isEmpty ||
+        !(links.whatsapp ?? "").isEmpty ||
+        !(links.instagram ?? "").isEmpty ||
+        !(links.youtube ?? "").isEmpty ||
+        !(links.tiktok ?? "").isEmpty
     }
 
     // MARK: - Helpers
@@ -563,6 +586,31 @@ private struct PublicStatBubble: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
+    }
+}
+
+private struct PublicSocialChip: View {
+    let label: String
+    let brand: SocialBrand
+    let url: URL?
+
+    var body: some View {
+        Button {
+            if let url { UIApplication.shared.open(url) }
+        } label: {
+            HStack(spacing: 6) {
+                SocialBrandIcon(brand, size: 16)
+                Text(label)
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
+        }
+        .buttonStyle(.plain)
+        .disabled(url == nil)
     }
 }
 
