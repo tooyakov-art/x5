@@ -2,6 +2,10 @@ name: ASC configure subscriptions
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/asc-configure-subscriptions.yml"
 
 jobs:
   configure:
