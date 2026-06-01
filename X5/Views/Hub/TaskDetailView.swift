@@ -62,15 +62,22 @@ struct TaskDetailView: View {
                 Divider().background(Color.white.opacity(0.06))
 
                 HStack(spacing: 10) {
-                    AvatarView(urlString: task.authorAvatar, name: task.authorName, size: 36)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(task.authorName ?? loc.t("hub_anonymous"))
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.white)
-                        if let company = task.companyName, !company.isEmpty {
-                            Text(company).font(.system(size: 11)).foregroundColor(.white.opacity(0.5))
+                    NavigationLink {
+                        UserProfileView(userId: task.authorId, fallback: authorFallback)
+                    } label: {
+                        HStack(spacing: 10) {
+                            AvatarView(urlString: task.authorAvatar, name: task.authorName, size: 36)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(task.authorName ?? loc.t("hub_anonymous"))
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.white)
+                                if let company = task.companyName, !company.isEmpty {
+                                    Text(company).font(.system(size: 11)).foregroundColor(.white.opacity(0.5))
+                                }
+                            }
                         }
                     }
+                    .buttonStyle(.plain)
                     Spacer()
                     if let deadline = task.deadline, !deadline.isEmpty {
                         VStack(alignment: .trailing, spacing: 2) {
@@ -173,6 +180,22 @@ struct TaskDetailView: View {
             NavigationStack { ChatThreadView(chat: chat) }
                 .preferredColorScheme(.dark)
         }
+    }
+
+    private var authorFallback: HubSpecialist {
+        HubSpecialist(
+            id: task.authorId,
+            name: task.authorName,
+            nickname: nil,
+            avatar: task.authorAvatar,
+            bio: task.companyName,
+            specialistCategory: nil,
+            plan: nil,
+            services: nil,
+            socialLinks: nil,
+            isVerified: nil,
+            verifiedUntil: nil
+        )
     }
 
     private func openChatWithAuthor() async {

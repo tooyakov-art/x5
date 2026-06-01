@@ -299,6 +299,15 @@ enum ImageGenerationCatalog {
             gradientEnd: .black
         ),
         .init(
+            id: "product_cards",
+            title: "Product Cards",
+            subtitle: "Marketplace cards",
+            icon: "rectangle.grid.2x2.fill",
+            examplePrompt: "Premium marketplace product card for a beauty product, clean price block, short benefits, black white silver cyan style, mobile-first ecommerce layout",
+            gradientStart: Color(red: 0.56, green: 0.72, blue: 0.92).opacity(0.38),
+            gradientEnd: .black
+        ),
+        .init(
             id: "packaging",
             title: "Packaging",
             subtitle: "Box and label",

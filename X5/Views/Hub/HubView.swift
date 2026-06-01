@@ -24,6 +24,8 @@ struct HubView: View {
     @State private var chatError: String? = nil
     @State private var selectedCountry: HubCountry = .kazakhstan
     @State private var taskCategoriesExpanded = false
+    @State private var didApplyPreferredCategory = false
+    @State private var didAnimateCategoryRail = false
 
     private var currentRole: String {
         (currentUser.profile?.userRole ?? "").lowercased()
@@ -35,6 +37,12 @@ struct HubView: View {
 
     private var visibleTaskCategories: [HubCategory] {
         taskCategoriesExpanded ? HubCategories.all : Array(HubCategories.all.prefix(7))
+    }
+
+    private var preferredHubCategory: String? {
+        currentUser.profile?.specialistCategory?
+            .map(normalizedHubCategory)
+            .first { id in HubCategories.all.contains { $0.id == id } }
     }
 
     var body: some View {
@@ -57,6 +65,9 @@ struct HubView: View {
                         addPortfolioButton
                     }
                     countrySelector(messageKey: "hub_country_specialists")
+                    if category != nil {
+                        categoryRail
+                    }
                 } else if segment == .tasks {
                     createTaskButton
                     countrySelector(messageKey: "hub_country_orders")
@@ -93,8 +104,12 @@ struct HubView: View {
                 }
             }
             .task {
+                applyPreferredCategoryIfNeeded()
                 await service.loadSpecialists()
                 await service.loadTasks()
+            }
+            .onChange(of: currentUser.profile?.specialistCategory) { _ in
+                applyPreferredCategoryIfNeeded()
             }
             .sheet(isPresented: $showingPostTask) {
                 CreateTaskView(onCreated: {
@@ -229,47 +244,77 @@ struct HubView: View {
     }
 
     private var categoryRail: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 9) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        category = nil
-                        taskCategoriesExpanded = false
-                    }
-                } label: {
-                    CategoryChip(title: loc.t("hub_all"),
-                                 systemImage: "line.3.horizontal.decrease.circle",
-                                 count: totalVisibleCount,
-                                 isSelected: category == nil)
-                }
-                .buttonStyle(.plain)
-
-                ForEach(visibleTaskCategories) { cat in
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 9) {
                     Button {
-                        withAnimation(.easeInOut(duration: 0.18)) { category = cat.id }
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            category = nil
+                            taskCategoriesExpanded = false
+                        }
                     } label: {
-                        CategoryChip(title: HubCategories.label(for: cat.id, language: loc.current),
-                                     systemImage: hubCategorySymbol(for: cat.id),
-                                     count: countForCategory(cat.id),
-                                     isSelected: category == cat.id)
+                        CategoryChip(title: loc.t("hub_all"),
+                                     systemImage: "line.3.horizontal.decrease.circle",
+                                     count: totalVisibleCount,
+                                     isSelected: category == nil)
                     }
                     .buttonStyle(.plain)
-                }
+                    .id("cat-all")
 
-                if !taskCategoriesExpanded {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.18)) { taskCategoriesExpanded = true }
-                    } label: {
-                        CategoryChip(title: loc.t("common_more"),
-                                     systemImage: "ellipsis.circle",
-                                     count: nil,
-                                     isSelected: false)
+                    ForEach(visibleTaskCategories) { cat in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.18)) { category = cat.id }
+                        } label: {
+                            CategoryChip(title: HubCategories.label(for: cat.id, language: loc.current),
+                                         systemImage: hubCategorySymbol(for: cat.id),
+                                         count: countForCategory(cat.id),
+                                         isSelected: category == cat.id)
+                        }
+                        .buttonStyle(.plain)
+                        .id("cat-\(cat.id)")
                     }
-                    .buttonStyle(.plain)
+
+                    if !taskCategoriesExpanded {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.18)) { taskCategoriesExpanded = true }
+                        } label: {
+                            CategoryChip(title: loc.t("common_more"),
+                                         systemImage: "ellipsis.circle",
+                                         count: nil,
+                                         isSelected: false)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .onAppear {
+                animateCategoryRailIfNeeded(proxy)
+            }
+        }
+    }
+
+    private func applyPreferredCategoryIfNeeded() {
+        guard !didApplyPreferredCategory, let preferredHubCategory else { return }
+        didApplyPreferredCategory = true
+        taskCategoriesExpanded = true
+        category = preferredHubCategory
+    }
+
+    private func animateCategoryRailIfNeeded(_ proxy: ScrollViewProxy) {
+        guard !didAnimateCategoryRail, let selected = category else { return }
+        didAnimateCategoryRail = true
+        taskCategoriesExpanded = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            withAnimation(.easeInOut(duration: 0.55)) {
+                proxy.scrollTo("cat-video", anchor: .center)
+            }
+            try? await Task.sleep(nanoseconds: 650_000_000)
+            withAnimation(.spring(response: 0.48, dampingFraction: 0.86)) {
+                proxy.scrollTo("cat-\(selected)", anchor: .center)
+            }
         }
     }
 
@@ -300,12 +345,51 @@ struct HubView: View {
     private var specialistsContent: some View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(spacing: 14) {
-                specialistCategoryGrid
-                if totalVisibleCount == 0 && !service.isLoading {
-                    EmptyState(systemImage: "person.crop.circle.badge.questionmark",
-                               title: loc.t("hub_no_specialists"),
-                               subtitle: loc.t("hub_no_specialists_sub"))
-                        .padding(.top, 40)
+                if category == nil {
+                    specialistCategoryGrid
+                    if totalVisibleCount == 0 && !service.isLoading {
+                        EmptyState(systemImage: "person.crop.circle.badge.questionmark",
+                                   title: loc.t("hub_no_specialists"),
+                                   subtitle: loc.t("hub_no_specialists_sub"))
+                            .padding(.top, 40)
+                    }
+                } else {
+                    LazyVStack(spacing: 10) {
+                        ForEach(filteredSpecialists) { person in
+                            HStack(spacing: 8) {
+                                NavigationLink {
+                                    UserProfileView(userId: person.id, fallback: person)
+                                } label: {
+                                    SpecialistRow(person: person)
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    startChat(with: person)
+                                } label: {
+                                    Group {
+                                        if openingChatWith == person.id {
+                                            ProgressView().tint(.accentColor)
+                                        } else {
+                                            Image(systemName: "message.fill")
+                                                .font(.system(size: 16, weight: .semibold))
+                                                .foregroundColor(.accentColor)
+                                        }
+                                    }
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(openingChatWith != nil)
+                            }
+                        }
+                        if filteredSpecialists.isEmpty && !service.isLoading {
+                            EmptyState(systemImage: "person.crop.circle.badge.questionmark",
+                                       title: loc.t("hub_no_specialists"),
+                                       subtitle: loc.t("hub_no_specialists_sub"))
+                                .padding(.top, 60)
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -627,6 +711,8 @@ private func normalizedHubCategory(_ value: String?) -> String {
         .replacingOccurrences(of: " ", with: "_")
 
     switch cleaned {
+    case "smm", "смм", "смм_специалист", "smm_specialist":
+        return "smm"
     case "ads", "ad", "target", "target_ads", "targeting_ads", "reklama", "реклама", "таргет", "таргет_реклама":
         return "targeting"
     case "chatbot", "chatbots", "bot", "bots", "botdev", "bot_dev":

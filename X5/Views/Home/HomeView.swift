@@ -13,7 +13,9 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     homeTitle
-                    mediaGrid
+                    businessPanel
+                    trendsPanel
+                    moreGrid
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, -18)
@@ -64,37 +66,164 @@ struct HomeView: View {
         .padding(.leading, 2)
     }
 
-    private var mediaGrid: some View {
-        LazyVGrid(
-            columns: [
-                GridItem(.flexible(), spacing: 12),
-                GridItem(.flexible(), spacing: 12)
-            ],
-            spacing: 12
-        ) {
-            ForEach(homeMediaItems) { item in
-                Button {
-                    switch item.action {
-                    case .image(let category):
-                        DiagnosticLogger.log(event: "home_media_\(category.id)_tap")
-                        openImageCategory = category
-                    case .video:
-                        DiagnosticLogger.log(event: "home_media_video_tap")
-                        openTool = HomeContent.tools.first(where: { $0.id == "video_gen" })
-                    case .tool(let id):
-                        DiagnosticLogger.log(event: "home_media_\(id)_tap")
-                        openTool = HomeContent.tools.first(where: { $0.id == id })
-                    }
-                } label: {
-                    HomeMediaCard(item: item)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(item.title)
-            }
+    private var businessPanel: some View {
+        HomeSectionPanel(title: "Креативы", subtitle: "Что чаще всего нужно бизнесу") {
+            mediaGrid(items: businessMediaItems)
         }
     }
 
-    private var homeMediaItems: [HomeMediaItem] {
+    private var trendsPanel: some View {
+        HomeSectionPanel(title: "Тренды", subtitle: "Вирусные форматы для Reels, TikTok и Shorts") {
+            mediaGrid(items: trendMediaItems)
+        }
+    }
+
+    private var moreGrid: some View {
+        mediaGrid(items: utilityMediaItems)
+    }
+
+    private func mediaGrid(items: [HomeMediaItem]) -> some View {
+        LazyVGrid(columns: gridColumns, spacing: 12) {
+            ForEach(items) { item in mediaButton(item) }
+        }
+    }
+
+    private var gridColumns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: 12),
+            GridItem(.flexible(), spacing: 12)
+        ]
+    }
+
+    private func mediaButton(_ item: HomeMediaItem) -> some View {
+        Button {
+            switch item.action {
+            case .image(let category):
+                DiagnosticLogger.log(event: "home_media_\(category.id)_tap")
+                openImageCategory = category
+            case .video:
+                DiagnosticLogger.log(event: "home_media_video_tap")
+                openTool = HomeContent.tools.first(where: { $0.id == "video_gen" })
+            case .tool(let id):
+                DiagnosticLogger.log(event: "home_media_\(id)_tap")
+                openTool = HomeContent.tools.first(where: { $0.id == id })
+            }
+        } label: {
+            HomeMediaCard(item: item)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(item.title)
+    }
+
+    private var businessMediaItems: [HomeMediaItem] {
+        let categories = Dictionary(uniqueKeysWithValues: ImageGenerationCatalog.categories.map { ($0.id, $0) })
+        return [
+            HomeMediaItem(
+                id: "youtube_cover",
+                title: localized("home_media_youtube_title", fallback: "Обложка YouTube"),
+                subtitle: localized("home_media_youtube_subtitle", fallback: "Кликабельная превью-картинка"),
+                kicker: "YOUTUBE",
+                systemImage: "play.rectangle.fill",
+                assetName: "HomeCoverYoutube",
+                videoURL: nil,
+                gradientStart: X5Style.blue.opacity(0.38),
+                gradientEnd: .black,
+                action: categories["youtube_cover"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
+            ),
+            HomeMediaItem(
+                id: "product_cards",
+                title: localized("home_media_product_cards_title", fallback: "Карточки товара"),
+                subtitle: localized("home_media_product_cards_subtitle", fallback: "Для маркетплейса и сайта"),
+                kicker: "SHOP",
+                systemImage: "rectangle.grid.2x2.fill",
+                assetName: "HomeCoverProductCards",
+                videoURL: nil,
+                gradientStart: Color(red: 0.56, green: 0.72, blue: 0.92).opacity(0.36),
+                gradientEnd: .black,
+                action: categories["product_cards"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
+            ),
+            HomeMediaItem(
+                id: "target_ad",
+                title: localized("home_media_target_title", fallback: "Для таргета"),
+                subtitle: localized("home_media_target_subtitle", fallback: "Креатив для Instagram и TikTok"),
+                kicker: "ADS",
+                systemImage: "scope",
+                assetName: "HomeCoverTargetAds",
+                videoURL: nil,
+                gradientStart: Color(red: 0.20, green: 0.42, blue: 0.95).opacity(0.42),
+                gradientEnd: .black,
+                action: categories["target_ad"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
+            ),
+            HomeMediaItem(
+                id: "story",
+                title: localized("home_media_story_title", fallback: "Генерация сторис"),
+                subtitle: localized("home_media_story_subtitle", fallback: "Вертикальный креатив 9:16"),
+                kicker: "STORY",
+                systemImage: "rectangle.portrait.fill",
+                assetName: "HomeCoverStories",
+                videoURL: nil,
+                gradientStart: X5Style.backgroundCyan.opacity(0.42),
+                gradientEnd: .black,
+                action: categories["story"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
+            )
+        ]
+    }
+
+    private var trendMediaItems: [HomeMediaItem] {
+        let categories = Dictionary(uniqueKeysWithValues: ImageGenerationCatalog.categories.map { ($0.id, $0) })
+        return [
+            HomeMediaItem(
+                id: "ai_influencer",
+                title: localized("home_media_ai_influencer_title", fallback: "AI-инфлюенсер"),
+                subtitle: localized("home_media_ai_influencer_subtitle", fallback: "Персонаж для роликов"),
+                kicker: "TREND",
+                systemImage: "person.crop.square.filled.and.at.rectangle",
+                assetName: "HomeTrendInfluencer",
+                videoURL: nil,
+                gradientStart: Color(red: 0.30, green: 0.42, blue: 0.98).opacity(0.42),
+                gradientEnd: .black,
+                action: .tool("ai_influencer")
+            ),
+            HomeMediaItem(
+                id: "fruit_video",
+                title: localized("home_media_fruit_video_title", fallback: "Живые фрукты"),
+                subtitle: localized("home_media_fruit_video_subtitle", fallback: "Фруктовый ролик за минуту"),
+                kicker: "VIDEO",
+                systemImage: "play.tv.fill",
+                assetName: "HomeTrendFruitVideo",
+                videoURL: nil,
+                gradientStart: Color(red: 0.02, green: 0.58, blue: 0.72).opacity(0.38),
+                gradientEnd: .black,
+                action: .video
+            ),
+            HomeMediaItem(
+                id: "trend_post",
+                title: localized("home_media_trend_post_title", fallback: "Пост-тренд"),
+                subtitle: localized("home_media_trend_post_subtitle", fallback: "Готовая идея для ленты"),
+                kicker: "POST",
+                systemImage: "sparkles",
+                assetName: "HomeTrendPost",
+                videoURL: nil,
+                gradientStart: X5Style.blue.opacity(0.34),
+                gradientEnd: .black,
+                action: categories["post"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
+            ),
+            HomeMediaItem(
+                id: "trend_video",
+                title: localized("home_media_video_trends_title", fallback: "Видео тренды"),
+                subtitle: localized("home_media_video_trends_subtitle", fallback: "Reels и TikTok идеи"),
+                kicker: "REELS",
+                systemImage: "film.stack",
+                assetName: "HomeTrendLiveVideo",
+                videoURL: nil,
+                gradientStart: Color(red: 0.50, green: 0.60, blue: 1.0).opacity(0.35),
+                gradientEnd: .black,
+                action: .video
+            )
+        ]
+    }
+
+    private var utilityMediaItems: [HomeMediaItem] {
         let categories = Dictionary(uniqueKeysWithValues: ImageGenerationCatalog.categories.map { ($0.id, $0) })
         return [
             HomeMediaItem(
@@ -103,6 +232,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_custom_subtitle", fallback: "Любой промпт, фото или идея"),
                 kicker: "IMAGE",
                 systemImage: "sparkles",
+                assetName: nil,
                 videoURL: HomeMediaVideos.custom,
                 gradientStart: X5Style.backgroundBlue.opacity(0.48),
                 gradientEnd: .black,
@@ -114,21 +244,11 @@ struct HomeView: View {
                 subtitle: localized("home_media_logo_subtitle", fallback: "Логотип для бренда"),
                 kicker: "LOGO",
                 systemImage: "seal.fill",
+                assetName: nil,
                 videoURL: HomeMediaVideos.logo,
                 gradientStart: X5Style.blue.opacity(0.40),
                 gradientEnd: .black,
                 action: categories["logo"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
-            ),
-            HomeMediaItem(
-                id: "story",
-                title: localized("home_media_story_title", fallback: "Генерация сторис"),
-                subtitle: localized("home_media_story_subtitle", fallback: "Вертикальный креатив 9:16"),
-                kicker: "STORY",
-                systemImage: "rectangle.portrait.fill",
-                videoURL: HomeMediaVideos.story,
-                gradientStart: X5Style.backgroundCyan.opacity(0.42),
-                gradientEnd: .black,
-                action: categories["story"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
             ),
             HomeMediaItem(
                 id: "post",
@@ -136,6 +256,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_post_subtitle", fallback: "Пост для ленты"),
                 kicker: "POST",
                 systemImage: "square.grid.2x2.fill",
+                assetName: nil,
                 videoURL: HomeMediaVideos.post,
                 gradientStart: Color(red: 0.20, green: 0.42, blue: 0.95).opacity(0.42),
                 gradientEnd: .black,
@@ -147,6 +268,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_instapack_subtitle", fallback: "Посты и сторис в одном стиле"),
                 kicker: "INSTA",
                 systemImage: "square.stack.3d.up.fill",
+                assetName: nil,
                 videoURL: HomeMediaVideos.instaPack,
                 gradientStart: Color(red: 0.42, green: 0.55, blue: 1.0).opacity(0.40),
                 gradientEnd: .black,
@@ -158,6 +280,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_product_subtitle", fallback: "Кадр для рекламы"),
                 kicker: "PRODUCT",
                 systemImage: "shippingbox.fill",
+                assetName: nil,
                 videoURL: HomeMediaVideos.product,
                 gradientStart: X5Style.blue.opacity(0.34),
                 gradientEnd: .black,
@@ -169,6 +292,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_packaging_subtitle", fallback: "Коробка, этикетка, мокап"),
                 kicker: "PACK",
                 systemImage: "cube.box.fill",
+                assetName: nil,
                 videoURL: HomeMediaVideos.packaging,
                 gradientStart: Color(red: 0.72, green: 0.82, blue: 0.92).opacity(0.30),
                 gradientEnd: .black,
@@ -180,6 +304,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_video_subtitle", fallback: "Kling: текст или фото в видео"),
                 kicker: "KLING",
                 systemImage: "video.fill",
+                assetName: nil,
                 videoURL: HomeMediaVideos.video,
                 gradientStart: X5Style.blue.opacity(0.38),
                 gradientEnd: .black,
@@ -191,6 +316,7 @@ struct HomeView: View {
                 subtitle: localized("home_media_startup_chat_subtitle", fallback: "ИИ-помощник для бизнеса"),
                 kicker: "SOON",
                 systemImage: "sparkles.rectangle.stack.fill",
+                assetName: nil,
                 videoURL: nil,
                 gradientStart: X5Style.backgroundBlue.opacity(0.44),
                 gradientEnd: .black,
@@ -237,6 +363,7 @@ private struct HomeMediaItem: Identifiable {
     let subtitle: String
     let kicker: String
     let systemImage: String
+    let assetName: String?
     let videoURL: URL?
     let gradientStart: Color
     let gradientEnd: Color
@@ -255,6 +382,15 @@ private struct HomeMediaCard: View {
             if let url = item.videoURL {
                 LoopingVideo(url: url, fallback: item.gradientStart.opacity(0.18))
                     .overlay(Color.black.opacity(0.20))
+            } else if let assetName = item.assetName {
+                GeometryReader { proxy in
+                    Image(assetName)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                }
+                .overlay(Color.black.opacity(0.08))
             }
 
             LinearGradient(
@@ -303,6 +439,44 @@ private struct HomeMediaCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
+    }
+}
+
+private struct HomeSectionPanel<Content: View>: View {
+    let title: String
+    let subtitle: String
+    let content: Content
+
+    init(title: String, subtitle: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.subtitle = subtitle
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 22, weight: .black))
+                    .foregroundColor(.white)
+                Text(subtitle)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.58))
+                    .lineLimit(2)
+            }
+            .padding(.horizontal, 2)
+
+            content
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .fill(Color.white.opacity(0.055))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .stroke(Color.white.opacity(0.10), lineWidth: 1)
         )
     }
