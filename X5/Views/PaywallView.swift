@@ -53,6 +53,7 @@ struct PaywallView: View {
                         .foregroundColor(.white)
 
                     Feature(text: selectedPlan.creditsText)
+                    Feature(text: "1 кредит = 1 ₸")
                     Feature(text: loc.t("paywall_feat_tools"))
                     Feature(text: loc.t("paywall_feat_courses"))
                     Feature(text: loc.t("paywall_feat_hub"))
@@ -160,7 +161,7 @@ struct PaywallView: View {
         .alert(loc.t("paywall_welcome_pro"), isPresented: $showSuccess) {
             Button(loc.t("paywall_continue")) { dismiss() }
         } message: {
-            Text(loc.t("paywall_credits_added"))
+            Text(selectedPlan.successCreditsText)
         }
     }
 
@@ -212,9 +213,17 @@ private enum PaywallPlan: String, CaseIterable, Identifiable {
     }
 
     var creditsText: String {
+        "\(credits) кредитов каждый месяц"
+    }
+
+    var successCreditsText: String {
+        "\(credits) кредитов начислено на твой баланс."
+    }
+
+    private var credits: Int {
         switch self {
-        case .lite: return "500 кредитов каждый месяц"
-        case .pro: return "2000 кредитов каждый месяц"
+        case .lite: return 1000
+        case .pro: return 2000
         }
     }
 

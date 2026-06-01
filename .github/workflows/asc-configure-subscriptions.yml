@@ -46,10 +46,10 @@ jobs:
                   "name": "X5 Lite Monthly",
                   "product_id": "com.x5studio.app.lite.monthly",
                   "display_name": "X5 Lite",
-                  "description": "500 credits and X5 creator tools.",
+                  "description": "1000 credits and X5 creator tools.",
                   "price_kaz": Decimal("1000"),
                   "group_level": 2,
-                  "review_note": "Lite monthly plan shown in the app paywall. User gets paid access and 500 credits.",
+                  "review_note": "Lite monthly plan shown in the app paywall. User gets paid access and 1000 credits.",
               },
               {
                   "key": "pro",

@@ -338,7 +338,7 @@ extension LocalizationService {
             "profile_manage": "Управлять",
             "profile_renews": "Продление",
             "profile_month": "месяц",
-            "profile_upgrade_sub": "1000 кредитов + все инструменты",
+            "profile_upgrade_sub": "2000 кредитов + все инструменты",
             "profile_become_specialist_title": "Стать специалистом",
             "profile_become_specialist_sub": "Включи публичный профиль: клиенты найдут тебя в Hub и напишут в чат.",
             "profile_verified_sub": "Синяя галочка рядом с именем: больше доверия и приоритет в Hub.",
@@ -534,14 +534,14 @@ extension LocalizationService {
 
             // Paywall extra
             "paywall_title": "X5 Pro",
-            "paywall_feat_credits": "1000 кредитов при подписке",
+            "paywall_feat_credits": "1 кредит = 1 ₸",
             "paywall_feat_tools": "Все ИИ-инструменты (фото, видео, lipsync, дизайн)",
             "paywall_feat_courses": "Полная библиотека курсов",
             "paywall_feat_hub": "Найм проверенных маркетологов в Hub",
             "paywall_feat_support": "Приоритетная поддержка",
             "paywall_terms_link": "Условия использования (EULA)",
             "paywall_welcome_pro": "Добро пожаловать в Pro!",
-            "paywall_credits_added": "1000 кредитов начислено на твой баланс.",
+            "paywall_credits_added": "Кредиты начислены на твой баланс.",
             "paywall_continue": "Продолжить",
 
             // Courses extra
@@ -806,7 +806,7 @@ extension LocalizationService {
             "profile_manage": "Manage",
             "profile_renews": "Renews",
             "profile_month": "month",
-            "profile_upgrade_sub": "1000 credits + all tools",
+            "profile_upgrade_sub": "2000 credits + all tools",
             "profile_become_specialist_title": "Become a specialist",
             "profile_become_specialist_sub": "Turn on your public profile so clients can find you in Hub and message you.",
             "profile_verified_sub": "Blue check next to your name: more trust and priority in Hub.",
@@ -1000,14 +1000,14 @@ extension LocalizationService {
 
             // Paywall extra
             "paywall_title": "X5 Pro",
-            "paywall_feat_credits": "1000 credits added on subscribe",
+            "paywall_feat_credits": "1 credit = 1 ₸",
             "paywall_feat_tools": "All AI tools (image, video, lipsync, design)",
             "paywall_feat_courses": "Full courses library",
             "paywall_feat_hub": "Hire vetted marketers in Hub",
             "paywall_feat_support": "Priority support",
             "paywall_terms_link": "Terms of Use (EULA)",
             "paywall_welcome_pro": "Welcome to Pro!",
-            "paywall_credits_added": "1000 credits have been added to your balance.",
+            "paywall_credits_added": "Credits have been added to your balance.",
             "paywall_continue": "Continue",
 
             // Courses extra
@@ -1272,7 +1272,7 @@ extension LocalizationService {
             "profile_manage": "Басқару",
             "profile_renews": "Жаңарады",
             "profile_month": "ай",
-            "profile_upgrade_sub": "1000 кредит + барлық құралдар",
+            "profile_upgrade_sub": "2000 кредит + барлық құралдар",
             "profile_become_specialist_title": "Маман болу",
             "profile_become_specialist_sub": "Публичный профильді қос: клиенттер сені Hub-та тауып, чатқа жазады.",
             "profile_verified_sub": "Атыңның жанындағы көк белгі: көбірек сенім және Hub-та басымдық.",
@@ -1466,14 +1466,14 @@ extension LocalizationService {
 
             // Paywall extra
             "paywall_title": "X5 Pro",
-            "paywall_feat_credits": "Жазылған кезде 1000 кредит қосылады",
+            "paywall_feat_credits": "1 кредит = 1 ₸",
             "paywall_feat_tools": "Барлық ИИ-құралдар (фото, видео, lipsync, дизайн)",
             "paywall_feat_courses": "Курстар кітапханасы толық",
             "paywall_feat_hub": "Hub-та расталған маркетологтарды жалдау",
             "paywall_feat_support": "Басым қолдау",
             "paywall_terms_link": "Қолдану шарттары (EULA)",
             "paywall_welcome_pro": "Pro-ға қош келдің!",
-            "paywall_credits_added": "Балансыңа 1000 кредит қосылды.",
+            "paywall_credits_added": "Балансыңа кредиттер қосылды.",
             "paywall_continue": "Жалғастыру",
 
             // Courses extra

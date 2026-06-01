@@ -106,14 +106,14 @@ struct HubView: View {
             .task {
                 applyPreferredCategoryIfNeeded()
                 await service.loadSpecialists()
-                await service.loadTasks()
+                await service.loadTasks(accessToken: auth.accessToken)
             }
             .onChange(of: currentUser.profile?.specialistCategory) { _ in
                 applyPreferredCategoryIfNeeded()
             }
             .sheet(isPresented: $showingPostTask) {
                 CreateTaskView(onCreated: {
-                    Task { await service.loadTasks() }
+                    Task { await service.loadTasks(accessToken: auth.accessToken) }
                 })
             }
             .sheet(isPresented: $showingAddPortfolio) {
@@ -614,7 +614,7 @@ struct HubView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .clipped()
-        .refreshable { await service.loadTasks() }
+        .refreshable { await service.loadTasks(accessToken: auth.accessToken) }
     }
 
     private var taskCategoryGrid: some View {
@@ -675,7 +675,7 @@ struct HubView: View {
         case .specialists:
             await service.loadSpecialists()
         case .tasks:
-            await service.loadTasks()
+            await service.loadTasks(accessToken: auth.accessToken)
         }
     }
 }

@@ -9,7 +9,7 @@ final class IAPService: ObservableObject {
     nonisolated static let monthlyProductIDs = [liteMonthlyProductID, proMonthlyProductID]
 
     /// Cost in credits to activate the verified badge for 30 days.
-    /// Credits are earned via Pro subscription (1000 credits/month).
+    /// Credits are earned via subscription: 1 credit = 1 KZT.
     nonisolated static let verifiedCostCredits: Int = 500
 
     @Published private(set) var products: [String: Product] = [:]
@@ -50,7 +50,7 @@ final class IAPService: ObservableObject {
         guard let profile = currentUser.profile else { return false }
         let credits = profile.credits ?? 0
         guard credits >= Self.verifiedCostCredits else {
-            lastError = "Не хватает кредитов: нужно \(Self.verifiedCostCredits), у тебя \(credits). Купи Pro — получишь 1000 кредитов."
+            lastError = "Не хватает кредитов: нужно \(Self.verifiedCostCredits), у тебя \(credits). Купи Pro — получишь 2000 кредитов."
             return false
         }
         let endIso = ISO8601DateFormatter().string(
@@ -165,7 +165,7 @@ final class IAPService: ObservableObject {
         // accounts on the same device. StoreKit returns the active
         // subscription regardless of which X5 user is currently signed in,
         // so without this gate signing into a second X5 account would
-        // silently mark it Pro and credit +1000 for free (build 43 bug).
+        // silently mark it Pro and credit paid credits for free (build 43 bug).
         //
         // We bind appAccountToken at purchase time to the buyer's user id;
         // here we ignore any transaction whose token doesn't match. Old
@@ -250,7 +250,7 @@ final class IAPService: ObservableObject {
 
     private static func creditsGranted(for productID: String) -> Int {
         switch productID {
-        case liteMonthlyProductID: return 500
+        case liteMonthlyProductID: return 1000
         case proMonthlyProductID: return 2000
         default: return 1000
         }

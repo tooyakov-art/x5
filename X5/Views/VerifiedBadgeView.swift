@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Sells the blue ☑ verified badge for `IAPService.verifiedCostCredits` credits / 30 days.
-/// Credits come from the Pro subscription (1000/mo) — single store, no separate IAP.
+/// Credits come from the subscription balance — single store, no separate IAP.
 struct VerifiedBadgeView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
@@ -134,7 +134,7 @@ struct VerifiedBadgeView: View {
                         Text("Купить Pro и получить кредиты")
                             .font(.system(size: 16, weight: .bold))
                             .foregroundColor(.black)
-                        Text("Pro = +1000 кредитов сразу")
+                        Text("Pro = +2000 кредитов сразу")
                             .font(.system(size: 11))
                             .foregroundColor(.black.opacity(0.7))
                     }

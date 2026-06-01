@@ -37,6 +37,7 @@ struct HubTask: Codable, Identifiable, Hashable {
     let deadline: String?
     let status: String
     let createdAt: String?
+    let publicVisibleAt: String?
     let acceptedSpecialistId: String?
     let acceptedSpecialistName: String?
 
@@ -47,6 +48,7 @@ struct HubTask: Codable, Identifiable, Hashable {
         case authorAvatar = "author_avatar"
         case companyName = "company_name"
         case createdAt = "created_at"
+        case publicVisibleAt = "public_visible_at"
         case acceptedSpecialistId = "accepted_specialist_id"
         case acceptedSpecialistName = "accepted_specialist_name"
     }
@@ -201,7 +203,7 @@ final class HubService: ObservableObject {
         }
     }
 
-    func loadTasks() async {
+    func loadTasks(accessToken: String? = nil) async {
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/tasks"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "select", value: "*"),
@@ -211,6 +213,9 @@ final class HubService: ObservableObject {
         do {
             var request = URLRequest(url: components.url!)
             request.setValue(anonKey, forHTTPHeaderField: "apikey")
+            if let accessToken {
+                request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            }
             let (data, _) = try await URLSession.shared.data(for: request)
             tasks = (try? JSONDecoder().decode([HubTask].self, from: data)) ?? []
         } catch {
@@ -252,7 +257,7 @@ final class HubService: ObservableObject {
               let rows = try? JSONDecoder().decode([HubTask].self, from: data)
         else { return nil }
         let inserted = rows.first
-        await loadTasks()
+        await loadTasks(accessToken: accessToken)
         return inserted
     }
 
@@ -312,7 +317,7 @@ final class HubService: ObservableObject {
         if let n = specialistName { body["accepted_specialist_name"] = n }
         tReq.httpBody = try? JSONSerialization.data(withJSONObject: body)
         _ = try? await URLSession.shared.data(for: tReq)
-        await loadTasks()
+        await loadTasks(accessToken: accessToken)
     }
 
     func loadResponses(taskId: String) async -> [TaskResponse] {
