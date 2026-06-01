@@ -80,6 +80,33 @@ struct CoursesView: View {
                                     }
                                 }
                             }
+
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Следующие курсы")
+                                            .font(.system(size: 22, weight: .heavy))
+                                            .foregroundColor(.white)
+                                        Text("Скоро в CourseUP")
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundColor(.white.opacity(0.46))
+                                    }
+                                    Spacer()
+                                    Image(systemName: "sparkles")
+                                        .font(.system(size: 20, weight: .bold))
+                                        .foregroundColor(.accentColor)
+                                }
+                                .padding(.top, 8)
+
+                                ForEach(Self.upcomingCourses) { course in
+                                    NavigationLink {
+                                        CourseDetailView(course: course, openPaywall: { showingPaywall = true })
+                                    } label: {
+                                        CourseRow(course: course)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 2)
@@ -140,6 +167,92 @@ struct CoursesView: View {
             }
             .task { await service.loadCourses(includeHidden: isDev) }
         }
+    }
+
+    private static let upcomingCourses: [Course] = [
+        makeUpcomingCourse(
+            id: "upcoming-vibecoding",
+            title: "Вайбкодинг для маркетолога",
+            description: "Собери лендинг, квиз и Telegram-бота без команды разработки",
+            lessons: ["Как ставить задачу ИИ", "Лендинг за вечер", "Форма заявки и аналитика", "Публикация и проверка"]
+        ),
+        makeUpcomingCourse(
+            id: "upcoming-ai-reels",
+            title: "AI Reels и TikTok",
+            description: "Сценарии, аватары, липсинк и монтаж коротких роликов",
+            lessons: ["Хук в первые 2 секунды", "ИИ-аватар", "Озвучка и липсинк", "Пакет роликов на неделю"]
+        ),
+        makeUpcomingCourse(
+            id: "upcoming-marketplace",
+            title: "Карточки товара",
+            description: "Фото, инфографика и тексты для Kaspi, Wildberries и сайта",
+            lessons: ["Главное фото", "Инфографика выгод", "A/B варианты", "Подготовка к загрузке"]
+        ),
+        makeUpcomingCourse(
+            id: "upcoming-smm-system",
+            title: "SMM-система на месяц",
+            description: "Контент-план, рубрики, сторис и прогрев без хаоса",
+            lessons: ["Рубрикатор", "30 идей постов", "Сторис-воронки", "Еженедельный отчет"]
+        ),
+        makeUpcomingCourse(
+            id: "upcoming-youtube",
+            title: "Обложки YouTube",
+            description: "Превью, заголовки и визуальная упаковка роликов",
+            lessons: ["Кликабельная идея", "Композиция лица", "Текст на обложке", "Серия в одном стиле"]
+        ),
+        makeUpcomingCourse(
+            id: "upcoming-target-analytics",
+            title: "Таргет и аналитика",
+            description: "Связки, гипотезы, бюджет и понятный отчет по рекламе",
+            lessons: ["Оффер и аудитория", "Креативы для теста", "Запуск кампании", "Что отключать первым"]
+        )
+    ]
+
+    private static func makeUpcomingCourse(id: String, title: String, description: String, lessons: [String]) -> Course {
+        Course(
+            id: id,
+            title: title,
+            description: description,
+            marketingHook: nil,
+            coverUrl: nil,
+            authorName: "X5 CourseUP",
+            price: 0,
+            isFree: true,
+            isPublic: true,
+            courseLanguage: "ru",
+            averageRating: nil,
+            studentsCount: nil,
+            sortOrder: nil,
+            categoriesRaw: [
+                CourseCategory(
+                    id: "\(id)-cat",
+                    title: "Программа",
+                    order: 1,
+                    icon: "graduationcap",
+                    days: [
+                        CourseDay(
+                            id: "\(id)-day",
+                            title: "Модули",
+                            order: 1,
+                            lessons: lessons.enumerated().map { index, title in
+                                CourseLesson(
+                                    id: "\(id)-lesson-\(index + 1)",
+                                    title: title,
+                                    duration: "08:00",
+                                    order: index + 1,
+                                    price: nil,
+                                    videoUrl: nil,
+                                    youtubeUrl: nil,
+                                    thumbnailUrl: nil,
+                                    isFreePreview: index == 0,
+                                    sellSeparately: false
+                                )
+                            }
+                        )
+                    ]
+                )
+            ]
+        )
     }
 }
 
