@@ -218,37 +218,51 @@ struct UserProfileView: View {
             Button {
                 Task { await toggleFollow() }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: 7) {
                     if followBusy {
-                        ProgressView().tint(.white)
+                        ProgressView()
+                            .tint(.black)
+                            .scaleEffect(0.78)
                     } else {
                         Image(systemName: isFollowing ? "checkmark" : "plus")
                     }
                     Text(isFollowing ? loc.t("profile_following_action") : loc.t("profile_follow_action"))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
                 }
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(size: 14, weight: .heavy))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(Color.white)
+                .clipShape(Capsule())
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(.white)
-            .foregroundStyle(.black)
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
+            .layoutPriority(2)
             .disabled(isMe || followBusy || auth.accessToken == nil)
 
             Button(action: openChat) {
-                HStack(spacing: 8) {
+                HStack(spacing: 7) {
                     Image(systemName: openingChat ? "ellipsis" : "bubble.left.and.bubble.right.fill")
                     Text(loc.t("tab_chats"))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
                 }
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(size: 14, weight: .heavy))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(Color.white.opacity(0.22))
+                .clipShape(Capsule())
             }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-            .tint(.white)
-            .foregroundStyle(.white)
+            .buttonStyle(.plain)
+            .frame(width: 112)
             .disabled(isMe || openingChat || auth.accessToken == nil)
         }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - 3 колонки статистики
