@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct EditProfileView: View {
+    var activateSpecialistOnOpen: Bool = false
+
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var loc: LocalizationService
@@ -129,6 +131,7 @@ struct EditProfileView: View {
     }
 
     private func populate() {
+        showInHub = activateSpecialistOnOpen
         guard let p = currentUser.profile else { return }
         name = p.name ?? ""
         nickname = p.nickname ?? ""
@@ -143,7 +146,7 @@ struct EditProfileView: View {
             facebook = s.facebook ?? ""
         }
         pickedCategories = Set(p.specialistCategory ?? [])
-        showInHub = p.showInHub ?? false
+        showInHub = activateSpecialistOnOpen || (p.showInHub ?? false)
     }
 
     private func save() async {

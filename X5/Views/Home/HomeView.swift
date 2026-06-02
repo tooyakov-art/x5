@@ -1,39 +1,53 @@
 import SwiftUI
 
-/// Home shows clear generation scenarios as compact video-backed cards.
+/// Home uses an AI-studio layout: hero, tool grid, trend rail, and creator feed.
 struct HomeView: View {
     @EnvironmentObject private var loc: LocalizationService
 
     @State private var openTool: HomeTool?
     @State private var openImageCategory: ImageGenerationCategory?
-    @State private var showingGeneratedGallery: Bool = false
+    @State private var showingGeneratedGallery = false
+    @State private var selectedFeed = "Для тебя"
+    @State private var activeHeroPage = 0
+    @State private var activeToolsPage = 0
+
+    private let feedTabs = ["Для тебя", "Shorts", "Реклама", "UGC", "4K"]
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    homeTitle
-                    generationPanel
-                    trendsPanel
-                    businessPanel
-                    utilityPanel
+                VStack(alignment: .leading, spacing: 18) {
+                    heroBanner
+                    quickToolsGrid
+                    trendsSection
+                    feedSection
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, -18)
-                .padding(.bottom, 40)
+                .padding(.horizontal, 14)
+                .padding(.top, 2)
+                .padding(.bottom, 34)
                 .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity)
             }
+            .scrollIndicators(.hidden)
             .background { X5Background() }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingGeneratedGallery = true } label: {
-                        Image(systemName: "photo.stack")
-                            .foregroundColor(.white.opacity(0.7))
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        openTool = developmentTool(id: "search", title: "Поиск", icon: "magnifyingglass")
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                    }
+                    .accessibilityLabel("Поиск")
+
+                    Button {
+                        showingGeneratedGallery = true
+                    } label: {
+                        Text("Мои креативы")
+                            .font(.system(size: 13, weight: .bold))
                     }
                     .accessibilityLabel(loc.t("gen_gallery"))
                 }
@@ -53,295 +67,266 @@ struct HomeView: View {
         }
     }
 
-    private var homeTitle: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("X5")
-                .font(.system(size: 18, weight: .black))
-                .foregroundColor(X5Style.blue)
-            Text("Маркетинг")
-                .font(.system(size: 36, weight: .black))
-                .foregroundColor(.white)
-                .kerning(-0.6)
-        }
-        .padding(.top, -10)
-        .padding(.leading, 2)
-    }
-
-    private var businessPanel: some View {
-        HomeSectionPanel(title: "Креативы", subtitle: "Что чаще всего нужно бизнесу") {
-            mediaRail(items: businessMediaItems)
-        }
-    }
-
-    private var generationPanel: some View {
-        HomeSectionPanel(title: "Генерация", subtitle: "Картинка или видео с первого экрана") {
-            mediaRail(items: generationMediaItems)
-        }
-    }
-
-    private var trendsPanel: some View {
-        HomeSectionPanel(title: "Тренды", subtitle: "Вирусные форматы для Reels, TikTok и Shorts") {
-            mediaRail(items: trendMediaItems)
-        }
-    }
-
-    private var utilityPanel: some View {
-        HomeSectionPanel(title: "Еще", subtitle: "Остальные инструменты для упаковки") {
-            mediaRail(items: utilityMediaItems)
-        }
-    }
-
-    private func mediaRail(items: [HomeMediaItem]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 12) {
-                ForEach(items) { item in
-                    mediaButton(item)
-                        .frame(width: 214)
+    private var heroBanner: some View {
+        TabView(selection: $activeHeroPage) {
+            ForEach(Array(heroSlides.enumerated()), id: \.offset) { index, slide in
+                Button {
+                    handle(slide.action)
+                } label: {
+                    HeroSlideCard(slide: slide, activePage: activeHeroPage, pageCount: heroSlides.count)
                 }
+                .buttonStyle(.plain)
+                .tag(index)
             }
-            .padding(.horizontal, 2)
-            .padding(.vertical, 1)
         }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .frame(height: 136)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
-    private func mediaButton(_ item: HomeMediaItem) -> some View {
-        Button {
-            switch item.action {
-            case .image(let category):
-                DiagnosticLogger.log(event: "home_media_\(category.id)_tap")
-                openImageCategory = category
-            case .video:
-                DiagnosticLogger.log(event: "home_media_video_tap")
-                openTool = HomeContent.tools.first(where: { $0.id == "video_gen" })
-            case .tool(let id):
-                DiagnosticLogger.log(event: "home_media_\(id)_tap")
-                openTool = HomeContent.tools.first(where: { $0.id == id })
-            }
-        } label: {
-            HomeMediaCard(item: item)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(item.title)
-    }
-
-    private var businessMediaItems: [HomeMediaItem] {
-        let categories = Dictionary(uniqueKeysWithValues: ImageGenerationCatalog.categories.map { ($0.id, $0) })
-        return [
-            HomeMediaItem(
-                id: "youtube_cover",
-                title: localized("home_media_youtube_title", fallback: "Обложка YouTube"),
-                subtitle: localized("home_media_youtube_subtitle", fallback: "Кликабельная превью-картинка"),
-                kicker: "YOUTUBE",
-                systemImage: "play.rectangle.fill",
-                assetName: "HomeCoverYoutube",
-                videoURL: nil,
-                gradientStart: X5Style.blue.opacity(0.38),
-                gradientEnd: .black,
-                action: categories["youtube_cover"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
-            ),
-            HomeMediaItem(
-                id: "product_cards",
-                title: localized("home_media_product_cards_title", fallback: "Карточки товара"),
-                subtitle: localized("home_media_product_cards_subtitle", fallback: "Для маркетплейса и сайта"),
-                kicker: "SHOP",
-                systemImage: "rectangle.grid.2x2.fill",
-                assetName: "HomeCoverProductCards",
-                videoURL: nil,
-                gradientStart: Color(red: 0.56, green: 0.72, blue: 0.92).opacity(0.36),
-                gradientEnd: .black,
-                action: categories["product_cards"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
-            ),
-            HomeMediaItem(
-                id: "target_ad",
-                title: localized("home_media_target_title", fallback: "Для таргета"),
-                subtitle: localized("home_media_target_subtitle", fallback: "Креатив для Instagram и TikTok"),
-                kicker: "ADS",
-                systemImage: "scope",
-                assetName: "HomeCoverTargetAds",
-                videoURL: nil,
-                gradientStart: Color(red: 0.20, green: 0.42, blue: 0.95).opacity(0.42),
-                gradientEnd: .black,
-                action: categories["target_ad"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
-            ),
-            HomeMediaItem(
-                id: "story",
-                title: localized("home_media_story_title", fallback: "Генерация сторис"),
-                subtitle: localized("home_media_story_subtitle", fallback: "Вертикальный креатив 9:16"),
-                kicker: "STORY",
-                systemImage: "rectangle.portrait.fill",
-                assetName: nil,
-                videoURL: HomeMediaVideos.story,
-                gradientStart: X5Style.backgroundCyan.opacity(0.42),
-                gradientEnd: .black,
-                action: categories["story"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
-            )
-        ]
-    }
-
-    private var generationMediaItems: [HomeMediaItem] {
+    private var heroSlides: [HeroSlide] {
         [
-            HomeMediaItem(
-                id: "custom",
-                title: localized("home_media_custom_title", fallback: "Генерация изображения"),
-                subtitle: localized("home_media_custom_subtitle", fallback: "Любой промпт, фото или идея"),
-                kicker: "IMAGE",
+            HeroSlide(
+                id: "studio",
+                eyebrow: "X5 AI Studio",
+                title: "Генерируй креативы для бизнеса",
+                subtitle: "Картинки, видео, сторис, карточки товара и трендовые форматы",
+                assetName: "HomeUtilityVideo",
                 systemImage: "sparkles",
-                assetName: "HomeUtilityCustom",
-                videoURL: nil,
-                gradientStart: X5Style.backgroundBlue.opacity(0.48),
-                gradientEnd: .black,
-                action: .image(ImageGenerationCatalog.custom)
-            ),
-            HomeMediaItem(
-                id: "video",
-                title: localized("home_media_video_title", fallback: "Генерация видео"),
-                subtitle: localized("home_media_video_subtitle", fallback: "Kling: текст или фото в видео"),
-                kicker: "KLING",
-                systemImage: "video.fill",
-                assetName: nil,
-                videoURL: HomeMediaVideos.video,
-                gradientStart: X5Style.blue.opacity(0.38),
-                gradientEnd: .black,
                 action: .video
-            )
-        ]
-    }
-
-    private var trendMediaItems: [HomeMediaItem] {
-        let categories = Dictionary(uniqueKeysWithValues: ImageGenerationCatalog.categories.map { ($0.id, $0) })
-        return [
-            HomeMediaItem(
-                id: "ai_influencer",
-                title: localized("home_media_ai_influencer_title", fallback: "AI-инфлюенсер"),
-                subtitle: localized("home_media_ai_influencer_subtitle", fallback: "Персонаж для роликов"),
-                kicker: "TREND",
-                systemImage: "person.crop.square.filled.and.at.rectangle",
+            ),
+            HeroSlide(
+                id: "influencer",
+                eyebrow: "Trend Studio",
+                title: "AI-инфлюенсер для Reels",
+                subtitle: "Собери персонажа и запускай ролики без съемки",
                 assetName: "HomeTrendInfluencer",
-                videoURL: nil,
-                gradientStart: Color(red: 0.30, green: 0.42, blue: 0.98).opacity(0.42),
-                gradientEnd: .black,
+                systemImage: "person.crop.square",
                 action: .tool("ai_influencer")
             ),
-            HomeMediaItem(
-                id: "fruit_video",
-                title: localized("home_media_fruit_video_title", fallback: "Живые фрукты"),
-                subtitle: localized("home_media_fruit_video_subtitle", fallback: "Фруктовый ролик за минуту"),
-                kicker: "VIDEO",
-                systemImage: "play.tv.fill",
+            HeroSlide(
+                id: "commerce",
+                eyebrow: "Business Pack",
+                title: "Карточки и фото товара",
+                subtitle: "Маркетплейс, сайт и таргет в одном стиле",
+                assetName: "HomeCoverProductCards",
+                systemImage: "rectangle.grid.2x2",
+                action: imageAction("product_cards")
+            ),
+            HeroSlide(
+                id: "fruit",
+                eyebrow: "Video Trend",
+                title: "Живые продукты в видео",
+                subtitle: "Фрукты, напитки и товарные ролики для ленты",
                 assetName: "HomeTrendFruitVideo",
-                videoURL: nil,
-                gradientStart: Color(red: 0.02, green: 0.58, blue: 0.72).opacity(0.38),
-                gradientEnd: .black,
-                action: .video
-            ),
-            HomeMediaItem(
-                id: "trend_post",
-                title: localized("home_media_trend_post_title", fallback: "Пост-тренд"),
-                subtitle: localized("home_media_trend_post_subtitle", fallback: "Готовая идея для ленты"),
-                kicker: "POST",
-                systemImage: "sparkles",
-                assetName: "HomeTrendPost",
-                videoURL: nil,
-                gradientStart: X5Style.blue.opacity(0.34),
-                gradientEnd: .black,
-                action: categories["post"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
-            ),
-            HomeMediaItem(
-                id: "trend_video",
-                title: localized("home_media_video_trends_title", fallback: "Видео тренды"),
-                subtitle: localized("home_media_video_trends_subtitle", fallback: "Reels и TikTok идеи"),
-                kicker: "REELS",
-                systemImage: "film.stack",
-                assetName: "HomeTrendLiveVideo",
-                videoURL: nil,
-                gradientStart: Color(red: 0.50, green: 0.60, blue: 1.0).opacity(0.35),
-                gradientEnd: .black,
+                systemImage: "play.tv",
                 action: .video
             )
         ]
     }
 
-    private var utilityMediaItems: [HomeMediaItem] {
+    private var quickToolsGrid: some View {
+        VStack(spacing: 8) {
+            TabView(selection: $activeToolsPage) {
+                ForEach(Array(quickToolPages.enumerated()), id: \.offset) { pageIndex, page in
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(minimum: 52), spacing: 10), count: 4),
+                        spacing: 10
+                    ) {
+                        ForEach(page) { tool in
+                            Button {
+                                handle(tool.action)
+                            } label: {
+                                StudioToolButton(tool: tool)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .tag(pageIndex)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: 160)
+
+            PageDots(active: activeToolsPage, count: quickToolPages.count)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var trendsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader(title: "Тренды", trailing: "Еще")
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 12) {
+                    ForEach(trendCards) { item in
+                        Button {
+                            handle(item.action)
+                        } label: {
+                            TrendCard(item: item)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 1)
+            }
+        }
+    }
+
+    private var feedSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 22) {
+                    ForEach(feedTabs, id: \.self) { tab in
+                        Button {
+                            selectedFeed = tab
+                            X5Feedback.selection()
+                        } label: {
+                            Text(tab)
+                                .font(.system(size: 20, weight: selectedFeed == tab ? .heavy : .semibold))
+                                .foregroundColor(selectedFeed == tab ? .white : .white.opacity(0.38))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 1)
+            }
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 12),
+                    GridItem(.flexible(), spacing: 12)
+                ],
+                spacing: 12
+            ) {
+                ForEach(feedCards) { item in
+                    Button {
+                        handle(item.action)
+                    } label: {
+                        FeedCard(item: item)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func sectionHeader(title: String, trailing: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 22, weight: .black))
+                .foregroundColor(.white)
+            Spacer()
+            Button {
+                openTool = developmentTool(id: "more_\(title)", title: title, icon: "ellipsis")
+            } label: {
+                HStack(spacing: 5) {
+                    Text(trailing)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .bold))
+                }
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(.white.opacity(0.48))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var quickTools: [StudioTool] {
+        [
+            StudioTool(id: "image_to_video", title: "Image to Video", icon: "photo", badge: nil, action: .video),
+            StudioTool(id: "text_to_video", title: "Text to Video", icon: "text.bubble", badge: nil, action: .video),
+            StudioTool(id: "avatar", title: "Avatar 2.0", icon: "person.crop.circle", badge: nil, action: .tool("ai_influencer")),
+            StudioTool(id: "motion", title: "Motion Control", icon: "scope", badge: nil, action: .tool("video_creative")),
+            StudioTool(id: "text_to_image", title: "AI Image", icon: "photo.badge.plus", badge: nil, action: .image(ImageGenerationCatalog.custom)),
+            StudioTool(id: "ai_video", title: "AI Video", icon: "video", badge: "Motion", action: .video),
+            StudioTool(id: "elements", title: "Карточки", icon: "rectangle.grid.2x2", badge: nil, action: imageAction("product_cards")),
+            StudioTool(id: "restyle", title: "Restyle", icon: "paintpalette", badge: nil, action: imageAction("insta_pack")),
+            StudioTool(id: "effects", title: "Effects", icon: "wand.and.sparkles", badge: nil, action: imageAction("story")),
+            StudioTool(id: "sound", title: "Sound", icon: "waveform", badge: nil, action: .tool("voice_tts")),
+            StudioTool(id: "logo", title: "Лого", icon: "seal", badge: nil, action: imageAction("logo")),
+            StudioTool(id: "post", title: "Пост", icon: "square.grid.2x2", badge: nil, action: imageAction("post")),
+            StudioTool(id: "product", title: "Фото товара", icon: "shippingbox", badge: nil, action: imageAction("product")),
+            StudioTool(id: "packaging", title: "Упаковка", icon: "cube.box", badge: nil, action: imageAction("packaging")),
+            StudioTool(id: "startup", title: "Startup Chat", icon: "sparkles.rectangle.stack", badge: nil, action: .tool("startup_chat"))
+        ]
+    }
+
+    private var quickToolPages: [[StudioTool]] {
+        quickTools.chunked(into: 8)
+    }
+
+    private var trendCards: [VisualCardItem] {
+        [
+            VisualCardItem(id: "ai_influencer", title: "AI-инфлюенсер", subtitle: "Персонаж для роликов", assetName: "HomeTrendInfluencer", systemImage: "person.crop.square", action: .tool("ai_influencer"), showsPlay: false),
+            VisualCardItem(id: "fruit_video", title: "Живые фрукты", subtitle: "Видео для Reels", assetName: "HomeTrendFruitVideo", systemImage: "play.tv", action: .video, showsPlay: true),
+            VisualCardItem(id: "trend_post", title: "Пост-тренд", subtitle: "Идея для ленты", assetName: "HomeTrendPost", systemImage: "sparkles", action: imageAction("post"), showsPlay: false),
+            VisualCardItem(id: "live_video", title: "Видео тренды", subtitle: "Shorts и TikTok", assetName: "HomeTrendLiveVideo", systemImage: "film.stack", action: .video, showsPlay: true),
+            VisualCardItem(id: "target", title: "Таргет", subtitle: "Креативы теста", assetName: "HomeCoverTargetAds", systemImage: "scope", action: imageAction("target_ad"), showsPlay: false)
+        ]
+    }
+
+    private var feedCards: [VisualCardItem] {
+        [
+            VisualCardItem(id: "youtube", title: "Обложка YouTube", subtitle: "Превью с высоким CTR", assetName: "HomeCoverYoutube", systemImage: "play.rectangle", action: imageAction("youtube_cover"), showsPlay: false),
+            VisualCardItem(id: "product_cards", title: "Карточки товара", subtitle: "Маркетплейс и сайт", assetName: "HomeCoverProductCards", systemImage: "rectangle.grid.2x2", action: imageAction("product_cards"), showsPlay: false),
+            VisualCardItem(id: "video", title: "AI Video", subtitle: "Фото или текст в ролик", assetName: "HomeUtilityVideo", systemImage: "video", action: .video, showsPlay: true),
+            VisualCardItem(id: "insta", title: "Упаковка Instagram", subtitle: "Посты и сторис", assetName: "HomeUtilityInstaPack", systemImage: "square.stack.3d.up", action: imageAction("insta_pack"), showsPlay: false),
+            VisualCardItem(id: "product", title: "Фото товара", subtitle: "Кадр для рекламы", assetName: "HomeUtilityProduct", systemImage: "shippingbox", action: imageAction("product"), showsPlay: false),
+            VisualCardItem(id: "logo", title: "Лого", subtitle: "Знак для бренда", assetName: "HomeUtilityLogo", systemImage: "seal", action: imageAction("logo"), showsPlay: false)
+        ]
+    }
+
+    private func imageAction(_ categoryId: String) -> StudioAction {
         let categories = Dictionary(uniqueKeysWithValues: ImageGenerationCatalog.categories.map { ($0.id, $0) })
-        return [
-            HomeMediaItem(
-                id: "logo",
-                title: localized("home_media_logo_title", fallback: "Генерация лого"),
-                subtitle: localized("home_media_logo_subtitle", fallback: "Логотип для бренда"),
-                kicker: "LOGO",
-                systemImage: "seal.fill",
-                assetName: nil,
-                videoURL: HomeMediaVideos.logo,
-                gradientStart: X5Style.blue.opacity(0.40),
-                gradientEnd: .black,
-                action: categories["logo"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
-            ),
-            HomeMediaItem(
-                id: "post",
-                title: localized("home_media_post_title", fallback: "Генерация поста"),
-                subtitle: localized("home_media_post_subtitle", fallback: "Пост для ленты"),
-                kicker: "POST",
-                systemImage: "square.grid.2x2.fill",
-                assetName: nil,
-                videoURL: HomeMediaVideos.post,
-                gradientStart: Color(red: 0.20, green: 0.42, blue: 0.95).opacity(0.42),
-                gradientEnd: .black,
-                action: categories["post"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
-            ),
-            HomeMediaItem(
-                id: "insta_pack",
-                title: localized("home_media_instapack_title", fallback: "Упаковка Instagram"),
-                subtitle: localized("home_media_instapack_subtitle", fallback: "Посты и сторис в одном стиле"),
-                kicker: "INSTA",
-                systemImage: "square.stack.3d.up.fill",
-                assetName: "HomeUtilityInstaPack",
-                videoURL: nil,
-                gradientStart: Color(red: 0.42, green: 0.55, blue: 1.0).opacity(0.40),
-                gradientEnd: .black,
-                action: categories["insta_pack"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
-            ),
-            HomeMediaItem(
-                id: "product",
-                title: localized("home_media_product_title", fallback: "Фото товара"),
-                subtitle: localized("home_media_product_subtitle", fallback: "Кадр для рекламы"),
-                kicker: "PRODUCT",
-                systemImage: "shippingbox.fill",
-                assetName: "HomeUtilityProduct",
-                videoURL: nil,
-                gradientStart: X5Style.blue.opacity(0.34),
-                gradientEnd: .black,
-                action: categories["product"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
-            ),
-            HomeMediaItem(
-                id: "packaging",
-                title: localized("home_media_packaging_title", fallback: "Дизайн упаковки"),
-                subtitle: localized("home_media_packaging_subtitle", fallback: "Коробка, этикетка, мокап"),
-                kicker: "PACK",
-                systemImage: "cube.box.fill",
-                assetName: nil,
-                videoURL: HomeMediaVideos.packaging,
-                gradientStart: Color(red: 0.72, green: 0.82, blue: 0.92).opacity(0.30),
-                gradientEnd: .black,
-                action: categories["packaging"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
-            ),
-            HomeMediaItem(
-                id: "startup_chat",
-                title: localized("home_media_startup_chat_title", fallback: "Стартап чат"),
-                subtitle: localized("home_media_startup_chat_subtitle", fallback: "ИИ-помощник для бизнеса"),
-                kicker: "SOON",
-                systemImage: "sparkles.rectangle.stack.fill",
-                assetName: "HomeUtilityStartupChat",
-                videoURL: nil,
-                gradientStart: X5Style.backgroundBlue.opacity(0.44),
-                gradientEnd: .black,
-                action: .tool("startup_chat")
-            )
-        ]
+        return categories[categoryId].map(StudioAction.image) ?? .image(ImageGenerationCatalog.custom)
     }
 
-    private func localized(_ key: String, fallback: String) -> String {
-        let value = loc.t(key)
-        return value == key ? fallback : value
+    private func handle(_ action: StudioAction) {
+        switch action {
+        case .image(let category):
+            DiagnosticLogger.log(event: "home_studio_\(category.id)_tap")
+            openImageCategory = category
+        case .video:
+            DiagnosticLogger.log(event: "home_studio_video_tap")
+            openVideoTool()
+        case .tool(let id):
+            DiagnosticLogger.log(event: "home_studio_\(id)_tap")
+            openTool = HomeContent.tools.first(where: { $0.id == id })
+                ?? developmentTool(id: id, title: developmentTitle(for: id))
+        }
+    }
+
+    private func openVideoTool() {
+        openTool = HomeContent.tools.first(where: { $0.id == "video_gen" })
+            ?? developmentTool(id: "video_gen", title: "AI Video", icon: "video")
+    }
+
+    private func developmentTool(id: String, title: String, icon: String = "hammer.fill") -> HomeTool {
+        HomeTool(
+            id: id,
+            title: title,
+            subtitle: "Скоро добавим полный запуск внутри X5.",
+            icon: icon,
+            videoFile: nil,
+            gradientStart: Color.accentColor.opacity(0.34),
+            gradientEnd: Color(red: 0.03, green: 0.04, blue: 0.08),
+            tag: "SOON",
+            tagColor: Color.accentColor
+        )
+    }
+
+    private func developmentTitle(for id: String) -> String {
+        switch id {
+        case "ai_influencer": return "AI-инфлюенсер"
+        case "video_creative": return "Видео-креатив"
+        case "voice_tts": return "Sound"
+        case "startup_chat": return "Startup Chat"
+        default:
+            return id
+                .replacingOccurrences(of: "_", with: " ")
+                .capitalized
+        }
     }
 
     private var imageCategoryNavigationBinding: Binding<Bool> {
@@ -354,144 +339,268 @@ struct HomeView: View {
     }
 }
 
-private enum HomeMediaAction {
+private enum StudioAction {
     case image(ImageGenerationCategory)
     case video
     case tool(String)
 }
 
-private enum HomeMediaVideos {
-    static let logo = URL(string: "https://cdn.higgsfield.ai/kling_motion/af9b47a1-6db9-4a68-bdc4-467a49fca07e.mp4")
-    static let story = URL(string: "https://cdn.higgsfield.ai/card/9268ed82-5e18-439c-8758-12bb301fab63.mp4")
-    static let post = URL(string: "https://cdn.higgsfield.ai/card/62f23c78-13bc-49e5-8149-3ef22fda7638.mp4")
-    static let instaPack: URL? = nil
-    static let product: URL? = nil
-    static let packaging = URL(string: "https://static.higgsfield.ai/canvas/Advertising/result-mini.mp4")
-    static let custom: URL? = nil
-    static let video = URL(string: "https://static.higgsfield.ai/ai-video/ecommerce-1-mini.mp4")
+private struct HeroSlide: Identifiable {
+    let id: String
+    let eyebrow: String
+    let title: String
+    let subtitle: String
+    let assetName: String
+    let systemImage: String
+    let action: StudioAction
 }
 
-private struct HomeMediaItem: Identifiable {
+private struct StudioTool: Identifiable {
+    let id: String
+    let title: String
+    let icon: String
+    let badge: String?
+    let action: StudioAction
+}
+
+private struct VisualCardItem: Identifiable {
     let id: String
     let title: String
     let subtitle: String
-    let kicker: String
+    let assetName: String
     let systemImage: String
-    let assetName: String?
-    let videoURL: URL?
-    let gradientStart: Color
-    let gradientEnd: Color
-    let action: HomeMediaAction
+    let action: StudioAction
+    let showsPlay: Bool
 }
 
-private struct HomeMediaCard: View {
-    let item: HomeMediaItem
+private struct HeroSlideCard: View {
+    let slide: HeroSlide
+    let activePage: Int
+    let pageCount: Int
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            LinearGradient(colors: [item.gradientStart, item.gradientEnd],
-                           startPoint: .topLeading,
-                           endPoint: .bottomTrailing)
-
-            if let url = item.videoURL {
-                LoopingVideo(url: url, fallback: item.gradientStart.opacity(0.18))
-                    .overlay(Color.black.opacity(0.20))
-            } else if let assetName = item.assetName {
-                GeometryReader { proxy in
-                    Image(assetName)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .clipped()
-                }
-                .overlay(Color.black.opacity(0.08))
-            }
+            CardImage(assetName: slide.assetName)
 
             LinearGradient(
                 colors: [
-                    Color.black.opacity(0.10),
-                    Color.black.opacity(0.18),
-                    Color.black.opacity(0.82)
+                    Color.black.opacity(0.05),
+                    Color.black.opacity(0.30),
+                    Color.black.opacity(0.84)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(item.kicker)
-                        .font(.system(size: 10, weight: .heavy))
-                        .tracking(1.3)
-                        .foregroundColor(.white.opacity(0.62))
-                    Spacer()
-                    Image(systemName: item.systemImage)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white.opacity(0.92))
-                        .frame(width: 34, height: 34)
-                        .background(Color.white.opacity(0.13))
-                        .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 8) {
+                    Image(systemName: slide.systemImage)
+                        .font(.system(size: 14, weight: .heavy))
+                    Text(slide.eyebrow)
+                        .font(.system(size: 13, weight: .heavy))
                 }
+                .foregroundColor(.white.opacity(0.82))
 
-                Spacer(minLength: 18)
-
-                Text(item.title)
-                    .font(.system(size: 18, weight: .black))
+                Text(slide.title)
+                    .font(.system(size: 20, weight: .black))
                     .foregroundColor(.white)
                     .lineLimit(2)
-                    .minimumScaleFactor(0.80)
+                    .minimumScaleFactor(0.78)
 
-                Text(item.subtitle)
+                Text(slide.subtitle)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white.opacity(0.74))
                     .lineLimit(2)
-                    .minimumScaleFactor(0.86)
+                    .minimumScaleFactor(0.84)
             }
-            .padding(14)
+            .padding(18)
+            .padding(.trailing, 52)
+
+            PageDots(active: activePage, count: pageCount)
+                .padding(18)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 168)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(Color.white.opacity(0.10), lineWidth: 1)
         )
     }
 }
 
-private struct HomeSectionPanel<Content: View>: View {
-    let title: String
-    let subtitle: String
-    let content: Content
-
-    init(title: String, subtitle: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.subtitle = subtitle
-        self.content = content()
-    }
+private struct PageDots: View {
+    let active: Int
+    let count: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.system(size: 22, weight: .black))
-                    .foregroundColor(.white)
-                Text(subtitle)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.58))
-                    .lineLimit(2)
+        HStack(spacing: 6) {
+            ForEach(0..<max(count, 1), id: \.self) { index in
+                Capsule()
+                    .fill(index == active ? Color.white : Color.white.opacity(0.32))
+                    .frame(width: index == active ? 24 : 7, height: 7)
+                    .animation(.spring(response: 0.28, dampingFraction: 0.8), value: active)
             }
-            .padding(.horizontal, 2)
-
-            content
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(Color.white.opacity(0.055))
-        )
+        .accessibilityHidden(true)
+    }
+}
+
+private struct StudioToolButton: View {
+    let tool: StudioTool
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ZStack(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color.white.opacity(0.055))
+                    .frame(width: 48, height: 48)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                    )
+
+                Image(systemName: tool.icon)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.92))
+                    .frame(width: 48, height: 48)
+
+                if let badge = tool.badge {
+                    Text(badge)
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 3)
+                        .background(Color.white)
+                        .clipShape(Capsule())
+                        .offset(x: 9, y: -7)
+                }
+            }
+
+            Text(tool.title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.white.opacity(0.88))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.76)
+                .frame(height: 24, alignment: .top)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct TrendCard: View {
+    let item: VisualCardItem
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            CardImage(assetName: item.assetName)
+
+            LinearGradient(
+                colors: [Color.black.opacity(0.05), Color.black.opacity(0.78)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            VStack(alignment: .leading, spacing: 4) {
+                Spacer()
+                Text(item.title)
+                    .font(.system(size: 17, weight: .heavy))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.78)
+                Text(item.subtitle)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.76))
+                    .lineLimit(1)
+            }
+            .padding(12)
+
+            if item.showsPlay {
+                PlayBadge()
+                    .padding(10)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
+        }
+        .frame(width: 148, height: 178)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(Color.white.opacity(0.10), lineWidth: 1)
         )
+    }
+}
+
+private struct FeedCard: View {
+    let item: VisualCardItem
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            CardImage(assetName: item.assetName)
+
+            LinearGradient(
+                colors: [Color.black.opacity(0.0), Color.black.opacity(0.82)],
+                startPoint: .center,
+                endPoint: .bottom
+            )
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.title)
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.78)
+                Text(item.subtitle)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.72))
+                    .lineLimit(2)
+            }
+            .padding(12)
+
+            if item.showsPlay {
+                PlayBadge()
+                    .padding(10)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
+        }
+        .frame(height: 196)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.white.opacity(0.09), lineWidth: 1)
+        )
+    }
+}
+
+private struct CardImage: View {
+    let assetName: String
+
+    var body: some View {
+        GeometryReader { proxy in
+            Image(assetName)
+                .resizable()
+                .scaledToFill()
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
+        }
+        .background(Color.white.opacity(0.06))
+    }
+}
+
+private struct PlayBadge: View {
+    var body: some View {
+        Image(systemName: "play.fill")
+            .font(.system(size: 12, weight: .bold))
+            .foregroundColor(.white)
+            .frame(width: 32, height: 32)
+            .background(.ultraThinMaterial)
+            .clipShape(Circle())
+    }
+}
+
+private extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0..<Swift.min($0 + size, count)])
+        }
     }
 }

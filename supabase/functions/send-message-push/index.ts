@@ -85,7 +85,9 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!serviceKey) return new Response("missing service role key", { status: 500 });
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || SUPABASE_URL;
-  const supabase = createClient(supabaseUrl, serviceKey);
+  const supabase = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
 
   const rawJson = (await req.json()) as IncomingPayload | SocialPushPayload;
   if (isSocialPushPayload(rawJson)) {
@@ -99,27 +101,29 @@ Deno.serve(async (req) => {
   }
 
   // Look up chat to find the other participant
-  const { data: chat } = await supabase
+  const { data: chat, error: chatError } = await supabase
     .from("chats")
     .select("id, participants, task_title")
     .eq("id", body.chat_id)
     .maybeSingle<ChatRow>();
 
+  if (chatError) return new Response(`chat lookup error: ${chatError.message}`, { status: 500 });
   if (!chat) return new Response("chat not found", { status: 404 });
 
   const recipient = chat.participants.find((p) => p !== body.sender_id);
   if (!recipient) return new Response("no recipient", { status: 200 });
 
   // Look up sender (for notification title) and recipient (for push_token)
-  const [{ data: sender }, { data: recipientProfile }] = await Promise.all([
+  const [{ data: sender }, { data: recipientProfile, error: tokenError }] = await Promise.all([
     supabase.from("profiles").select("name, nickname").eq("id", body.sender_id).maybeSingle(),
     supabase.from("profiles").select("push_token").eq("id", recipient).maybeSingle()
   ]);
 
+  if (tokenError) return new Response(`token lookup error: ${tokenError.message}`, { status: 500 });
   const pushToken = recipientProfile?.push_token as string | undefined;
   if (!pushToken) return new Response("no push token", { status: 200 });
 
-  const senderName: string = (sender?.name as string) || (sender?.nickname as string) || "Someone";
+  const senderName: string = (sender?.name as string) || (sender?.nickname as string) || "X5";
 
   // Build APNs JWT
   const keyId = Deno.env.get("APNS_KEY_ID");
@@ -140,8 +144,8 @@ Deno.serve(async (req) => {
 
   const previewBody =
     body.type === "text"
-      ? (body.content || "Sent a message")
-      : `Sent ${body.type === "image" ? "a photo" : body.type === "video" ? "a video" : "an audio"}`;
+      ? (body.content || "Новое сообщение")
+      : body.type === "image" ? "Фото" : body.type === "audio" ? "Голосовое" : "Новое сообщение";
 
   const payload = {
     aps: {
@@ -187,15 +191,16 @@ function isSocialPushPayload(value: IncomingPayload | SocialPushPayload): value 
 async function sendSocialPush(supabase: any, body: SocialPushPayload): Promise<Response> {
   if (body.recipient_id === body.actor_id) return new Response("self event ignored");
 
-  const [{ data: actor }, { data: recipientProfile }] = await Promise.all([
+  const [{ data: actor }, { data: recipientProfile, error: tokenError }] = await Promise.all([
     supabase.from("profiles").select("name, nickname").eq("id", body.actor_id).maybeSingle(),
     supabase.from("profiles").select("push_token").eq("id", body.recipient_id).maybeSingle()
   ]);
 
+  if (tokenError) return new Response(`token lookup error: ${tokenError.message}`, { status: 500 });
   const pushToken = recipientProfile?.push_token as string | undefined;
   if (!pushToken) return new Response("no push token", { status: 200 });
 
-  const actorName: string = (actor?.name as string) || (actor?.nickname as string) || "Someone";
+  const actorName: string = (actor?.name as string) || (actor?.nickname as string) || "X5";
   const title = body.title || actorName;
   const text = body.body || defaultSocialBody(body.type, actorName);
 

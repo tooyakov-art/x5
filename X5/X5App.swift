@@ -45,16 +45,24 @@ struct X5App: App {
                 .task(id: auth.isAuthenticated) {
                     DiagnosticLogger.log(event: "auth_state",
                                          extra: ["authenticated": auth.isAuthenticated ? "true" : "false"])
-                    if auth.isAuthenticated {
-                        PushNotifications.shared.bootstrap()
-                        PushNotifications.shared.currentUserDidChange(
-                            userId: auth.userId,
-                            accessToken: auth.accessToken
-                        )
-                    } else {
-                        PushNotifications.shared.cancelPromoLoop()
-                    }
+                    syncPushRegistrationIfNeeded()
                 }
+                .onChange(of: scenePhase) { phase in
+                    guard phase == .active else { return }
+                    syncPushRegistrationIfNeeded()
+                }
+        }
+    }
+
+    private func syncPushRegistrationIfNeeded() {
+        if auth.isAuthenticated {
+            PushNotifications.shared.bootstrap()
+            PushNotifications.shared.currentUserDidChange(
+                userId: auth.userId,
+                accessToken: auth.accessToken
+            )
+        } else {
+            PushNotifications.shared.cancelPromoLoop()
         }
     }
 }

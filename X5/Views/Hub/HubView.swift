@@ -13,11 +13,9 @@ struct HubView: View {
     @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = HubService()
     @StateObject private var chats = ChatsService()
-    @StateObject private var portfolio = PortfolioService()
     @State private var segment: Segment = .specialists
     @State private var category: String? = nil
     @State private var showingPostTask = false
-    @State private var showingAddPortfolio = false
     @State private var showingEditProfile = false
     @State private var openingChatWith: String? = nil
     @State private var startingChat: ChatRoom? = nil
@@ -96,7 +94,7 @@ struct HubView: View {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if segment == .specialists && !(currentUser.profile?.showInHub ?? false) {
                         Button {
-                            NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
+                            showingEditProfile = true
                         } label: {
                             Text(loc.t("hub_become_specialist"))
                         }
@@ -116,27 +114,10 @@ struct HubView: View {
                     Task { await service.loadTasks(accessToken: auth.accessToken) }
                 })
             }
-            .sheet(isPresented: $showingAddPortfolio) {
-                AddPortfolioItemView { data, mediaType, mime, ext, title, desc in
-                    guard let token = auth.accessToken, let userId = auth.userId else {
-                        chatError = "Сначала войди в аккаунт."
-                        return false
-                    }
-                    return await portfolio.addMedia(
-                        data: data,
-                        type: mediaType,
-                        mime: mime,
-                        ext: ext,
-                        userId: userId,
-                        title: title,
-                        description: desc,
-                        accessToken: token
-                    )
-                }
-                .preferredColorScheme(.dark)
-            }
-            .sheet(isPresented: $showingEditProfile) {
-                EditProfileView()
+            .sheet(isPresented: $showingEditProfile, onDismiss: {
+                Task { await service.loadSpecialists() }
+            }) {
+                EditProfileView(activateSpecialistOnOpen: true)
             }
             .sheet(item: $startingChat) { chat in
                 NavigationStack { ChatThreadView(chat: chat) }
@@ -187,7 +168,7 @@ struct HubView: View {
 
     private var addPortfolioButton: some View {
         Button {
-            showingAddPortfolio = true
+            showingEditProfile = true
         } label: {
             Label(loc.t("hub_add_portfolio"), systemImage: "photo.badge.plus")
                 .font(.system(size: 16, weight: .black))
