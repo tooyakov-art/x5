@@ -11,7 +11,7 @@ final class IAPService: ObservableObject {
     nonisolated static let monthlyProductIDs = [liteMonthlyProductID, proMonthlyProductID, maxMonthlyProductID]
     nonisolated static let allProductIDs = monthlyProductIDs + [verifiedMonthlyProductID]
 
-    nonisolated static let verifiedDisplayPrice = "500 ₸"
+    nonisolated static let verifiedDisplayPrice = "5000 ₸"
 
     @Published private(set) var products: [String: Product] = [:]
     @Published private(set) var isPurchasing: Bool = false

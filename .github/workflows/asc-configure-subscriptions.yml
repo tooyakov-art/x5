@@ -48,7 +48,9 @@ jobs:
                   "display_name": "X5 Lite",
                   "description": "1000 credits and X5 creator tools.",
                   "price_kaz": Decimal("1000"),
-                  "group_level": 2,
+                  "group_reference": "X5 Subscriptions",
+                  "group_locale_name": "X5 subscriptions",
+                  "group_level": 3,
                   "review_note": "Lite monthly plan shown in the app paywall. User gets paid access and 1000 credits.",
               },
               {
@@ -58,8 +60,34 @@ jobs:
                   "display_name": "X5 Pro",
                   "description": "2000 credits and all X5 tools.",
                   "price_kaz": Decimal("2000"),
-                  "group_level": 1,
+                  "group_reference": "X5 Subscriptions",
+                  "group_locale_name": "X5 subscriptions",
+                  "group_level": 2,
                   "review_note": "Pro monthly plan shown in the app paywall. User gets full paid access and 2000 credits.",
+              },
+              {
+                  "key": "max",
+                  "name": "X5 Max Monthly",
+                  "product_id": "com.x5studio.app.max.monthly",
+                  "display_name": "X5 Max",
+                  "description": "5000 credits, all X5 tools, and top Hub priority.",
+                  "price_kaz": Decimal("5000"),
+                  "group_reference": "X5 Subscriptions",
+                  "group_locale_name": "X5 subscriptions",
+                  "group_level": 1,
+                  "review_note": "Max monthly plan shown in the app paywall. User gets full paid access and 5000 credits.",
+              },
+              {
+                  "key": "verified",
+                  "name": "X5 Verified Badge Monthly",
+                  "product_id": "com.x5studio.app.verified.monthly",
+                  "display_name": "X5 Verified Badge",
+                  "description": "Blue verified badge next to the creator name.",
+                  "price_kaz": Decimal("5000"),
+                  "group_reference": "X5 Verified Badge",
+                  "group_locale_name": "X5 verified badge",
+                  "group_level": 1,
+                  "review_note": "Separate monthly subscription from Profile -> Get verified. User gets a blue verified badge and Hub trust signal.",
               },
           ]
 
@@ -119,44 +147,50 @@ jobs:
           app_id = app[0]["id"]
           print(f"App: {app_id} ({os.environ['BUNDLE_ID']})")
 
-          group_links = list_all(f"/apps/{app_id}/relationships/subscriptionGroups?limit=200")
-          groups = [api("GET", f"/subscriptionGroups/{item['id']}")["data"] for item in group_links]
-          group = next((g for g in groups if g.get("attributes", {}).get("referenceName") == "X5 Subscriptions"), None)
-          if not group and groups:
-              group = groups[0]
-              print(f"Using existing subscription group: {group['id']} {group.get('attributes', {}).get('referenceName')}")
-          if not group:
-              group = api(
-                  "POST",
-                  "/subscriptionGroups",
-                  expected=(201,),
-                  json={
-                      "data": {
-                          "type": "subscriptionGroups",
-                          "attributes": {"referenceName": "X5 Subscriptions"},
-                          "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
-                      }
-                  },
-              )["data"]
-              print(f"Created subscription group: {group['id']}")
-          group_id = group["id"]
+          def ensure_group(reference_name, localized_name):
+              group_links = list_all(f"/apps/{app_id}/relationships/subscriptionGroups?limit=200")
+              groups = [api("GET", f"/subscriptionGroups/{item['id']}")["data"] for item in group_links]
+              group = next((g for g in groups if g.get("attributes", {}).get("referenceName") == reference_name), None)
+              if not group:
+                  group = api(
+                      "POST",
+                      "/subscriptionGroups",
+                      expected=(201,),
+                      json={
+                          "data": {
+                              "type": "subscriptionGroups",
+                              "attributes": {"referenceName": reference_name},
+                              "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
+                          }
+                      },
+                  )["data"]
+                  print(f"Created subscription group: {group['id']} {reference_name}")
 
-          group_localizations = list_all(f"/subscriptionGroups/{group_id}/subscriptionGroupLocalizations?limit=200")
-          en_group_loc = next((loc for loc in group_localizations if loc["attributes"].get("locale") == "en-US"), None)
-          group_loc_payload = {
-              "data": {
-                  "type": "subscriptionGroupLocalizations",
-                  "attributes": {"name": "X5 subscriptions", "locale": "en-US"},
-                  "relationships": {"subscriptionGroup": {"data": {"type": "subscriptionGroups", "id": group_id}}},
+              group_id = group["id"]
+              group_localizations = list_all(f"/subscriptionGroups/{group_id}/subscriptionGroupLocalizations?limit=200")
+              en_group_loc = next((loc for loc in group_localizations if loc["attributes"].get("locale") == "en-US"), None)
+              group_loc_payload = {
+                  "data": {
+                      "type": "subscriptionGroupLocalizations",
+                      "attributes": {"name": localized_name, "locale": "en-US"},
+                      "relationships": {"subscriptionGroup": {"data": {"type": "subscriptionGroups", "id": group_id}}},
+                  }
               }
-          }
-          if en_group_loc:
-              print("Subscription group localization en-US exists, keeping existing name")
-          else:
-              api("POST", "/subscriptionGroupLocalizations", expected=(201,), json=group_loc_payload)
-              print("Created subscription group localization en-US")
+              if en_group_loc:
+                  print(f"Subscription group localization en-US exists for {reference_name}, keeping existing name")
+              else:
+                  api("POST", "/subscriptionGroupLocalizations", expected=(201,), json=group_loc_payload)
+                  print(f"Created subscription group localization en-US for {reference_name}")
+              return group_id
 
-          existing_subs = list_all(f"/subscriptionGroups/{group_id}/subscriptions?limit=200")
+          group_specs = sorted({(spec["group_reference"], spec["group_locale_name"]) for spec in PRODUCTS})
+          group_ids = {
+              group_spec: ensure_group(group_spec[0], group_spec[1])
+              for group_spec in group_specs
+          }
+          existing_subs = []
+          for group_id in set(group_ids.values()):
+              existing_subs.extend(list_all(f"/subscriptionGroups/{group_id}/subscriptions?limit=200"))
           by_product = {sub["attributes"].get("productId"): sub for sub in existing_subs}
           configured = []
 
@@ -198,7 +232,12 @@ jobs:
                                   "groupLevel": spec["group_level"],
                               },
                               "relationships": {
-                                  "group": {"data": {"type": "subscriptionGroups", "id": group_id}}
+                                  "group": {
+                                      "data": {
+                                          "type": "subscriptionGroups",
+                                          "id": group_ids[(spec["group_reference"], spec["group_locale_name"])],
+                                      }
+                                  }
                               },
                           }
                       },

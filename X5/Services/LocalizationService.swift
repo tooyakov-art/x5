@@ -341,7 +341,7 @@ extension LocalizationService {
             "profile_upgrade_sub": "2000 кредитов + все инструменты",
             "profile_become_specialist_title": "Стать специалистом",
             "profile_become_specialist_sub": "Включи публичный профиль: клиенты найдут тебя в Hub и напишут в чат.",
-            "profile_verified_sub": "Синяя галочка рядом с именем: больше доверия и приоритет в Hub.",
+            "profile_verified_sub": "Отдельно: 5000 ₸/мес. Больше доверия и приоритет в Hub.",
             "profile_social": "Соцсети",
             "profile_specialist": "Специалист",
             "profile_on_hub": "В Hub",
@@ -462,7 +462,7 @@ extension LocalizationService {
             "verified_benefit_1": "Приоритет в Hub — твои карточки выше",
             "verified_benefit_2": "Индикатор доверия для клиентов",
             "verified_benefit_3": "Знак того, что ты — настоящий специалист",
-            "verified_subscribe": "Подписаться за 990 ₸/мес",
+            "verified_subscribe": "Подписаться за 5000 ₸/мес",
             "verified_active": "Галочка активна до",
 
             // App lock
@@ -811,7 +811,7 @@ extension LocalizationService {
             "profile_upgrade_sub": "2000 credits + all tools",
             "profile_become_specialist_title": "Become a specialist",
             "profile_become_specialist_sub": "Turn on your public profile so clients can find you in Hub and message you.",
-            "profile_verified_sub": "Blue check next to your name: more trust and priority in Hub.",
+            "profile_verified_sub": "Separate: 5000 ₸/mo. More trust and priority in Hub.",
             "profile_social": "Social",
             "profile_specialist": "Specialist",
             "profile_on_hub": "On Hub",
@@ -930,7 +930,7 @@ extension LocalizationService {
             "verified_benefit_1": "Priority in Hub — your cards rank higher",
             "verified_benefit_2": "Trust signal for clients",
             "verified_benefit_3": "Proof that you're a real specialist",
-            "verified_subscribe": "Subscribe for $1.99/mo",
+            "verified_subscribe": "Subscribe for 5000 ₸/mo",
             "verified_active": "Verified until",
 
             // App lock
@@ -1279,7 +1279,7 @@ extension LocalizationService {
             "profile_upgrade_sub": "2000 кредит + барлық құралдар",
             "profile_become_specialist_title": "Маман болу",
             "profile_become_specialist_sub": "Публичный профильді қос: клиенттер сені Hub-та тауып, чатқа жазады.",
-            "profile_verified_sub": "Атыңның жанындағы көк белгі: көбірек сенім және Hub-та басымдық.",
+            "profile_verified_sub": "Бөлек: 5000 ₸/ай. Көбірек сенім және Hub-та басымдық.",
             "profile_social": "Әлеуметтік желілер",
             "profile_specialist": "Маман",
             "profile_on_hub": "Hub-та",
@@ -1398,7 +1398,7 @@ extension LocalizationService {
             "verified_benefit_1": "Hub-та басымдылық — карточкаң жоғары тұрады",
             "verified_benefit_2": "Клиенттер үшін сенім белгісі",
             "verified_benefit_3": "Сен нағыз маман екеніңнің дәлелі",
-            "verified_subscribe": "990 ₸/айға жазылу",
+            "verified_subscribe": "5000 ₸/айға жазылу",
             "verified_active": "Дейін расталған",
 
             // App lock

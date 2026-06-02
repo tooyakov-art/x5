@@ -44,7 +44,7 @@ struct PaywallView: View {
                                 PlanCard(plan: plan, isSelected: selectedPlan == plan) {
                                     selectedPlan = plan
                                 }
-                                .frame(width: 178)
+                                .frame(width: 156)
                             }
                         }
                         .padding(.vertical, 2)
@@ -66,8 +66,6 @@ struct PaywallView: View {
                 .padding(18)
                 .background(Color.white.opacity(0.05))
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-
-                VerifiedAddonCard()
 
                 VStack(spacing: 10) {
                     Button {
@@ -299,52 +297,6 @@ private struct PlanCard: View {
             )
         }
         .buttonStyle(.plain)
-    }
-}
-
-private struct VerifiedAddonCard: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(LinearGradient(colors: [.cyan, .blue],
-                                             startPoint: .topLeading,
-                                             endPoint: .bottomTrailing))
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 20, weight: .heavy))
-                        .foregroundColor(.white)
-                }
-                .frame(width: 44, height: 44)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Синяя галочка")
-                        .font(.system(size: 18, weight: .heavy))
-                        .foregroundColor(.white)
-                    Text("отдельно через App Store: \(IAPService.verifiedDisplayPrice) / мес")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.58))
-                }
-                Spacer()
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                Feature(text: "Профиль выглядит проверенным")
-                Feature(text: "Больше доверия в Hub и откликах")
-                Feature(text: "Покупается отдельно от тарифов")
-            }
-        }
-        .padding(18)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white.opacity(0.06))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(LinearGradient(colors: [.cyan.opacity(0.6), .blue.opacity(0.2)],
-                                       startPoint: .topLeading,
-                                       endPoint: .bottomTrailing), lineWidth: 1)
-        )
     }
 }
 
