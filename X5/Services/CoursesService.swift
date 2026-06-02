@@ -113,12 +113,36 @@ struct Course: Codable, Identifiable, Hashable {
     }
 }
 
+struct CourseSubmission: Codable, Identifiable, Hashable {
+    let id: String
+    let authorId: String?
+    let authorEmail: String?
+    let authorName: String?
+    let contact: String?
+    let title: String
+    let description: String?
+    let videoUrl: String?
+    let status: String?
+    let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, description, contact, status
+        case authorId = "author_id"
+        case authorEmail = "author_email"
+        case authorName = "author_name"
+        case videoUrl = "video_url"
+        case createdAt = "created_at"
+    }
+}
+
 // MARK: - Service
 
 @MainActor
 final class CoursesService: ObservableObject {
     @Published private(set) var courses: [Course] = []
+    @Published private(set) var submissions: [CourseSubmission] = []
     @Published private(set) var isLoading: Bool = false
+    @Published private(set) var isLoadingSubmissions: Bool = false
     @Published private(set) var error: String?
 
     private var baseURL: URL { X5Config.supabaseBaseURL }
@@ -220,6 +244,113 @@ final class CoursesService: ObservableObject {
             return false
         }
         return true
+    }
+
+    func loadSubmissions(accessToken: String) async {
+        isLoadingSubmissions = true
+        error = nil
+        defer { isLoadingSubmissions = false }
+
+        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/course_submissions"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "select", value: "id,author_id,author_email,author_name,contact,title,description,video_url,status,created_at"),
+            URLQueryItem(name: "order", value: "created_at.desc")
+        ]
+        var request = URLRequest(url: components.url!)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                let body = String(data: data, encoding: .utf8) ?? ""
+                throw NSError(domain: "CoursesService", code: 0, userInfo: [NSLocalizedDescriptionKey: "Не удалось загрузить заявки: \(body)"])
+            }
+            submissions = try JSONDecoder().decode([CourseSubmission].self, from: data)
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func createSubmission(title: String, description: String, contact: String, authorId: String?, authorEmail: String?, authorName: String?, videoURL: String?, accessToken: String) async -> Bool {
+        var post = URLRequest(url: baseURL.appendingPathComponent("rest/v1/course_submissions"))
+        post.httpMethod = "POST"
+        post.setValue(anonKey, forHTTPHeaderField: "apikey")
+        post.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        post.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        post.setValue("return=representation", forHTTPHeaderField: "Prefer")
+
+        var body: [String: Any] = [
+            "title": title,
+            "description": description,
+            "contact": contact,
+            "status": "pending"
+        ]
+        if let authorId, !authorId.isEmpty { body["author_id"] = authorId }
+        if let authorEmail, !authorEmail.isEmpty { body["author_email"] = authorEmail }
+        if let authorName, !authorName.isEmpty { body["author_name"] = authorName }
+        if let videoURL, !videoURL.isEmpty { body["video_url"] = videoURL }
+        post.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: post)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                let details = String(data: data, encoding: .utf8) ?? ""
+                self.error = "Заявка не отправлена. \(details)"
+                return false
+            }
+            return true
+        } catch {
+            self.error = "Заявка не отправлена: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    @discardableResult
+    func uploadCourseSubmissionVideo(fileURL: URL, accessToken: String) async -> String? {
+        error = nil
+
+        let didAccess = fileURL.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess { fileURL.stopAccessingSecurityScopedResource() }
+        }
+
+        let ext = normalizedVideoExtension(from: fileURL)
+        let mime = videoMimeType(for: ext)
+        let path = "course-submissions/\(UUID().uuidString)-\(Int(Date().timeIntervalSince1970)).\(ext)"
+        let uploadURL = baseURL.appendingPathComponent("storage/v1/object/videos/\(path)")
+
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch {
+            self.error = "Не удалось прочитать видео."
+            return nil
+        }
+
+        var req = URLRequest(url: uploadURL)
+        req.httpMethod = "POST"
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        req.setValue(mime, forHTTPHeaderField: "Content-Type")
+        req.setValue("3600", forHTTPHeaderField: "Cache-Control")
+        req.setValue("true", forHTTPHeaderField: "x-upsert")
+        req.httpBody = data
+
+        do {
+            let (body, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                let details = String(data: body, encoding: .utf8) ?? ""
+                self.error = "Видео заявки не загружено. \(details)"
+                return nil
+            }
+        } catch {
+            self.error = "Видео заявки не загружено: \(error.localizedDescription)"
+            return nil
+        }
+
+        return baseURL.appendingPathComponent("storage/v1/object/public/videos/\(path)").absoluteString
     }
 
     /// Uploads `jpegData` to Storage `course-covers` bucket and PATCHes courses.cover_url.

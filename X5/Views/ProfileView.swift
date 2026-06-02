@@ -173,7 +173,9 @@ struct ProfileView: View {
                             .foregroundColor(.white.opacity(0.66))
                     }
 
-                    hubVisibilityToggle
+                    if shouldShowHubVisibilityToggle {
+                        hubVisibilityToggle
+                    }
 
                     Button {
                         X5Feedback.impact()
@@ -239,7 +241,7 @@ struct ProfileView: View {
             if let bio = currentUser.profile?.bio, !bio.isEmpty {
                 BioCard(text: bio)
             }
-            if currentUser.profile?.showInHub != true {
+            if !hasSpecialistCategories {
                 becomeSpecialistCard
             }
             if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
@@ -309,7 +311,7 @@ struct ProfileView: View {
                     .tint(.white)
                     .scaleEffect(0.8)
             }
-            Toggle("", isOn: Binding(
+        Toggle("", isOn: Binding(
                 get: { showInHubToggle },
                 set: { value in
                     guard value != showInHubToggle else { return }
@@ -326,6 +328,14 @@ struct ProfileView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .x5ClearGlass(cornerRadius: 18, highlight: 0.12)
+    }
+
+    private var hasSpecialistCategories: Bool {
+        currentUser.profile?.specialistCategory?.isEmpty == false
+    }
+
+    private var shouldShowHubVisibilityToggle: Bool {
+        hasSpecialistCategories
     }
 
     private var heroHeight: CGFloat {
@@ -358,11 +368,19 @@ struct ProfileView: View {
         savingShowInHub = true
         defer { savingShowInHub = false }
 
+        guard hasSpecialistCategories else {
+            await currentUser.patchMany(["show_in_hub": AnyEncodable(false)], accessToken: token)
+            showInHubToggle = false
+            X5Feedback.selection()
+            return
+        }
+
         var fields: [String: AnyEncodable] = [
             "show_in_hub": AnyEncodable(value)
         ]
-        if value && (currentUser.profile?.userRole ?? "").isEmpty {
+        if value {
             fields["user_role"] = AnyEncodable("specialist")
+            fields["is_public"] = AnyEncodable(true)
         }
         await currentUser.patchMany(fields, accessToken: token)
         showInHubToggle = currentUser.profile?.showInHub ?? value

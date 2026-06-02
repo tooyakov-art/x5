@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Mandatory after first sign in: collect identity, role, and optional specialist data.
-/// Writes name + nickname + user_role + specialist_category[] + show_in_hub to profiles.
+/// Mandatory after first sign in: collect identity and role.
+/// Specialists can additionally pick Hub categories; creators and entrepreneurs finish after nickname.
 struct OnboardingView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
@@ -9,12 +9,19 @@ struct OnboardingView: View {
     private let maxPickedCategories = 8
 
     @State private var role: Role?
+    @State private var step: Step = .role
     @State private var name: String = ""
     @State private var nickname: String = ""
     @State private var pickedCategories: Set<String> = []
-    @State private var bio: String = ""
     @State private var saving = false
     @State private var errorMessage: String?
+
+    enum Step {
+        case role
+        case name
+        case nickname
+        case categories
+    }
 
     enum Role: String, CaseIterable, Identifiable {
         case specialist
@@ -33,16 +40,15 @@ struct OnboardingView: View {
                         .listRowBackground(Color.clear)
                 }
 
-                identitySection
-                roleSection
-
-                if role == .specialist || role == .creator {
+                switch step {
+                case .role:
+                    roleSection
+                case .name:
+                    nameSection
+                case .nickname:
+                    nicknameSection
+                case .categories:
                     categoriesSection
-                    bioSection
-                }
-
-                if role == .entrepreneur || role == .creator {
-                    entrepreneurSection
                 }
 
                 submitSection
@@ -63,11 +69,12 @@ struct OnboardingView: View {
         VStack(spacing: 8) {
             X5LogoMark(size: 56)
 
-            Text(loc.t("onb_title"))
+            Text(stepTitle)
                 .font(.system(size: 24, weight: .heavy))
                 .foregroundColor(.white)
+                .multilineTextAlignment(.center)
 
-            Text(loc.t("onb_subtitle"))
+            Text(stepSubtitle)
                 .font(.system(size: 13))
                 .foregroundColor(.white.opacity(0.62))
                 .multilineTextAlignment(.center)
@@ -75,16 +82,28 @@ struct OnboardingView: View {
         .padding(.vertical, 12)
     }
 
-    private var identitySection: some View {
+    private var nameSection: some View {
         Section {
             TextField(loc.t("edit_name_placeholder"), text: $name)
                 .textContentType(.name)
                 .textInputAutocapitalization(.words)
+                .submitLabel(.next)
+                .onSubmit { advanceOrSubmit() }
+        } header: {
+            Text(loc.t("onb_identity_section"))
+        } footer: {
+            Text(nameFooter)
+        }
+    }
 
+    private var nicknameSection: some View {
+        Section {
             TextField(loc.t("edit_nickname_placeholder"), text: $nickname)
                 .textContentType(.username)
                 .textInputAutocapitalization(.never)
                 .autocapitalization(.none)
+                .submitLabel(role == .specialist ? .next : .done)
+                .onSubmit { advanceOrSubmit() }
                 .onChange(of: nickname) { value in
                     let cleaned = Self.cleanNickname(value)
                     if cleaned != value {
@@ -94,7 +113,7 @@ struct OnboardingView: View {
         } header: {
             Text(loc.t("onb_identity_section"))
         } footer: {
-            Text(identityFooter)
+            Text(nicknameFooter)
         }
     }
 
@@ -127,36 +146,20 @@ struct OnboardingView: View {
         }
     }
 
-    private var bioSection: some View {
-        Section {
-            TextField(loc.t("onb_bio_placeholder"), text: $bio, axis: .vertical)
-                .lineLimit(2...4)
-        } header: {
-            Text(loc.t("onb_bio_label"))
-        }
-    }
-
-    private var entrepreneurSection: some View {
-        Section {
-            Text(loc.t("onb_entrepreneur_note"))
-                .foregroundColor(.secondary)
-        }
-    }
-
     private var submitSection: some View {
         Section {
-            Button(action: submit) {
+            Button(action: advanceOrSubmit) {
                 HStack {
                     if saving {
                         ProgressView()
                     }
-                    Text(saving ? loc.t("onb_saving") : loc.t("onb_continue"))
+                    Text(saving ? loc.t("onb_saving") : primaryButtonTitle)
                 }
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(!canSubmit || saving)
+            .disabled(!canAdvance || saving)
         } footer: {
             if let err = errorMessage {
                 Text(err)
@@ -165,14 +168,51 @@ struct OnboardingView: View {
         }
     }
 
-    private var identityFooter: String {
+    private var stepTitle: String {
+        switch step {
+        case .role:
+            return loc.t("onb_title")
+        case .name:
+            return loc.t("onb_name_step_title")
+        case .nickname:
+            return loc.t("onb_nickname_step_title")
+        case .categories:
+            return loc.t("onb_categories_step_title")
+        }
+    }
+
+    private var stepSubtitle: String {
+        switch step {
+        case .role:
+            return loc.t("onb_subtitle")
+        case .name:
+            return loc.t("onb_name_step_subtitle")
+        case .nickname:
+            return loc.t("onb_nickname_step_subtitle")
+        case .categories:
+            return loc.t("onb_categories_step_subtitle")
+        }
+    }
+
+    private var primaryButtonTitle: String {
+        if isFinalStep {
+            return loc.t("onb_finish")
+        }
+        return loc.t("onb_continue")
+    }
+
+    private var nameFooter: String {
         if !nameTrimmed.isEmpty && !hasRealName {
             return loc.t("onb_name_required")
         }
+        return loc.t("onb_name_hint")
+    }
+
+    private var nicknameFooter: String {
         if !nicknameTrimmed.isEmpty && !isValidNickname {
             return loc.t("onb_nickname_required")
         }
-        return loc.t("onb_identity_hint")
+        return loc.t("onb_nickname_hint")
     }
 
     private var roleFooter: String {
@@ -191,8 +231,32 @@ struct OnboardingView: View {
     private var canSubmit: Bool {
         guard let role else { return false }
         guard hasRealName, isValidNickname else { return false }
-        if role == .specialist || role == .creator { return !pickedCategories.isEmpty }
+        if role == .specialist { return !pickedCategories.isEmpty }
         return true
+    }
+
+    private var canAdvance: Bool {
+        switch step {
+        case .role:
+            return role != nil
+        case .name:
+            return hasRealName
+        case .nickname:
+            return isValidNickname
+        case .categories:
+            return canSubmit
+        }
+    }
+
+    private var isFinalStep: Bool {
+        switch step {
+        case .role, .name:
+            return false
+        case .nickname:
+            return role != .specialist
+        case .categories:
+            return true
+        }
     }
 
     private var nameTrimmed: String {
@@ -242,7 +306,24 @@ struct OnboardingView: View {
             role = storedRole
         }
         pickedCategories = Set(p.specialistCategory ?? [])
-        bio = p.bio ?? ""
+    }
+
+    private func advanceOrSubmit() {
+        guard canAdvance else { return }
+        switch step {
+        case .role:
+            step = .name
+        case .name:
+            step = .nickname
+        case .nickname:
+            if role == .specialist {
+                step = .categories
+            } else {
+                submit()
+            }
+        case .categories:
+            submit()
+        }
     }
 
     private func submit() {
@@ -277,7 +358,7 @@ struct OnboardingView: View {
             throw NSError(domain: "Onboarding", code: -1, userInfo: [NSLocalizedDescriptionKey: loc.t("onb_save_failed")])
         }
 
-        let categories = role == .specialist || role == .creator ? Array(pickedCategories) : []
+        let categories = role == .specialist ? Array(pickedCategories) : []
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -285,16 +366,14 @@ struct OnboardingView: View {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("return=representation", forHTTPHeaderField: "Prefer")
 
-        var body: [String: Any] = [
+        let body: [String: Any] = [
             "name": nameTrimmed,
             "nickname": nicknameTrimmed,
             "user_role": role.rawValue,
             "specialist_category": categories,
-            "show_in_hub": role == .specialist
+            "show_in_hub": role == .specialist,
+            "is_public": role == .specialist
         ]
-        if !bio.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            body["bio"] = bio.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)

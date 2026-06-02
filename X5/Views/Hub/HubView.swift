@@ -43,6 +43,10 @@ struct HubView: View {
             .first { id in HubCategories.all.contains { $0.id == id } }
     }
 
+    private var hasPreferredHubCategory: Bool {
+        preferredHubCategory != nil
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -92,7 +96,7 @@ struct HubView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    if segment == .specialists && !(currentUser.profile?.showInHub ?? false) {
+                    if segment == .specialists && currentRole != "creator" && !(currentUser.profile?.showInHub ?? false) {
                         Button {
                             showingEditProfile = true
                         } label: {
@@ -103,10 +107,13 @@ struct HubView: View {
             }
             .task {
                 applyPreferredCategoryIfNeeded()
+                await repairCurrentHubProfileIfNeeded()
                 await service.loadSpecialists()
                 await service.loadTasks(accessToken: auth.accessToken)
             }
             .onChange(of: currentUser.profile?.specialistCategory) { _ in
+                didApplyPreferredCategory = false
+                didAnimateCategoryRail = false
                 applyPreferredCategoryIfNeeded()
             }
             .sheet(isPresented: $showingPostTask) {
@@ -279,12 +286,16 @@ struct HubView: View {
     private func applyPreferredCategoryIfNeeded() {
         guard !didApplyPreferredCategory, let preferredHubCategory else { return }
         didApplyPreferredCategory = true
+        segment = .tasks
         taskCategoriesExpanded = true
         category = preferredHubCategory
     }
 
     private func animateCategoryRailIfNeeded(_ proxy: ScrollViewProxy) {
-        guard !didAnimateCategoryRail, let selected = category else { return }
+        guard segment == .tasks,
+              hasPreferredHubCategory,
+              !didAnimateCategoryRail,
+              let selected = category else { return }
         didAnimateCategoryRail = true
         taskCategoriesExpanded = true
         Task { @MainActor in
@@ -635,7 +646,6 @@ struct HubView: View {
     private var visibleSpecialists: [HubSpecialist] {
         service.specialists
             .filter { !BlockList.contains($0.id) }
-            .filter { $0.id != auth.userId }
     }
 
     private func specialists(matching categoryId: String?) -> [HubSpecialist] {
@@ -658,6 +668,14 @@ struct HubView: View {
         case .tasks:
             await service.loadTasks(accessToken: auth.accessToken)
         }
+    }
+
+    private func repairCurrentHubProfileIfNeeded() async {
+        guard currentUser.profile?.showInHub == true,
+              currentUser.profile?.isPublic != true,
+              let token = await auth.freshAccessToken()
+        else { return }
+        await currentUser.patchMany(["is_public": AnyEncodable(true)], accessToken: token)
     }
 }
 

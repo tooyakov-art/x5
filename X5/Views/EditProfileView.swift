@@ -163,18 +163,21 @@ struct EditProfileView: View {
             "linkedin":  nilIfEmpty(linkedin),
             "facebook":  nilIfEmpty(facebook)
         ]
+        let cleanCategories = Array(pickedCategories)
+        let cleanShowInHub = showInHub && !cleanCategories.isEmpty
 
         var fields: [String: AnyEncodable] = [
             "name": AnyEncodable(name.trimmingCharacters(in: .whitespacesAndNewlines)),
             "nickname": AnyEncodable(nickname.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()),
             "bio": AnyEncodable(nilIfEmpty(bio)),
             "social_links": AnyEncodable(socials),
-            "specialist_category": AnyEncodable(Array(pickedCategories)),
-            "show_in_hub": AnyEncodable(showInHub)
+            "specialist_category": AnyEncodable(cleanCategories),
+            "show_in_hub": AnyEncodable(cleanShowInHub)
         ]
-        // Auto-set role to specialist when toggling Show in Hub on for the first time
-        if showInHub && (currentUser.profile?.userRole ?? "").isEmpty {
+        // Auto-set role only after actual specialist categories are selected.
+        if cleanShowInHub {
             fields["user_role"] = AnyEncodable("specialist")
+            fields["is_public"] = AnyEncodable(true)
         }
         await currentUser.patchMany(fields, accessToken: token)
         X5Feedback.success()
