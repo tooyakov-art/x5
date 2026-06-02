@@ -191,28 +191,9 @@ struct ProfileView: View {
                     .tint(.white)
                     .foregroundStyle(.black)
 
-                    ProfileSocialLinksStrip(items: socialItems)
-
-                    HStack(spacing: 6) {
-                        Text(planLabel)
-                            .font(.system(size: 10, weight: .heavy))
-                            .tracking(0.8)
-                            .foregroundColor(currentUser.profile?.isPro == true ? .black : .white)
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(currentUser.profile?.isPro == true ? Color.accentColor : Color.white.opacity(0.1))
-                            .clipShape(Capsule())
-                        if let n = currentUser.profile?.signupNumber {
-                            Text("#\(n)")
-                                .font(.system(size: 10, weight: .heavy))
-                                .tracking(0.8)
-                                .foregroundColor(.white.opacity(0.6))
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(Color.white.opacity(0.06))
-                                .clipShape(Capsule())
-                        }
-                    }
-
                     heroStatsRow
+
+                    ProfileSocialLinksStrip(items: socialItems)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 28)
@@ -554,10 +535,6 @@ struct ProfileView: View {
     }
 
     // MARK: - Helpers
-
-    private var planLabel: String {
-        currentUser.profile?.planLabel.uppercased() ?? "FREE"
-    }
 
     private var upgradeSubtitle: String {
         "от 1000 ₸ / \(loc.t("profile_month")) - \(loc.t("profile_upgrade_sub"))"

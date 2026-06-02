@@ -176,28 +176,9 @@ struct UserProfileView: View {
 
                     actionRow
 
-                    ProfileSocialLinksStrip(items: socialItems)
-
-                    HStack(spacing: 6) {
-                        if (profile?.plan ?? fallback?.plan) == "pro" || isMe {
-                            Text("PRO")
-                                .font(.system(size: 10, weight: .heavy))
-                                .foregroundColor(.black)
-                                .tracking(0.8)
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(Color.accentColor)
-                                .clipShape(Capsule())
-                        }
-                        Text("#\(profile?.signupNumber ?? 505)")
-                            .font(.system(size: 10, weight: .heavy))
-                            .tracking(0.8)
-                            .foregroundColor(.white.opacity(0.6))
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Color.white.opacity(0.06))
-                            .clipShape(Capsule())
-                    }
-
                     statsRow
+
+                    ProfileSocialLinksStrip(items: socialItems)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 28)
