@@ -124,6 +124,9 @@ struct CourseEditorView: View {
                     uploadVideo: { fileURL in
                         await uploadVideo(fileURL, lessonId: target.lesson.id)
                     },
+                    uploadThumbnail: { jpegData in
+                        await uploadThumbnail(jpegData, lessonId: target.lesson.id)
+                    },
                     onSave: { saved in
                         upsertLesson(saved, categoryId: target.categoryId, dayId: target.dayId)
                     }
@@ -343,6 +346,9 @@ struct CourseEditorView: View {
         guard await uploadPendingLessonVideos(courseId: id, accessToken: token) else {
             return
         }
+        guard await uploadPendingLessonThumbnails(courseId: id, accessToken: token) else {
+            return
+        }
 
         let priceInt = Int(price) ?? 0
         let fields: [String: Any] = [
@@ -390,6 +396,19 @@ struct CourseEditorView: View {
         return .failure(service.error ?? "Не удалось загрузить видео.")
     }
 
+    private func uploadThumbnail(_ jpegData: Data, lessonId: String) async -> LessonThumbnailUploadResult {
+        guard let courseId = existingId else {
+            return .failure("Сначала сохраните курс как черновик, затем откройте редактирование и загрузите обложку.")
+        }
+        guard let token = await auth.freshAccessToken() else {
+            return .failure("Нужен активный вход разработчика.")
+        }
+        if let publicURL = await service.uploadLessonThumbnail(courseId: courseId, lessonId: lessonId, jpegData: jpegData, accessToken: token) {
+            return .success(publicURL)
+        }
+        return .failure(service.error ?? "Не удалось загрузить обложку урока.")
+    }
+
     private func uploadPendingLessonVideos(courseId: String, accessToken: String) async -> Bool {
         for categoryIndex in categories.indices {
             for dayIndex in categories[categoryIndex].days.indices {
@@ -412,6 +431,29 @@ struct CourseEditorView: View {
         }
         return true
     }
+
+    private func uploadPendingLessonThumbnails(courseId: String, accessToken: String) async -> Bool {
+        for categoryIndex in categories.indices {
+            for dayIndex in categories[categoryIndex].days.indices {
+                for lessonIndex in categories[categoryIndex].days[dayIndex].lessons.indices {
+                    guard let jpegData = categories[categoryIndex].days[dayIndex].lessons[lessonIndex].pendingThumbnailData else {
+                        continue
+                    }
+
+                    let lessonId = categories[categoryIndex].days[dayIndex].lessons[lessonIndex].id
+                    guard let publicURL = await service.uploadLessonThumbnail(courseId: courseId, lessonId: lessonId, jpegData: jpegData, accessToken: accessToken) else {
+                        errorText = service.error ?? "Не удалось загрузить обложку урока."
+                        return false
+                    }
+
+                    categories[categoryIndex].days[dayIndex].lessons[lessonIndex].thumbnailUrl = publicURL
+                    categories[categoryIndex].days[dayIndex].lessons[lessonIndex].pendingThumbnailData = nil
+                }
+            }
+        }
+        return true
+    }
+
 
     private func orderedCategories() -> [EditableCategory] {
         categories.sorted { $0.order < $1.order }
@@ -657,6 +699,7 @@ private struct EditableLesson: Identifiable, Equatable {
     var sellSeparately: Bool
     var pendingVideoFileURL: URL?
     var pendingVideoFileName: String?
+    var pendingThumbnailData: Data?
 
     init(
         id: String,
@@ -670,7 +713,8 @@ private struct EditableLesson: Identifiable, Equatable {
         isFreePreview: Bool,
         sellSeparately: Bool,
         pendingVideoFileURL: URL? = nil,
-        pendingVideoFileName: String? = nil
+        pendingVideoFileName: String? = nil,
+        pendingThumbnailData: Data? = nil
     ) {
         self.id = id
         self.title = title
@@ -684,6 +728,7 @@ private struct EditableLesson: Identifiable, Equatable {
         self.sellSeparately = sellSeparately
         self.pendingVideoFileURL = pendingVideoFileURL
         self.pendingVideoFileName = pendingVideoFileName
+        self.pendingThumbnailData = pendingThumbnailData
     }
 
     init(_ lesson: CourseLesson) {
@@ -699,6 +744,7 @@ private struct EditableLesson: Identifiable, Equatable {
         self.sellSeparately = lesson.sellSeparately ?? false
         self.pendingVideoFileURL = nil
         self.pendingVideoFileName = nil
+        self.pendingThumbnailData = nil
     }
 
     static func new(order: Int) -> EditableLesson {
@@ -712,7 +758,8 @@ private struct EditableLesson: Identifiable, Equatable {
             youtubeUrl: "",
             thumbnailUrl: "",
             isFreePreview: false,
-            sellSeparately: false
+            sellSeparately: false,
+            pendingThumbnailData: nil
         )
     }
 
@@ -749,9 +796,7 @@ private struct LessonDraftRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: lesson.hasVideo ? "play.circle.fill" : "play.slash")
-                .foregroundStyle(lesson.hasVideo ? Color.accentColor : .secondary)
-                .font(.system(size: 22))
+            lessonThumb
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(lesson.title.x5Trimmed.isEmpty ? "Новый урок" : lesson.title)
@@ -775,6 +820,42 @@ private struct LessonDraftRow: View {
         }
         .padding(.vertical, 4)
     }
+
+    @ViewBuilder
+    private var lessonThumb: some View {
+        ZStack {
+            if let data = lesson.pendingThumbnailData, let img = UIImage(data: data) {
+                Image(uiImage: img).resizable().scaledToFill()
+            } else if let url = URL(string: lesson.thumbnailUrl), !lesson.thumbnailUrl.x5Trimmed.isEmpty {
+                CachedAsyncImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    thumbPlaceholder
+                }
+            } else {
+                thumbPlaceholder
+            }
+
+            Image(systemName: lesson.hasVideo ? "play.fill" : "play.slash")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(lesson.hasVideo ? Color.black : .white.opacity(0.7))
+                .frame(width: 22, height: 22)
+                .background(lesson.hasVideo ? Color.accentColor : Color.white.opacity(0.12))
+                .clipShape(Circle())
+        }
+        .frame(width: 58, height: 38)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var thumbPlaceholder: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.06))
+            .overlay {
+                Image(systemName: "photo")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+    }
 }
 
 private struct LessonEditorSheet: View {
@@ -784,6 +865,7 @@ private struct LessonEditorSheet: View {
     let uploadBlockerText: String?
     let uploadsImmediately: Bool
     let uploadVideo: (URL) async -> LessonVideoUploadResult
+    let uploadThumbnail: (Data) async -> LessonThumbnailUploadResult
     let onSave: (EditableLesson) -> Void
 
     @State private var title: String
@@ -796,8 +878,11 @@ private struct LessonEditorSheet: View {
     @State private var sellSeparately: Bool
     @State private var pendingVideoFileURL: URL?
     @State private var pendingVideoFileName: String?
+    @State private var pendingThumbnailData: Data?
+    @State private var thumbnailItem: PhotosPickerItem?
     @State private var showingImporter = false
     @State private var uploading = false
+    @State private var uploadingThumbnail = false
     @State private var errorText: String?
 
     init(
@@ -805,12 +890,14 @@ private struct LessonEditorSheet: View {
         uploadBlockerText: String?,
         uploadsImmediately: Bool,
         uploadVideo: @escaping (URL) async -> LessonVideoUploadResult,
+        uploadThumbnail: @escaping (Data) async -> LessonThumbnailUploadResult,
         onSave: @escaping (EditableLesson) -> Void
     ) {
         self.lesson = lesson
         self.uploadBlockerText = uploadBlockerText
         self.uploadsImmediately = uploadsImmediately
         self.uploadVideo = uploadVideo
+        self.uploadThumbnail = uploadThumbnail
         self.onSave = onSave
         _title = State(initialValue: lesson.title)
         _duration = State(initialValue: lesson.duration)
@@ -822,6 +909,7 @@ private struct LessonEditorSheet: View {
         _sellSeparately = State(initialValue: lesson.sellSeparately)
         _pendingVideoFileURL = State(initialValue: lesson.pendingVideoFileURL)
         _pendingVideoFileName = State(initialValue: lesson.pendingVideoFileName)
+        _pendingThumbnailData = State(initialValue: lesson.pendingThumbnailData)
     }
 
     var body: some View {
@@ -836,17 +924,14 @@ private struct LessonEditorSheet: View {
                 }
 
                 Section {
+                    thumbnailPicker
+
                     TextField("MP4/HLS URL", text: $videoUrl, axis: .vertical)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .lineLimit(2...4)
                     TextField("YouTube URL", text: $youtubeUrl, axis: .vertical)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .lineLimit(1...3)
-                    TextField("Thumbnail URL", text: $thumbnailUrl, axis: .vertical)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -873,7 +958,7 @@ private struct LessonEditorSheet: View {
                 } header: {
                     Text("Видео")
                 } footer: {
-                    Text("Прямая MP4/HLS ссылка сохраняется сразу. В новом курсе файл загрузится при сохранении; в существующем уроке импорт сразу заменит videoUrl.")
+                    Text("Обложка сохраняется для конкретного видео. В новом курсе видео и обложка загрузятся при сохранении; в существующем уроке импорт сразу заменит ссылку.")
                 }
 
                 Section("Отдельная продажа") {
@@ -905,7 +990,7 @@ private struct LessonEditorSheet: View {
                         onSave(updatedLesson())
                         dismiss()
                     }
-                    .disabled(title.x5Trimmed.isEmpty || uploading)
+                    .disabled(title.x5Trimmed.isEmpty || uploading || uploadingThumbnail)
                 }
             }
             .fileImporter(
@@ -921,7 +1006,88 @@ private struct LessonEditorSheet: View {
                     errorText = error.localizedDescription
                 }
             }
+            .onChange(of: thumbnailItem) { newValue in
+                guard let newValue else { return }
+                Task { await importThumbnail(newValue) }
+            }
         }
+    }
+
+    @ViewBuilder
+    private var thumbnailPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Обложка видео")
+                .font(.subheadline.weight(.semibold))
+
+            PhotosPicker(selection: $thumbnailItem, matching: .images) {
+                ZStack {
+                    if let data = pendingThumbnailData, let img = UIImage(data: data) {
+                        Image(uiImage: img).resizable().scaledToFill()
+                    } else if let url = URL(string: thumbnailUrl), !thumbnailUrl.x5Trimmed.isEmpty {
+                        CachedAsyncImage(url: url) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            thumbnailPlaceholder
+                        }
+                    } else {
+                        thumbnailPlaceholder
+                    }
+
+                    if uploadingThumbnail {
+                        Color.black.opacity(0.38)
+                        ProgressView().tint(.white)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 154)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .disabled(uploadingThumbnail)
+
+            HStack {
+                PhotosPicker(selection: $thumbnailItem, matching: .images) {
+                    Label(thumbnailActionTitle, systemImage: "photo.on.rectangle")
+                }
+                .disabled(uploadingThumbnail)
+
+                Spacer()
+
+                if pendingThumbnailData != nil || !thumbnailUrl.x5Trimmed.isEmpty {
+                    Button(role: .destructive) {
+                        pendingThumbnailData = nil
+                        thumbnailUrl = ""
+                    } label: {
+                        Label("Убрать", systemImage: "trash")
+                    }
+                    .disabled(uploadingThumbnail)
+                }
+            }
+            .font(.footnote)
+
+            TextField("Thumbnail URL", text: $thumbnailUrl, axis: .vertical)
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .lineLimit(1...3)
+        }
+    }
+
+    private var thumbnailActionTitle: String {
+        if uploadingThumbnail { return "Загрузка..." }
+        if pendingThumbnailData != nil || !thumbnailUrl.x5Trimmed.isEmpty { return "Заменить обложку" }
+        return "Добавить обложку"
+    }
+
+    private var thumbnailPlaceholder: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "photo.badge.plus")
+                .font(.system(size: 28, weight: .light))
+            Text("Добавить обложку видео")
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundColor(.white.opacity(0.62))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.white.opacity(0.06))
     }
 
     private var videoImportTitle: String {
@@ -947,6 +1113,34 @@ private struct LessonEditorSheet: View {
             pendingVideoFileName = nil
         } else {
             errorText = result.error ?? "Видео не загружено."
+        }
+    }
+
+    private func importThumbnail(_ item: PhotosPickerItem) async {
+        uploadingThumbnail = true
+        defer { uploadingThumbnail = false }
+        errorText = nil
+
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let ui = UIImage(data: data),
+              let jpeg = ui.jpegData(compressionQuality: 0.84) else {
+            errorText = "Не удалось прочитать обложку."
+            return
+        }
+
+        guard uploadsImmediately else {
+            thumbnailUrl = ""
+            pendingThumbnailData = jpeg
+            return
+        }
+
+        let result = await uploadThumbnail(jpeg)
+        if let publicURL = result.url {
+            thumbnailUrl = publicURL
+            pendingThumbnailData = nil
+        } else {
+            pendingThumbnailData = jpeg
+            errorText = result.error ?? "Обложка не загружена."
         }
     }
 
@@ -998,7 +1192,8 @@ private struct LessonEditorSheet: View {
             isFreePreview: isFreePreview,
             sellSeparately: sellSeparately,
             pendingVideoFileURL: pendingVideoFileURL,
-            pendingVideoFileName: pendingVideoFileName
+            pendingVideoFileName: pendingVideoFileName,
+            pendingThumbnailData: pendingThumbnailData
         )
     }
 }
@@ -1013,6 +1208,19 @@ private struct LessonVideoUploadResult {
 
     static func failure(_ error: String) -> LessonVideoUploadResult {
         LessonVideoUploadResult(url: nil, error: error)
+    }
+}
+
+private struct LessonThumbnailUploadResult {
+    let url: String?
+    let error: String?
+
+    static func success(_ url: String) -> LessonThumbnailUploadResult {
+        LessonThumbnailUploadResult(url: url, error: nil)
+    }
+
+    static func failure(_ error: String) -> LessonThumbnailUploadResult {
+        LessonThumbnailUploadResult(url: nil, error: error)
     }
 }
 

@@ -294,6 +294,38 @@ final class CoursesService: ObservableObject {
         return baseURL.appendingPathComponent("storage/v1/object/public/videos/\(path)").absoluteString
     }
 
+    /// Uploads a JPEG cover for a single lesson video. The returned URL is saved
+    /// inside the lesson JSON as `thumbnailUrl` by the course editor.
+    @discardableResult
+    func uploadLessonThumbnail(courseId: String, lessonId: String, jpegData: Data, accessToken: String) async -> String? {
+        error = nil
+
+        let path = "\(courseId)/lessons/\(lessonId)-\(Int(Date().timeIntervalSince1970)).jpg"
+        let uploadURL = baseURL.appendingPathComponent("storage/v1/object/course-covers/\(path)")
+        var req = URLRequest(url: uploadURL)
+        req.httpMethod = "POST"
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        req.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        req.setValue("3600", forHTTPHeaderField: "Cache-Control")
+        req.setValue("true", forHTTPHeaderField: "x-upsert")
+        req.httpBody = jpegData
+
+        do {
+            let (body, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                let details = String(data: body, encoding: .utf8) ?? ""
+                self.error = "Обложка урока не загружена. Проверь bucket course-covers в Supabase Storage. \(details)"
+                return nil
+            }
+        } catch {
+            self.error = "Обложка урока не загружена: \(error.localizedDescription)"
+            return nil
+        }
+
+        return baseURL.appendingPathComponent("storage/v1/object/public/course-covers/\(path)").absoluteString
+    }
+
     private func normalizedVideoExtension(from url: URL) -> String {
         let raw = url.pathExtension.lowercased()
         guard !raw.isEmpty else { return "mp4" }

@@ -977,13 +977,7 @@ private struct LockedSoonLessonRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ZStack {
-                Circle().fill(Color.white.opacity(0.06))
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.white.opacity(0.38))
-            }
-            .frame(width: 32, height: 32)
+            lessonThumbnail
 
             Text(lesson.title)
                 .font(.system(size: 14, weight: .semibold))
@@ -1000,6 +994,33 @@ private struct LockedSoonLessonRow: View {
         .padding(.vertical, 10)
         .background(Color.white.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var lessonThumbnail: some View {
+        if let url = lesson.safeThumbnailURL {
+            ZStack {
+                CachedAsyncImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    Color.white.opacity(0.06)
+                }
+                Color.black.opacity(0.24)
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white.opacity(0.82))
+            }
+            .frame(width: 58, height: 38)
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        } else {
+            ZStack {
+                Circle().fill(Color.white.opacity(0.06))
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white.opacity(0.38))
+            }
+            .frame(width: 32, height: 32)
+        }
     }
 }
 
@@ -1028,13 +1049,7 @@ private struct LessonRow: View {
 
     private var content: some View {
         HStack(spacing: 12) {
-            ZStack {
-                Circle().fill(Color.white.opacity(0.06))
-                Image(systemName: !hasVideo ? "doc.text" : (canPlay ? "play.fill" : "lock.fill"))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(canPlay ? .accentColor : .white.opacity(0.45))
-            }
-            .frame(width: 32, height: 32)
+            lessonThumbnail
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(lesson.title)
@@ -1066,6 +1081,45 @@ private struct LessonRow: View {
         .padding(.vertical, 10)
         .background(Color.white.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var lessonThumbnail: some View {
+        if let url = lesson.safeThumbnailURL {
+            ZStack {
+                CachedAsyncImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    Color.white.opacity(0.06)
+                }
+                LinearGradient(colors: [.black.opacity(0.04), .black.opacity(0.34)], startPoint: .top, endPoint: .bottom)
+                Image(systemName: !hasVideo ? "doc.text" : (canPlay ? "play.fill" : "lock.fill"))
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(canPlay ? .black : .white.opacity(0.82))
+                    .frame(width: 22, height: 22)
+                    .background(canPlay ? Color.accentColor : Color.white.opacity(0.14))
+                    .clipShape(Circle())
+            }
+            .frame(width: 58, height: 38)
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        } else {
+            ZStack {
+                Circle().fill(Color.white.opacity(0.06))
+                Image(systemName: !hasVideo ? "doc.text" : (canPlay ? "play.fill" : "lock.fill"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(canPlay ? .accentColor : .white.opacity(0.45))
+            }
+            .frame(width: 32, height: 32)
+        }
+    }
+}
+
+private extension CourseLesson {
+    var safeThumbnailURL: URL? {
+        guard let raw = thumbnailUrl, !raw.isEmpty, let url = URL(string: raw),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "https" || scheme == "http" else { return nil }
+        return url
     }
 }
 

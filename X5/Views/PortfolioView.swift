@@ -462,7 +462,6 @@ private struct PortfolioInstagramViewer: View {
                 }
                 .scrollIndicators(.hidden)
                 .background(Color.black)
-                .ignoresSafeArea(edges: .bottom)
                 .onAppear {
                     guard items.indices.contains(initialIndex) else { return }
                     proxy.scrollTo(items[initialIndex].id, anchor: .top)
@@ -507,11 +506,16 @@ private struct PortfolioInstagramPostPage: View {
     @State private var localLikedComments: Set<String> = []
     @State private var player: AVPlayer?
 
+    private var maxMediaHeight: CGFloat {
+        let screen = UIScreen.main.bounds
+        return min(screen.width * 1.06, screen.height * 0.54)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             media
                 .frame(maxWidth: .infinity)
-                .aspectRatio(3 / 4, contentMode: .fit)
+                .frame(height: maxMediaHeight)
                 .background(Color.white.opacity(0.04))
                 .clipped()
 
@@ -523,7 +527,7 @@ private struct PortfolioInstagramPostPage: View {
             }
             .padding(.horizontal, 14)
             .padding(.top, 12)
-            .padding(.bottom, 24)
+            .padding(.bottom, 18)
         }
         .background(Color.black)
         .task {
@@ -561,7 +565,7 @@ private struct PortfolioInstagramPostPage: View {
             VideoPlayer(player: player)
         } else if let s = item.mediaUrl, let url = URL(string: s) {
             CachedAsyncImage(url: url) { image in
-                image.resizable().scaledToFill()
+                image.resizable().scaledToFit()
             } placeholder: {
                 ProgressView().tint(.white)
             }
