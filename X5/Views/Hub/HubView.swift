@@ -156,15 +156,15 @@ struct HubView: View {
     private var hubHeader: some View {
         HStack(alignment: .center) {
             Text(loc.t("hub_title"))
-                .font(.system(size: 42, weight: .black))
+                .font(.system(size: 34, weight: .black))
                 .foregroundColor(.white)
-                .kerning(-1.0)
+                .kerning(0)
                 .shadow(color: X5Style.blueSoft.opacity(0.45), radius: 18, x: 0, y: 0)
             Spacer()
         }
         .padding(.horizontal, 24)
-        .padding(.top, -22)
-        .padding(.bottom, 4)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
     }
 
     private var createTaskButton: some View {

@@ -13,9 +13,10 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     homeTitle
-                    businessPanel
+                    generationPanel
                     trendsPanel
-                    moreGrid
+                    businessPanel
+                    utilityPanel
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, -18)
@@ -68,31 +69,39 @@ struct HomeView: View {
 
     private var businessPanel: some View {
         HomeSectionPanel(title: "Креативы", subtitle: "Что чаще всего нужно бизнесу") {
-            mediaGrid(items: businessMediaItems)
+            mediaRail(items: businessMediaItems)
+        }
+    }
+
+    private var generationPanel: some View {
+        HomeSectionPanel(title: "Генерация", subtitle: "Картинка или видео с первого экрана") {
+            mediaRail(items: generationMediaItems)
         }
     }
 
     private var trendsPanel: some View {
         HomeSectionPanel(title: "Тренды", subtitle: "Вирусные форматы для Reels, TikTok и Shorts") {
-            mediaGrid(items: trendMediaItems)
+            mediaRail(items: trendMediaItems)
         }
     }
 
-    private var moreGrid: some View {
-        mediaGrid(items: utilityMediaItems)
-    }
-
-    private func mediaGrid(items: [HomeMediaItem]) -> some View {
-        LazyVGrid(columns: gridColumns, spacing: 12) {
-            ForEach(items) { item in mediaButton(item) }
+    private var utilityPanel: some View {
+        HomeSectionPanel(title: "Еще", subtitle: "Остальные инструменты для упаковки") {
+            mediaRail(items: utilityMediaItems)
         }
     }
 
-    private var gridColumns: [GridItem] {
-        [
-            GridItem(.flexible(), spacing: 12),
-            GridItem(.flexible(), spacing: 12)
-        ]
+    private func mediaRail(items: [HomeMediaItem]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 12) {
+                ForEach(items) { item in
+                    mediaButton(item)
+                        .frame(width: 214)
+                }
+            }
+            .padding(.horizontal, 2)
+            .padding(.vertical, 1)
+        }
     }
 
     private func mediaButton(_ item: HomeMediaItem) -> some View {
@@ -160,11 +169,40 @@ struct HomeView: View {
                 subtitle: localized("home_media_story_subtitle", fallback: "Вертикальный креатив 9:16"),
                 kicker: "STORY",
                 systemImage: "rectangle.portrait.fill",
-                assetName: "HomeCoverStories",
-                videoURL: nil,
+                assetName: nil,
+                videoURL: HomeMediaVideos.story,
                 gradientStart: X5Style.backgroundCyan.opacity(0.42),
                 gradientEnd: .black,
                 action: categories["story"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
+            )
+        ]
+    }
+
+    private var generationMediaItems: [HomeMediaItem] {
+        [
+            HomeMediaItem(
+                id: "custom",
+                title: localized("home_media_custom_title", fallback: "Генерация изображения"),
+                subtitle: localized("home_media_custom_subtitle", fallback: "Любой промпт, фото или идея"),
+                kicker: "IMAGE",
+                systemImage: "sparkles",
+                assetName: "HomeUtilityCustom",
+                videoURL: nil,
+                gradientStart: X5Style.backgroundBlue.opacity(0.48),
+                gradientEnd: .black,
+                action: .image(ImageGenerationCatalog.custom)
+            ),
+            HomeMediaItem(
+                id: "video",
+                title: localized("home_media_video_title", fallback: "Генерация видео"),
+                subtitle: localized("home_media_video_subtitle", fallback: "Kling: текст или фото в видео"),
+                kicker: "KLING",
+                systemImage: "video.fill",
+                assetName: nil,
+                videoURL: HomeMediaVideos.video,
+                gradientStart: X5Style.blue.opacity(0.38),
+                gradientEnd: .black,
+                action: .video
             )
         ]
     }
@@ -227,25 +265,13 @@ struct HomeView: View {
         let categories = Dictionary(uniqueKeysWithValues: ImageGenerationCatalog.categories.map { ($0.id, $0) })
         return [
             HomeMediaItem(
-                id: "custom",
-                title: localized("home_media_custom_title", fallback: "Генерация изображения"),
-                subtitle: localized("home_media_custom_subtitle", fallback: "Любой промпт, фото или идея"),
-                kicker: "IMAGE",
-                systemImage: "sparkles",
-                assetName: "HomeUtilityCustom",
-                videoURL: nil,
-                gradientStart: X5Style.backgroundBlue.opacity(0.48),
-                gradientEnd: .black,
-                action: .image(ImageGenerationCatalog.custom)
-            ),
-            HomeMediaItem(
                 id: "logo",
                 title: localized("home_media_logo_title", fallback: "Генерация лого"),
                 subtitle: localized("home_media_logo_subtitle", fallback: "Логотип для бренда"),
                 kicker: "LOGO",
                 systemImage: "seal.fill",
-                assetName: "HomeUtilityLogo",
-                videoURL: nil,
+                assetName: nil,
+                videoURL: HomeMediaVideos.logo,
                 gradientStart: X5Style.blue.opacity(0.40),
                 gradientEnd: .black,
                 action: categories["logo"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
@@ -256,8 +282,8 @@ struct HomeView: View {
                 subtitle: localized("home_media_post_subtitle", fallback: "Пост для ленты"),
                 kicker: "POST",
                 systemImage: "square.grid.2x2.fill",
-                assetName: "HomeUtilityPost",
-                videoURL: nil,
+                assetName: nil,
+                videoURL: HomeMediaVideos.post,
                 gradientStart: Color(red: 0.20, green: 0.42, blue: 0.95).opacity(0.42),
                 gradientEnd: .black,
                 action: categories["post"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
@@ -292,23 +318,11 @@ struct HomeView: View {
                 subtitle: localized("home_media_packaging_subtitle", fallback: "Коробка, этикетка, мокап"),
                 kicker: "PACK",
                 systemImage: "cube.box.fill",
-                assetName: "HomeUtilityPackaging",
-                videoURL: nil,
+                assetName: nil,
+                videoURL: HomeMediaVideos.packaging,
                 gradientStart: Color(red: 0.72, green: 0.82, blue: 0.92).opacity(0.30),
                 gradientEnd: .black,
                 action: categories["packaging"].map(HomeMediaAction.image) ?? .image(ImageGenerationCatalog.custom)
-            ),
-            HomeMediaItem(
-                id: "video",
-                title: localized("home_media_video_title", fallback: "Генерация видео"),
-                subtitle: localized("home_media_video_subtitle", fallback: "Kling: текст или фото в видео"),
-                kicker: "KLING",
-                systemImage: "video.fill",
-                assetName: "HomeUtilityVideo",
-                videoURL: nil,
-                gradientStart: X5Style.blue.opacity(0.38),
-                gradientEnd: .black,
-                action: .video
             ),
             HomeMediaItem(
                 id: "startup_chat",

@@ -178,52 +178,104 @@ struct CourseEditorView: View {
 
     private var lessonsSection: some View {
         Section {
-            ForEach(orderedCategories()) { category in
+            ForEach(orderedCategoryIndices, id: \.self) { categoryIndex in
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(category.title)
+                    TextField("Название раздела", text: $categories[categoryIndex].title)
                         .font(.headline)
+                        .textInputAutocapitalization(.sentences)
 
-                    ForEach(category.orderedDays) { day in
+                    TextField("Иконка SF Symbol, например folder", text: iconBinding(for: categoryIndex))
+                        .font(.caption)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    ForEach(orderedDayIndices(in: categoryIndex), id: \.self) { dayIndex in
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(day.title)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                            HStack(spacing: 8) {
+                                TextField("Название дня или модуля", text: $categories[categoryIndex].days[dayIndex].title)
+                                    .font(.subheadline)
+                                    .textInputAutocapitalization(.sentences)
 
-                            if day.lessons.isEmpty {
+                                if categories[categoryIndex].days.count > 1 {
+                                    Button(role: .destructive) {
+                                        deleteDay(categoryIndex: categoryIndex, dayIndex: dayIndex)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+                            }
+
+                            if categories[categoryIndex].days[dayIndex].lessons.isEmpty {
                                 Text("Уроков пока нет")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }
 
-                            ForEach(day.orderedLessons) { lesson in
+                            ForEach(categories[categoryIndex].days[dayIndex].orderedLessons) { lesson in
                                 Button {
-                                    lessonEditor = LessonEditorTarget(categoryId: category.id, dayId: day.id, lesson: lesson)
+                                    lessonEditor = LessonEditorTarget(
+                                        categoryId: categories[categoryIndex].id,
+                                        dayId: categories[categoryIndex].days[dayIndex].id,
+                                        lesson: lesson
+                                    )
                                 } label: {
                                     LessonDraftRow(lesson: lesson)
                                 }
                                 .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        deleteLesson(lesson.id, categoryIndex: categoryIndex, dayIndex: dayIndex)
+                                    } label: {
+                                        Label("Удалить урок", systemImage: "trash")
+                                    }
+                                }
                             }
 
                             Button {
-                                openNewLesson(categoryId: category.id, dayId: day.id)
+                                openNewLesson(
+                                    categoryId: categories[categoryIndex].id,
+                                    dayId: categories[categoryIndex].days[dayIndex].id
+                                )
                             } label: {
                                 Label("Добавить урок", systemImage: "plus.circle")
                             }
                         }
+                        .padding(.vertical, 6)
+                        .padding(.leading, 8)
                     }
+
+                    HStack {
+                        Button {
+                            addDay(categoryIndex: categoryIndex)
+                        } label: {
+                            Label("Добавить день / модуль", systemImage: "calendar.badge.plus")
+                        }
+
+                        Spacer()
+
+                        if categories.count > 1 {
+                            Button(role: .destructive) {
+                                deleteCategory(categoryIndex)
+                            } label: {
+                                Label("Удалить раздел", systemImage: "trash")
+                            }
+                        }
+                    }
+                    .font(.footnote)
                 }
                 .padding(.vertical, 6)
             }
 
             Button {
-                openFirstNewLesson()
+                addCategory()
             } label: {
-                Label("Добавить урок в курс", systemImage: "plus")
+                Label("Добавить раздел", systemImage: "folder.badge.plus")
             }
         } header: {
-            Text("Уроки")
+            Text("Программа курса")
         } footer: {
-            Text("Видео можно указать прямой ссылкой MP4/HLS или импортировать файл после первого сохранения курса.")
+            Text("Можно менять названия разделов и дней, добавлять модули и уроки. Видео у урока задается прямой ссылкой MP4/HLS или импортом файла.")
         }
     }
 
@@ -365,6 +417,30 @@ struct CourseEditorView: View {
         categories.sorted { $0.order < $1.order }
     }
 
+    private var orderedCategoryIndices: [Int] {
+        categories.indices.sorted { categories[$0].order < categories[$1].order }
+    }
+
+    private func orderedDayIndices(in categoryIndex: Int) -> [Int] {
+        guard categories.indices.contains(categoryIndex) else { return [] }
+        return categories[categoryIndex].days.indices.sorted {
+            categories[categoryIndex].days[$0].order < categories[categoryIndex].days[$1].order
+        }
+    }
+
+    private func iconBinding(for categoryIndex: Int) -> Binding<String> {
+        Binding(
+            get: {
+                guard categories.indices.contains(categoryIndex) else { return "" }
+                return categories[categoryIndex].icon ?? ""
+            },
+            set: { value in
+                guard categories.indices.contains(categoryIndex) else { return }
+                categories[categoryIndex].icon = value.x5Trimmed.isEmpty ? nil : value.x5Trimmed
+            }
+        )
+    }
+
     private func categoriesPayload() -> [[String: Any]] {
         orderedCategories().enumerated().map { index, category in
             category.payload(order: index + 1)
@@ -376,7 +452,60 @@ struct CourseEditorView: View {
             categories = [.defaultContent()]
         }
         for index in categories.indices where categories[index].days.isEmpty {
-            categories[index].days = [EditableCategory.defaultDay()]
+            categories[index].days = [EditableCategory.defaultDay(order: 1)]
+        }
+    }
+
+    private func addCategory() {
+        let nextOrder = (categories.map(\.order).max() ?? 0) + 1
+        categories.append(
+            EditableCategory(
+                id: "cat_\(UUID().uuidString)",
+                title: "Новый раздел",
+                order: nextOrder,
+                icon: "folder",
+                days: [EditableCategory.defaultDay(order: 1)]
+            )
+        )
+    }
+
+    private func deleteCategory(_ categoryIndex: Int) {
+        guard categories.indices.contains(categoryIndex), categories.count > 1 else { return }
+        categories.remove(at: categoryIndex)
+        normalizeCategoryOrder()
+    }
+
+    private func addDay(categoryIndex: Int) {
+        guard categories.indices.contains(categoryIndex) else { return }
+        let nextOrder = (categories[categoryIndex].days.map(\.order).max() ?? 0) + 1
+        categories[categoryIndex].days.append(EditableCategory.defaultDay(order: nextOrder))
+    }
+
+    private func deleteDay(categoryIndex: Int, dayIndex: Int) {
+        guard categories.indices.contains(categoryIndex),
+              categories[categoryIndex].days.indices.contains(dayIndex),
+              categories[categoryIndex].days.count > 1 else { return }
+        categories[categoryIndex].days.remove(at: dayIndex)
+        normalizeDayOrder(categoryIndex: categoryIndex)
+    }
+
+    private func deleteLesson(_ lessonId: String, categoryIndex: Int, dayIndex: Int) {
+        guard categories.indices.contains(categoryIndex),
+              categories[categoryIndex].days.indices.contains(dayIndex) else { return }
+        categories[categoryIndex].days[dayIndex].lessons.removeAll { $0.id == lessonId }
+        normalizeLessonOrder(categoryIndex: categoryIndex, dayIndex: dayIndex)
+    }
+
+    private func normalizeCategoryOrder() {
+        for (offset, categoryIndex) in orderedCategoryIndices.enumerated() {
+            categories[categoryIndex].order = offset + 1
+        }
+    }
+
+    private func normalizeDayOrder(categoryIndex: Int) {
+        guard categories.indices.contains(categoryIndex) else { return }
+        for (offset, dayIndex) in orderedDayIndices(in: categoryIndex).enumerated() {
+            categories[categoryIndex].days[dayIndex].order = offset + 1
         }
     }
 
@@ -456,11 +585,11 @@ private struct EditableCategory: Identifiable, Equatable {
     }
 
     static func defaultContent() -> EditableCategory {
-        EditableCategory(id: "cat_\(Self.timestamp)", title: "Уроки", order: 1, icon: "FolderOpen", days: [Self.defaultDay()])
+        EditableCategory(id: "cat_\(UUID().uuidString)", title: "Основной раздел", order: 1, icon: "folder", days: [Self.defaultDay(order: 1)])
     }
 
-    static func defaultDay() -> EditableDay {
-        EditableDay(id: "day_\(timestamp)", title: "Уроки", order: 1, lessons: [])
+    static func defaultDay(order: Int) -> EditableDay {
+        EditableDay(id: "day_\(UUID().uuidString)", title: "День \(order)", order: order, lessons: [])
     }
 
     func payload(order: Int) -> [String: Any] {
