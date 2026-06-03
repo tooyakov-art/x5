@@ -1,7 +1,7 @@
 X5 Creators is a creator workspace and marketplace for creators, marketers,
-specialists and clients. Version 1.1.1 build 143 includes Home creator tools,
+specialists and clients. Version 1.1.2 build 163 includes Home creator tools,
 image generation, Generated Gallery, Hub, Chats, Portfolio, CourseUP, Profile,
-X5 Pro, credits, report/block controls and account deletion.
+paid plans, credits, verified badge, report/block controls and account deletion.
 
 Demo account:
 Use the credentials in the Apple Demo Account fields:
