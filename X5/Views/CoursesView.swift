@@ -653,7 +653,6 @@ private struct AcademyCourseCard: View {
 struct CourseInDevelopmentView: View {
     let course: Course
     @State private var expandedCategoryIds: Set<String> = []
-    @State private var expandedDayIds: Set<String> = []
 
     var body: some View {
         ScrollView {
@@ -714,8 +713,7 @@ struct CourseInDevelopmentView: View {
                 ForEach(sortedCategories) { category in
                     CourseProgramCategorySection(
                         category: category,
-                        isExpanded: categoryBinding(category.id),
-                        expandedDayIds: $expandedDayIds
+                        isExpanded: categoryBinding(category.id)
                     ) { lesson in
                         LockedSoonLessonRow(lesson: lesson)
                     }
@@ -742,12 +740,8 @@ struct CourseInDevelopmentView: View {
         Set(sortedCategories.map(\.id))
     }
 
-    private var allDayIds: Set<String> {
-        Set(sortedCategories.flatMap { $0.days.map(\.id) })
-    }
-
     private var isFullyExpanded: Bool {
-        !allCategoryIds.isEmpty && expandedCategoryIds == allCategoryIds && expandedDayIds == allDayIds
+        !allCategoryIds.isEmpty && expandedCategoryIds == allCategoryIds
     }
 
     private var programHeader: some View {
@@ -761,10 +755,8 @@ struct CourseInDevelopmentView: View {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     if isFullyExpanded {
                         expandedCategoryIds.removeAll()
-                        expandedDayIds.removeAll()
                     } else {
                         expandedCategoryIds = allCategoryIds
-                        expandedDayIds = allDayIds
                     }
                 }
             }
@@ -774,9 +766,8 @@ struct CourseInDevelopmentView: View {
     }
 
     private func expandAllIfNeeded() {
-        guard expandedCategoryIds.isEmpty, expandedDayIds.isEmpty else { return }
+        guard expandedCategoryIds.isEmpty else { return }
         expandedCategoryIds = allCategoryIds
-        expandedDayIds = allDayIds
     }
 
     private func categoryBinding(_ id: String) -> Binding<Bool> {
@@ -800,7 +791,6 @@ struct CourseDetailView: View {
     @EnvironmentObject private var sub: Subscription
     @EnvironmentObject private var loc: LocalizationService
     @State private var expandedCategoryIds: Set<String> = []
-    @State private var expandedDayIds: Set<String> = []
 
     var hasFullAccess: Bool { (course.isFree ?? false) || (course.price ?? 0) == 0 || sub.isPro }
 
@@ -866,8 +856,7 @@ struct CourseDetailView: View {
                 ForEach(sortedCategories) { category in
                     CourseProgramCategorySection(
                         category: category,
-                        isExpanded: categoryBinding(category.id),
-                        expandedDayIds: $expandedDayIds
+                        isExpanded: categoryBinding(category.id)
                     ) { lesson in
                         LessonRow(lesson: lesson, hasFullAccess: hasFullAccess, openPaywall: openPaywall)
                     }
@@ -893,12 +882,8 @@ struct CourseDetailView: View {
         Set(sortedCategories.map(\.id))
     }
 
-    private var allDayIds: Set<String> {
-        Set(sortedCategories.flatMap { $0.days.map(\.id) })
-    }
-
     private var isFullyExpanded: Bool {
-        !allCategoryIds.isEmpty && expandedCategoryIds == allCategoryIds && expandedDayIds == allDayIds
+        !allCategoryIds.isEmpty && expandedCategoryIds == allCategoryIds
     }
 
     private var lessonsHeader: some View {
@@ -912,10 +897,8 @@ struct CourseDetailView: View {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     if isFullyExpanded {
                         expandedCategoryIds.removeAll()
-                        expandedDayIds.removeAll()
                     } else {
                         expandedCategoryIds = allCategoryIds
-                        expandedDayIds = allDayIds
                     }
                 }
             }
@@ -925,9 +908,8 @@ struct CourseDetailView: View {
     }
 
     private func expandAllIfNeeded() {
-        guard expandedCategoryIds.isEmpty, expandedDayIds.isEmpty else { return }
+        guard expandedCategoryIds.isEmpty else { return }
         expandedCategoryIds = allCategoryIds
-        expandedDayIds = allDayIds
     }
 
     private func categoryBinding(_ id: String) -> Binding<Bool> {
@@ -963,15 +945,18 @@ private struct StatBubble: View {
 private struct CourseProgramCategorySection<LessonContent: View>: View {
     let category: CourseCategory
     let isExpanded: Binding<Bool>
-    @Binding var expandedDayIds: Set<String>
     @ViewBuilder let lessonContent: (CourseLesson) -> LessonContent
-
-    private var sortedDays: [CourseDay] {
-        category.days.sorted { ($0.order ?? 0) < ($1.order ?? 0) }
-    }
 
     private var lessonsCount: Int {
         category.days.reduce(0) { $0 + $1.lessons.count }
+    }
+
+    private var sortedLessons: [CourseLesson] {
+        category.days
+            .sorted { ($0.order ?? 0) < ($1.order ?? 0) }
+            .flatMap { day in
+                day.lessons.sorted { ($0.order ?? 0) < ($1.order ?? 0) }
+            }
     }
 
     var body: some View {
@@ -990,7 +975,7 @@ private struct CourseProgramCategorySection<LessonContent: View>: View {
                         Text(category.title)
                             .font(.system(size: 17, weight: .heavy))
                             .foregroundColor(.white)
-                        Text("\(sortedDays.count) дней · \(lessonsCount) уроков")
+                        Text("\(lessonsCount) уроков")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.white.opacity(0.45))
                     }
@@ -1004,75 +989,7 @@ private struct CourseProgramCategorySection<LessonContent: View>: View {
             .buttonStyle(.plain)
 
             if isExpanded.wrappedValue {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(sortedDays) { day in
-                        CourseProgramDaySection(
-                            day: day,
-                            isExpanded: dayBinding(day.id),
-                            lessonContent: lessonContent
-                        )
-                    }
-                }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-    }
-
-    private func dayBinding(_ id: String) -> Binding<Bool> {
-        Binding(
-            get: { expandedDayIds.contains(id) },
-            set: { isExpanded in
-                if isExpanded {
-                    expandedDayIds.insert(id)
-                } else {
-                    expandedDayIds.remove(id)
-                }
-            }
-        )
-    }
-}
-
-private struct CourseProgramDaySection<LessonContent: View>: View {
-    let day: CourseDay
-    let isExpanded: Binding<Bool>
-    @ViewBuilder let lessonContent: (CourseLesson) -> LessonContent
-
-    private var sortedLessons: [CourseLesson] {
-        day.lessons.sorted { ($0.order ?? 0) < ($1.order ?? 0) }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.16)) {
-                    isExpanded.wrappedValue.toggle()
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.white.opacity(0.44))
-                        .frame(width: 16)
-
-                    Text(day.title)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white.opacity(0.72))
-
-                    Spacer()
-
-                    Text("\(sortedLessons.count)")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.white.opacity(0.38))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color.white.opacity(0.035))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .buttonStyle(.plain)
-
-            if isExpanded.wrappedValue {
-                VStack(spacing: 6) {
+                VStack(spacing: 8) {
                     ForEach(sortedLessons) { lesson in
                         lessonContent(lesson)
                     }

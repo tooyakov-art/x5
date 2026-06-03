@@ -36,7 +36,7 @@ struct TaskDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 8) {
-                    Text(HubCategories.label(for: task.category).uppercased())
+                    Text(HubCategories.label(for: task.category, language: loc.current).uppercased())
                         .font(.system(size: 10, weight: .heavy))
                         .tracking(1.2)
                         .foregroundColor(.accentColor)

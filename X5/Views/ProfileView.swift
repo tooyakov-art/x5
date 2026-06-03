@@ -539,7 +539,7 @@ struct ProfileView: View {
             }
             HStack(spacing: 6) {
                 ForEach(cats.prefix(3), id: \.self) { id in
-                    Text(HubCategories.label(for: id))
+                    Text(HubCategories.label(for: id, language: loc.current))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.accentColor)
                         .padding(.horizontal, 10).padding(.vertical, 5)
