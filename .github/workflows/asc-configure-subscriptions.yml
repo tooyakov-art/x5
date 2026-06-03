@@ -3,7 +3,7 @@ name: ASC configure subscriptions
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, codex/x5-cleanup-from-restore-clean]
     paths:
       - ".github/workflows/asc-configure-subscriptions.yml"
 
@@ -147,8 +147,30 @@ jobs:
           app_id = app[0]["id"]
           print(f"App: {app_id} ({os.environ['BUNDLE_ID']})")
 
+          def app_subscription_group_refs():
+              response = requests.get(
+                  f"{BASE}/apps/{app_id}/relationships/subscriptionGroups?limit=200",
+                  headers=headers(),
+                  timeout=60,
+              )
+              print(f"GET app subscription groups -> HTTP {response.status_code}")
+              if response.status_code < 300:
+                  return response.json().get("data", [])
+
+              print(response.text[:1000])
+              fallback = requests.get(
+                  f"{BASE}/subscriptionGroups?filter[app]={app_id}&limit=200",
+                  headers=headers(),
+                  timeout=60,
+              )
+              print(f"GET subscriptionGroups filter app -> HTTP {fallback.status_code}")
+              if fallback.status_code >= 300:
+                  print(fallback.text[:1000])
+                  raise SystemExit(1)
+              return fallback.json().get("data", [])
+
           def ensure_group(reference_name, localized_name):
-              group_links = list_all(f"/apps/{app_id}/relationships/subscriptionGroups?limit=200")
+              group_links = app_subscription_group_refs()
               groups = [api("GET", f"/subscriptionGroups/{item['id']}")["data"] for item in group_links]
               group = next((g for g in groups if g.get("attributes", {}).get("referenceName") == reference_name), None)
               if not group:
@@ -189,8 +211,8 @@ jobs:
               for group_spec in group_specs
           }
           existing_subs = []
-          for group_id in set(group_ids.values()):
-              existing_subs.extend(list_all(f"/subscriptionGroups/{group_id}/subscriptions?limit=200"))
+          for group_ref in app_subscription_group_refs():
+              existing_subs.extend(list_all(f"/subscriptionGroups/{group_ref['id']}/subscriptions?limit=200"))
           by_product = {sub["attributes"].get("productId"): sub for sub in existing_subs}
           configured = []
 
