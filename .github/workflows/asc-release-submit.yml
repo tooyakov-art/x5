@@ -135,59 +135,75 @@ jobs:
               "GET",
               f"/reviewSubmissions?filter[app]={app_id}&filter[platform]=IOS&include=items",
           )
-          open_states = {
-              "READY_FOR_REVIEW",
-              "WAITING_FOR_REVIEW",
-              "IN_REVIEW",
-              "COMPLETING",
-              "UNRESOLVED_ISSUES",
-          }
-          open_submissions = [
+          submissions = review_payload.get("data", [])
+          ready = [
               row
-              for row in review_payload.get("data", [])
-              if row.get("attributes", {}).get("state") in open_states
+              for row in submissions
+              if row.get("attributes", {}).get("state") == "READY_FOR_REVIEW"
           ]
-          if open_submissions:
-              for row in open_submissions:
-                  print(f"Open submission: {row['id']} state={row.get('attributes', {}).get('state')}")
-              sys.exit("Open review submission exists; refusing to create a duplicate")
+          already_live = [
+              row
+              for row in submissions
+              if row.get("attributes", {}).get("state") in {"WAITING_FOR_REVIEW", "IN_REVIEW"}
+          ]
+          blocked = [
+              row
+              for row in submissions
+              if row.get("attributes", {}).get("state") in {"COMPLETING", "UNRESOLVED_ISSUES"}
+          ]
+          if already_live:
+              for row in already_live:
+                  print(f"Already submitted review submission: {row['id']} state={row.get('attributes', {}).get('state')}")
+              raise SystemExit(0)
+          if blocked:
+              for row in blocked:
+                  print(f"Blocked open submission: {row['id']} state={row.get('attributes', {}).get('state')}")
+              sys.exit("Blocked review submission exists")
 
-          created = json_api(
-              "POST",
-              "/reviewSubmissions",
-              {
-                  "data": {
-                      "type": "reviewSubmissions",
-                      "attributes": {"platform": "IOS"},
-                      "relationships": {
-                          "app": {"data": {"type": "apps", "id": app_id}}
-                      },
-                  }
-              },
-              expected=(201,),
-          )
-          submission_id = created["data"]["id"]
-          print(f"Created ReviewSubmission: {submission_id}")
+          if ready:
+              if len(ready) > 1:
+                  for row in ready:
+                      print(f"READY submission: {row['id']}")
+                  sys.exit("More than one READY_FOR_REVIEW submission exists")
+              submission_id = ready[0]["id"]
+              print(f"Reusing READY_FOR_REVIEW submission: {submission_id}")
+          else:
+              created = json_api(
+                  "POST",
+                  "/reviewSubmissions",
+                  {
+                      "data": {
+                          "type": "reviewSubmissions",
+                          "attributes": {"platform": "IOS"},
+                          "relationships": {
+                              "app": {"data": {"type": "apps", "id": app_id}}
+                          },
+                      }
+                  },
+                  expected=(201,),
+              )
+              submission_id = created["data"]["id"]
+              print(f"Created ReviewSubmission: {submission_id}")
 
-          json_api(
-              "POST",
-              "/reviewSubmissionItems",
-              {
-                  "data": {
-                      "type": "reviewSubmissionItems",
-                      "relationships": {
-                          "reviewSubmission": {
-                              "data": {"type": "reviewSubmissions", "id": submission_id}
+              json_api(
+                  "POST",
+                  "/reviewSubmissionItems",
+                  {
+                      "data": {
+                          "type": "reviewSubmissionItems",
+                          "relationships": {
+                              "reviewSubmission": {
+                                  "data": {"type": "reviewSubmissions", "id": submission_id}
+                              },
+                              "appStoreVersion": {
+                                  "data": {"type": "appStoreVersions", "id": version_id}
+                              },
                           },
-                          "appStoreVersion": {
-                              "data": {"type": "appStoreVersions", "id": version_id}
-                          },
-                      },
-                  }
-              },
-              expected=(201,),
-          )
-          print("Attached app version item")
+                      }
+                  },
+                  expected=(201,),
+              )
+              print("Attached app version item")
 
           submitted = json_api(
               "PATCH",
@@ -197,11 +213,6 @@ jobs:
                       "type": "reviewSubmissions",
                       "id": submission_id,
                       "attributes": {"submitted": True},
-                      "relationships": {
-                          "appStoreVersionForReview": {
-                              "data": {"type": "appStoreVersions", "id": version_id}
-                          }
-                      },
                   }
               },
           )
