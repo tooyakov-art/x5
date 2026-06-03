@@ -66,9 +66,7 @@ struct OnboardingView: View {
     }
 
     private var header: some View {
-        VStack(spacing: 8) {
-            X5LogoMark(size: 56)
-
+        VStack(spacing: 10) {
             Text(stepTitle)
                 .font(.system(size: 24, weight: .heavy))
                 .foregroundColor(.white)
