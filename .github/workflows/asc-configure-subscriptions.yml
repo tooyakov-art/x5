@@ -342,14 +342,14 @@ jobs:
                   )
               price_point_id = exact[0]["id"]
               print(f"Using KAZ price point for {spec['product_id']}: {price_point_id}")
-              prices = list_all(f"/subscriptions/{sub_id}/prices?include=subscriptionPricePoint,territory&limit=8000")
+              prices = list_all(f"/subscriptions/{sub_id}/prices?include=subscriptionPricePoint,territory&limit=200")
               current_price_point_ids = {
                   price.get("relationships", {}).get("subscriptionPricePoint", {}).get("data", {}).get("id")
                   for price in prices
               }
               current_territories = {territory_id(price) for price in prices if territory_id(price)}
               equalized_points = list_all(
-                  f"/subscriptionPricePoints/{price_point_id}/equalizations?include=territory&limit=8000"
+                  f"/subscriptionPricePoints/{price_point_id}/equalizations?include=territory&limit=200"
               )
               price_points_to_set = {price_point_id: exact[0]}
               for point in equalized_points:
