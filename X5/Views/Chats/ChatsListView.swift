@@ -174,7 +174,9 @@ struct ChatsListView: View {
         let me = auth.userId ?? ""
         return service.chats.filter { chat in
             if ChatsLocalState.isHidden(chat.id) { return false }
-            guard let otherId = chat.otherParticipantId(currentUser: me) else { return true }
+            guard chat.isValidPeerChat(currentUser: me),
+                  let otherId = chat.otherParticipantId(currentUser: me)
+            else { return false }
             return !BlockList.contains(otherId)
         }
     }
@@ -218,7 +220,7 @@ private struct ChatRowLink: View {
 
     var body: some View {
         NavigationLink {
-            ChatThreadView(chat: chat)
+            ChatThreadView(chat: chat, initialOther: other)
         } label: {
             ChatRow(chat: chat,
                     currentUserId: currentUserId,

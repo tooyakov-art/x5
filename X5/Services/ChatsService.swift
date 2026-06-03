@@ -22,7 +22,23 @@ struct ChatRoom: Codable, Identifiable, Hashable {
     }
 
     func otherParticipantId(currentUser: String) -> String? {
-        participants.first { $0 != currentUser }
+        let me = currentUser.trimmingCharacters(in: .whitespacesAndNewlines)
+        return participants
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty && $0 != me }
+    }
+
+    func isValidPeerChat(currentUser: String) -> Bool {
+        let me = currentUser.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanParticipants = participants
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !me.isEmpty,
+              cleanParticipants.contains(me),
+              Set(cleanParticipants).count >= 2,
+              otherParticipantId(currentUser: me) != nil
+        else { return false }
+        return true
     }
 
     func unreadCount(for userId: String) -> Int {
@@ -99,7 +115,7 @@ final class ChatsService: ObservableObject {
     // TTL is short (10 min) so muted/blocked/Pro state changes still
     // propagate within a session without forcing a full sign-out.
     private struct CachedPeer { let profile: UserProfile; let at: Date }
-    private var peerCache: [String: CachedPeer] = [:]
+    private static var peerCache: [String: CachedPeer] = [:]
     private let peerCacheTTL: TimeInterval = 600
 
     /// Synchronous read for views that need a peer's profile at frame 1
@@ -107,9 +123,9 @@ final class ChatsService: ObservableObject {
     /// row isn't cached or has expired — caller should kick off an async
     /// loadPublicProfile in that case.
     func cachedPeer(_ userId: String) -> UserProfile? {
-        guard let entry = peerCache[userId] else { return nil }
+        guard let entry = Self.peerCache[userId] else { return nil }
         if Date().timeIntervalSince(entry.at) > peerCacheTTL {
-            peerCache.removeValue(forKey: userId)
+            Self.peerCache.removeValue(forKey: userId)
             return nil
         }
         return entry.profile
@@ -118,7 +134,7 @@ final class ChatsService: ObservableObject {
     /// Drop the cached peer (used after sign-out or when stale data is
     /// known to be wrong, e.g. after the user blocks someone).
     func invalidatePeer(_ userId: String) {
-        peerCache.removeValue(forKey: userId)
+        Self.peerCache.removeValue(forKey: userId)
     }
 
     // MARK: - Message cache
@@ -127,7 +143,9 @@ final class ChatsService: ObservableObject {
     // ChatThreadView entry hit the network from cold. Cache last fetched
     // messages in memory + on disk so the UI can paint instantly while we
     // refetch in the background.
-    private var messageMemoryCache: [String: [ChatMessageRow]] = [:]
+    private static var messageMemoryCache: [String: [ChatMessageRow]] = [:]
+    private static var messageLastRefreshAt: [String: Date] = [:]
+    private let messageRefreshTTL: TimeInterval = 30
 
     nonisolated private static func cacheRoot() -> URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -162,20 +180,26 @@ final class ChatsService: ObservableObject {
         try? FileManager.default.removeItem(at: dir)
     }
 
+    static func clearMemoryCache() {
+        peerCache.removeAll()
+        messageMemoryCache.removeAll()
+        messageLastRefreshAt.removeAll()
+    }
+
     /// Synchronous read of cached messages — returns memory layer first,
     /// falls back to disk JSON. Used by views to paint instantly on open.
     func cachedMessages(chatId: String) -> [ChatMessageRow] {
-        if let mem = messageMemoryCache[chatId] { return mem }
+        if let mem = Self.messageMemoryCache[chatId] { return mem }
         let url = messageCacheURL(chatId: chatId)
         guard let data = try? Data(contentsOf: url),
               let rows = try? JSONDecoder().decode([ChatMessageRow].self, from: data)
         else { return [] }
-        messageMemoryCache[chatId] = rows
+        Self.messageMemoryCache[chatId] = rows
         return rows
     }
 
-    private func persistMessageCache(chatId: String, rows: [ChatMessageRow]) {
-        messageMemoryCache[chatId] = rows
+    func persistMessageCache(chatId: String, rows: [ChatMessageRow]) {
+        Self.messageMemoryCache[chatId] = rows
         let url = messageCacheURL(chatId: chatId)
         // Detach so disk write doesn't block the actor. Prune-after-write
         // keeps the directory bounded — captures only the cap so it doesn't
@@ -186,6 +210,12 @@ final class ChatsService: ObservableObject {
             try? data.write(to: url, options: .atomic)
             Self.pruneDirectoryStatic(cap: cap)
         }
+    }
+
+    private func shouldRefreshMessages(chatId: String, forceRefresh: Bool) -> Bool {
+        if forceRefresh { return true }
+        guard let last = Self.messageLastRefreshAt[chatId] else { return true }
+        return Date().timeIntervalSince(last) > messageRefreshTTL
     }
 
     /// Static prune so the disk-write detached task doesn't need to hop back
@@ -290,7 +320,7 @@ final class ChatsService: ObservableObject {
               let rows = try? JSONDecoder().decode([UserProfile].self, from: data)
         else { return nil }
         if let row = rows.first {
-            peerCache[userId] = CachedPeer(profile: row, at: Date())
+            Self.peerCache[userId] = CachedPeer(profile: row, at: Date())
             return row
         }
         return nil
@@ -353,7 +383,11 @@ final class ChatsService: ObservableObject {
         return (preview, at)
     }
 
-    func loadMessages(chatId: String, accessToken: String) async -> [ChatMessageRow] {
+    func loadMessages(chatId: String, accessToken: String, forceRefresh: Bool = false) async -> [ChatMessageRow] {
+        let cached = cachedMessages(chatId: chatId)
+        if !cached.isEmpty && !shouldRefreshMessages(chatId: chatId, forceRefresh: forceRefresh) {
+            return cached
+        }
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/messages"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "chat_id", value: "eq.\(chatId)"),
@@ -369,6 +403,7 @@ final class ChatsService: ObservableObject {
             return cachedMessages(chatId: chatId)
         }
         let rows = (try? JSONDecoder().decode([ChatMessageRow].self, from: data)) ?? []
+        Self.messageLastRefreshAt[chatId] = Date()
         persistMessageCache(chatId: chatId, rows: rows)
         return rows
     }

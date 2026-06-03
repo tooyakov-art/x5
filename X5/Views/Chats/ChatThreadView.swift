@@ -35,6 +35,11 @@ struct ChatThreadView: View {
     /// view rereads `isMuted/isPinned` for icon toggles without observing.
     @State private var chatStateTick: Int = 0
 
+    init(chat: ChatRoom, initialOther: UserProfile? = nil) {
+        self.chat = chat
+        _other = State(initialValue: initialOther)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if searchActive {
@@ -61,145 +66,13 @@ struct ChatThreadView: View {
                 .background(Color.white.opacity(0.06))
             }
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(Array(visibleMessages.enumerated()), id: \.element.id) { pair in
-                            let index = pair.offset
-                            let msg = pair.element
-                            if shouldShowDateHeader(at: index) {
-                                DateDivider(text: dateHeaderText(for: msg))
-                            }
-                            Bubble(
-                                message: msg,
-                                isMine: msg.senderId == auth.userId,
-                                isRead: isReadByPeer(msg),
-                                isPinned: MessagesLocalState.isPinned(msg.id),
-                                onReply: { replyingTo = msg },
-                                onTogglePin: { toggleMessagePin(msg) },
-                                onAskStartupChat: { askStartupChat(about: msg) },
-                                onDeleteForMe: {
-                                    MessagesLocalState.hide(msg.id)
-                                    messageStateTick &+= 1
-                                }
-                            )
-                                .id(msg.id)
-                                .simultaneousGesture(
-                                    DragGesture(minimumDistance: 24, coordinateSpace: .local)
-                                        .onEnded { value in
-                                            guard value.translation.width > 56,
-                                                  abs(value.translation.width) > abs(value.translation.height) * 1.5
-                                            else { return }
-                                            replyingTo = msg
-                                        }
-                                )
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 12)
-                    .padding(.bottom, 12)
-                    .frame(maxWidth: 640)
-                    .frame(maxWidth: .infinity)
-                }
-                .onChange(of: messages.count) { _ in
-                    if let last = messages.last {
-                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                    }
-                }
-            }
+            messagesPane
 
             if let replyingTo {
-                HStack(spacing: 10) {
-                    Rectangle()
-                        .fill(Color.accentColor)
-                        .frame(width: 3)
-                        .clipShape(Capsule())
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(loc.t("chats_msg_reply"))
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.accentColor)
-                        Text(messagePreview(replyingTo))
-                            .font(.system(size: 12))
-                            .foregroundColor(.white.opacity(0.65))
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                    Button { self.replyingTo = nil } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.white.opacity(0.45))
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(Color.white.opacity(0.05))
+                replyBanner(for: replyingTo)
             }
 
-            HStack(spacing: 8) {
-                // Attach photo
-                PhotosPicker(selection: $photoItem, matching: .images) {
-                    Image(systemName: "paperclip")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.55))
-                        .frame(width: 36, height: 36)
-                }
-
-                if recorder.isRecording {
-                    // Voice recording state
-                    HStack(spacing: 8) {
-                        Circle().fill(.red).frame(width: 8, height: 8)
-                        Text(loc.t("chat_recording_hint"))
-                            .font(.system(size: 13)).foregroundColor(.white)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 10)
-                    .background(Color.red.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                } else {
-                    HStack(spacing: 8) {
-                        TextField(loc.t("chats_message_placeholder"), text: $draft, axis: .vertical)
-                            .focused($inputFocused)
-                            .lineLimit(1...4)
-                        Button {
-                            showingStickers = true
-                        } label: {
-                            Image(systemName: "face.smiling")
-                                .font(.system(size: 21, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.55))
-                        }
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 10)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(Capsule())
-                }
-
-                if canSend {
-                    // Text-send button
-                    Button(action: send) {
-                        Image(systemName: sending ? "hourglass" : "arrow.up.circle.fill")
-                            .font(.system(size: 30))
-                            .foregroundColor(.accentColor)
-                    }
-                    .disabled(sending)
-                } else {
-                    // Press-and-hold mic
-                    Image(systemName: recorder.isRecording ? "mic.circle.fill" : "mic.circle")
-                        .font(.system(size: 30))
-                        .foregroundColor(recorder.isRecording ? .red : .white.opacity(0.6))
-                        .opacity((sending || voiceSendInFlight) ? 0.35 : 1)
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { _ in
-                                    beginVoicePress()
-                                }
-                                .onEnded { _ in
-                                    endVoicePress()
-                                }
-                        )
-                        .allowsHitTesting(!sending && !voiceSendInFlight)
-                }
-            }
-            .padding(12)
-            .background(Color.black.opacity(0.72).ignoresSafeArea(edges: .bottom))
+            inputBar
         }
         .background(ChatBackground())
         .navigationBarTitleDisplayMode(.inline)
@@ -245,10 +118,11 @@ struct ChatThreadView: View {
                     }
                     Divider()
                     Button {
-                        showingProfile = true
+                        if peerId != nil { showingProfile = true }
                     } label: {
                         Label(loc.t("chat_open_profile"), systemImage: "person.crop.circle")
                     }
+                    .disabled(peerId == nil)
                     Divider()
                     Button {
                         report()
@@ -267,45 +141,23 @@ struct ChatThreadView: View {
             }
             // Telegram-style: avatar + name in nav bar, tappable → opens profile
             ToolbarItem(placement: .principal) {
-                Button { showingProfile = true } label: {
-                    HStack(spacing: 8) {
-                        AvatarView(urlString: other?.avatar, name: other?.displayName, size: 32)
-                        VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 4) {
-                                Text(other?.displayName ?? loc.t("chats_title"))
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.white)
-                                if other?.hasActiveVerifiedBadge == true {
-                                    VerifiedChip(size: 11)
-                                }
-                                if other?.isPro == true {
-                                    Text("PRO")
-                                        .font(.system(size: 8, weight: .heavy))
-                                        .foregroundColor(.black)
-                                        .padding(.horizontal, 4).padding(.vertical, 1)
-                                        .background(Color.accentColor)
-                                        .clipShape(Capsule())
-                                }
-                            }
-                            if let task = chat.taskTitle, !task.isEmpty {
-                                Text(task)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.5))
-                                    .lineLimit(1)
-                            } else {
-                                Text(loc.t("chats_view_profile"))
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.4))
-                            }
-                        }
-                    }
+                ChatHeaderButton(
+                    profile: other,
+                    fallbackName: peerFallbackName,
+                    taskTitle: chat.taskTitle,
+                    subtitle: loc.t("chats_view_profile"),
+                    canOpen: peerId != nil
+                ) {
+                    showingProfile = true
                 }
-                .buttonStyle(.plain)
             }
         }
         .navigationDestination(isPresented: $showingProfile) {
-            let otherId = chat.otherParticipantId(currentUser: auth.userId ?? "") ?? ""
-            UserProfileView(userId: otherId, fallback: nil)
+            if let otherId = peerId {
+                UserProfileView(userId: otherId, fallback: nil)
+            } else {
+                EmptyView()
+            }
         }
         .confirmationDialog(
             loc.t("chat_block_title"),
@@ -351,6 +203,183 @@ struct ChatThreadView: View {
         }
     }
 
+    private var peerId: String? {
+        guard let myId = auth.userId else { return nil }
+        return chat.otherParticipantId(currentUser: myId)
+    }
+
+    private var peerFallbackName: String {
+        guard let peerId, !peerId.isEmpty else { return loc.t("common_user") }
+        return "ID " + String(peerId.prefix(6))
+    }
+
+    private var messagesPane: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(visibleMessages.enumerated()), id: \.element.id) { pair in
+                        messageRow(message: pair.element, index: pair.offset)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, 12)
+                .frame(maxWidth: 640)
+                .frame(maxWidth: .infinity)
+            }
+            .onChange(of: messages.count) { _ in
+                if let last = messages.last {
+                    withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func messageRow(message: ChatMessageRow, index: Int) -> some View {
+        if shouldShowDateHeader(at: index) {
+            DateDivider(text: dateHeaderText(for: message))
+        }
+        Bubble(
+            message: message,
+            isMine: message.senderId == auth.userId,
+            isRead: isReadByPeer(message),
+            isPinned: MessagesLocalState.isPinned(message.id),
+            onReply: { replyingTo = message },
+            onTogglePin: { toggleMessagePin(message) },
+            onAskStartupChat: { askStartupChat(about: message) },
+            onDeleteForMe: {
+                MessagesLocalState.hide(message.id)
+                messageStateTick &+= 1
+            }
+        )
+        .id(message.id)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 24, coordinateSpace: .local)
+                .onEnded { value in
+                    handleReplySwipe(value, message: message)
+                }
+        )
+    }
+
+    private func handleReplySwipe(_ value: DragGesture.Value, message: ChatMessageRow) {
+        let horizontal = value.translation.width
+        let vertical = abs(value.translation.height)
+        guard horizontal > 56, abs(horizontal) > vertical * 1.5 else { return }
+        replyingTo = message
+    }
+
+    private func replyBanner(for message: ChatMessageRow) -> some View {
+        HStack(spacing: 10) {
+            Rectangle()
+                .fill(Color.accentColor)
+                .frame(width: 3)
+                .clipShape(Capsule())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(loc.t("chats_msg_reply"))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.accentColor)
+                Text(messagePreview(message))
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.65))
+                    .lineLimit(1)
+            }
+            Spacer()
+            Button {
+                replyingTo = nil
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.white.opacity(0.45))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.05))
+    }
+
+    private var inputBar: some View {
+        HStack(spacing: 8) {
+            PhotosPicker(selection: $photoItem, matching: .images) {
+                Image(systemName: "paperclip")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.55))
+                    .frame(width: 36, height: 36)
+            }
+
+            if recorder.isRecording {
+                recordingIndicator
+            } else {
+                textComposer
+            }
+
+            sendOrVoiceButton
+        }
+        .padding(12)
+        .background(Color.black.opacity(0.72).ignoresSafeArea(edges: .bottom))
+    }
+
+    private var recordingIndicator: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(.red)
+                .frame(width: 8, height: 8)
+            Text(loc.t("chat_recording_hint"))
+                .font(.system(size: 13))
+                .foregroundColor(.white)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.red.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private var textComposer: some View {
+        HStack(spacing: 8) {
+            TextField(loc.t("chats_message_placeholder"), text: $draft, axis: .vertical)
+                .focused($inputFocused)
+                .lineLimit(1...4)
+            Button {
+                showingStickers = true
+            } label: {
+                Image(systemName: "face.smiling")
+                    .font(.system(size: 21, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.55))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.08))
+        .clipShape(Capsule())
+    }
+
+    @ViewBuilder
+    private var sendOrVoiceButton: some View {
+        if canSend {
+            Button(action: send) {
+                Image(systemName: sending ? "hourglass" : "arrow.up.circle.fill")
+                    .font(.system(size: 30))
+                    .foregroundColor(.accentColor)
+            }
+            .disabled(sending)
+        } else {
+            Image(systemName: recorder.isRecording ? "mic.circle.fill" : "mic.circle")
+                .font(.system(size: 30))
+                .foregroundColor(recorder.isRecording ? .red : .white.opacity(0.6))
+                .opacity((sending || voiceSendInFlight) ? 0.35 : 1)
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in
+                            beginVoicePress()
+                        }
+                        .onEnded { _ in
+                            endVoicePress()
+                        }
+                )
+                .allowsHitTesting(!sending && !voiceSendInFlight)
+        }
+    }
+
     private func sendPhoto(_ item: PhotosPickerItem) async {
         guard let token = await auth.freshAccessToken(), let uid = auth.userId else { return }
         sending = true
@@ -367,6 +396,7 @@ struct ChatThreadView: View {
         }
         if let inserted = await service.sendMedia(chatId: chat.id, currentUserId: uid, type: "image", mediaUrl: url, mime: "image/jpeg", accessToken: token) {
             messages.append(inserted)
+            service.persistMessageCache(chatId: chat.id, rows: messages)
             incrementPeerUnread()
         } else {
             attachmentError = service.error ?? "Не удалось отправить фото."
@@ -394,6 +424,7 @@ struct ChatThreadView: View {
         }
         if let inserted = await service.sendMedia(chatId: chat.id, currentUserId: uid, type: "audio", mediaUrl: url, mime: result.mime, accessToken: token) {
             messages.append(inserted)
+            service.persistMessageCache(chatId: chat.id, rows: messages)
             incrementPeerUnread()
         } else {
             clearVoiceFingerprint(fingerprint)
@@ -434,15 +465,16 @@ struct ChatThreadView: View {
     }
 
     private func reload() async {
-        guard let token = await auth.freshAccessToken() else { return }
-        messages = await service.loadMessages(chatId: chat.id, accessToken: token)
+        guard let token = await auth.freshAccessToken(), let uid = auth.userId else { return }
+        let hasUnread = chat.unreadCount(for: uid) > 0
+        messages = await service.loadMessages(chatId: chat.id, accessToken: token, forceRefresh: hasUnread)
     }
 
     private func loadOther() async {
         guard let token = await auth.freshAccessToken(),
-              let myId = auth.userId,
-              let otherId = chat.otherParticipantId(currentUser: myId)
+              let otherId = peerId
         else { return }
+        if let existing = other, existing.id == otherId { return }
         other = await service.loadPublicProfile(userId: otherId, accessToken: token)
     }
 
@@ -611,6 +643,7 @@ struct ChatThreadView: View {
                 previewText: text
             ) {
                 messages.append(inserted)
+                service.persistMessageCache(chatId: chat.id, rows: messages)
                 incrementPeerUnread()
                 replyingTo = nil
             }
@@ -634,6 +667,7 @@ struct ChatThreadView: View {
                 previewText: sticker
             ) {
                 messages.append(inserted)
+                service.persistMessageCache(chatId: chat.id, rows: messages)
                 incrementPeerUnread()
             }
             sending = false
@@ -643,6 +677,60 @@ struct ChatThreadView: View {
 
 private let replyLinePrefix = "↪ "
 private let stickerLinePrefix = "x5_sticker:"
+
+private struct ChatHeaderButton: View {
+    let profile: UserProfile?
+    let fallbackName: String
+    let taskTitle: String?
+    let subtitle: String
+    let canOpen: Bool
+    let action: () -> Void
+
+    private var title: String {
+        profile?.displayName ?? fallbackName
+    }
+
+    var body: some View {
+        Button {
+            guard canOpen else { return }
+            action()
+        } label: {
+            HStack(spacing: 8) {
+                AvatarView(urlString: profile?.avatar, name: title, size: 32)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 4) {
+                        Text(title)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white)
+                        if profile?.hasActiveVerifiedBadge == true {
+                            VerifiedChip(size: 11)
+                        }
+                        if profile?.isPro == true {
+                            Text("PRO")
+                                .font(.system(size: 8, weight: .heavy))
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.accentColor)
+                                .clipShape(Capsule())
+                        }
+                    }
+                    Text(secondaryText)
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(taskTitle?.isEmpty == false ? 0.5 : 0.4))
+                        .lineLimit(1)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!canOpen)
+    }
+
+    private var secondaryText: String {
+        guard let taskTitle, !taskTitle.isEmpty else { return subtitle }
+        return taskTitle
+    }
+}
 
 private func splitReplyText(_ content: String?) -> (reply: String?, body: String) {
     guard let content, !content.isEmpty else { return (nil, "") }

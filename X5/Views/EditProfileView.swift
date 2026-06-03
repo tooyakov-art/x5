@@ -203,16 +203,15 @@ private struct CategoriesPicker: View {
                     X5Feedback.selection()
                     toggle(cat.id)
                 } label: {
-                    HStack {
-                        Label(HubCategories.label(for: cat.id, language: loc.current), systemImage: HubCategories.symbol(for: cat.id))
-                        Spacer()
-                        if selected.contains(cat.id) {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(.accentColor)
-                        }
-                    }
+                    CategorySelectionRow(
+                        title: HubCategories.label(for: cat.id, language: loc.current),
+                        symbol: HubCategories.symbol(for: cat.id),
+                        isSelected: selected.contains(cat.id)
+                    )
+                    .contentShape(Rectangle())
                 }
-                .foregroundColor(.primary)
+                .buttonStyle(.plain)
+                .listRowBackground(selected.contains(cat.id) ? Color.accentColor.opacity(0.12) : Color.white.opacity(0.04))
             }
         }
         .scrollContentBackground(.hidden)
@@ -233,5 +232,28 @@ private struct CategoriesPicker: View {
     private func toggle(_ id: String) {
         if selected.contains(id) { selected.remove(id) }
         else if selected.count < maxPickedCategories { selected.insert(id) }
+    }
+}
+
+private struct CategorySelectionRow: View {
+    let title: String
+    let symbol: String
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: symbol)
+                .font(.system(size: 21, weight: .semibold))
+                .foregroundColor(isSelected ? .accentColor : .white.opacity(0.86))
+                .frame(width: 28)
+            Text(title)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundColor(.white)
+            Spacer(minLength: 16)
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundColor(isSelected ? .accentColor : .white.opacity(0.32))
+        }
+        .padding(.vertical, 4)
     }
 }

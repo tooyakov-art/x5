@@ -96,6 +96,7 @@ final class Auth: ObservableObject {
         // Wipe the per-chat message cache on disk — without this a different
         // user signing in on the same device could read the previous user's
         // message history (and signed media URLs) from `Caches/x5-chats/`.
+        ChatsService.clearMemoryCache()
         ChatsService.clearDiskCache()
         NotificationCenter.default.post(name: .x5UserDidSignOut, object: nil)
     }
