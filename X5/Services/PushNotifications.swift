@@ -153,6 +153,12 @@ final class PushNotifications: NSObject, ObservableObject {
         guard let userId, let accessToken, !userId.isEmpty, !accessToken.isEmpty else { return }
         guard lastSyncedUserId != userId || lastSyncedDeviceToken != token else { return }
 
+        if await registerTokenViaFunction(token: token, accessToken: accessToken) {
+            lastSyncedUserId = userId
+            lastSyncedDeviceToken = token
+            return
+        }
+
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "id", value: "eq.\(userId)")]
         var request = URLRequest(url: components.url!)
@@ -173,6 +179,26 @@ final class PushNotifications: NSObject, ObservableObject {
 
         lastSyncedUserId = userId
         lastSyncedDeviceToken = token
+    }
+
+    /// Preferred registration path. The Edge Function validates the user's JWT
+    /// and writes both token tables with service-role permissions.
+    private func registerTokenViaFunction(token: String, accessToken: String) async -> Bool {
+        let url = baseURL.appendingPathComponent("functions/v1/register-push-token")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "token": token,
+            "platform": "ios"
+        ])
+        guard let (_, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode)
+        else { return false }
+        return true
     }
 
     /// Keep the old push_tokens table populated too. Some backend paths still

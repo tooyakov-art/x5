@@ -219,7 +219,17 @@ async function loadAPNsToken(
 function cleanAPNsToken(token: string | undefined): string | undefined {
   const trimmed = token?.trim();
   if (!trimmed || trimmed.startsWith("ExponentPushToken")) return undefined;
-  return trimmed;
+
+  const compact = trimmed.replace(/[<>\s]/g, "").toLowerCase();
+  if (/^[0-9a-f]+$/.test(compact) && compact.length >= 32) return compact;
+
+  const bytes = trimmed.match(/bytes\s*=\s*0x([0-9a-fA-F\s]+)/i)?.[1];
+  const normalizedBytes = bytes?.replace(/\s/g, "").toLowerCase();
+  if (normalizedBytes && /^[0-9a-f]+$/.test(normalizedBytes) && normalizedBytes.length >= 32) {
+    return normalizedBytes;
+  }
+
+  return undefined;
 }
 
 function defaultSocialBody(type: string, actorName: string): string {
