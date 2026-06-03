@@ -121,6 +121,20 @@ jobs:
                   url = payload.get("links", {}).get("next")
               return rows
 
+          def try_list_all(path):
+              rows = []
+              url = f"{BASE}{path}"
+              while url:
+                  response = requests.get(url, headers=headers(), timeout=60)
+                  print(f"GET {url} -> HTTP {response.status_code}")
+                  if response.status_code >= 300:
+                      print(response.text[:1000])
+                      return None
+                  payload = response.json()
+                  rows.extend(payload.get("data", []))
+                  url = payload.get("links", {}).get("next")
+              return rows
+
           def read_text(path):
               p = Path(path)
               return p.read_text(encoding="utf-8").strip() if p.exists() else ""
@@ -220,7 +234,10 @@ jobs:
                           warn(f"Only {len(shots)} screenshots for {sa.get('screenshotDisplayType')} / {la.get('locale')}")
 
           print("\n=== Subscriptions ===")
-          group_refs = list_all(f"/apps/{app_id}/relationships/subscriptionGroups?limit=200")
+          group_refs = try_list_all(f"/apps/{app_id}/relationships/subscriptionGroups?limit=200")
+          if group_refs is None:
+              print("Falling back to /subscriptionGroups?filter[app]=...")
+              group_refs = try_list_all(f"/subscriptionGroups?filter[app]={app_id}&limit=200") or []
           all_subs = []
           for ref in group_refs:
               group = maybe("GET", f"/subscriptionGroups/{ref['id']}")
