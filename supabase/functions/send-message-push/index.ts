@@ -113,15 +113,14 @@ Deno.serve(async (req) => {
   const recipient = chat.participants.find((p) => p !== body.sender_id);
   if (!recipient) return new Response("no recipient", { status: 200 });
 
-  // Look up sender (for notification title) and recipient (for push_token)
-  const [{ data: sender }, { data: recipientProfile, error: tokenError }] = await Promise.all([
+  // Look up sender for notification title and recipient token for APNs.
+  const [{ data: sender }, tokenLookup] = await Promise.all([
     supabase.from("profiles").select("name, nickname").eq("id", body.sender_id).maybeSingle(),
-    supabase.from("profiles").select("push_token").eq("id", recipient).maybeSingle()
+    loadAPNsToken(supabase, recipient)
   ]);
 
-  if (tokenError) return new Response(`token lookup error: ${tokenError.message}`, { status: 500 });
-  const pushToken = recipientProfile?.push_token as string | undefined;
-  if (!pushToken) return new Response("no push token", { status: 200 });
+  if (tokenLookup.error) return new Response(`token lookup error: ${tokenLookup.error}`, { status: 500 });
+  if (!tokenLookup.token) return new Response("no push token", { status: 200 });
 
   const senderName: string = (sender?.name as string) || (sender?.nickname as string) || "X5";
 
@@ -164,7 +163,7 @@ Deno.serve(async (req) => {
   };
 
   const host = useSandbox ? APNS_HOST_SANDBOX : APNS_HOST_PROD;
-  const apnsRes = await fetch(`${host}/3/device/${pushToken}`, {
+  const apnsRes = await fetch(`${host}/3/device/${tokenLookup.token}`, {
     method: "POST",
     headers: {
       "authorization": `bearer ${jwt}`,
@@ -191,14 +190,13 @@ function isSocialPushPayload(value: IncomingPayload | SocialPushPayload): value 
 async function sendSocialPush(supabase: any, body: SocialPushPayload): Promise<Response> {
   if (body.recipient_id === body.actor_id) return new Response("self event ignored");
 
-  const [{ data: actor }, { data: recipientProfile, error: tokenError }] = await Promise.all([
+  const [{ data: actor }, tokenLookup] = await Promise.all([
     supabase.from("profiles").select("name, nickname").eq("id", body.actor_id).maybeSingle(),
-    supabase.from("profiles").select("push_token").eq("id", body.recipient_id).maybeSingle()
+    loadAPNsToken(supabase, body.recipient_id)
   ]);
 
-  if (tokenError) return new Response(`token lookup error: ${tokenError.message}`, { status: 500 });
-  const pushToken = recipientProfile?.push_token as string | undefined;
-  if (!pushToken) return new Response("no push token", { status: 200 });
+  if (tokenLookup.error) return new Response(`token lookup error: ${tokenLookup.error}`, { status: 500 });
+  if (!tokenLookup.token) return new Response("no push token", { status: 200 });
 
   const actorName: string = (actor?.name as string) || (actor?.nickname as string) || "X5";
   const title = body.title || actorName;
@@ -221,7 +219,41 @@ async function sendSocialPush(supabase: any, body: SocialPushPayload): Promise<R
     object_id: body.object_id
   };
 
-  return await sendAPNs(pushToken, payload);
+  return await sendAPNs(tokenLookup.token, payload);
+}
+
+async function loadAPNsToken(
+  supabase: any,
+  userId: string
+): Promise<{ token?: string; error?: string }> {
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("push_token")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profileError) return { error: profileError.message };
+
+  const profileToken = cleanAPNsToken(profile?.push_token as string | undefined);
+  if (profileToken) return { token: profileToken };
+
+  const { data: legacyRows, error: legacyError } = await supabase
+    .from("push_tokens")
+    .select("token, updated_at")
+    .eq("user_id", userId)
+    .eq("platform", "ios")
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  if (legacyError) return { error: legacyError.message };
+
+  return { token: cleanAPNsToken(legacyRows?.[0]?.token as string | undefined) };
+}
+
+function cleanAPNsToken(token: string | undefined): string | undefined {
+  const trimmed = token?.trim();
+  if (!trimmed || trimmed.startsWith("ExponentPushToken")) return undefined;
+  return trimmed;
 }
 
 function defaultSocialBody(type: string, actorName: string): string {

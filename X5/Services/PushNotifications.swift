@@ -24,6 +24,8 @@ final class PushNotifications: NSObject, ObservableObject {
     /// Last user we synced the token for. Re-sync when this changes.
     private var lastSyncedUserId: String?
     private var lastSyncedDeviceToken: String?
+    private var currentUserId: String?
+    private var currentAccessToken: String?
 
     private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
     private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
@@ -131,23 +133,25 @@ final class PushNotifications: NSObject, ObservableObject {
     }
 
     func currentUserDidChange(userId: String?, accessToken: String?) {
-        guard let _ = userId, let _ = accessToken else {
+        guard let userId, let accessToken, !userId.isEmpty, !accessToken.isEmpty else {
+            currentUserId = nil
+            currentAccessToken = nil
             lastSyncedUserId = nil
             lastSyncedDeviceToken = nil
             return
         }
+        currentUserId = userId
+        currentAccessToken = accessToken
         Task { await syncToken() }
     }
 
     /// Pushes the current deviceToken into profiles.push_token for the current user.
     private func syncToken() async {
         guard let token = deviceToken else { return }
-        guard
-            let userId = UserDefaults.standard.string(forKey: "x5.session.user_id"),
-            let accessToken = Keychain.string(for: "x5.session.access_token"),
-            !userId.isEmpty,
-            lastSyncedUserId != userId || lastSyncedDeviceToken != token
-        else { return }
+        let userId = currentUserId ?? UserDefaults.standard.string(forKey: "x5.session.user_id")
+        let accessToken = currentAccessToken ?? Keychain.string(for: "x5.session.access_token")
+        guard let userId, let accessToken, !userId.isEmpty, !accessToken.isEmpty else { return }
+        guard lastSyncedUserId != userId || lastSyncedDeviceToken != token else { return }
 
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "id", value: "eq.\(userId)")]
@@ -160,8 +164,38 @@ final class PushNotifications: NSObject, ObservableObject {
             "push_token": token,
             "push_token_updated_at": ISO8601DateFormatter().string(from: Date())
         ])
+        guard let (_, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode)
+        else { return }
+
+        await upsertLegacyToken(userId: userId, token: token, accessToken: accessToken)
+
+        lastSyncedUserId = userId
+        lastSyncedDeviceToken = token
+    }
+
+    /// Keep the old push_tokens table populated too. Some backend paths still
+    /// use it as a fallback, and writing both places makes token repair
+    /// idempotent for users moving between older and current builds.
+    private func upsertLegacyToken(userId: String, token: String, accessToken: String) async {
+        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/push_tokens"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "on_conflict", value: "user_id,platform")]
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "user_id": userId,
+            "token": token,
+            "platform": "ios",
+            "updated_at": ISO8601DateFormatter().string(from: Date())
+        ])
         if let (_, response) = try? await URLSession.shared.data(for: request),
-           let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+           let http = response as? HTTPURLResponse,
+           (200..<300).contains(http.statusCode) {
             lastSyncedUserId = userId
             lastSyncedDeviceToken = token
         }
