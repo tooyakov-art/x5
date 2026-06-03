@@ -124,23 +124,6 @@ Deno.serve(async (req) => {
 
   const senderName: string = (sender?.name as string) || (sender?.nickname as string) || "X5";
 
-  // Build APNs JWT
-  const keyId = Deno.env.get("APNS_KEY_ID");
-  const teamId = Deno.env.get("APNS_TEAM_ID");
-  const bundleId = Deno.env.get("APNS_BUNDLE_ID");
-  const useSandbox = (Deno.env.get("APNS_USE_SANDBOX") || "0") === "1";
-  const pem = Deno.env.get("APNS_PRIVATE_KEY");
-  if (!keyId || !teamId || !bundleId || !pem) {
-    return new Response("missing APNs env", { status: 500 });
-  }
-
-  const cryptoKey = await importPKCS8(pem);
-  const jwt = await jwtCreate(
-    { alg: "ES256", kid: keyId, typ: "JWT" },
-    { iss: teamId, iat: getNumericDate(0) },
-    cryptoKey
-  );
-
   const previewBody =
     body.type === "text"
       ? (body.content || "Новое сообщение")
@@ -162,24 +145,7 @@ Deno.serve(async (req) => {
     sender_id: body.sender_id
   };
 
-  const host = useSandbox ? APNS_HOST_SANDBOX : APNS_HOST_PROD;
-  const apnsRes = await fetch(`${host}/3/device/${tokenLookup.token}`, {
-    method: "POST",
-    headers: {
-      "authorization": `bearer ${jwt}`,
-      "apns-topic": bundleId,
-      "apns-push-type": "alert",
-      "apns-priority": "10",
-      "content-type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
-
-  if (!apnsRes.ok) {
-    const text = await apnsRes.text();
-    return new Response(`APNs error ${apnsRes.status}: ${text}`, { status: 502 });
-  }
-  return new Response("ok");
+  return await sendAPNs(tokenLookup.token, payload);
 });
 
 function isSocialPushPayload(value: IncomingPayload | SocialPushPayload): value is SocialPushPayload {
@@ -271,7 +237,6 @@ async function sendAPNs(pushToken: string, payload: unknown): Promise<Response> 
   const keyId = Deno.env.get("APNS_KEY_ID");
   const teamId = Deno.env.get("APNS_TEAM_ID");
   const bundleId = Deno.env.get("APNS_BUNDLE_ID");
-  const useSandbox = (Deno.env.get("APNS_USE_SANDBOX") || "0") === "1";
   const pem = Deno.env.get("APNS_PRIVATE_KEY");
   if (!keyId || !teamId || !bundleId || !pem) {
     return new Response("missing APNs env", { status: 500 });
@@ -284,8 +249,52 @@ async function sendAPNs(pushToken: string, payload: unknown): Promise<Response> 
     cryptoKey
   );
 
-  const host = useSandbox ? APNS_HOST_SANDBOX : APNS_HOST_PROD;
-  const apnsRes = await fetch(`${host}/3/device/${pushToken}`, {
+  const firstHost = preferredAPNsHost();
+  let apnsRes = await sendAPNsToHost(firstHost, pushToken, payload, jwt, bundleId);
+
+  if (!apnsRes.ok) {
+    const firstText = await apnsRes.text();
+    const shouldRetryOppositeHost =
+      apnsRes.status === 400
+      && firstText.includes("BadDeviceToken")
+      && Deno.env.get("APNS_ENV") !== "production"
+      && Deno.env.get("APNS_ENV") !== "sandbox";
+
+    if (shouldRetryOppositeHost) {
+      const retryHost = firstHost === APNS_HOST_PROD ? APNS_HOST_SANDBOX : APNS_HOST_PROD;
+      apnsRes = await sendAPNsToHost(retryHost, pushToken, payload, jwt, bundleId);
+      if (apnsRes.ok) return new Response(`ok via ${hostLabel(retryHost)}`);
+      const retryText = await apnsRes.text();
+      return new Response(
+        `APNs error ${hostLabel(firstHost)} ${firstText}; retry ${hostLabel(retryHost)} ${apnsRes.status}: ${retryText}`,
+        { status: 502 }
+      );
+    }
+
+    return new Response(`APNs error ${hostLabel(firstHost)} ${apnsRes.status}: ${firstText}`, { status: 502 });
+  }
+  return new Response(`ok via ${hostLabel(firstHost)}`);
+}
+
+function preferredAPNsHost(): string {
+  const explicit = Deno.env.get("APNS_ENV");
+  if (explicit === "sandbox") return APNS_HOST_SANDBOX;
+  if (explicit === "production") return APNS_HOST_PROD;
+  return (Deno.env.get("APNS_USE_SANDBOX") || "0") === "1" ? APNS_HOST_SANDBOX : APNS_HOST_PROD;
+}
+
+function hostLabel(host: string): string {
+  return host === APNS_HOST_SANDBOX ? "sandbox" : "production";
+}
+
+async function sendAPNsToHost(
+  host: string,
+  pushToken: string,
+  payload: unknown,
+  jwt: string,
+  bundleId: string
+): Promise<Response> {
+  return await fetch(`${host}/3/device/${pushToken}`, {
     method: "POST",
     headers: {
       "authorization": `bearer ${jwt}`,
@@ -296,12 +305,6 @@ async function sendAPNs(pushToken: string, payload: unknown): Promise<Response> 
     },
     body: JSON.stringify(payload)
   });
-
-  if (!apnsRes.ok) {
-    const text = await apnsRes.text();
-    return new Response(`APNs error ${apnsRes.status}: ${text}`, { status: 502 });
-  }
-  return new Response("ok");
 }
 
 async function importPKCS8(pem: string): Promise<CryptoKey> {
