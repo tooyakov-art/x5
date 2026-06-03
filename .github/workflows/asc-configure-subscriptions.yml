@@ -141,6 +141,14 @@ jobs:
           def money(value):
               return Decimal(str(value)).quantize(Decimal("0.01"))
 
+          def territory_id(resource):
+              return (
+                  resource.get("relationships", {})
+                  .get("territory", {})
+                  .get("data", {})
+                  .get("id")
+              )
+
           app = api("GET", f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}")["data"]
           if not app:
               raise SystemExit(f"No App Store Connect app for {os.environ['BUNDLE_ID']}")
@@ -334,14 +342,31 @@ jobs:
                   )
               price_point_id = exact[0]["id"]
               print(f"Using KAZ price point for {spec['product_id']}: {price_point_id}")
-              prices = list_all(f"/subscriptions/{sub_id}/prices?include=subscriptionPricePoint,territory&filter[territory]=KAZ&limit=200")
+              prices = list_all(f"/subscriptions/{sub_id}/prices?include=subscriptionPricePoint,territory&limit=8000")
               current_price_point_ids = {
                   price.get("relationships", {}).get("subscriptionPricePoint", {}).get("data", {}).get("id")
                   for price in prices
               }
-              if price_point_id in current_price_point_ids:
-                  print(f"KAZ price already set for {spec['product_id']}: {spec['price_kaz']} KZT")
-              else:
+              current_territories = {territory_id(price) for price in prices if territory_id(price)}
+              equalized_points = list_all(
+                  f"/subscriptionPricePoints/{price_point_id}/equalizations?include=territory&limit=8000"
+              )
+              price_points_to_set = {price_point_id: exact[0]}
+              for point in equalized_points:
+                  price_points_to_set[point["id"]] = point
+              print(f"Global equalized price points for {spec['product_id']}: {len(price_points_to_set)}")
+
+              created_prices = 0
+              skipped_prices = 0
+              scheduled_prices = 0
+              for global_price_point_id, global_point in price_points_to_set.items():
+                  territory = territory_id(global_point)
+                  if territory and territory in current_territories:
+                      skipped_prices += 1
+                      continue
+                  if global_price_point_id in current_price_point_ids:
+                      skipped_prices += 1
+                      continue
                   price_payload = {
                       "data": {
                           "type": "subscriptionPrices",
@@ -349,7 +374,7 @@ jobs:
                           "relationships": {
                               "subscription": {"data": {"type": "subscriptions", "id": sub_id}},
                               "subscriptionPricePoint": {
-                                  "data": {"type": "subscriptionPricePoints", "id": price_point_id}
+                                  "data": {"type": "subscriptionPricePoints", "id": global_price_point_id}
                               },
                           },
                       }
@@ -361,7 +386,7 @@ jobs:
                       timeout=60,
                   )
                   if price_response.status_code == 201:
-                      print(f"Set KAZ price for {spec['product_id']}: {spec['price_kaz']} KZT")
+                      created_prices += 1
                   elif price_response.status_code == 409 and "Initial price cannot be created again" in price_response.text:
                       start_date = (date.today() + timedelta(days=1)).isoformat()
                       price_payload = {
@@ -374,7 +399,7 @@ jobs:
                               "relationships": {
                                   "subscription": {"data": {"type": "subscriptions", "id": sub_id}},
                                   "subscriptionPricePoint": {
-                                      "data": {"type": "subscriptionPricePoints", "id": price_point_id}
+                                      "data": {"type": "subscriptionPricePoints", "id": global_price_point_id}
                                   },
                               },
                           }
@@ -389,11 +414,15 @@ jobs:
                           print(f"POST {BASE}/subscriptionPrices -> HTTP {scheduled.status_code}")
                           print(scheduled.text[:2000])
                           raise SystemExit(1)
-                      print(f"Scheduled KAZ price for {spec['product_id']}: {spec['price_kaz']} KZT from {start_date}")
+                      scheduled_prices += 1
                   else:
                       print(f"POST {BASE}/subscriptionPrices -> HTTP {price_response.status_code}")
                       print(price_response.text[:2000])
                       raise SystemExit(1)
+              print(
+                  f"Prices for {spec['product_id']}: "
+                  f"created={created_prices} scheduled={scheduled_prices} skipped={skipped_prices}"
+              )
 
               configured.append((spec, sub_id))
 
