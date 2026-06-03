@@ -20,7 +20,6 @@ struct OnboardingView: View {
         case role
         case name
         case nickname
-        case categories
     }
 
     enum Role: String, CaseIterable, Identifiable {
@@ -43,12 +42,13 @@ struct OnboardingView: View {
                 switch step {
                 case .role:
                     roleSection
+                    if role == .specialist {
+                        categoriesSection
+                    }
                 case .name:
                     nameSection
                 case .nickname:
                     nicknameSection
-                case .categories:
-                    categoriesSection
                 }
 
                 submitSection
@@ -63,6 +63,11 @@ struct OnboardingView: View {
         .preferredColorScheme(.dark)
         .onAppear { populateProfileFields() }
         .onChange(of: currentUser.profile) { _ in populateProfileFields() }
+        .onChange(of: role) { newRole in
+            if newRole != .specialist {
+                pickedCategories.removeAll()
+            }
+        }
     }
 
     private var header: some View {
@@ -174,8 +179,6 @@ struct OnboardingView: View {
             return loc.t("onb_name_step_title")
         case .nickname:
             return loc.t("onb_nickname_step_title")
-        case .categories:
-            return loc.t("onb_categories_step_title")
         }
     }
 
@@ -187,8 +190,6 @@ struct OnboardingView: View {
             return loc.t("onb_name_step_subtitle")
         case .nickname:
             return loc.t("onb_nickname_step_subtitle")
-        case .categories:
-            return loc.t("onb_categories_step_subtitle")
         }
     }
 
@@ -236,13 +237,12 @@ struct OnboardingView: View {
     private var canAdvance: Bool {
         switch step {
         case .role:
-            return role != nil
+            guard let role else { return false }
+            return role != .specialist || !pickedCategories.isEmpty
         case .name:
             return hasRealName
         case .nickname:
             return isValidNickname
-        case .categories:
-            return canSubmit
         }
     }
 
@@ -251,8 +251,6 @@ struct OnboardingView: View {
         case .role, .name:
             return false
         case .nickname:
-            return role != .specialist
-        case .categories:
             return true
         }
     }
@@ -314,12 +312,6 @@ struct OnboardingView: View {
         case .name:
             step = .nickname
         case .nickname:
-            if role == .specialist {
-                step = .categories
-            } else {
-                submit()
-            }
-        case .categories:
             submit()
         }
     }
