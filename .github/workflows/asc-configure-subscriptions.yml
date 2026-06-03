@@ -207,11 +207,53 @@ jobs:
                   }
               }
               if en_group_loc:
-                  print(f"Subscription group localization en-US exists for {reference_name}, keeping existing name")
+                  api(
+                      "PATCH",
+                      f"/subscriptionGroupLocalizations/{en_group_loc['id']}",
+                      json={
+                          "data": {
+                              "type": "subscriptionGroupLocalizations",
+                              "id": en_group_loc["id"],
+                              "attributes": {"name": localized_name},
+                          }
+                      },
+                  )
+                  print(f"Updated subscription group localization en-US for {reference_name}")
               else:
                   api("POST", "/subscriptionGroupLocalizations", expected=(201,), json=group_loc_payload)
                   print(f"Created subscription group localization en-US for {reference_name}")
               return group_id
+
+          def ensure_existing_group_localization(group_id, localized_name):
+              group_localizations = list_all(f"/subscriptionGroups/{group_id}/subscriptionGroupLocalizations?limit=200")
+              en_group_loc = next((loc for loc in group_localizations if loc["attributes"].get("locale") == "en-US"), None)
+              if en_group_loc:
+                  api(
+                      "PATCH",
+                      f"/subscriptionGroupLocalizations/{en_group_loc['id']}",
+                      json={
+                          "data": {
+                              "type": "subscriptionGroupLocalizations",
+                              "id": en_group_loc["id"],
+                              "attributes": {"name": localized_name},
+                          }
+                      },
+                  )
+                  print(f"Updated existing group localization en-US for group {group_id}")
+              else:
+                  api(
+                      "POST",
+                      "/subscriptionGroupLocalizations",
+                      expected=(201,),
+                      json={
+                          "data": {
+                              "type": "subscriptionGroupLocalizations",
+                              "attributes": {"name": localized_name, "locale": "en-US"},
+                              "relationships": {"subscriptionGroup": {"data": {"type": "subscriptionGroups", "id": group_id}}},
+                          }
+                      },
+                  )
+                  print(f"Created existing group localization en-US for group {group_id}")
 
           group_specs = sorted({(spec["group_reference"], spec["group_locale_name"]) for spec in PRODUCTS})
           group_ids = {
@@ -220,6 +262,9 @@ jobs:
           }
           existing_subs = []
           for group_ref in app_subscription_group_refs():
+              group = api("GET", f"/subscriptionGroups/{group_ref['id']}")["data"]
+              reference_name = group.get("attributes", {}).get("referenceName") or "X5 subscriptions"
+              ensure_existing_group_localization(group_ref["id"], reference_name)
               existing_subs.extend(list_all(f"/subscriptionGroups/{group_ref['id']}/subscriptions?limit=200"))
           by_product = {sub["attributes"].get("productId"): sub for sub in existing_subs}
           configured = []
@@ -278,7 +323,21 @@ jobs:
               localizations = list_all(f"/subscriptions/{sub_id}/subscriptionLocalizations?limit=200")
               en_loc = next((loc for loc in localizations if loc["attributes"].get("locale") == "en-US"), None)
               if en_loc:
-                  print(f"Localization en-US exists for {spec['product_id']}, keeping existing text")
+                  api(
+                      "PATCH",
+                      f"/subscriptionLocalizations/{en_loc['id']}",
+                      json={
+                          "data": {
+                              "type": "subscriptionLocalizations",
+                              "id": en_loc["id"],
+                              "attributes": {
+                                  "name": spec["display_name"],
+                                  "description": spec["description"],
+                              },
+                          }
+                      },
+                  )
+                  print(f"Updated localization en-US for {spec['product_id']}")
               else:
                   api(
                       "POST",
