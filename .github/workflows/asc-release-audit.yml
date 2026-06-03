@@ -56,6 +56,12 @@ jobs:
               "PENDING_APPLE_RELEASE",
               "PENDING_DEVELOPER_RELEASE",
           }
+          BLOCKED_SUBSCRIPTION_STATES = {
+              "MISSING_METADATA",
+              "DEVELOPER_ACTION_NEEDED",
+              "REJECTED",
+              "REMOVED_FROM_SALE",
+          }
 
           issues = []
           warnings = []
@@ -254,6 +260,8 @@ jobs:
               sid = sub["id"]
               attrs = sub.get("attributes", {})
               print(f"subscription {pid} id={sid} state={attrs.get('state')} name={attrs.get('name')} period={attrs.get('subscriptionPeriod')} groupLevel={attrs.get('groupLevel')}")
+              if attrs.get("state") in BLOCKED_SUBSCRIPTION_STATES:
+                  issue(f"Subscription {pid} is not ready for review: {attrs.get('state')}")
               if attrs.get("name") != expected_name:
                   warn(f"Subscription {pid} name is {attrs.get('name')}, expected {expected_name}")
               locs = list_all(f"/subscriptions/{sid}/subscriptionLocalizations?limit=20")
