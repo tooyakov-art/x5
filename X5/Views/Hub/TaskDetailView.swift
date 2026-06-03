@@ -209,6 +209,12 @@ struct TaskDetailView: View {
             taskTitle: task.title,
             accessToken: token
         ) {
+            var rows = await chats.loadMessages(chatId: chat.id, accessToken: token, forceRefresh: true)
+            if !rows.contains(where: { $0.taskCard?.id == task.id }),
+               let card = await chats.sendTaskCard(chatId: chat.id, currentUserId: uid, task: task, accessToken: token) {
+                rows.append(card)
+                chats.persistMessageCache(chatId: chat.id, rows: rows)
+            }
             navigatingChat = chat
         }
     }
@@ -281,12 +287,20 @@ struct TaskDetailView: View {
             taskTitle: task.title,
             accessToken: token
         ) {
-            _ = await chats.sendText(
+            var rows = await chats.loadMessages(chatId: chat.id, accessToken: token, forceRefresh: true)
+            if !rows.contains(where: { $0.taskCard?.id == task.id }),
+               let card = await chats.sendTaskCard(chatId: chat.id, currentUserId: me, task: task, accessToken: token) {
+                rows.append(card)
+            }
+            if let acceptedMessage = await chats.sendText(
                 chatId: chat.id,
                 currentUserId: me,
-                text: "I accepted your response on '\(task.title)'. Let's start.",
+                text: "Принял отклик по задаче «\(task.title)». Давай начнем.",
                 accessToken: token
-            )
+            ) {
+                rows.append(acceptedMessage)
+            }
+            chats.persistMessageCache(chatId: chat.id, rows: rows)
             navigatingChat = chat
         }
         responses = await service.loadResponses(taskId: task.id)

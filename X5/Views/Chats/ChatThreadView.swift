@@ -488,6 +488,10 @@ struct ChatThreadView: View {
         let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard searchActive, !q.isEmpty else { return activeMessages }
         return activeMessages.filter { msg in
+            if let taskCard = msg.taskCard {
+                return taskCard.copyText.localizedCaseInsensitiveContains(q)
+                    || HubCategories.label(for: taskCard.category, language: loc.current).localizedCaseInsensitiveContains(q)
+            }
             let parts = splitReplyText(msg.content)
             return parts.body.localizedCaseInsensitiveContains(q)
                 || (parts.reply ?? "").localizedCaseInsensitiveContains(q)
@@ -572,6 +576,9 @@ struct ChatThreadView: View {
     }
 
     private func messagePreview(_ message: ChatMessageRow) -> String {
+        if let taskCard = message.taskCard {
+            return taskCard.preview
+        }
         let text = splitReplyText(message.content).body.trimmingCharacters(in: .whitespacesAndNewlines)
         if !text.isEmpty {
             return text
@@ -858,7 +865,10 @@ private struct Bubble: View {
     }
 
     private var copyText: String {
-        splitReplyText(message.content).body
+        if let taskCard = message.taskCard {
+            return taskCard.copyText
+        }
+        return splitReplyText(message.content).body
     }
 
     private var content: some View {
@@ -880,7 +890,7 @@ private struct Bubble: View {
                 messageStatus
             }
         }
-        .padding(message.type == "image" ? 4 : (stickerText == nil ? 10 : 2))
+        .padding(message.type == "image" ? 4 : (stickerText == nil ? (message.type == "task_card" ? 8 : 10) : 2))
         .background(stickerText == nil ? bubbleColor : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
@@ -896,6 +906,14 @@ private struct Bubble: View {
             imageBubble
         case "audio":
             AudioBubble(url: message.mediaUrl)
+        case "task_card":
+            if let card = message.taskCard {
+                TaskCardBubble(card: card)
+            } else {
+                Text(loc.t("chats_no_messages"))
+                    .font(.system(size: 15))
+                    .foregroundColor(.white)
+            }
         default:
             if let sticker = stickerText {
                 Text(sticker)
@@ -994,6 +1012,78 @@ private struct ReplyPreview: View {
         .padding(.vertical, 6)
         .background(Color.black.opacity(0.16))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+private struct TaskCardBubble: View {
+    let card: ChatTaskCardPayload
+    @EnvironmentObject private var loc: LocalizationService
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Label(HubCategories.label(for: card.category, language: loc.current).uppercased(), systemImage: HubCategories.symbol(for: card.category))
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundColor(Color.accentColor)
+                    .lineLimit(1)
+                Spacer(minLength: 10)
+                if let budget = clean(card.budget) {
+                    Text(budget)
+                        .font(.system(size: 13, weight: .heavy))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(card.title)
+                    .font(.system(size: 17, weight: .heavy))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let description = clean(card.description) {
+                    Text(description)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.white.opacity(0.68))
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: "briefcase.fill")
+                    .font(.system(size: 11, weight: .bold))
+                Text("Отклик по задаче")
+                    .font(.system(size: 12, weight: .bold))
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .opacity(0.65)
+            }
+            .foregroundColor(.black)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color.accentColor)
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        }
+        .frame(width: 266, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.055))
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.accentColor)
+                        .frame(width: 4)
+                        .clipShape(Capsule())
+                        .padding(.vertical, 12)
+                }
+        )
+    }
+
+    private func clean(_ value: String?) -> String? {
+        let text = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text?.isEmpty == false ? text : nil
     }
 }
 

@@ -77,7 +77,7 @@ struct ChatMessageRow: Codable, Identifiable, Hashable {
     let id: String
     let chatId: String
     let senderId: String
-    let type: String           // text | image | video | audio
+    let type: String           // text | image | video | audio | task_card
     let content: String?
     let mediaUrl: String?
     let mediaMime: String?
@@ -90,6 +90,56 @@ struct ChatMessageRow: Codable, Identifiable, Hashable {
         case mediaUrl = "media_url"
         case mediaMime = "media_mime"
         case createdAt = "created_at"
+    }
+}
+
+struct ChatTaskCardPayload: Codable, Hashable {
+    let id: String
+    let title: String
+    let description: String?
+    let budget: String?
+    let category: String?
+    let authorName: String?
+
+    init(task: HubTask) {
+        self.id = task.id
+        self.title = task.title
+        self.description = task.description
+        self.budget = task.budget
+        self.category = task.category
+        self.authorName = task.authorName
+    }
+
+    static func decode(_ content: String?) -> ChatTaskCardPayload? {
+        guard let content,
+              let data = content.data(using: .utf8)
+        else { return nil }
+        return try? JSONDecoder().decode(ChatTaskCardPayload.self, from: data)
+    }
+
+    func encodedString() -> String {
+        guard let data = try? JSONEncoder().encode(self),
+              let string = String(data: data, encoding: .utf8)
+        else { return title }
+        return string
+    }
+
+    var preview: String {
+        "Задача: \(title)"
+    }
+
+    var copyText: String {
+        [title, description, budget].compactMap { value in
+            let clean = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return clean?.isEmpty == false ? clean : nil
+        }.joined(separator: "\n")
+    }
+}
+
+extension ChatMessageRow {
+    var taskCard: ChatTaskCardPayload? {
+        guard type == "task_card" else { return nil }
+        return ChatTaskCardPayload.decode(content)
     }
 }
 
@@ -378,6 +428,8 @@ final class ChatsService: ObservableObject {
         case "image": preview = "📷 Фото"
         case "audio": preview = "🎤 Голосовое"
         case "file":  preview = "📎 Файл"
+        case "task_card":
+            preview = ChatTaskCardPayload.decode(row["content"] as? String)?.preview ?? "Задача"
         default:      preview = (row["content"] as? String) ?? ""
         }
         return (preview, at)
@@ -580,6 +632,51 @@ final class ChatsService: ObservableObject {
         ]
         patch.httpBody = try? JSONEncoder().encode(bumpBody)
         _ = await sendAuthed(patch, accessToken: accessToken)
+        return inserted
+    }
+
+    @discardableResult
+    func sendTaskCard(chatId: String, currentUserId: String, task: HubTask, accessToken: String) async -> ChatMessageRow? {
+        error = nil
+        let payload = ChatTaskCardPayload(task: task)
+        var post = URLRequest(url: baseURL.appendingPathComponent("rest/v1/messages"))
+        post.httpMethod = "POST"
+        post.setValue(anonKey, forHTTPHeaderField: "apikey")
+        post.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        post.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        post.setValue("return=representation", forHTTPHeaderField: "Prefer")
+
+        let body: [String: AnyEncodable] = [
+            "chat_id": AnyEncodable(chatId),
+            "sender_id": AnyEncodable(currentUserId),
+            "type": AnyEncodable("task_card"),
+            "content": AnyEncodable(payload.encodedString())
+        ]
+        post.httpBody = try? JSONEncoder().encode(body)
+
+        guard let (data, http) = await sendAuthed(post, accessToken: accessToken),
+              (200..<300).contains(http.statusCode),
+              let rows = try? JSONDecoder().decode([ChatMessageRow].self, from: data),
+              let inserted = rows.first
+        else {
+            if error == nil { error = "Не удалось отправить задачу в чат." }
+            return nil
+        }
+
+        var patchURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/chats"), resolvingAgainstBaseURL: false)!
+        patchURL.queryItems = [URLQueryItem(name: "id", value: "eq.\(chatId)")]
+        var patch = URLRequest(url: patchURL.url!)
+        patch.httpMethod = "PATCH"
+        patch.setValue(anonKey, forHTTPHeaderField: "apikey")
+        patch.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        patch.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let bumpBody: [String: AnyEncodable] = [
+            "last_message": AnyEncodable(payload.preview),
+            "last_message_at": AnyEncodable(ISO8601DateFormatter().string(from: Date()))
+        ]
+        patch.httpBody = try? JSONEncoder().encode(bumpBody)
+        _ = await sendAuthed(patch, accessToken: accessToken)
+
         return inserted
     }
 
