@@ -78,7 +78,7 @@ struct PortfolioGrid: View {
         }
         .task {
             guard let token = auth.accessToken else { return }
-            await service.load(userId: userId, accessToken: token)
+            await service.load(userId: userId, accessToken: token, includeUnapproved: canEdit)
         }
         .sheet(isPresented: $showingAdd) {
             AddPortfolioItemView { data, mediaType, mime, ext, title, desc in
@@ -199,6 +199,9 @@ private struct PortfolioGridCell: View {
 
                 VStack {
                     HStack {
+                        if item.needsModerationBadge {
+                            PortfolioModerationBadge(item: item)
+                        }
                         if isPinned {
                             Image(systemName: "pin.fill")
                                 .font(.system(size: 12, weight: .black))
@@ -273,7 +276,10 @@ private struct PortfolioFeedCard: View {
                 .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .overlay(alignment: .topLeading) {
-                    if isPinned {
+                    if item.needsModerationBadge {
+                        PortfolioModerationBadge(item: item)
+                            .padding(10)
+                    } else if isPinned {
                         Label("Закреп", systemImage: "pin.fill")
                             .font(.system(size: 11, weight: .heavy))
                             .foregroundColor(.black)
@@ -334,6 +340,41 @@ private struct PortfolioFeedCard: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
+    }
+}
+
+private struct PortfolioModerationBadge: View {
+    let item: PortfolioItem
+
+    var body: some View {
+        Label(item.moderationBadgeTitle, systemImage: symbol)
+            .font(.system(size: 10, weight: .heavy))
+            .foregroundColor(foreground)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(background)
+            .clipShape(Capsule())
+    }
+
+    private var symbol: String {
+        switch item.moderationStatus {
+        case "rejected": return "xmark.octagon.fill"
+        case "manual_review": return "person.crop.circle.badge.questionmark"
+        case "failed": return "exclamationmark.triangle.fill"
+        default: return "clock.fill"
+        }
+    }
+
+    private var foreground: Color {
+        item.moderationStatus == "rejected" ? .white : .black
+    }
+
+    private var background: Color {
+        switch item.moderationStatus {
+        case "rejected": return .red
+        case "manual_review", "failed": return .orange
+        default: return .accentColor
+        }
     }
 }
 
@@ -638,6 +679,15 @@ private struct PortfolioInstagramPostPage: View {
 
     private var captionBlock: some View {
         VStack(alignment: .leading, spacing: 5) {
+            if item.needsModerationBadge {
+                VStack(alignment: .leading, spacing: 4) {
+                    PortfolioModerationBadge(item: item)
+                    Text(item.moderationReason?.isEmpty == false ? item.moderationReason! : "Пока не показывается в публичном Hub.")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.62))
+                }
+                .padding(.bottom, 4)
+            }
             if likeState.count > 0 {
                 Text("\(likeState.count) отметок \"Нравится\"")
                     .font(.system(size: 14, weight: .bold))

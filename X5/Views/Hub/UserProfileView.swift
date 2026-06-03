@@ -467,6 +467,7 @@ struct UserProfileView: View {
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/portfolio_items"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "user_id", value: "eq.\(userId)"),
+            URLQueryItem(name: "moderation_status", value: "eq.approved"),
             URLQueryItem(name: "select", value: "id")
         ]
         var request = URLRequest(url: components.url!)

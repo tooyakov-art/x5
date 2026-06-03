@@ -11,6 +11,8 @@ struct PortfolioItem: Codable, Identifiable, Equatable {
     var link: String?
     var sortOrder: Int?
     var createdAt: String?
+    var moderationStatusRaw: String?
+    var moderationReason: String?
 
     enum CodingKeys: String, CodingKey {
         case id, type, title, description, link
@@ -19,6 +21,26 @@ struct PortfolioItem: Codable, Identifiable, Equatable {
         case thumbnailUrl = "thumbnail_url"
         case sortOrder = "sort_order"
         case createdAt = "created_at"
+        case moderationStatusRaw = "moderation_status"
+        case moderationReason = "moderation_reason"
+    }
+
+    var moderationStatus: String {
+        moderationStatusRaw ?? "approved"
+    }
+
+    var needsModerationBadge: Bool {
+        moderationStatus != "approved"
+    }
+
+    var moderationBadgeTitle: String {
+        switch moderationStatus {
+        case "pending": return "На модерации"
+        case "manual_review": return "Ручная проверка"
+        case "rejected": return "Отклонено"
+        case "failed": return "Проверка не прошла"
+        default: return "На модерации"
+        }
     }
 }
 
@@ -54,16 +76,23 @@ final class PortfolioService: ObservableObject {
 
     private var baseURL: URL { X5Config.supabaseBaseURL }
     private var anonKey: String { X5Config.supabaseAnonKey }
+    private var functionsBaseURL: URL {
+        URL(string: "https://afwznqjpshybmqhlewmy.functions.supabase.co") ?? baseURL
+    }
 
-    func load(userId: String, accessToken: String) async {
+    func load(userId: String, accessToken: String, includeUnapproved: Bool = false) async {
         isLoading = true
         defer { isLoading = false }
         guard var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/portfolio_items"), resolvingAgainstBaseURL: false) else { return }
-        components.queryItems = [
+        var queryItems = [
             URLQueryItem(name: "user_id", value: "eq.\(userId)"),
             URLQueryItem(name: "select", value: "*"),
             URLQueryItem(name: "order", value: "sort_order.asc,created_at.desc")
         ]
+        if !includeUnapproved {
+            queryItems.append(URLQueryItem(name: "moderation_status", value: "eq.approved"))
+        }
+        components.queryItems = queryItems
         guard let reqURL = components.url else { return }
         var request = URLRequest(url: reqURL)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -115,7 +144,8 @@ final class PortfolioService: ObservableObject {
             "title": AnyEncodable(title ?? ""),
             "description": AnyEncodable(description ?? ""),
             "media_url": AnyEncodable(publicURL),
-            "thumbnail_url": AnyEncodable(cleanType == "image" ? publicURL : "")
+            "thumbnail_url": AnyEncodable(cleanType == "image" ? publicURL : ""),
+            "moderation_status": AnyEncodable("pending")
         ]
         insert.httpBody = try? JSONEncoder().encode(body)
 
@@ -126,8 +156,40 @@ final class PortfolioService: ObservableObject {
             self.error = "Insert failed"
             return false
         }
-        items.insert(inserted, at: 0)
+        let moderated = await moderate(itemId: inserted.id, accessToken: accessToken) ?? inserted
+        items.insert(moderated, at: 0)
         return true
+    }
+
+    @discardableResult
+    func moderate(itemId: String, accessToken: String) async -> PortfolioItem? {
+        var request = URLRequest(url: functionsBaseURL.appendingPathComponent("moderate-portfolio"))
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(["item_id": itemId])
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let result = try? JSONDecoder().decode(PortfolioModerationResponse.self, from: data)
+        else {
+            if let index = items.firstIndex(where: { $0.id == itemId }) {
+                items[index].moderationStatusRaw = "manual_review"
+                items[index].moderationReason = "Ожидает ручную проверку"
+                return items[index]
+            }
+            return nil
+        }
+
+        if let item = result.item {
+            if let index = items.firstIndex(where: { $0.id == item.id }) {
+                items[index] = item
+            }
+            return item
+        }
+        return nil
     }
 
     func loadComments(itemId: String, accessToken: String) async -> [PortfolioComment] {
@@ -209,9 +271,11 @@ final class PortfolioService: ObservableObject {
         else { return nil }
 
         if let index = items.firstIndex(where: { $0.id == itemId }) {
-            items[index] = updated
+            let moderated = await moderate(itemId: updated.id, accessToken: accessToken) ?? updated
+            items[index] = moderated
+            return moderated
         }
-        return updated
+        return await moderate(itemId: updated.id, accessToken: accessToken) ?? updated
     }
 
     func likeState(itemId: String, currentUserId: String, accessToken: String) async -> PortfolioLikeState {
@@ -286,4 +350,10 @@ private struct PortfolioLikeRow: Codable {
     enum CodingKeys: String, CodingKey {
         case userId = "user_id"
     }
+}
+
+private struct PortfolioModerationResponse: Codable {
+    let status: String?
+    let reason: String?
+    let item: PortfolioItem?
 }
