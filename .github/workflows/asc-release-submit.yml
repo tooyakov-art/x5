@@ -1,0 +1,212 @@
+name: ASC release submit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/x5-cleanup-from-restore-clean]
+    paths:
+      - ".github/workflows/asc-release-submit.yml"
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      BUNDLE_ID: com.x5studio.app
+      EXPECTED_VERSION: "1.1.2"
+      EXPECTED_BUILD: "163"
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - name: Submit App Store version for review
+        run: |
+          python <<'PY'
+          import base64
+          import os
+          import sys
+          import time
+
+          import jwt
+          import requests
+
+          BASE = "https://api.appstoreconnect.apple.com/v1"
+          READY_TO_SUBMIT = {"PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED"}
+          ALREADY_SUBMITTED = {
+              "WAITING_FOR_REVIEW",
+              "IN_REVIEW",
+              "PENDING_APPLE_RELEASE",
+              "PENDING_DEVELOPER_RELEASE",
+          }
+
+          token = jwt.encode(
+              {
+                  "iss": os.environ["ASC_API_ISSUER_ID"],
+                  "iat": int(time.time()),
+                  "exp": int(time.time()) + 600,
+                  "aud": "appstoreconnect-v1",
+              },
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          headers = {"Authorization": f"Bearer {token}"}
+          json_headers = {**headers, "Content-Type": "application/json"}
+
+          def api(method, path, expected=(200,), **kwargs):
+              url = path if path.startswith("http") else f"{BASE}{path}"
+              response = requests.request(method, url, headers=headers, timeout=60, **kwargs)
+              if response.status_code not in expected:
+                  print(f"{method} {url} -> HTTP {response.status_code}")
+                  print(response.text[:3000])
+                  raise SystemExit(1)
+              return response.json() if response.text else {}
+
+          def json_api(method, path, payload, expected=(200,)):
+              url = path if path.startswith("http") else f"{BASE}{path}"
+              response = requests.request(method, url, headers=json_headers, json=payload, timeout=60)
+              if response.status_code not in expected:
+                  print(f"{method} {url} -> HTTP {response.status_code}")
+                  print(response.text[:3000])
+                  raise SystemExit(1)
+              return response.json() if response.text else {}
+
+          def list_all(path):
+              rows = []
+              url = f"{BASE}{path}"
+              while url:
+                  response = requests.get(url, headers=headers, timeout=60)
+                  if response.status_code >= 300:
+                      print(f"GET {url} -> HTTP {response.status_code}")
+                      print(response.text[:3000])
+                      raise SystemExit(1)
+                  payload = response.json()
+                  rows.extend(payload.get("data", []))
+                  url = payload.get("links", {}).get("next")
+              return rows
+
+          app_rows = api("GET", f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}").get("data", [])
+          if not app_rows:
+              sys.exit(f"No ASC app found for {os.environ['BUNDLE_ID']}")
+          app_id = app_rows[0]["id"]
+          print(f"App: {app_id}")
+
+          versions = list_all(f"/apps/{app_id}/appStoreVersions?limit=50")
+          version = next(
+              (
+                  row
+                  for row in versions
+                  if row.get("attributes", {}).get("versionString") == os.environ["EXPECTED_VERSION"]
+                  and row.get("attributes", {}).get("platform") == "IOS"
+              ),
+              None,
+          )
+          if not version:
+              sys.exit(f"No iOS AppStoreVersion {os.environ['EXPECTED_VERSION']}")
+          version_id = version["id"]
+          version_state = version["attributes"].get("appStoreState")
+          print(f"Version {os.environ['EXPECTED_VERSION']}: {version_id} state={version_state}")
+          if version_state in ALREADY_SUBMITTED:
+              print("Version is already submitted or past review submission.")
+              raise SystemExit(0)
+          if version_state not in READY_TO_SUBMIT:
+              sys.exit(f"Version state is not safe to submit: {version_state}")
+
+          build = api("GET", f"/appStoreVersions/{version_id}/build").get("data")
+          if not build:
+              sys.exit("No build attached to the App Store version")
+          build_attrs = build.get("attributes", {})
+          print(
+              f"Attached build: id={build['id']} "
+              f"version={build_attrs.get('version')} state={build_attrs.get('processingState')}"
+          )
+          if build_attrs.get("version") != os.environ["EXPECTED_BUILD"]:
+              sys.exit(f"Attached build is {build_attrs.get('version')}, expected {os.environ['EXPECTED_BUILD']}")
+          if build_attrs.get("processingState") != "VALID":
+              sys.exit(f"Attached build is not VALID: {build_attrs.get('processingState')}")
+          if build_attrs.get("expired"):
+              sys.exit("Attached build is expired")
+
+          review_payload = api(
+              "GET",
+              f"/reviewSubmissions?filter[app]={app_id}&filter[platform]=IOS&include=items",
+          )
+          open_states = {
+              "READY_FOR_REVIEW",
+              "WAITING_FOR_REVIEW",
+              "IN_REVIEW",
+              "COMPLETING",
+              "UNRESOLVED_ISSUES",
+          }
+          open_submissions = [
+              row
+              for row in review_payload.get("data", [])
+              if row.get("attributes", {}).get("state") in open_states
+          ]
+          if open_submissions:
+              for row in open_submissions:
+                  print(f"Open submission: {row['id']} state={row.get('attributes', {}).get('state')}")
+              sys.exit("Open review submission exists; refusing to create a duplicate")
+
+          created = json_api(
+              "POST",
+              "/reviewSubmissions",
+              {
+                  "data": {
+                      "type": "reviewSubmissions",
+                      "attributes": {"platform": "IOS"},
+                      "relationships": {
+                          "app": {"data": {"type": "apps", "id": app_id}}
+                      },
+                  }
+              },
+              expected=(201,),
+          )
+          submission_id = created["data"]["id"]
+          print(f"Created ReviewSubmission: {submission_id}")
+
+          json_api(
+              "POST",
+              "/reviewSubmissionItems",
+              {
+                  "data": {
+                      "type": "reviewSubmissionItems",
+                      "relationships": {
+                          "reviewSubmission": {
+                              "data": {"type": "reviewSubmissions", "id": submission_id}
+                          },
+                          "appStoreVersion": {
+                              "data": {"type": "appStoreVersions", "id": version_id}
+                          },
+                      },
+                  }
+              },
+              expected=(201,),
+          )
+          print("Attached app version item")
+
+          submitted = json_api(
+              "PATCH",
+              f"/reviewSubmissions/{submission_id}",
+              {
+                  "data": {
+                      "type": "reviewSubmissions",
+                      "id": submission_id,
+                      "attributes": {"submitted": True},
+                      "relationships": {
+                          "appStoreVersionForReview": {
+                              "data": {"type": "appStoreVersions", "id": version_id}
+                          }
+                      },
+                  }
+              },
+          )
+          final_state = submitted["data"]["attributes"].get("state")
+          print(f"Submitted ReviewSubmission: {submission_id} state={final_state}")
+          if final_state not in {"WAITING_FOR_REVIEW", "IN_REVIEW"}:
+              sys.exit(f"Unexpected final submission state: {final_state}")
+          PY
