@@ -124,6 +124,24 @@ jobs:
                   return response.json()
               return None
 
+          def patch_or_keep_active(path, payload, label):
+              url = f"{BASE}{path}"
+              response = requests.patch(
+                  url,
+                  headers={**headers(), "Content-Type": "application/json"},
+                  json=payload,
+                  timeout=60,
+              )
+              if response.status_code < 300:
+                  print(f"Updated {label}")
+                  return response.json() if response.text else None
+              if response.status_code == 409 and "ACTIVE state" in response.text:
+                  print(f"Keeping active {label}; Apple does not allow editing it")
+                  return None
+              print(f"PATCH {url} -> HTTP {response.status_code}")
+              print(response.text[:2000])
+              raise SystemExit(1)
+
           def list_all(path):
               rows = []
               url = f"{BASE}{path}"
@@ -207,18 +225,17 @@ jobs:
                   }
               }
               if en_group_loc:
-                  api(
-                      "PATCH",
+                  patch_or_keep_active(
                       f"/subscriptionGroupLocalizations/{en_group_loc['id']}",
-                      json={
+                      {
                           "data": {
                               "type": "subscriptionGroupLocalizations",
                               "id": en_group_loc["id"],
                               "attributes": {"name": localized_name},
                           }
                       },
+                      f"subscription group localization en-US for {reference_name}",
                   )
-                  print(f"Updated subscription group localization en-US for {reference_name}")
               else:
                   api("POST", "/subscriptionGroupLocalizations", expected=(201,), json=group_loc_payload)
                   print(f"Created subscription group localization en-US for {reference_name}")
@@ -228,18 +245,17 @@ jobs:
               group_localizations = list_all(f"/subscriptionGroups/{group_id}/subscriptionGroupLocalizations?limit=200")
               en_group_loc = next((loc for loc in group_localizations if loc["attributes"].get("locale") == "en-US"), None)
               if en_group_loc:
-                  api(
-                      "PATCH",
+                  patch_or_keep_active(
                       f"/subscriptionGroupLocalizations/{en_group_loc['id']}",
-                      json={
+                      {
                           "data": {
                               "type": "subscriptionGroupLocalizations",
                               "id": en_group_loc["id"],
                               "attributes": {"name": localized_name},
                           }
                       },
+                      f"existing group localization en-US for group {group_id}",
                   )
-                  print(f"Updated existing group localization en-US for group {group_id}")
               else:
                   api(
                       "POST",
@@ -323,10 +339,9 @@ jobs:
               localizations = list_all(f"/subscriptions/{sub_id}/subscriptionLocalizations?limit=200")
               en_loc = next((loc for loc in localizations if loc["attributes"].get("locale") == "en-US"), None)
               if en_loc:
-                  api(
-                      "PATCH",
+                  patch_or_keep_active(
                       f"/subscriptionLocalizations/{en_loc['id']}",
-                      json={
+                      {
                           "data": {
                               "type": "subscriptionLocalizations",
                               "id": en_loc["id"],
@@ -336,8 +351,8 @@ jobs:
                               },
                           }
                       },
+                      f"localization en-US for {spec['product_id']}",
                   )
-                  print(f"Updated localization en-US for {spec['product_id']}")
               else:
                   api(
                       "POST",
