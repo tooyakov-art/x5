@@ -1,0 +1,152 @@
+name: ASC submit subscriptions
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/x5-cleanup-from-restore-clean]
+    paths:
+      - ".github/workflows/asc-submit-subscriptions.yml"
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      BUNDLE_ID: com.x5studio.app
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - name: Submit configured subscriptions for review
+        run: |
+          python <<'PY'
+          import base64
+          import os
+          import sys
+          import time
+
+          import jwt
+          import requests
+
+          BASE = "https://api.appstoreconnect.apple.com/v1"
+          TARGET_PRODUCTS = [
+              "com.x5studio.app.lite.monthly",
+              "com.x5studio.app.max.monthly",
+              "com.x5studio.app.verified.monthly",
+          ]
+          SKIP_STATES = {
+              "APPROVED",
+              "WAITING_FOR_REVIEW",
+              "IN_REVIEW",
+          }
+
+          def make_token():
+              return jwt.encode(
+                  {
+                      "iss": os.environ["ASC_API_ISSUER_ID"],
+                      "iat": int(time.time()),
+                      "exp": int(time.time()) + 600,
+                      "aud": "appstoreconnect-v1",
+                  },
+                  base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+                  algorithm="ES256",
+                  headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+              )
+
+          TOKEN = make_token()
+
+          def headers(content=False):
+              h = {"Authorization": f"Bearer {TOKEN}"}
+              if content:
+                  h["Content-Type"] = "application/json"
+              return h
+
+          def request(method, path, *, expected=(200,), **kwargs):
+              url = path if path.startswith("http") else f"{BASE}{path}"
+              response = requests.request(method, url, headers=headers("json" in kwargs), timeout=60, **kwargs)
+              if response.status_code not in expected:
+                  print(f"{method} {url} -> HTTP {response.status_code}")
+                  print(response.text[:3000])
+                  raise SystemExit(1)
+              return response.json() if response.text else {}
+
+          def list_all(path):
+              rows = []
+              url = f"{BASE}{path}"
+              while url:
+                  response = requests.get(url, headers=headers(), timeout=60)
+                  if response.status_code >= 300:
+                      print(f"GET {url} -> HTTP {response.status_code}")
+                      print(response.text[:3000])
+                      raise SystemExit(1)
+                  payload = response.json()
+                  rows.extend(payload.get("data", []))
+                  url = payload.get("links", {}).get("next")
+              return rows
+
+          app_rows = request("GET", f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}").get("data", [])
+          if not app_rows:
+              raise SystemExit(f"No App Store Connect app for {os.environ['BUNDLE_ID']}")
+          app_id = app_rows[0]["id"]
+          print(f"App: {app_id} ({os.environ['BUNDLE_ID']})")
+
+          group_refs = list_all(f"/apps/{app_id}/relationships/subscriptionGroups?limit=200")
+          subscriptions = []
+          for group_ref in group_refs:
+              subscriptions.extend(list_all(f"/subscriptionGroups/{group_ref['id']}/subscriptions?limit=200"))
+          by_product = {sub.get("attributes", {}).get("productId"): sub for sub in subscriptions}
+
+          missing = [pid for pid in TARGET_PRODUCTS if pid not in by_product]
+          if missing:
+              raise SystemExit(f"Missing subscriptions in ASC: {', '.join(missing)}")
+
+          submitted = []
+          for product_id in TARGET_PRODUCTS:
+              sub = by_product[product_id]
+              sub_id = sub["id"]
+              state = sub.get("attributes", {}).get("state")
+              print(f"Subscription {product_id}: id={sub_id} state={state}")
+              if state in SKIP_STATES:
+                  print(f"Skipping {product_id}: already {state}")
+                  continue
+
+              response = requests.post(
+                  f"{BASE}/subscriptionSubmissions",
+                  headers=headers(content=True),
+                  json={
+                      "data": {
+                          "type": "subscriptionSubmissions",
+                          "relationships": {
+                              "subscription": {"data": {"type": "subscriptions", "id": sub_id}}
+                          },
+                      }
+                  },
+                  timeout=60,
+              )
+              if response.status_code == 201:
+                  submission_id = response.json()["data"]["id"]
+                  print(f"Submitted {product_id} for review -> {submission_id}")
+                  submitted.append(product_id)
+                  continue
+
+              if response.status_code == 409 and "already" in response.text.lower():
+                  print(f"Submission already exists for {product_id}: {response.text[:700]}")
+                  continue
+
+              print(f"POST {BASE}/subscriptionSubmissions -> HTTP {response.status_code}")
+              print(response.text[:3000])
+              raise SystemExit(1)
+
+          print("Post-submit states:")
+          for product_id in TARGET_PRODUCTS:
+              sub_id = by_product[product_id]["id"]
+              fresh = request("GET", f"/subscriptions/{sub_id}")["data"]
+              attrs = fresh.get("attributes", {})
+              print(f"  {product_id}: state={attrs.get('state')} id={sub_id}")
+
+          print(f"Submitted count: {len(submitted)}")
+          PY
