@@ -20,7 +20,7 @@ jobs:
       BUNDLE_ID: com.x5studio.app
       EXPECTED_VERSION: "1.1.2"
       EXPECTED_BUILD: "163"
-      AUDIT_SCOPE: "app-version-build-screenshots-subscriptions"
+      AUDIT_SCOPE: "post-submit-app-version-build-screenshots-subscriptions"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
