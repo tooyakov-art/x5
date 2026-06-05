@@ -26,8 +26,11 @@ struct CreateTaskView: View {
                     TextField("Заголовок", text: $title)
                     TextField("Описание", text: $description, axis: .vertical).lineLimit(3...8)
                 }
-                Section(header: Text(loc.t("task_budget_category"))) {
-                    TextField("Бюджет (например 50 000 ₸)", text: $budget)
+                Section(
+                    header: Text(loc.t("task_budget_category")),
+                    footer: Text(loc.t("task_budget_optional_footer"))
+                ) {
+                    TextField(loc.t("task_budget_placeholder"), text: $budget)
                     Picker("Категория", selection: $category) {
                         ForEach(HubCategories.all) { cat in
                             Label(HubCategories.label(for: cat.id, language: loc.current),
@@ -68,8 +71,12 @@ struct CreateTaskView: View {
 
     private var canSubmit: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !budget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var submittedBudget: String {
+        let cleanBudget = budget.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleanBudget.isEmpty ? loc.t("task_budget_discussed") : cleanBudget
     }
 
     private func submit() async {
@@ -83,7 +90,7 @@ struct CreateTaskView: View {
             companyName: nil,
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             description: description.trimmingCharacters(in: .whitespacesAndNewlines),
-            budget: budget.trimmingCharacters(in: .whitespacesAndNewlines),
+            budget: submittedBudget,
             category: category,
             deadline: hasDeadline ? deadline : nil,
             accessToken: token
