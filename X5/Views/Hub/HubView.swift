@@ -94,17 +94,6 @@ struct HubView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    if segment == .specialists && currentRole != "creator" && !(currentUser.profile?.showInHub ?? false) {
-                        Button {
-                            showingEditProfile = true
-                        } label: {
-                            Text(loc.t("hub_become_specialist"))
-                        }
-                    }
-                }
-            }
             .task {
                 applyPreferredCategoryIfNeeded()
                 await repairCurrentHubProfileIfNeeded()
