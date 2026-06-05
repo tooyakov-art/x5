@@ -1,0 +1,147 @@
+name: ASC release approved version
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/x5-cleanup-from-restore-clean]
+    paths:
+      - ".github/workflows/asc-release-approved-version.yml"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      BUNDLE_ID: com.x5studio.app
+      EXPECTED_VERSION: "1.1.2"
+      EXPECTED_BUILD: "163"
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - name: Release approved App Store version
+        run: |
+          python <<'PY'
+          import base64
+          import json
+          import os
+          import sys
+          import time
+
+          import jwt
+          import requests
+
+          BASE = "https://api.appstoreconnect.apple.com/v1"
+
+          token = jwt.encode(
+              {
+                  "iss": os.environ["ASC_API_ISSUER_ID"],
+                  "iat": int(time.time()),
+                  "exp": int(time.time()) + 600,
+                  "aud": "appstoreconnect-v1",
+              },
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          h = {"Authorization": f"Bearer {token}"}
+          json_h = {**h, "Content-Type": "application/json"}
+
+          def get(path, **params):
+              response = requests.get(f"{BASE}{path}", headers=h, params=params or None, timeout=60)
+              if response.status_code >= 300:
+                  print(f"GET {path} -> HTTP {response.status_code}")
+                  print(response.text[:3000])
+                  raise SystemExit(1)
+              return response.json()
+
+          def list_all(path, **params):
+              rows = []
+              url = f"{BASE}{path}"
+              while url:
+                  response = requests.get(url, headers=h, params=params or None, timeout=60)
+                  params = None
+                  if response.status_code >= 300:
+                      print(f"GET {url} -> HTTP {response.status_code}")
+                      print(response.text[:3000])
+                      raise SystemExit(1)
+                  payload = response.json()
+                  rows.extend(payload.get("data", []))
+                  url = payload.get("links", {}).get("next")
+              return rows
+
+          app_rows = get("/apps", **{"filter[bundleId]": os.environ["BUNDLE_ID"]}).get("data", [])
+          if not app_rows:
+              sys.exit(f"No ASC app found for {os.environ['BUNDLE_ID']}")
+          app_id = app_rows[0]["id"]
+          print(f"App: {app_id}")
+
+          versions = list_all(f"/apps/{app_id}/appStoreVersions", limit=50)
+          version = next(
+              (
+                  row for row in versions
+                  if row.get("attributes", {}).get("versionString") == os.environ["EXPECTED_VERSION"]
+                  and row.get("attributes", {}).get("platform") == "IOS"
+              ),
+              None,
+          )
+          if not version:
+              sys.exit(f"No iOS AppStoreVersion {os.environ['EXPECTED_VERSION']}")
+          version_id = version["id"]
+          attrs = version.get("attributes", {})
+          state = attrs.get("appStoreState")
+          release_type = attrs.get("releaseType")
+          print(f"Version {os.environ['EXPECTED_VERSION']}: {version_id} state={state} releaseType={release_type}")
+
+          build = get(f"/appStoreVersions/{version_id}/build").get("data")
+          if not build:
+              sys.exit("No build attached")
+          build_attrs = build.get("attributes", {})
+          print(
+              f"Attached build: id={build['id']} "
+              f"version={build_attrs.get('version')} state={build_attrs.get('processingState')} "
+              f"expired={build_attrs.get('expired')}"
+          )
+          if build_attrs.get("version") != os.environ["EXPECTED_BUILD"]:
+              sys.exit(f"Wrong build attached: {build_attrs.get('version')}")
+          if build_attrs.get("processingState") != "VALID" or build_attrs.get("expired"):
+              sys.exit("Attached build is not releasable")
+
+          if state == "READY_FOR_SALE":
+              print("Version is already live on App Store.")
+              raise SystemExit(0)
+          if state in {"WAITING_FOR_REVIEW", "IN_REVIEW"}:
+              print("Version is still in Apple review; not releasable yet.")
+              raise SystemExit(0)
+          if state == "PENDING_APPLE_RELEASE":
+              print("Version is approved and waiting for Apple's automatic release.")
+              raise SystemExit(0)
+          if state != "PENDING_DEVELOPER_RELEASE":
+              sys.exit(f"Version is not in a manual-release state: {state}")
+
+          payload = {
+              "data": {
+                  "type": "appStoreVersionReleaseRequests",
+                  "relationships": {
+                      "appStoreVersion": {
+                          "data": {"type": "appStoreVersions", "id": version_id}
+                      }
+                  },
+              }
+          }
+          response = requests.post(
+              f"{BASE}/appStoreVersionReleaseRequests",
+              headers=json_h,
+              data=json.dumps(payload),
+              timeout=60,
+          )
+          if response.status_code >= 300:
+              print(f"Release request HTTP {response.status_code}")
+              print(response.text[:3000])
+              raise SystemExit(1)
+          print(f"Release request created: {response.json()['data']['id']}")
+          PY

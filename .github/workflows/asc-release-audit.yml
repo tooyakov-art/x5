@@ -199,7 +199,7 @@ jobs:
           target_version = None
           for row in versions:
               a = row.get("attributes", {})
-              print(f"version id={row['id']} version={a.get('versionString')} platform={a.get('platform')} state={a.get('appStoreState')}")
+              print(f"version id={row['id']} version={a.get('versionString')} platform={a.get('platform')} state={a.get('appStoreState')} releaseType={a.get('releaseType')}")
               if a.get("versionString") == os.environ["EXPECTED_VERSION"] and a.get("platform") == "IOS":
                   target_version = row
           if not target_version:
