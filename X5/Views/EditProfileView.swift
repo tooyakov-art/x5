@@ -24,6 +24,7 @@ struct EditProfileView: View {
 
     @State private var saving = false
     @State private var errorMessage: String?
+    @State private var didPopulate = false
 
     var body: some View {
         NavigationStack {
@@ -92,7 +93,8 @@ struct EditProfileView: View {
                     .disabled(saving || !isValid)
                 }
             }
-            .onAppear { populate() }
+            .onAppear { populateIfNeeded() }
+            .onChange(of: currentUser.profile?.id) { _ in populateIfNeeded() }
         }
         .preferredColorScheme(.dark)
     }
@@ -130,9 +132,15 @@ struct EditProfileView: View {
         return bio.count <= 500
     }
 
+    private func populateIfNeeded() {
+        guard !didPopulate else { return }
+        populate()
+    }
+
     private func populate() {
         showInHub = activateSpecialistOnOpen
         guard let p = currentUser.profile else { return }
+        didPopulate = true
         name = p.name ?? ""
         nickname = p.nickname ?? ""
         bio = p.bio ?? ""
@@ -150,9 +158,13 @@ struct EditProfileView: View {
     }
 
     private func save() async {
-        guard let token = auth.accessToken else { return }
         saving = true
+        errorMessage = nil
         defer { saving = false }
+        guard let token = await auth.freshAccessToken() else {
+            errorMessage = loc.t("onb_session_expired")
+            return
+        }
 
         let socials: [String: String?] = [
             "instagram": nilIfEmpty(instagram),
@@ -179,7 +191,10 @@ struct EditProfileView: View {
             fields["user_role"] = AnyEncodable("specialist")
             fields["is_public"] = AnyEncodable(true)
         }
-        await currentUser.patchMany(fields, accessToken: token)
+        guard await currentUser.patchMany(fields, accessToken: token) else {
+            errorMessage = currentUser.error ?? loc.t("onb_save_failed")
+            return
+        }
         X5Feedback.success()
         dismiss()
     }
@@ -199,18 +214,13 @@ private struct CategoriesPicker: View {
     var body: some View {
         List {
             ForEach(HubCategories.all) { cat in
-                Button {
-                    X5Feedback.selection()
-                    toggle(cat.id)
-                } label: {
-                    CategorySelectionRow(
-                        title: HubCategories.label(for: cat.id, language: loc.current),
-                        symbol: HubCategories.symbol(for: cat.id),
-                        isSelected: selected.contains(cat.id)
-                    )
-                    .contentShape(Rectangle())
+                Toggle(isOn: categoryBinding(for: cat.id)) {
+                    Label(HubCategories.label(for: cat.id, language: loc.current),
+                          systemImage: HubCategories.symbol(for: cat.id))
+                        .foregroundColor(.white)
                 }
-                .buttonStyle(.plain)
+                .tint(.accentColor)
+                .disabled(!selected.contains(cat.id) && selected.count >= maxPickedCategories)
                 .listRowBackground(selected.contains(cat.id) ? Color.accentColor.opacity(0.12) : Color.white.opacity(0.04))
             }
         }
@@ -229,31 +239,18 @@ private struct CategoriesPicker: View {
         }
     }
 
-    private func toggle(_ id: String) {
-        if selected.contains(id) { selected.remove(id) }
-        else if selected.count < maxPickedCategories { selected.insert(id) }
-    }
-}
-
-private struct CategorySelectionRow: View {
-    let title: String
-    let symbol: String
-    let isSelected: Bool
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: symbol)
-                .font(.system(size: 21, weight: .semibold))
-                .foregroundColor(isSelected ? .accentColor : .white.opacity(0.86))
-                .frame(width: 28)
-            Text(title)
-                .font(.system(size: 17, weight: .medium))
-                .foregroundColor(.white)
-            Spacer(minLength: 16)
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(isSelected ? .accentColor : .white.opacity(0.32))
+    private func categoryBinding(for id: String) -> Binding<Bool> {
+        Binding {
+            selected.contains(id)
+        } set: { isSelected in
+            X5Feedback.selection()
+            if isSelected {
+                if selected.count < maxPickedCategories {
+                    selected.insert(id)
+                }
+            } else {
+                selected.remove(id)
+            }
         }
-        .padding(.vertical, 4)
     }
 }

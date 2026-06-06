@@ -256,13 +256,19 @@ final class CurrentUser: ObservableObject {
     }
 
     /// Patches a single field on the profile row.
-    func patch<T: Encodable>(_ field: String, value: T, accessToken: String) async {
+    @discardableResult
+    func patch<T: Encodable>(_ field: String, value: T, accessToken: String) async -> Bool {
         await patchMany([field: AnyEncodable(value)], accessToken: accessToken)
     }
 
     /// Patches several fields atomically.
-    func patchMany(_ fields: [String: AnyEncodable], accessToken: String) async {
-        guard let id = profile?.id else { return }
+    @discardableResult
+    func patchMany(_ fields: [String: AnyEncodable], accessToken: String) async -> Bool {
+        guard let id = profile?.id else {
+            error = "Profile is not loaded"
+            return false
+        }
+        error = nil
         do {
             var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
             components.queryItems = [URLQueryItem(name: "id", value: "eq.\(id)")]
@@ -278,10 +284,21 @@ final class CurrentUser: ObservableObject {
             if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
                 if let rows = try? JSONDecoder().decode([UserProfile].self, from: data), let row = rows.first {
                     self.profile = row
+                    return true
                 }
+                error = "Profile save returned an empty response"
+                return false
             }
+            if let http = response as? HTTPURLResponse {
+                let body = String(data: data, encoding: .utf8) ?? ""
+                error = body.isEmpty ? "Profile save failed (\(http.statusCode))" : body
+            } else {
+                error = "Profile save failed"
+            }
+            return false
         } catch {
             self.error = error.localizedDescription
+            return false
         }
     }
 }
