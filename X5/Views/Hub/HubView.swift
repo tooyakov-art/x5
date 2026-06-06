@@ -603,18 +603,24 @@ struct HubView: View {
             columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 4),
             spacing: 8
         ) {
-            CategoryTile(
-                title: loc.t("hub_all"),
-                systemImage: "line.3.horizontal.decrease.circle",
-                count: totalVisibleCount,
-                isSelected: true
-            )
+            NavigationLink {
+                taskCategoryPage(categoryId: nil, title: loc.t("hub_all"))
+            } label: {
+                CategoryTile(
+                    title: loc.t("hub_all"),
+                    systemImage: "line.3.horizontal.decrease.circle",
+                    count: totalVisibleCount,
+                    isSelected: false
+                )
+            }
+            .buttonStyle(.plain)
 
             ForEach(HubCategories.all) { cat in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        category = cat.id
-                    }
+                NavigationLink {
+                    taskCategoryPage(
+                        categoryId: cat.id,
+                        title: HubCategories.label(for: cat.id, language: loc.current)
+                    )
                 } label: {
                     CategoryTile(
                         title: HubCategories.label(for: cat.id, language: loc.current),
@@ -626,6 +632,41 @@ struct HubView: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    private func taskCategoryPage(categoryId: String?, title: String) -> some View {
+        let tasks = tasks(matching: categoryId)
+
+        return ScrollView(.vertical, showsIndicators: true) {
+            LazyVStack(spacing: 10) {
+                ForEach(tasks) { task in
+                    NavigationLink {
+                        TaskDetailView(task: task)
+                    } label: {
+                        TaskRow(task: task)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if tasks.isEmpty && !service.isLoading {
+                    EmptyState(systemImage: "tray",
+                               title: loc.t("hub_no_tasks"),
+                               subtitle: loc.t("hub_no_tasks_sub"))
+                        .padding(.top, 60)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 32)
+            .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .clipped()
+        .background { X5Background() }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .refreshable { await service.loadTasks(accessToken: auth.accessToken) }
     }
 
     private var filteredSpecialists: [HubSpecialist] {
@@ -645,9 +686,13 @@ struct HubView: View {
     }
 
     private var filteredTasks: [HubTask] {
+        tasks(matching: category)
+    }
+
+    private func tasks(matching categoryId: String?) -> [HubTask] {
         let visible = service.tasks.filter { !BlockList.contains($0.authorId) }
-        guard let category else { return visible }
-        return visible.filter { normalizedHubCategory($0.category) == category }
+        guard let categoryId else { return visible }
+        return visible.filter { normalizedHubCategory($0.category) == categoryId }
     }
 
     private func refreshCurrentHubSegment() async {
