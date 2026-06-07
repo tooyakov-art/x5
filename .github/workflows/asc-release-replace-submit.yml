@@ -61,7 +61,10 @@ jobs:
           Spaceship::ConnectAPI.token = token
 
           app = Spaceship::ConnectAPI::App.find(ENV.fetch("BUNDLE_ID"))
-          version = app.get_app_store_versions(filter: { platform: "IOS" }).find do |row|
+          version = app.get_app_store_versions(
+            filter: { platform: "IOS" },
+            includes: "appStoreVersionSubmission"
+          ).find do |row|
             row.version_string == ENV.fetch("EXPECTED_VERSION")
           end
           abort "No iOS version #{ENV.fetch("EXPECTED_VERSION")}" unless version
@@ -69,7 +72,8 @@ jobs:
           puts "Version #{version.version_string}: #{version.id} state=#{version.app_store_state}"
           if version.app_store_state == "PENDING_DEVELOPER_RELEASE"
             puts "Developer-rejecting pending release so build #{ENV.fetch("EXPECTED_BUILD")} can be attached."
-            version.developer_reject!
+            abort "Version cannot be developer-rejected from current ASC state." unless version.can_reject?
+            abort "Developer reject returned false." unless version.reject!
             puts "Developer rejected."
           elsif ["PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "READY_FOR_REVIEW"].include?(version.app_store_state)
             puts "Version is editable/submittable; no developer reject needed."
