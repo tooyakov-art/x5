@@ -72,9 +72,12 @@ jobs:
           puts "Version #{version.version_string}: #{version.id} state=#{version.app_store_state}"
           if version.app_store_state == "PENDING_DEVELOPER_RELEASE"
             puts "Developer-rejecting pending release so build #{ENV.fetch("EXPECTED_BUILD")} can be attached."
-            abort "Version cannot be developer-rejected from current ASC state." unless version.can_reject?
-            abort "Developer reject returned false." unless version.reject!
-            puts "Developer rejected."
+            if version.can_reject?
+              abort "Developer reject returned false." unless version.reject!
+              puts "Developer rejected."
+            else
+              puts "ASC does not expose a rejectable submission for this pending release; will try direct build replacement with rollback."
+            end
           elsif ["PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "READY_FOR_REVIEW"].include?(version.app_store_state)
             puts "Version is editable/submittable; no developer reject needed."
           elsif ["WAITING_FOR_REVIEW", "IN_REVIEW"].include?(version.app_store_state)
@@ -87,6 +90,7 @@ jobs:
           RUBY
 
       - name: Upload latest review metadata
+        continue-on-error: true
         run: fastlane ios upload
 
       - name: Attach build and submit for review
@@ -102,6 +106,7 @@ jobs:
 
           BASE = "https://api.appstoreconnect.apple.com/v1"
           READY_TO_SUBMIT = {"PREPARE_FOR_SUBMISSION", "READY_FOR_REVIEW", "DEVELOPER_REJECTED", "REJECTED"}
+          PENDING_RELEASE = "PENDING_DEVELOPER_RELEASE"
 
           token = jwt.encode(
               {
@@ -169,8 +174,13 @@ jobs:
           version_id = version["id"]
           version_state = version["attributes"].get("appStoreState")
           print(f"Version {os.environ['EXPECTED_VERSION']}: {version_id} state={version_state}")
-          if version_state not in READY_TO_SUBMIT:
+          if version_state not in READY_TO_SUBMIT and version_state != PENDING_RELEASE:
               sys.exit(f"Version is not editable/submittable after reject/upload: {version_state}")
+
+          previous = api("GET", f"/appStoreVersions/{version_id}/build").get("data")
+          previous_build_id = previous["id"] if previous else None
+          previous_build_version = previous.get("attributes", {}).get("version") if previous else None
+          print(f"Previously attached build: id={previous_build_id} version={previous_build_version}")
 
           build = None
           for attempt in range(1, 31):
@@ -203,6 +213,17 @@ jobs:
           )
           print(f"Attached build {os.environ['EXPECTED_BUILD']} to version {os.environ['EXPECTED_VERSION']}.")
 
+          def restore_previous_build(reason):
+              if previous_build_id and previous_build_id != build["id"]:
+                  print(f"{reason}; restoring previous build {previous_build_version} ({previous_build_id}).")
+                  json_api(
+                      "PATCH",
+                      f"/appStoreVersions/{version_id}/relationships/build",
+                      {"data": {"type": "builds", "id": previous_build_id}},
+                      expected=(200, 204),
+                  )
+              sys.exit(reason)
+
           attached = api("GET", f"/appStoreVersions/{version_id}/build").get("data")
           if not attached:
               sys.exit("No build attached after PATCH")
@@ -210,6 +231,15 @@ jobs:
           print(f"Attached verification: build={attached_attrs.get('version')} state={attached_attrs.get('processingState')}")
           if attached_attrs.get("version") != os.environ["EXPECTED_BUILD"]:
               sys.exit(f"Wrong build attached: {attached_attrs.get('version')}")
+
+          refreshed_versions = list_all(f"/apps/{app_id}/appStoreVersions?limit=50")
+          refreshed = next(row for row in refreshed_versions if row["id"] == version_id)
+          refreshed_state = refreshed["attributes"].get("appStoreState")
+          print(f"Version state after attach: {refreshed_state}")
+          if refreshed_state == PENDING_RELEASE:
+              restore_previous_build("Apple kept the version in PENDING_DEVELOPER_RELEASE after direct build replacement")
+          if refreshed_state not in READY_TO_SUBMIT:
+              restore_previous_build(f"Version is not submittable after build replacement: {refreshed_state}")
 
           review_payload = api(
               "GET",
