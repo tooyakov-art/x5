@@ -17,7 +17,7 @@ jobs:
       ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
       BUNDLE_ID: com.x5studio.app
       EXPECTED_VERSION: "1.1.2"
-      EXPECTED_BUILD: "163"
+      EXPECTED_BUILD: "167"
     steps:
       - uses: actions/setup-python@v5
         with:
