@@ -1,0 +1,13 @@
+ok=false
+submission_id=9bac9495-5f30-45a3-901d-340b6b6be233
+submit_status=409
+state=
+{
+  "errors" : [ {
+    "id" : "1d32a29b-ec8f-423b-9139-80b7cd0b5447",
+    "status" : "409",
+    "code" : "STATE_ERROR.ENTITY_STATE_INVALID",
+    "title" : "Resource state invalid",
+    "detail" : "reviewSubmissions with id 9bac9495-5f30-45a3-901d-340b6b6be233 does not have any items."
+  } ]
+}
