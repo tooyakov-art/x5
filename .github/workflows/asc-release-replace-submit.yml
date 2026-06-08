@@ -11,7 +11,7 @@ on:
 jobs:
   replace-submit:
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 90
     env:
       ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
       ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
@@ -183,7 +183,7 @@ jobs:
           print(f"Previously attached build: id={previous_build_id} version={previous_build_version}")
 
           build = None
-          for attempt in range(1, 31):
+          for attempt in range(1, 121):
               builds = list_all(f"/builds?filter[app]={app_id}&filter[preReleaseVersion.platform]=IOS&limit=200&sort=-uploadedDate")
               build = next(
                   (
@@ -200,7 +200,7 @@ jobs:
                   )
                   if attrs.get("processingState") == "VALID" and not attrs.get("expired"):
                       break
-              print(f"Build {os.environ['EXPECTED_BUILD']} is not VALID yet; wait attempt {attempt}/30")
+              print(f"Build {os.environ['EXPECTED_BUILD']} is not VALID yet; wait attempt {attempt}/120")
               time.sleep(30)
           else:
               sys.exit(f"Build {os.environ['EXPECTED_BUILD']} is not VALID in App Store Connect")
