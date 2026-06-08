@@ -1,4 +1,4 @@
-name: ASC cancel empty review and submit latest
+name: ASC submit latest review version
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  cancel-empty-submit:
+  submit-latest:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -27,7 +27,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install pyjwt[crypto] requests
-      - name: Cancel empty READY review and submit latest
+      - name: Attach target version and submit latest
         run: |
           python <<'PY'
           import base64
@@ -85,6 +85,32 @@ jobs:
                   raise SystemExit(0)
               return response.json() if response.text else {}
 
+          def submit_review_submission(submission_id):
+              response = raw(
+                  "PATCH",
+                  f"/reviewSubmissions/{submission_id}",
+                  headers=jh,
+                  json={
+                      "data": {
+                          "type": "reviewSubmissions",
+                          "id": submission_id,
+                          "attributes": {"submitted": True},
+                          "relationships": {
+                              "appStoreVersionForReview": {
+                                  "data": {"type": "appStoreVersions", "id": version_id}
+                              }
+                          },
+                      }
+                  },
+              )
+              record(f"submit_status={response.status_code}")
+              record(response.text[:3000])
+              if response.status_code >= 300:
+                  return False
+              final_state = response.json()["data"]["attributes"].get("state")
+              record(f"final_state={final_state}")
+              return final_state in {"WAITING_FOR_REVIEW", "IN_REVIEW", "COMPLETING"}
+
           app_rows = api("GET", f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}").get("data", [])
           if not app_rows:
               record("No app")
@@ -134,24 +160,9 @@ jobs:
               if state == "READY_FOR_REVIEW":
                   items = api("GET", f"/reviewSubmissions/{sid}/items?limit=50").get("data", [])
                   record(f"ready_submission={sid} items={len(items)}")
-                  if not items:
-                      response = raw(
-                          "PATCH",
-                          f"/reviewSubmissions/{sid}",
-                          headers=jh,
-                          json={
-                              "data": {
-                                  "type": "reviewSubmissions",
-                                  "id": sid,
-                                  "attributes": {"canceled": True},
-                              }
-                          },
-                      )
-                      record(f"cancel_empty_submission_status={response.status_code}")
-                      record(response.text[:1000])
-                      if response.status_code >= 300:
-                          finish(False)
-                          raise SystemExit(0)
+                  ok = submit_review_submission(sid)
+                  finish(ok)
+                  raise SystemExit(0)
 
           created = api(
               "POST",
@@ -161,6 +172,7 @@ jobs:
               json={
                   "data": {
                       "type": "reviewSubmissions",
+                      "attributes": {"platform": "IOS"},
                       "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
                   }
               },
@@ -189,21 +201,7 @@ jobs:
           )
           record(f"created_item={item['data']['id']}")
 
-          submitted = api(
-              "PATCH",
-              f"/reviewSubmissions/{submission_id}",
-              headers=jh,
-              json={
-                  "data": {
-                      "type": "reviewSubmissions",
-                      "id": submission_id,
-                      "attributes": {"submitted": True},
-                  }
-              },
-          )
-          final_state = submitted["data"]["attributes"].get("state")
-          record(f"final_state={final_state}")
-          finish(final_state in {"WAITING_FOR_REVIEW", "IN_REVIEW", "COMPLETING"})
+          finish(submit_review_submission(submission_id))
           PY
       - name: Commit submit diagnostic
         if: always()
