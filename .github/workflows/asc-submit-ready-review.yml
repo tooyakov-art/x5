@@ -1,0 +1,164 @@
+name: ASC submit existing ready review
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/x5-cleanup-from-restore-clean]
+    paths:
+      - ".github/workflows/asc-submit-ready-review.yml"
+
+jobs:
+  add-app-version-item:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      BUNDLE_ID: com.x5studio.app
+      TARGET_VERSION: "1.1.3"
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - run: |
+          python <<'PY'
+          import base64
+          import os
+          import sys
+          import time
+
+          import jwt
+          import requests
+
+          BASE = "https://api.appstoreconnect.apple.com/v1"
+          token = jwt.encode(
+              {
+                  "iss": os.environ["ASC_API_ISSUER_ID"],
+                  "iat": int(time.time()),
+                  "exp": int(time.time()) + 600,
+                  "aud": "appstoreconnect-v1",
+              },
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          h = {"Authorization": f"Bearer {token}"}
+          jh = {**h, "Content-Type": "application/json"}
+
+          def get(path):
+              response = requests.get(f"{BASE}{path}", headers=h, timeout=60)
+              if response.status_code >= 300:
+                  print(response.text[:3000])
+                  raise SystemExit(1)
+              return response.json()
+
+          app_id = get(f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}")["data"][0]["id"]
+          versions = get(f"/apps/{app_id}/appStoreVersions?limit=50")["data"]
+          version_id = next(
+              v["id"] for v in versions
+              if v["attributes"]["versionString"] == os.environ["TARGET_VERSION"]
+              and v["attributes"]["platform"] == "IOS"
+          )
+          submissions = get(f"/reviewSubmissions?filter[app]={app_id}&filter[platform]=IOS")["data"]
+          submission_id = next(
+              row["id"] for row in submissions
+              if row["attributes"].get("state") == "READY_FOR_REVIEW"
+          )
+          response = requests.post(
+              f"{BASE}/reviewSubmissionItems",
+              headers=jh,
+              json={
+                  "data": {
+                      "type": "reviewSubmissionItems",
+                      "relationships": {
+                          "reviewSubmission": {
+                              "data": {"type": "reviewSubmissions", "id": submission_id}
+                          },
+                          "appStoreVersion": {
+                              "data": {"type": "appStoreVersions", "id": version_id}
+                          },
+                      },
+                  }
+              },
+              timeout=60,
+          )
+          print(f"add_item_status={response.status_code}")
+          print(response.text[:3000])
+          if response.status_code not in {201, 409}:
+              raise SystemExit(1)
+          PY
+
+  submit-ready-review:
+    needs: add-app-version-item
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      BUNDLE_ID: com.x5studio.app
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - run: |
+          python <<'PY'
+          import base64
+          import os
+          import sys
+          import time
+
+          import jwt
+          import requests
+
+          BASE = "https://api.appstoreconnect.apple.com/v1"
+          token = jwt.encode(
+              {
+                  "iss": os.environ["ASC_API_ISSUER_ID"],
+                  "iat": int(time.time()),
+                  "exp": int(time.time()) + 600,
+                  "aud": "appstoreconnect-v1",
+              },
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          h = {"Authorization": f"Bearer {token}"}
+          jh = {**h, "Content-Type": "application/json"}
+
+          def get(path):
+              response = requests.get(f"{BASE}{path}", headers=h, timeout=60)
+              if response.status_code >= 300:
+                  print(response.text[:3000])
+                  raise SystemExit(1)
+              return response.json()
+
+          app_id = get(f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}")["data"][0]["id"]
+          submissions = get(f"/reviewSubmissions?filter[app]={app_id}&filter[platform]=IOS")["data"]
+          submission_id = next(
+              row["id"] for row in submissions
+              if row["attributes"].get("state") == "READY_FOR_REVIEW"
+          )
+          response = requests.patch(
+              f"{BASE}/reviewSubmissions/{submission_id}",
+              headers=jh,
+              json={
+                  "data": {
+                      "type": "reviewSubmissions",
+                      "id": submission_id,
+                      "attributes": {"submitted": True},
+                  }
+              },
+              timeout=60,
+          )
+          print(f"submit_status={response.status_code}")
+          print(response.text[:3000])
+          if response.status_code >= 300:
+              raise SystemExit(1)
+          state = response.json()["data"]["attributes"].get("state")
+          if state not in {"WAITING_FOR_REVIEW", "IN_REVIEW", "COMPLETING"}:
+              sys.exit(f"unexpected_state={state}")
+          PY
