@@ -95,11 +95,6 @@ jobs:
                           "type": "reviewSubmissions",
                           "id": submission_id,
                           "attributes": {"submitted": True},
-                          "relationships": {
-                              "appStoreVersionForReview": {
-                                  "data": {"type": "appStoreVersions", "id": version_id}
-                              }
-                          },
                       }
                   },
               )
@@ -110,6 +105,55 @@ jobs:
               final_state = response.json()["data"]["attributes"].get("state")
               record(f"final_state={final_state}")
               return final_state in {"WAITING_FOR_REVIEW", "IN_REVIEW", "COMPLETING"}
+
+          def add_app_version_item(submission_id, label):
+              response = raw(
+                  "POST",
+                  "/reviewSubmissionItems",
+                  headers=jh,
+                  json={
+                      "data": {
+                          "type": "reviewSubmissionItems",
+                          "relationships": {
+                              "reviewSubmission": {
+                                  "data": {"type": "reviewSubmissions", "id": submission_id}
+                              },
+                              "appStoreVersion": {
+                                  "data": {"type": "appStoreVersions", "id": version_id}
+                              },
+                          },
+                      }
+                  },
+              )
+              record(f"{label}_add_item_status={response.status_code}")
+              record(response.text[:3000])
+              if response.status_code >= 300:
+                  return None
+              return response.json()["data"]["id"]
+
+          def delete_submission(submission_id):
+              response = raw("DELETE", f"/reviewSubmissions/{submission_id}")
+              record(f"delete_ready_submission_status={response.status_code}")
+              record(response.text[:3000])
+              return response.status_code in {200, 202, 204}
+
+          def create_submission():
+              created = api(
+                  "POST",
+                  "/reviewSubmissions",
+                  expected=(201,),
+                  headers=jh,
+                  json={
+                      "data": {
+                          "type": "reviewSubmissions",
+                          "attributes": {"platform": "IOS"},
+                          "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
+                      }
+                  },
+              )
+              submission_id = created["data"]["id"]
+              record(f"created_submission={submission_id}")
+              return submission_id
 
           app_rows = api("GET", f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}").get("data", [])
           if not app_rows:
@@ -151,55 +195,39 @@ jobs:
 
           submissions = api(
               "GET",
-              f"/reviewSubmissions?filter[app]={app_id}&filter[platform]=IOS&include=items",
+              f"/reviewSubmissions?filter[app]={app_id}&filter[platform]=IOS&include=items,appStoreVersionForReview",
           ).get("data", [])
 
           for submission in submissions:
               state = submission.get("attributes", {}).get("state")
               sid = submission["id"]
+              record(f"submission={sid} state={state}")
               if state == "READY_FOR_REVIEW":
                   items = api("GET", f"/reviewSubmissions/{sid}/items?limit=50").get("data", [])
                   record(f"ready_submission={sid} items={len(items)}")
-                  ok = submit_review_submission(sid)
-                  finish(ok)
+                  if not items:
+                      item_id = add_app_version_item(sid, "ready")
+                      if item_id:
+                          record(f"ready_item={item_id}")
+                          finish(submit_review_submission(sid))
+                          raise SystemExit(0)
+
+                      if not delete_submission(sid):
+                          finish(False)
+                          raise SystemExit(0)
+
+                      time.sleep(5)
+                      break
+
+                  finish(submit_review_submission(sid))
                   raise SystemExit(0)
 
-          created = api(
-              "POST",
-              "/reviewSubmissions",
-              expected=(201,),
-              headers=jh,
-              json={
-                  "data": {
-                      "type": "reviewSubmissions",
-                      "attributes": {"platform": "IOS"},
-                      "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
-                  }
-              },
-          )
-          submission_id = created["data"]["id"]
-          record(f"created_submission={submission_id}")
-
-          item = api(
-              "POST",
-              "/reviewSubmissionItems",
-              expected=(201,),
-              headers=jh,
-              json={
-                  "data": {
-                      "type": "reviewSubmissionItems",
-                      "relationships": {
-                          "reviewSubmission": {
-                              "data": {"type": "reviewSubmissions", "id": submission_id}
-                          },
-                          "appStoreVersion": {
-                              "data": {"type": "appStoreVersions", "id": version_id}
-                          },
-                      },
-                  }
-              },
-          )
-          record(f"created_item={item['data']['id']}")
+          submission_id = create_submission()
+          item_id = add_app_version_item(submission_id, "new")
+          if not item_id:
+              finish(False)
+              raise SystemExit(0)
+          record(f"created_item={item_id}")
 
           finish(submit_review_submission(submission_id))
           PY
