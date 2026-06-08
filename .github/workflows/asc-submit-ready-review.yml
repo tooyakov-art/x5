@@ -7,6 +7,9 @@ on:
     paths:
       - ".github/workflows/asc-submit-ready-review.yml"
 
+permissions:
+  contents: write
+
 jobs:
   add-app-version-item:
     runs-on: ubuntu-latest
@@ -100,6 +103,7 @@ jobs:
       ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
       BUNDLE_ID: com.x5studio.app
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -108,8 +112,8 @@ jobs:
           python <<'PY'
           import base64
           import os
-          import sys
           import time
+          from pathlib import Path
 
           import jwt
           import requests
@@ -133,7 +137,12 @@ jobs:
               response = requests.get(f"{BASE}{path}", headers=h, timeout=60)
               if response.status_code >= 300:
                   print(response.text[:3000])
-                  raise SystemExit(1)
+                  Path("diagnostics").mkdir(exist_ok=True)
+                  Path("diagnostics/asc-submit-ready-result.txt").write_text(
+                      f"ok=false\nget_error_path={path}\nstatus={response.status_code}\n{response.text[:3000]}\n",
+                      encoding="utf-8",
+                  )
+                  raise SystemExit(0)
               return response.json()
 
           app_id = get(f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}")["data"][0]["id"]
@@ -154,11 +163,35 @@ jobs:
               },
               timeout=60,
           )
-          print(f"submit_status={response.status_code}")
-          print(response.text[:3000])
-          if response.status_code >= 300:
-              raise SystemExit(1)
-          state = response.json()["data"]["attributes"].get("state")
-          if state not in {"WAITING_FOR_REVIEW", "IN_REVIEW", "COMPLETING"}:
-              sys.exit(f"unexpected_state={state}")
+          body = response.text[:3000]
+          ok = False
+          state = ""
+          if response.status_code < 300:
+              state = response.json()["data"]["attributes"].get("state") or ""
+              ok = state in {"WAITING_FOR_REVIEW", "IN_REVIEW", "COMPLETING"}
+
+          Path("diagnostics").mkdir(exist_ok=True)
+          Path("diagnostics/asc-submit-ready-result.txt").write_text(
+              "\n".join(
+                  [
+                      f"ok={'true' if ok else 'false'}",
+                      f"submission_id={submission_id}",
+                      f"submit_status={response.status_code}",
+                      f"state={state}",
+                      body,
+                      "",
+                  ]
+              ),
+              encoding="utf-8",
+          )
           PY
+      - name: Commit submit diagnostic
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add diagnostics/asc-submit-ready-result.txt
+          git commit -m "Record ASC submit diagnostic [skip ci]" || true
+          git push origin HEAD:codex/x5-cleanup-from-restore-clean || true
+      - name: Assert submit completed
+        run: grep -q '^ok=true$' diagnostics/asc-submit-ready-result.txt
