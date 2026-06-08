@@ -4,13 +4,16 @@ version_id=83d6ff6e-8699-4aa3-9585-a7a0ca01e5a8
 version_state=PREPARE_FOR_SUBMISSION
 attached_build=168
 ready_submission=9bac9495-5f30-45a3-901d-340b6b6be233 items=0
-cancel_empty_submission_status=409
+submit_status=409
 {
   "errors" : [ {
-    "id" : "640a9ad5-4895-4829-abb4-36f21c059ad4",
+    "id" : "f0191caa-3f8d-4965-9a6a-fc3971803b06",
     "status" : "409",
-    "code" : "STATE_ERROR.ENTITY_STATE_INVALID",
-    "title" : "Resource state is invalid.",
-    "detail" : "Resource is not in cancellable state"
+    "code" : "ENTITY_ERROR.RELATIONSHIP.NOT_ALLOWED",
+    "title" : "A relationship in the provided entity is not allowed for this request",
+    "detail" : "The relationship 'appStoreVersionForReview' can not be included in a 'UPDATE' operation",
+    "source" : {
+      "pointer" : "/data/relationships/appStoreVersionForReview"
+    }
   } ]
 }
