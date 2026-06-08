@@ -106,6 +106,7 @@ jobs:
 
           BASE = "https://api.appstoreconnect.apple.com/v1"
           READY_TO_SUBMIT = {"PREPARE_FOR_SUBMISSION", "READY_FOR_REVIEW", "DEVELOPER_REJECTED", "REJECTED"}
+          REVIEW_ACTIVE = {"WAITING_FOR_REVIEW", "IN_REVIEW", "COMPLETING"}
           PENDING_RELEASE = "PENDING_DEVELOPER_RELEASE"
 
           token = jwt.encode(
@@ -174,6 +175,9 @@ jobs:
           version_id = version["id"]
           version_state = version["attributes"].get("appStoreState")
           print(f"Version {os.environ['EXPECTED_VERSION']}: {version_id} state={version_state}")
+          if version_state in REVIEW_ACTIVE:
+              print(f"Version is already in review flow: {version_state}")
+              raise SystemExit(0)
           if version_state not in READY_TO_SUBMIT and version_state != PENDING_RELEASE:
               sys.exit(f"Version is not editable/submittable after reject/upload: {version_state}")
 
@@ -253,9 +257,56 @@ jobs:
               }
           ]
           if open_rows:
-              for row in open_rows:
-                  print(f"Open review submission: {row['id']} state={row.get('attributes', {}).get('state')}")
-              sys.exit("Open review submission exists; refusing to create duplicate")
+              active = next(
+                  (
+                      row for row in open_rows
+                      if row.get("attributes", {}).get("state") in REVIEW_ACTIVE
+                  ),
+                  None,
+              )
+              if active:
+                  print(
+                      f"Open review submission already active: {active['id']} "
+                      f"state={active.get('attributes', {}).get('state')}"
+                  )
+                  raise SystemExit(0)
+
+              unresolved = next(
+                  (
+                      row for row in open_rows
+                      if row.get("attributes", {}).get("state") == "UNRESOLVED_ISSUES"
+                  ),
+                  None,
+              )
+              if unresolved:
+                  sys.exit(f"Open review submission has unresolved issues: {unresolved['id']}")
+
+              ready = next(
+                  (
+                      row for row in open_rows
+                      if row.get("attributes", {}).get("state") == "READY_FOR_REVIEW"
+                  ),
+                  None,
+              )
+              if ready:
+                  submission_id = ready["id"]
+                  print(f"Reusing READY_FOR_REVIEW submission: {submission_id}")
+                  submitted = json_api(
+                      "PATCH",
+                      f"/reviewSubmissions/{submission_id}",
+                      {
+                          "data": {
+                              "type": "reviewSubmissions",
+                              "id": submission_id,
+                              "attributes": {"submitted": True},
+                          }
+                      },
+                  )
+                  final_state = submitted["data"]["attributes"].get("state")
+                  print(f"Submitted existing ReviewSubmission: {submission_id} state={final_state}")
+                  if final_state not in {"WAITING_FOR_REVIEW", "IN_REVIEW"}:
+                      sys.exit(f"Unexpected final submission state: {final_state}")
+                  raise SystemExit(0)
 
           created = json_api(
               "POST",
