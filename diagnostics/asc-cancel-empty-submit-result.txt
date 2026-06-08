@@ -3,17 +3,39 @@ app_id=6764340680
 version_id=83d6ff6e-8699-4aa3-9585-a7a0ca01e5a8
 version_state=PREPARE_FOR_SUBMISSION
 attached_build=168
+submission=9bac9495-5f30-45a3-901d-340b6b6be233 state=READY_FOR_REVIEW
 ready_submission=9bac9495-5f30-45a3-901d-340b6b6be233 items=0
-submit_status=409
+ready_add_item_status=409
 {
   "errors" : [ {
-    "id" : "f0191caa-3f8d-4965-9a6a-fc3971803b06",
+    "id" : "f8c04cea-3558-42ce-b49a-dd66369930e0",
     "status" : "409",
-    "code" : "ENTITY_ERROR.RELATIONSHIP.NOT_ALLOWED",
-    "title" : "A relationship in the provided entity is not allowed for this request",
-    "detail" : "The relationship 'appStoreVersionForReview' can not be included in a 'UPDATE' operation",
-    "source" : {
-      "pointer" : "/data/relationships/appStoreVersionForReview"
+    "code" : "STATE_ERROR.ENTITY_STATE_INVALID",
+    "title" : "appStoreVersions with id '83d6ff6e-8699-4aa3-9585-a7a0ca01e5a8' is not in valid state.",
+    "detail" : "This resource cannot be reviewed, please check associated errors to see why.",
+    "meta" : {
+      "associatedErrors" : {
+        "/v1/appStoreVersionLocalizations/270474ae-4b95-4ff1-8e98-c95c48591a0e" : [ {
+          "id" : "da2256a2-add1-41a0-96fa-73d9f168ba8f",
+          "status" : "409",
+          "code" : "ENTITY_ERROR.ATTRIBUTE.REQUIRED",
+          "title" : "The provided entity is missing a required attribute",
+          "detail" : "You must provide a value for the attribute 'whatsNew' with this request",
+          "source" : {
+            "pointer" : "/data/attributes/whatsNew"
+          }
+        } ]
+      }
     }
+  } ]
+}
+delete_ready_submission_status=403
+{
+  "errors" : [ {
+    "id" : "f6bb042d-6e26-4f57-888c-2b6cd6d738ba",
+    "status" : "403",
+    "code" : "FORBIDDEN_ERROR",
+    "title" : "The given operation is not allowed",
+    "detail" : "The resource 'reviewSubmissions' does not allow 'DELETE'. Allowed operations are: CREATE, GET_COLLECTION, GET_INSTANCE, UPDATE"
   } ]
 }
