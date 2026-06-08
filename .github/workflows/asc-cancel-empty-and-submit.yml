@@ -1,0 +1,217 @@
+name: ASC cancel empty review and submit latest
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/x5-cleanup-from-restore-clean]
+    paths:
+      - ".github/workflows/asc-cancel-empty-and-submit.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  cancel-empty-submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      BUNDLE_ID: com.x5studio.app
+      TARGET_VERSION: "1.1.3"
+      TARGET_BUILD: "168"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - name: Cancel empty READY review and submit latest
+        run: |
+          python <<'PY'
+          import base64
+          import os
+          import time
+          from pathlib import Path
+
+          import jwt
+          import requests
+
+          BASE = "https://api.appstoreconnect.apple.com/v1"
+          result_path = Path("diagnostics/asc-cancel-empty-submit-result.txt")
+          result_path.parent.mkdir(exist_ok=True)
+          lines = []
+
+          def record(line):
+              print(line)
+              lines.append(str(line))
+
+          def finish(ok):
+              result_path.write_text(
+                  "ok={}\n{}".format("true" if ok else "false", "\n".join(lines)) + "\n",
+                  encoding="utf-8",
+              )
+
+          token = jwt.encode(
+              {
+                  "iss": os.environ["ASC_API_ISSUER_ID"],
+                  "iat": int(time.time()),
+                  "exp": int(time.time()) + 600,
+                  "aud": "appstoreconnect-v1",
+              },
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          h = {"Authorization": f"Bearer {token}"}
+          jh = {**h, "Content-Type": "application/json"}
+
+          def raw(method, path, **kwargs):
+              return requests.request(
+                  method,
+                  path if path.startswith("http") else f"{BASE}{path}",
+                  headers=kwargs.pop("headers", h),
+                  timeout=60,
+                  **kwargs,
+              )
+
+          def api(method, path, expected=(200,), **kwargs):
+              response = raw(method, path, **kwargs)
+              if response.status_code not in expected:
+                  record(f"{method} {path} -> HTTP {response.status_code}")
+                  record(response.text[:3000])
+                  finish(False)
+                  raise SystemExit(0)
+              return response.json() if response.text else {}
+
+          app_rows = api("GET", f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}").get("data", [])
+          if not app_rows:
+              record("No app")
+              finish(False)
+              raise SystemExit(0)
+          app_id = app_rows[0]["id"]
+          record(f"app_id={app_id}")
+
+          versions = api("GET", f"/apps/{app_id}/appStoreVersions?limit=50").get("data", [])
+          version = next(
+              (
+                  row for row in versions
+                  if row.get("attributes", {}).get("versionString") == os.environ["TARGET_VERSION"]
+                  and row.get("attributes", {}).get("platform") == "IOS"
+              ),
+              None,
+          )
+          if not version:
+              record(f"No target version {os.environ['TARGET_VERSION']}")
+              finish(False)
+              raise SystemExit(0)
+          version_id = version["id"]
+          version_state = version.get("attributes", {}).get("appStoreState")
+          record(f"version_id={version_id}")
+          record(f"version_state={version_state}")
+          if version_state in {"WAITING_FOR_REVIEW", "IN_REVIEW", "COMPLETING"}:
+              record("version already in active review flow")
+              finish(True)
+              raise SystemExit(0)
+
+          attached = api("GET", f"/appStoreVersions/{version_id}/build").get("data")
+          attached_build = attached.get("attributes", {}).get("version") if attached else None
+          record(f"attached_build={attached_build}")
+          if attached_build != os.environ["TARGET_BUILD"]:
+              record(f"wrong attached build: {attached_build}")
+              finish(False)
+              raise SystemExit(0)
+
+          submissions = api(
+              "GET",
+              f"/reviewSubmissions?filter[app]={app_id}&filter[platform]=IOS&include=items",
+          ).get("data", [])
+
+          for submission in submissions:
+              state = submission.get("attributes", {}).get("state")
+              sid = submission["id"]
+              if state == "READY_FOR_REVIEW":
+                  items = api("GET", f"/reviewSubmissions/{sid}/items?limit=50").get("data", [])
+                  record(f"ready_submission={sid} items={len(items)}")
+                  if not items:
+                      response = raw(
+                          "PATCH",
+                          f"/reviewSubmissions/{sid}",
+                          headers=jh,
+                          json={
+                              "data": {
+                                  "type": "reviewSubmissions",
+                                  "id": sid,
+                                  "attributes": {"canceled": True},
+                              }
+                          },
+                      )
+                      record(f"cancel_empty_submission_status={response.status_code}")
+                      record(response.text[:1000])
+                      if response.status_code >= 300:
+                          finish(False)
+                          raise SystemExit(0)
+
+          created = api(
+              "POST",
+              "/reviewSubmissions",
+              expected=(201,),
+              headers=jh,
+              json={
+                  "data": {
+                      "type": "reviewSubmissions",
+                      "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
+                  }
+              },
+          )
+          submission_id = created["data"]["id"]
+          record(f"created_submission={submission_id}")
+
+          item = api(
+              "POST",
+              "/reviewSubmissionItems",
+              expected=(201,),
+              headers=jh,
+              json={
+                  "data": {
+                      "type": "reviewSubmissionItems",
+                      "relationships": {
+                          "reviewSubmission": {
+                              "data": {"type": "reviewSubmissions", "id": submission_id}
+                          },
+                          "appStoreVersion": {
+                              "data": {"type": "appStoreVersions", "id": version_id}
+                          },
+                      },
+                  }
+              },
+          )
+          record(f"created_item={item['data']['id']}")
+
+          submitted = api(
+              "PATCH",
+              f"/reviewSubmissions/{submission_id}",
+              headers=jh,
+              json={
+                  "data": {
+                      "type": "reviewSubmissions",
+                      "id": submission_id,
+                      "attributes": {"submitted": True},
+                  }
+              },
+          )
+          final_state = submitted["data"]["attributes"].get("state")
+          record(f"final_state={final_state}")
+          finish(final_state in {"WAITING_FOR_REVIEW", "IN_REVIEW", "COMPLETING"})
+          PY
+      - name: Commit submit diagnostic
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add diagnostics/asc-cancel-empty-submit-result.txt
+          git commit -m "Record ASC cancel empty submit diagnostic [skip ci]" || true
+          git push origin HEAD:codex/x5-cleanup-from-restore-clean || true
+      - name: Assert submit completed
+        run: grep -q '^ok=true$' diagnostics/asc-cancel-empty-submit-result.txt
