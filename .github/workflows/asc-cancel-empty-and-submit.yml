@@ -21,6 +21,7 @@ jobs:
       BUNDLE_ID: com.x5studio.app
       TARGET_VERSION: "1.1.3"
       TARGET_BUILD: "168"
+      RELEASE_NOTES: "Исправлены ошибки и улучшена стабильность приложения."
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -155,6 +156,42 @@ jobs:
               record(f"created_submission={submission_id}")
               return submission_id
 
+          def ensure_whats_new():
+              localizations = api(
+                  "GET",
+                  f"/appStoreVersions/{version_id}/appStoreVersionLocalizations?limit=50",
+              ).get("data", [])
+              if not localizations:
+                  record("no_app_store_version_localizations")
+                  return
+
+              for localization in localizations:
+                  loc_id = localization["id"]
+                  attrs = localization.get("attributes", {})
+                  locale = attrs.get("locale")
+                  whats_new = (attrs.get("whatsNew") or "").strip()
+                  record(f"localization={loc_id} locale={locale} whats_new_present={bool(whats_new)}")
+                  if whats_new:
+                      continue
+
+                  response = raw(
+                      "PATCH",
+                      f"/appStoreVersionLocalizations/{loc_id}",
+                      headers=jh,
+                      json={
+                          "data": {
+                              "type": "appStoreVersionLocalizations",
+                              "id": loc_id,
+                              "attributes": {"whatsNew": os.environ["RELEASE_NOTES"]},
+                          }
+                      },
+                  )
+                  record(f"set_whats_new_status={response.status_code}")
+                  record(response.text[:3000])
+                  if response.status_code >= 300:
+                      finish(False)
+                      raise SystemExit(0)
+
           app_rows = api("GET", f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}").get("data", [])
           if not app_rows:
               record("No app")
@@ -192,6 +229,8 @@ jobs:
               record(f"wrong attached build: {attached_build}")
               finish(False)
               raise SystemExit(0)
+
+          ensure_whats_new()
 
           submissions = api(
               "GET",
