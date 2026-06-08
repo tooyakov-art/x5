@@ -291,6 +291,30 @@ jobs:
               if ready:
                   submission_id = ready["id"]
                   print(f"Reusing READY_FOR_REVIEW submission: {submission_id}")
+                  item_response = requests.post(
+                      f"{BASE}/reviewSubmissionItems",
+                      headers=json_headers,
+                      json={
+                          "data": {
+                              "type": "reviewSubmissionItems",
+                              "relationships": {
+                                  "reviewSubmission": {
+                                      "data": {"type": "reviewSubmissions", "id": submission_id}
+                                  },
+                                  "appStoreVersion": {
+                                      "data": {"type": "appStoreVersions", "id": version_id}
+                                  },
+                              },
+                          }
+                      },
+                      timeout=60,
+                  )
+                  if item_response.status_code in {201, 409}:
+                      print(f"Existing submission app-version item HTTP {item_response.status_code}")
+                  else:
+                      print(f"Add app-version item HTTP {item_response.status_code}")
+                      print(item_response.text[:3000])
+                      raise SystemExit(1)
                   submitted = json_api(
                       "PATCH",
                       f"/reviewSubmissions/{submission_id}",
