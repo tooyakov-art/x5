@@ -197,18 +197,11 @@ final class IAPService: ObservableObject {
         return UUID(uuidString: raw)
     }
 
-    /// Marks the user as Pro on the server.
+    /// Claims the StoreKit transaction on the server.
     ///
-    /// Credits are granted whenever StoreKit has an active entitlement that is
-    /// bound to the current X5 account and Supabase does not already have the
-    /// same subscription period recorded. This lets Restore recover a purchase
-    /// made while Supabase was paused/offline without double-crediting the same
-    /// period on relaunch.
-    ///
-    /// Guard: only credit when the incoming `expirationDate` is later than the
-    /// `subscription_end_date` already stored. A renewal that doesn't extend
-    /// the period (re-delivery of a known transaction) is treated as a no-op
-    /// for credits. Plan/end-date are still refreshed so isPro stays true.
+    /// The Supabase RPC grants credits atomically and marks the original
+    /// transaction as credited, so restore/re-delivery can recover missed
+    /// purchases without double-crediting the same Apple transaction.
     private func applySubscriptionEntitlement(
         transaction: StoreKit.Transaction,
         grantCredits: Bool,
@@ -236,7 +229,6 @@ final class IAPService: ObservableObject {
         // here we ignore any transaction whose token doesn't match. Old
         // pre-fix transactions have a nil token — those we let through so
         // legit existing subscribers don't lose their Pro on upgrade.
-        let tokenIsBoundToCurrentUser: Bool
         if let token = transaction.appAccountToken,
            let buyerId = UUID(uuidString: userId) {
             if token != buyerId {
@@ -246,9 +238,6 @@ final class IAPService: ObservableObject {
                 ])
                 return .skipped
             }
-            tokenIsBoundToCurrentUser = true
-        } else {
-            tokenIsBoundToCurrentUser = false
         }
 
         let claimResult = await claimIAPEntitlement(
@@ -256,153 +245,27 @@ final class IAPService: ObservableObject {
             accessToken: accessToken,
             source: source
         )
+        let claimStatus: String
         switch claimResult {
-        case .claimed, .alreadyOwned:
-            break
+        case .claimed:
+            claimStatus = "claimed"
+        case .alreadyOwned:
+            claimStatus = "already_owned"
         case .ownedByOther:
             return .skipped
         case .failed:
             return .failed
         }
 
-        let endDate = transaction.expirationDate
-            ?? Calendar.current.date(byAdding: .month, value: 1, to: Date())
-            ?? Date().addingTimeInterval(30 * 24 * 3600)
-        let endIso = ISO8601DateFormatter().string(from: endDate)
-        let startIso = ISO8601DateFormatter().string(from: transaction.purchaseDate)
-
-        // Read current credits + last-known subscription_end_date so we can
-        // decide whether this transaction is a NEW period (grant credits) or
-        // a re-delivery of an already-known one (skip credits).
-        var currentCredits = 0
-        var storedEndDate: Date? = nil
-        guard var getURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false) else {
-            return .failed
-        }
-        getURL.queryItems = [
-            URLQueryItem(name: "id", value: "eq.\(userId)"),
-            URLQueryItem(name: "select", value: "credits,subscription_end_date")
-        ]
-        guard let getReqURL = getURL.url else { return .failed }
-        var getReq = URLRequest(url: getReqURL)
-        getReq.setValue(anonKey, forHTTPHeaderField: "apikey")
-        getReq.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        let profileRow: [String: Any]
-        do {
-            let (data, response) = try await URLSession.shared.data(for: getReq)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-                DiagnosticLogger.log(event: "iap_subscription_profile_fetch_failed", extra: [
-                    "source": source,
-                    "product": transaction.productID,
-                    "status": "\(status)"
-                ])
-                lastError = "Purchase is active, but credits were not synced. Restore again when the server is online."
-                return .failed
-            }
-            guard
-                let arr = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-                let row = arr.first
-            else {
-                DiagnosticLogger.log(event: "iap_subscription_profile_missing", extra: [
-                    "source": source,
-                    "product": transaction.productID
-                ])
-                lastError = "Profile was not found. Reopen the app and restore purchases."
-                return .failed
-            }
-            profileRow = row
-        } catch {
-            DiagnosticLogger.log(event: "iap_subscription_profile_fetch_error", extra: [
-                "source": source,
-                "product": transaction.productID,
-                "error": String(error.localizedDescription.prefix(120))
-            ])
-            lastError = "Purchase is active, but credits were not synced. Restore again when the server is online."
-            return .failed
-        }
-
-        if let c = profileRow["credits"] as? Int { currentCredits = c }
-        if let s = profileRow["subscription_end_date"] as? String {
-            let f = ISO8601DateFormatter()
-            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            storedEndDate = f.date(from: s) ?? ISO8601DateFormatter().date(from: s)
-        }
-
-        // Treat the transaction as "already credited" if our stored end-date
-        // is at or beyond what this transaction reports. A 60-second slack
-        // absorbs floating-point rounding from the ISO round-trip.
-        let alreadyCredited: Bool = {
-            guard let stored = storedEndDate else { return false }
-            return stored.timeIntervalSince(endDate) >= -60
-        }()
-
-        let monthlyCredits = Self.creditsGranted(for: transaction.productID)
-        let subscriptionType = Self.subscriptionType(for: transaction.productID)
-
-        var body: [String: Any] = [
-            "plan": "pro",
-            "subscription_type": subscriptionType,
-            "subscription_date": startIso,
-            "subscription_end_date": endIso
-        ]
-        let shouldGrantCredits = grantCredits
-            && !alreadyCredited
-            && (source == "purchase" || tokenIsBoundToCurrentUser || claimResult.belongsToCurrentUser)
-        if shouldGrantCredits {
-            body["credits"] = currentCredits + monthlyCredits
-        }
-
-        guard var patchURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false) else {
-            return .failed
-        }
-        patchURL.queryItems = [URLQueryItem(name: "id", value: "eq.\(userId)")]
-        guard let patchReqURL = patchURL.url else { return .failed }
-        var patch = URLRequest(url: patchReqURL)
-        patch.httpMethod = "PATCH"
-        patch.setValue(anonKey, forHTTPHeaderField: "apikey")
-        patch.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        patch.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        patch.setValue("return=representation", forHTTPHeaderField: "Prefer")
-        patch.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        do {
-            let (data, response) = try await URLSession.shared.data(for: patch)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-                DiagnosticLogger.log(event: "iap_subscription_profile_patch_failed", extra: [
-                    "source": source,
-                    "product": transaction.productID,
-                    "status": "\(status)"
-                ])
-                lastError = "Purchase is active, but credits were not synced. Restore again when the server is online."
-                return .failed
-            }
-            if let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]], rows.isEmpty {
-                DiagnosticLogger.log(event: "iap_subscription_profile_patch_empty", extra: [
-                    "source": source,
-                    "product": transaction.productID
-                ])
-                lastError = "Purchase is active, but profile was not updated."
-                return .failed
-            }
-        } catch {
-            DiagnosticLogger.log(event: "iap_subscription_profile_patch_error", extra: [
-                "source": source,
-                "product": transaction.productID,
-                "error": String(error.localizedDescription.prefix(120))
-            ])
-            lastError = "Purchase is active, but credits were not synced. Restore again when the server is online."
-            return .failed
-        }
-
         DiagnosticLogger.log(event: "iap_subscription_applied", extra: [
             "source": source,
             "product": transaction.productID,
-            "credited": shouldGrantCredits ? "true" : "false",
-            "already_credited": alreadyCredited ? "true" : "false"
+            "claim": claimStatus,
+            "grant_credits": grantCredits ? "true" : "false"
         ])
 
         // Notify Subscription so isPro flips immediately without waiting for profile reload
+        lastError = nil
         NotificationCenter.default.post(name: .x5DidActivatePro, object: nil)
         return .applied
     }
@@ -516,10 +379,7 @@ final class IAPService: ObservableObject {
                 return .failed
             }
 
-            let raw = (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) as? String)
-                ?? String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: CharacterSet(charactersIn: "\" \n\r\t"))
-                ?? ""
+            let raw = Self.claimStatus(from: data)
             switch raw {
             case "claimed":
                 return .claimed
@@ -552,23 +412,42 @@ final class IAPService: ObservableObject {
         }
     }
 
-    private static func creditsGranted(for productID: String) -> Int {
-        switch productID {
-        case liteMonthlyProductID: return 1000
-        case proMonthlyProductID: return 2000
-        case maxMonthlyProductID: return 5000
-        default: return 1000
+    private nonisolated static func claimStatus(from data: Data) -> String {
+        let trimmedText = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        guard
+            !data.isEmpty,
+            let object = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        else {
+            return trimmedText.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
         }
+
+        if let value = object as? String {
+            return value
+        }
+
+        if let dict = object as? [String: Any] {
+            return (dict["claim_iap_entitlement"] as? String)
+                ?? (dict["status"] as? String)
+                ?? trimmedText
+        }
+
+        if let rows = object as? [[String: Any]],
+           let first = rows.first {
+            return (first["claim_iap_entitlement"] as? String)
+                ?? (first["status"] as? String)
+                ?? trimmedText
+        }
+
+        if let values = object as? [String],
+           let first = values.first {
+            return first
+        }
+
+        return trimmedText.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
     }
 
-    private static func subscriptionType(for productID: String) -> String {
-        switch productID {
-        case liteMonthlyProductID: return "lite_monthly"
-        case proMonthlyProductID: return "pro_monthly"
-        case maxMonthlyProductID: return "max_monthly"
-        default: return "lite_monthly"
-        }
-    }
 }
 
 extension Notification.Name {
