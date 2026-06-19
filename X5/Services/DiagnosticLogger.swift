@@ -28,7 +28,15 @@ enum DiagnosticLogger {
     static func log(event: String, extra: [String: String] = [:]) {
         var payload = baseInfo()
         payload["event"] = event
-        for (k, v) in extra { payload[k] = v }
+        if !extra.isEmpty {
+            // app_diagnostics has a fixed schema. Store ad-hoc fields in
+            // summary so PostgREST does not reject diagnostics with unknown
+            // columns.
+            payload["summary"] = extra
+                .map { "\($0.key)=\($0.value)" }
+                .sorted()
+                .joined(separator: "; ")
+        }
         post(payload)
     }
 

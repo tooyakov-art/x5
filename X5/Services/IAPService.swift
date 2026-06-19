@@ -9,6 +9,16 @@ final class IAPService: ObservableObject {
     nonisolated static let verifiedMonthlyProductID = "com.x5studio.app.verified.monthly"
     nonisolated static let monthlyProductID = proMonthlyProductID
     nonisolated static let monthlyProductIDs = [liteMonthlyProductID, proMonthlyProductID, maxMonthlyProductID]
+    private nonisolated static let legacyMonthlyProductIDs = [
+        "x5_lite_monthly",
+        "x5_pro_monthly",
+        "x5_max_monthly"
+    ]
+    private nonisolated static let recognizedMonthlyProductIDs = monthlyProductIDs + legacyMonthlyProductIDs
+    private nonisolated static let recognizedVerifiedProductIDs = [
+        verifiedMonthlyProductID,
+        "x5_verified_monthly"
+    ]
     nonisolated static let allProductIDs = monthlyProductIDs + [verifiedMonthlyProductID]
 
     nonisolated static let verifiedDisplayPrice = "5000 ₸"
@@ -31,17 +41,11 @@ final class IAPService: ObservableObject {
 
         var shouldFinishTransaction: Bool {
             switch self {
-            case .applied, .skipped: return true
-            case .failed: return false
+            case .applied: return true
+            case .skipped, .failed: return false
             }
         }
 
-        var isSuccessOrSkipped: Bool {
-            switch self {
-            case .applied, .skipped: return true
-            case .failed: return false
-            }
-        }
     }
 
     private enum EntitlementClaimResult: Equatable {
@@ -70,9 +74,15 @@ final class IAPService: ObservableObject {
         do {
             let loaded = try await Product.products(for: Self.allProductIDs)
             products = Dictionary(uniqueKeysWithValues: loaded.map { ($0.id, $0) })
+            DiagnosticLogger.log(event: "iap_products_loaded", extra: [
+                "ids": loaded.map(\.id).sorted().joined(separator: ",")
+            ])
             await syncCurrentEntitlements(source: "load")
         } catch {
             lastError = error.localizedDescription
+            DiagnosticLogger.log(event: "iap_products_failed", extra: [
+                "error": String(error.localizedDescription.prefix(120))
+            ])
         }
     }
 
@@ -91,9 +101,15 @@ final class IAPService: ObservableObject {
     }
 
     func purchase(productID: String) async -> Bool {
-        guard let product = products[productID] else { return false }
+        DiagnosticLogger.log(event: "iap_purchase_start", extra: ["product": productID])
+        guard let product = products[productID] else {
+            lastError = "Тариф сейчас недоступен. Перезапусти приложение и попробуй снова."
+            DiagnosticLogger.log(event: "iap_purchase_product_missing", extra: ["product": productID])
+            return false
+        }
         guard let appUserToken = currentUserToken() else {
             lastError = LocalizationService.shared.t("iap_signin_first")
+            DiagnosticLogger.log(event: "iap_purchase_missing_user", extra: ["product": productID])
             return false
         }
         isPurchasing = true
@@ -105,36 +121,48 @@ final class IAPService: ObservableObject {
             switch result {
             case .success(let verification):
                 if case .verified(let transaction) = verification {
+                    DiagnosticLogger.log(event: "iap_purchase_verified", extra: [
+                        "requested_product": productID,
+                        "transaction_product": transaction.productID
+                    ])
                     let applyResult: EntitlementApplyResult
-                    if Self.monthlyProductIDs.contains(transaction.productID) {
+                    if Self.recognizedMonthlyProductIDs.contains(transaction.productID) {
                         applyResult = await applySubscriptionEntitlement(
                             transaction: transaction,
                             grantCredits: true,
                             source: "purchase"
                         )
-                    } else if transaction.productID == Self.verifiedMonthlyProductID {
+                    } else if Self.recognizedVerifiedProductIDs.contains(transaction.productID) {
                         applyResult = await applyVerifiedEntitlement(transaction: transaction, source: "purchase")
                     } else {
-                        applyResult = .skipped
+                        handleUnknownProduct(transaction: transaction, requestedProductID: productID, source: "purchase")
+                        applyResult = .failed
                     }
                     if applyResult.shouldFinishTransaction {
                         await transaction.finish()
                     }
-                    return applyResult.isSuccessOrSkipped
+                    return applyResult == .applied
                 } else {
                     lastError = "Purchase failed verification"
+                    DiagnosticLogger.log(event: "iap_purchase_unverified", extra: ["product": productID])
                     return false
                 }
             case .userCancelled:
                 return false
             case .pending:
                 lastError = "Purchase pending"
+                DiagnosticLogger.log(event: "iap_purchase_pending", extra: ["product": productID])
                 return false
             @unknown default:
+                DiagnosticLogger.log(event: "iap_purchase_unknown_result", extra: ["product": productID])
                 return false
             }
         } catch {
             lastError = error.localizedDescription
+            DiagnosticLogger.log(event: "iap_purchase_error", extra: [
+                "product": productID,
+                "error": String(error.localizedDescription.prefix(120))
+            ])
             return false
         }
     }
@@ -153,16 +181,17 @@ final class IAPService: ObservableObject {
             for await update in Transaction.updates {
                 if case .verified(let transaction) = update {
                     let applyResult: EntitlementApplyResult
-                    if Self.monthlyProductIDs.contains(transaction.productID) {
+                    if Self.recognizedMonthlyProductIDs.contains(transaction.productID) {
                         applyResult = await self?.applySubscriptionEntitlement(
                             transaction: transaction,
                             grantCredits: true,
                             source: "update"
                         ) ?? .failed
-                    } else if transaction.productID == Self.verifiedMonthlyProductID {
+                    } else if Self.recognizedVerifiedProductIDs.contains(transaction.productID) {
                         applyResult = await self?.applyVerifiedEntitlement(transaction: transaction, source: "update") ?? .failed
                     } else {
-                        applyResult = .skipped
+                        await self?.handleUnknownProduct(transaction: transaction, requestedProductID: nil, source: "update")
+                        applyResult = .failed
                     }
                     if applyResult.shouldFinishTransaction {
                         await transaction.finish()
@@ -175,15 +204,33 @@ final class IAPService: ObservableObject {
     private func syncCurrentEntitlements(source: String) async {
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else { continue }
-            if Self.monthlyProductIDs.contains(transaction.productID) {
+            if Self.recognizedMonthlyProductIDs.contains(transaction.productID) {
                 _ = await applySubscriptionEntitlement(
                     transaction: transaction,
                     grantCredits: true,
                     source: source
                 )
-            } else if transaction.productID == Self.verifiedMonthlyProductID {
+            } else if Self.recognizedVerifiedProductIDs.contains(transaction.productID) {
                 _ = await applyVerifiedEntitlement(transaction: transaction, source: source)
+            } else {
+                handleUnknownProduct(transaction: transaction, requestedProductID: nil, source: source)
             }
+        }
+    }
+
+    private func handleUnknownProduct(
+        transaction: StoreKit.Transaction,
+        requestedProductID: String?,
+        source: String
+    ) {
+        DiagnosticLogger.log(event: "iap_unknown_product", extra: [
+            "source": source,
+            "requested_product": requestedProductID ?? "",
+            "transaction_product": transaction.productID,
+            "original_id": String(transaction.originalID)
+        ])
+        if source == "purchase" {
+            lastError = "Покупка прошла в Apple, но приложение не распознало тариф. Обнови приложение и нажми «Восстановить покупки»."
         }
     }
 
@@ -236,6 +283,9 @@ final class IAPService: ObservableObject {
                     "source": source,
                     "product": transaction.productID
                 ])
+                if source == "purchase" {
+                    lastError = "Эта подписка уже привязана к другому аккаунту X5."
+                }
                 return .skipped
             }
         }
@@ -284,6 +334,9 @@ final class IAPService: ObservableObject {
            let buyerId = UUID(uuidString: userId),
            token != buyerId {
             DiagnosticLogger.log(event: "iap_verified_token_mismatch", extra: ["source": source])
+            if source == "purchase" {
+                lastError = "Эта галочка уже привязана к другому аккаунту X5."
+            }
             return .skipped
         }
 

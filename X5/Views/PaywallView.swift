@@ -10,6 +10,7 @@ struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showSuccess = false
+    @State private var successMessage = ""
     @State private var selectedPlan: PaywallPlan = .pro
 
     var body: some View {
@@ -70,12 +71,22 @@ struct PaywallView: View {
                 VStack(spacing: 10) {
                     Button {
                         Task {
+                            let creditsBefore = currentUser.profile?.credits ?? 0
                             let ok = await iap.purchase(productID: selectedPlan.productID)
                             if ok {
                                 if let uid = auth.userId, let token = auth.accessToken {
                                     await currentUser.load(userId: uid, accessToken: token)
                                 }
-                                showSuccess = true
+                                let creditsAfter = currentUser.profile?.credits ?? creditsBefore
+                                if creditsAfter > creditsBefore {
+                                    successMessage = "\(creditsAfter - creditsBefore) кредитов начислено на твой баланс."
+                                    showSuccess = true
+                                } else if currentUser.profile?.isPro == true {
+                                    successMessage = "Тариф активен. Кредиты по этой покупке уже были начислены ранее."
+                                    showSuccess = true
+                                } else {
+                                    iap.lastError = "Покупка прошла, но баланс не обновился. Нажми «Восстановить покупки» после обновления."
+                                }
                             }
                         }
                     } label: {
@@ -163,7 +174,7 @@ struct PaywallView: View {
         .alert(loc.t("paywall_welcome_pro"), isPresented: $showSuccess) {
             Button(loc.t("paywall_continue")) { dismiss() }
         } message: {
-            Text(selectedPlan.successCreditsText)
+            Text(successMessage.isEmpty ? selectedPlan.successCreditsText : successMessage)
         }
     }
 
