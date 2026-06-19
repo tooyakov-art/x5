@@ -2,7 +2,7 @@
 
 on:
   push:
-    branches: [main, codex/x5-cleanup-from-restore-clean]
+    branches: [main, codex/x5-cleanup-from-restore-clean, codex/pr-40-testflight]
   workflow_dispatch:
 
 jobs:
