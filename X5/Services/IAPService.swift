@@ -50,13 +50,14 @@ final class IAPService: ObservableObject {
 
     private enum EntitlementClaimResult: Equatable {
         case claimed
+        case transferred
         case alreadyOwned
         case ownedByOther
         case failed
 
         var belongsToCurrentUser: Bool {
             switch self {
-            case .claimed, .alreadyOwned: return true
+            case .claimed, .transferred, .alreadyOwned: return true
             case .ownedByOther, .failed: return false
             }
         }
@@ -266,27 +267,18 @@ final class IAPService: ObservableObject {
             return .failed
         }
 
-        // Cross-account guard: an Apple ID can be shared between several X5
-        // accounts on the same device. StoreKit returns the active
-        // subscription regardless of which X5 user is currently signed in,
-        // so without this gate signing into a second X5 account would
-        // silently mark it Pro and credit paid credits for free (build 43 bug).
-        //
-        // We bind appAccountToken at purchase time to the buyer's user id;
-        // here we ignore any transaction whose token doesn't match. Old
-        // pre-fix transactions have a nil token — those we let through so
-        // legit existing subscribers don't lose their Pro on upgrade.
+        // Apple keeps an active subscription on the Apple ID even when the
+        // user deletes their X5 account. A stale appAccountToken is still a
+        // useful signal, but the server must decide whether the purchase can
+        // be transferred from a deleted account or is owned by a live one.
         if let token = transaction.appAccountToken,
            let buyerId = UUID(uuidString: userId) {
             if token != buyerId {
                 DiagnosticLogger.log(event: "iap_subscription_token_mismatch", extra: [
                     "source": source,
-                    "product": transaction.productID
+                    "product": transaction.productID,
+                    "user_id": userId
                 ])
-                if source == "purchase" {
-                    lastError = "Эта подписка уже привязана к другому аккаунту X5."
-                }
-                return .skipped
             }
         }
 
@@ -299,6 +291,8 @@ final class IAPService: ObservableObject {
         switch claimResult {
         case .claimed:
             claimStatus = "claimed"
+        case .transferred:
+            claimStatus = "transferred"
         case .alreadyOwned:
             claimStatus = "already_owned"
         case .ownedByOther:
@@ -334,10 +328,6 @@ final class IAPService: ObservableObject {
            let buyerId = UUID(uuidString: userId),
            token != buyerId {
             DiagnosticLogger.log(event: "iap_verified_token_mismatch", extra: ["source": source])
-            if source == "purchase" {
-                lastError = "Эта галочка уже привязана к другому аккаунту X5."
-            }
-            return .skipped
         }
 
         let claimResult = await claimIAPEntitlement(
@@ -346,7 +336,7 @@ final class IAPService: ObservableObject {
             source: source
         )
         switch claimResult {
-        case .claimed, .alreadyOwned:
+        case .claimed, .transferred, .alreadyOwned:
             break
         case .ownedByOther:
             return .skipped
@@ -413,11 +403,15 @@ final class IAPService: ObservableObject {
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+        var payload: [String: Any] = [
             "p_original_transaction_id": String(transaction.originalID),
             "p_product_id": transaction.productID,
             "p_platform": "ios"
-        ])
+        ]
+        if let appAccountToken = transaction.appAccountToken?.uuidString {
+            payload["p_app_account_token"] = appAccountToken
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -436,6 +430,8 @@ final class IAPService: ObservableObject {
             switch raw {
             case "claimed":
                 return .claimed
+            case "transferred":
+                return .transferred
             case "already_owned":
                 return .alreadyOwned
             case "owned_by_other":
@@ -443,7 +439,7 @@ final class IAPService: ObservableObject {
                     "source": source,
                     "product": transaction.productID
                 ])
-                lastError = "This purchase is already linked to another X5 account."
+                lastError = "Эта покупка уже привязана к другому активному аккаунту X5."
                 return .ownedByOther
             default:
                 DiagnosticLogger.log(event: "iap_claim_unknown_response", extra: [

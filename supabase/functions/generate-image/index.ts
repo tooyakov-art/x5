@@ -24,6 +24,7 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
+  const requestId = crypto.randomUUID();
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -51,8 +52,35 @@ Deno.serve(async (req) => {
     return json({ error: "invalid_json" }, 400);
   }
 
-  const providerKey = getProviderKey(normalized.provider);
+  let generationAttempt = {
+    provider: normalized.provider,
+    model: normalized.model,
+  };
+  let providerKey = getProviderKey(generationAttempt.provider);
   if (!providerKey) {
+    const fallback = fallbackAttempt(generationAttempt.provider);
+    const fallbackKey = fallback ? getProviderKey(fallback.provider) : undefined;
+    if (fallback && fallbackKey) {
+      await logDiagnostic("image_generation_provider_fallback", {
+        request_id: requestId,
+        user_id: user.id,
+        reason: "primary_key_missing",
+        from_provider: generationAttempt.provider,
+        from_model: generationAttempt.model,
+        to_provider: fallback.provider,
+        to_model: fallback.model,
+      });
+      generationAttempt = fallback;
+      providerKey = fallbackKey;
+    }
+  }
+  if (!providerKey) {
+    await logDiagnostic("image_generation_provider_not_configured", {
+      request_id: requestId,
+      user_id: user.id,
+      provider: normalized.provider,
+      model: normalized.model,
+    });
     return json({
       error: "provider_not_configured",
       provider: normalized.provider,
@@ -64,6 +92,15 @@ Deno.serve(async (req) => {
 
   const spent = await spendCredits(user.id, normalized.costCredits);
   if (!spent.ok) {
+    await logDiagnostic("image_generation_credit_failed", {
+      request_id: requestId,
+      user_id: user.id,
+      provider: normalized.provider,
+      model: normalized.model,
+      error: spent.error,
+      credits_required: normalized.costCredits,
+      credits_remaining: spent.credits ?? 0,
+    });
     return json(
       {
         error: spent.error,
@@ -80,31 +117,21 @@ Deno.serve(async (req) => {
       normalized.category,
       normalized.images.length > 0,
     );
-    const imageBase64s =
-      normalized.provider === "google"
-        ? await generateWithGoogle(
-          providerKey,
-          finalPrompt,
-          normalized.model,
-          normalized.images,
-          normalized.quantity,
-          normalized.size,
-        )
-        : await generateWithGPT(
-          providerKey,
-          finalPrompt,
-          normalized.model,
-          normalized.images,
-          normalized.quantity,
-          normalized.size,
-        );
+    const imageBase64s = await generateWithFallback(
+      requestId,
+      user.id,
+      providerKey,
+      finalPrompt,
+      generationAttempt,
+      normalized,
+    );
 
     return json({
       imageBase64: imageBase64s[0],
       imageBase64s,
       prompt: normalized.prompt,
-      provider: normalized.provider,
-      model: normalized.model,
+      provider: generationAttempt.provider,
+      model: generationAttempt.model,
       category: normalized.category.id,
       size: normalized.size.id,
       quantity: imageBase64s.length,
@@ -113,10 +140,17 @@ Deno.serve(async (req) => {
     }, 200);
   } catch (error) {
     await refundCredits(user.id, normalized.costCredits);
+    await logDiagnostic("image_generation_failed", {
+      request_id: requestId,
+      user_id: user.id,
+      provider: normalized.provider,
+      model: normalized.model,
+      message: errorMessage(error),
+    });
     return json({
       error: "provider_error",
       provider: normalized.provider,
-      message: error instanceof Error ? error.message : "Image generation failed",
+      message: errorMessage(error),
     }, 502);
   }
 });
@@ -126,6 +160,107 @@ function getProviderKey(provider: string): string | undefined {
     return Deno.env.get("GOOGLE_API_KEY") || Deno.env.get("GEMINI_API_KEY") || undefined;
   }
   return Deno.env.get("OPENAI_API_KEY") || undefined;
+}
+
+function fallbackAttempt(provider: string): { provider: string; model: string } | null {
+  if (provider === "google") {
+    return { provider: "gpt", model: Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-1" };
+  }
+  return { provider: "google", model: Deno.env.get("GOOGLE_IMAGE_MODEL") || "gemini-2.5-flash-image" };
+}
+
+async function generateWithFallback(
+  requestId: string,
+  userId: string,
+  providerKey: string,
+  finalPrompt: string,
+  generationAttempt: { provider: string; model: string },
+  normalized: any,
+): Promise<string[]> {
+  try {
+    const imageBase64s = await generateWithProvider(
+      providerKey,
+      finalPrompt,
+      generationAttempt.provider,
+      generationAttempt.model,
+      normalized.images,
+      normalized.quantity,
+      normalized.size,
+    );
+    await logDiagnostic("image_generation_success", {
+      request_id: requestId,
+      user_id: userId,
+      provider: generationAttempt.provider,
+      model: generationAttempt.model,
+      quantity: imageBase64s.length,
+    });
+    return imageBase64s;
+  } catch (primaryError) {
+    await logDiagnostic("image_generation_provider_error", {
+      request_id: requestId,
+      user_id: userId,
+      stage: "primary",
+      provider: generationAttempt.provider,
+      model: generationAttempt.model,
+      message: errorMessage(primaryError),
+    });
+
+    const fallback = fallbackAttempt(generationAttempt.provider);
+    const fallbackKey = fallback ? getProviderKey(fallback.provider) : undefined;
+    if (!fallback || !fallbackKey) {
+      throw primaryError;
+    }
+
+    try {
+      const imageBase64s = await generateWithProvider(
+        fallbackKey,
+        finalPrompt,
+        fallback.provider,
+        fallback.model,
+        normalized.images,
+        normalized.quantity,
+        normalized.size,
+      );
+      generationAttempt.provider = fallback.provider;
+      generationAttempt.model = fallback.model;
+      await logDiagnostic("image_generation_provider_fallback", {
+        request_id: requestId,
+        user_id: userId,
+        reason: "primary_failed",
+        from_provider: normalized.provider,
+        from_model: normalized.model,
+        to_provider: fallback.provider,
+        to_model: fallback.model,
+        quantity: imageBase64s.length,
+      });
+      return imageBase64s;
+    } catch (fallbackError) {
+      await logDiagnostic("image_generation_provider_error", {
+        request_id: requestId,
+        user_id: userId,
+        stage: "fallback",
+        provider: fallback.provider,
+        model: fallback.model,
+        message: errorMessage(fallbackError),
+      });
+      throw fallbackError;
+    }
+  }
+}
+
+function generateWithProvider(
+  apiKey: string,
+  finalPrompt: string,
+  provider: string,
+  model: string,
+  images: any[] = [],
+  quantity = 1,
+  size: any = {},
+): Promise<string[]> {
+  if (provider === "google") {
+    return generateWithGoogle(apiKey, finalPrompt, model, images, quantity, size);
+  }
+  return generateWithGPT(apiKey, finalPrompt, model, images, quantity, size);
 }
 
 async function generateWithGPT(
@@ -383,6 +518,44 @@ async function readCredits(userId: string): Promise<number | null> {
   if (!response.ok) return null;
   const rows = await response.json().catch(() => []);
   return Number(rows?.[0]?.credits ?? 0);
+}
+
+async function logDiagnostic(event: string, extra: Record<string, unknown> = {}): Promise<void> {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceKey) return;
+
+  const summary = Object.entries(extra)
+    .map(([key, value]) => `${key}=${String(value).slice(0, 220)}`)
+    .sort()
+    .join("; ")
+    .slice(0, 3000);
+
+  await fetch(`${supabaseUrl}/rest/v1/app_diagnostics`, {
+    method: "POST",
+    headers: {
+      "apikey": serviceKey,
+      "Authorization": `Bearer ${serviceKey}`,
+      "Content-Type": "application/json",
+      "Prefer": "return=minimal",
+    },
+    body: JSON.stringify({
+      build_number: "edge-generate-image",
+      app_version: "edge",
+      device_model: "supabase-edge",
+      locale: "server",
+      event,
+      summary,
+      ts: new Date().toISOString(),
+    }),
+  }).catch(() => {});
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return String(error.message || "Image generation failed").slice(0, 500);
+  }
+  return "Image generation failed";
 }
 
 function json(body: unknown, status = 200) {
