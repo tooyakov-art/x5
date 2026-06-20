@@ -57,7 +57,7 @@ struct HomeView: View {
             }
             .navigationDestination(isPresented: imageCategoryNavigationBinding) {
                 if let category = openImageCategory {
-                    ImageGeneratorView(category: category, provider: .gptImage2)
+                    ImageGeneratorView(category: category, provider: .gptImage)
                         .preferredColorScheme(.dark)
                 }
             }

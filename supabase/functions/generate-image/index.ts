@@ -15,6 +15,7 @@ import {
 
 const OPENAI_URL = "https://api.openai.com/v1/images/generations";
 const OPENAI_EDIT_URL = "https://api.openai.com/v1/images/edits";
+const OPENAI_MODEL = "gpt-image-1";
 const GOOGLE_MODEL = "gemini-3.1-flash-image-preview";
 
 const corsHeaders = {
@@ -164,7 +165,7 @@ function getProviderKey(provider: string): string | undefined {
 
 function fallbackAttempt(provider: string): { provider: string; model: string } | null {
   if (provider === "google") {
-    return { provider: "gpt", model: Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-1" };
+    return { provider: "gpt", model: Deno.env.get("OPENAI_IMAGE_MODEL") || OPENAI_MODEL };
   }
   return { provider: "google", model: Deno.env.get("GOOGLE_IMAGE_MODEL") || "gemini-2.5-flash-image" };
 }
@@ -286,7 +287,7 @@ async function generateWithGPT(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: model || Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-2",
+      model: model || Deno.env.get("OPENAI_IMAGE_MODEL") || OPENAI_MODEL,
       prompt: finalPrompt,
       size: size.openaiSize || "1024x1024",
       quality: "low",
@@ -308,7 +309,7 @@ async function generateWithGPT(
 
 async function editWithGPT(apiKey: string, finalPrompt: string, model: string, images: any[], size: any): Promise<string> {
   const form = new FormData();
-  form.append("model", model || Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-2");
+  form.append("model", model || Deno.env.get("OPENAI_IMAGE_MODEL") || OPENAI_MODEL);
   form.append("prompt", finalPrompt);
   form.append("size", size.openaiSize || "1024x1024");
   form.append("quality", "low");
@@ -553,9 +554,17 @@ async function logDiagnostic(event: string, extra: Record<string, unknown> = {})
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) {
-    return String(error.message || "Image generation failed").slice(0, 500);
+    return sanitizeProviderMessage(String(error.message || "Image generation failed")).slice(0, 500);
   }
   return "Image generation failed";
+}
+
+function sanitizeProviderMessage(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes("api_key") && lower.includes("suspended")) {
+    return "Google image provider is suspended. Use GPT Image while the Google key is replaced.";
+  }
+  return message.replace(/api_key:[A-Za-z0-9_-]+/g, "api_key:<redacted>");
 }
 
 function json(body: unknown, status = 200) {

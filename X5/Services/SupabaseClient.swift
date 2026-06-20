@@ -258,7 +258,7 @@ enum SupabaseError: LocalizedError {
         else { return nil }
 
         if let message = payload["message"] as? String, !message.isEmpty {
-            return message
+            return Self.sanitizedProviderMessage(message)
         }
 
         switch payload["error"] as? String {
@@ -275,5 +275,17 @@ enum SupabaseError: LocalizedError {
         default:
             return nil
         }
+    }
+
+    private static func sanitizedProviderMessage(_ message: String) -> String {
+        let lowercased = message.lowercased()
+        if lowercased.contains("api_key"), lowercased.contains("suspended") {
+            return "Google-генерация временно отключена. Обнови приложение и используй GPT Image."
+        }
+        return message.replacingOccurrences(
+            of: #"api_key:[A-Za-z0-9_-]+"#,
+            with: "api_key:<hidden>",
+            options: .regularExpression
+        )
     }
 }

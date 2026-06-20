@@ -29,10 +29,10 @@ struct ImageGeneratorView: View {
     @StateObject private var gallery = GeneratedGalleryStore()
     @FocusState private var promptFocused: Bool
 
-    init(category: ImageGenerationCategory = ImageGenerationCatalog.custom, provider: ImageGenerationProvider = .gptImage2) {
+    init(category: ImageGenerationCategory = ImageGenerationCatalog.custom, provider: ImageGenerationProvider = .gptImage) {
         self.category = category
         _prompt = State(initialValue: category.examplePrompt)
-        _selectedProvider = State(initialValue: provider)
+        _selectedProvider = State(initialValue: provider.isAvailable ? provider : .gptImage)
     }
 
     var body: some View {
