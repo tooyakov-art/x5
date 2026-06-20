@@ -2,7 +2,7 @@ name: ASC create new review submission and submit
 
 # Old submission is in UNRESOLVED_ISSUES (Apple-rejected build 48), so we
 # can't reuse it. This workflow creates a fresh ReviewSubmission, attaches
-# the current app version + the X5 Pro Monthly subscription as items, and
+# the current app version + the Xfive Pro Monthly subscription as items, and
 # flips submitted=true. Replaces fastlane's submit_for_review which fails
 # because Spaceship doesn't see open submissions correctly.
 on:

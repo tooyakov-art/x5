@@ -17,7 +17,7 @@ settings:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: F8LA8PC4U6
     MARKETING_VERSION: "1.1.4"
-    CURRENT_PROJECT_VERSION: "174"
+    CURRENT_PROJECT_VERSION: "175"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
 targets:
@@ -40,7 +40,7 @@ targets:
     info:
       path: X5/Info.plist
       properties:
-        CFBundleDisplayName: X5
+        CFBundleDisplayName: Xfive marketing
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDevelopmentRegion: en
@@ -64,7 +64,7 @@ targets:
           - UIInterfaceOrientationPortrait
         UIUserInterfaceStyle: Dark
         ITSAppUsesNonExemptEncryption: false
-        NSFaceIDUsageDescription: "Used to lock X5 вЂ” only the device owner can open the app."
+        NSFaceIDUsageDescription: "Used to lock Xfive marketing — only the device owner can open the app."
         NSMicrophoneUsageDescription: "Microphone access is needed to record voice messages in chats."
         NSPhotoLibraryUsageDescription: "Photo library access is needed to attach photos in chats and portfolio."
         NSPhotoLibraryAddUsageDescription: "Photo library access is needed to save generated images."
@@ -80,7 +80,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.x5studio.app
-        PRODUCT_NAME: X5
+        PRODUCT_NAME: Xfive marketing
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor

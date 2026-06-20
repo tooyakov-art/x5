@@ -43,49 +43,49 @@ jobs:
           PRODUCTS = [
               {
                   "key": "lite",
-                  "name": "X5 Lite Monthly",
+                  "name": "Xfive Lite Monthly",
                   "product_id": "com.x5studio.app.lite.monthly",
-                  "display_name": "X5 Lite",
-                  "description": "1000 credits and X5 creator tools.",
+                  "display_name": "Xfive Lite",
+                  "description": "1000 credits and Xfive marketing creator tools.",
                   "price_kaz": Decimal("1000"),
-                  "group_reference": "X5 Subscriptions",
-                  "group_locale_name": "X5 subscriptions",
+                  "group_reference": "Xfive Subscriptions",
+                  "group_locale_name": "Xfive subscriptions",
                   "group_level": 3,
                   "review_note": "Lite monthly plan shown in the app paywall. User gets paid access and 1000 credits.",
               },
               {
                   "key": "pro",
-                  "name": "X5 Pro Monthly",
+                  "name": "Xfive Pro Monthly",
                   "product_id": "com.x5studio.app.pro.monthly",
-                  "display_name": "X5 Pro",
-                  "description": "2000 credits and all X5 tools.",
+                  "display_name": "Xfive Pro",
+                  "description": "2000 credits and all Xfive marketing tools.",
                   "price_kaz": Decimal("2000"),
-                  "group_reference": "X5 Subscriptions",
-                  "group_locale_name": "X5 subscriptions",
+                  "group_reference": "Xfive Subscriptions",
+                  "group_locale_name": "Xfive subscriptions",
                   "group_level": 2,
                   "review_note": "Pro monthly plan shown in the app paywall. User gets full paid access and 2000 credits.",
               },
               {
                   "key": "max",
-                  "name": "X5 Max Monthly",
+                  "name": "Xfive Max Monthly",
                   "product_id": "com.x5studio.app.max.monthly",
-                  "display_name": "X5 Max",
-                  "description": "5000 credits, all X5 tools, and top Hub priority.",
+                  "display_name": "Xfive Max",
+                  "description": "5000 credits, all Xfive marketing tools, and top Hub priority.",
                   "price_kaz": Decimal("5000"),
-                  "group_reference": "X5 Subscriptions",
-                  "group_locale_name": "X5 subscriptions",
+                  "group_reference": "Xfive Subscriptions",
+                  "group_locale_name": "Xfive subscriptions",
                   "group_level": 1,
                   "review_note": "Max monthly plan shown in the app paywall. User gets full paid access and 5000 credits.",
               },
               {
                   "key": "verified",
-                  "name": "X5 Verified Badge Monthly",
+                  "name": "Xfive Verified Badge Monthly",
                   "product_id": "com.x5studio.app.verified.monthly",
-                  "display_name": "X5 Verified Badge",
+                  "display_name": "Xfive Verified Badge",
                   "description": "Blue verified badge next to the creator name.",
                   "price_kaz": Decimal("5000"),
-                  "group_reference": "X5 Verified Badge",
-                  "group_locale_name": "X5 verified badge",
+                  "group_reference": "Xfive Verified Badge",
+                  "group_locale_name": "Xfive verified badge",
                   "group_level": 1,
                   "review_note": "Separate monthly subscription from Profile -> Get verified. User gets a blue verified badge and Hub trust signal.",
               },
@@ -279,7 +279,7 @@ jobs:
           existing_subs = []
           for group_ref in app_subscription_group_refs():
               group = api("GET", f"/subscriptionGroups/{group_ref['id']}")["data"]
-              reference_name = group.get("attributes", {}).get("referenceName") or "X5 subscriptions"
+              reference_name = group.get("attributes", {}).get("referenceName") or "Xfive subscriptions"
               ensure_existing_group_localization(group_ref["id"], reference_name)
               existing_subs.extend(list_all(f"/subscriptionGroups/{group_ref['id']}/subscriptions?limit=200"))
           by_product = {sub["attributes"].get("productId"): sub for sub in existing_subs}

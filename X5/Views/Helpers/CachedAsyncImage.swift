@@ -8,7 +8,7 @@ import UIKit
 ///
 /// Usage mirrors AsyncImage but with closures for loaded image / placeholder
 /// (no `phase.error`-style enum — we fall through to the placeholder on any
-/// failure, since views in X5 always render a fallback graphic).
+/// failure, since views in Xfive marketing always render a fallback graphic).
 struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     let url: URL?
     @ViewBuilder let content: (Image) -> Content

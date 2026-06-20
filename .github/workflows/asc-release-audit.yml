@@ -43,10 +43,10 @@ jobs:
 
           BASE = "https://api.appstoreconnect.apple.com/v1"
           EXPECTED_PRODUCTS = {
-              "com.x5studio.app.lite.monthly": "X5 Lite Monthly",
-              "com.x5studio.app.pro.monthly": "X5 Pro Monthly",
-              "com.x5studio.app.max.monthly": "X5 Max Monthly",
-              "com.x5studio.app.verified.monthly": "X5 Verified Badge Monthly",
+              "com.x5studio.app.lite.monthly": "Xfive Lite Monthly",
+              "com.x5studio.app.pro.monthly": "Xfive Pro Monthly",
+              "com.x5studio.app.max.monthly": "Xfive Max Monthly",
+              "com.x5studio.app.verified.monthly": "Xfive Verified Badge Monthly",
           }
           READY_VERSION_STATES = {
               "PREPARE_FOR_SUBMISSION",

@@ -266,7 +266,7 @@ struct OnboardingView: View {
     private var hasRealName: Bool {
         let value = nameTrimmed
         let lower = value.lowercased()
-        return value.count >= 2 && lower != "user" && lower != "x5"
+        return value.count >= 2 && !["user", "x5", "xfive", "xfive marketing"].contains(lower)
     }
 
     private var isValidNickname: Bool {
@@ -294,7 +294,7 @@ struct OnboardingView: View {
     private func populateProfileFields() {
         guard let p = currentUser.profile else { return }
         let profileName = (p.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if !profileName.isEmpty && profileName.lowercased() != "user" && profileName.lowercased() != "x5" {
+        if !profileName.isEmpty && !["user", "x5", "xfive", "xfive marketing"].contains(profileName.lowercased()) {
             name = profileName
         }
         nickname = Self.cleanNickname((p.nickname ?? "").trimmingCharacters(in: .whitespacesAndNewlines))

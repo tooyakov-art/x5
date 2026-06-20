@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       subscription_id:
-        description: "Subscription product Apple ID (e.g. 6765650866 for X5 Pro Monthly)"
+        description: "Subscription product Apple ID (e.g. 6765650866 for Xfive Pro Monthly)"
         required: true
         default: "6765650866"
       screenshot_path:

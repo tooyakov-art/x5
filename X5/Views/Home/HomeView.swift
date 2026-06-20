@@ -88,7 +88,7 @@ struct HomeView: View {
         [
             HeroSlide(
                 id: "studio",
-                eyebrow: "X5 AI Studio",
+                eyebrow: "Xfive AI Studio",
                 title: "Генерируй креативы для бизнеса",
                 subtitle: "Картинки, видео, сторис, карточки товара и трендовые форматы",
                 assetName: "HomeUtilityVideo",
@@ -306,7 +306,7 @@ struct HomeView: View {
         HomeTool(
             id: id,
             title: title,
-            subtitle: "Скоро добавим полный запуск внутри X5.",
+            subtitle: "Скоро добавим полный запуск внутри Xfive marketing.",
             icon: icon,
             videoFile: nil,
             gradientStart: Color.accentColor.opacity(0.34),

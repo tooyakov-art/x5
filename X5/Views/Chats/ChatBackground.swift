@@ -11,7 +11,7 @@ import SwiftUI
 /// Pure SwiftUI Canvas, no PNG, scales to any device, dark-mode native.
 struct ChatBackground: View {
     /// Symbols rotated through both pattern passes. Light, friendly,
-    /// chat / creative motifs that match X5.
+    /// chat / creative motifs that match Xfive marketing.
     private let glyphs: [String] = [
         "✦", "✧", "✩", "❀", "❁", "❃", "❋",
         "♡", "✿", "❄︎", "✺", "❂", "✻", "❉", "✱"

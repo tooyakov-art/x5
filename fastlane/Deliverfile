@@ -4,7 +4,7 @@ team_id "F8LA8PC4U6"
 # Push the rewritten metadata in fastlane/metadata/* up to ASC.
 skip_metadata false
 
-# Push iPhone 6.9 screenshots captured against the X5 marketplace UI.
+# Push iPhone 6.9 screenshots captured against the Xfive marketing marketplace UI.
 # Keep only review-safe screens that match the submitted build.
 skip_screenshots false
 

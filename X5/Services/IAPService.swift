@@ -92,10 +92,10 @@ final class IAPService: ObservableObject {
     }
 
     /// Initiates purchase flow. On verified transaction, upgrades the local profile and credits.
-    /// The current X5 user id is bound to the StoreKit transaction via
+    /// The current Xfive marketing user id is bound to the StoreKit transaction via
     /// `appAccountToken` so subsequent restore / Transaction.updates events
     /// can verify the entitlement belongs to *this* user — preventing the
-    /// "log in to a second X5 account on the same Apple ID and inherit Pro
+    /// "log in to a second Xfive marketing account on the same Apple ID and inherit Pro
     /// for free" exploit Diaz hit in build 43.
     func purchaseMonthly() async -> Bool {
         await purchase(productID: Self.proMonthlyProductID)
@@ -235,7 +235,7 @@ final class IAPService: ObservableObject {
         }
     }
 
-    /// Maps the signed-in X5 user id (Supabase UUID string) into the UUID
+    /// Maps the signed-in Xfive marketing user id (Supabase UUID string) into the UUID
     /// type StoreKit's `appAccountToken` requires. Returns nil if no user is
     /// signed in OR the stored id can't be parsed as a UUID — in either case
     /// purchase is blocked rather than silently binding the entitlement to
@@ -268,7 +268,7 @@ final class IAPService: ObservableObject {
         }
 
         // Apple keeps an active subscription on the Apple ID even when the
-        // user deletes their X5 account. A stale appAccountToken is still a
+        // user deletes their Xfive marketing account. A stale appAccountToken is still a
         // useful signal, but the server must decide whether the purchase can
         // be transferred from a deleted account or is owned by a live one.
         if let token = transaction.appAccountToken,
@@ -439,7 +439,7 @@ final class IAPService: ObservableObject {
                     "source": source,
                     "product": transaction.productID
                 ])
-                lastError = "Эта покупка уже привязана к другому активному аккаунту X5."
+                lastError = "Эта покупка уже привязана к другому активному аккаунту Xfive marketing."
                 return .ownedByOther
             default:
                 DiagnosticLogger.log(event: "iap_claim_unknown_response", extra: [

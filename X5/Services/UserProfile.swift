@@ -61,13 +61,13 @@ struct UserProfile: Codable, Equatable, Identifiable {
             let emailName = String(prefix).replacingOccurrences(of: ".", with: " ").capitalized
             if let n = Self.cleanDisplayName(emailName) { return n }
         }
-        return "X5"
+        return "Xfive marketing"
     }
 
     private static func cleanDisplayName(_ raw: String?) -> String? {
         let value = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = value.lowercased()
-        guard !value.isEmpty, lower != "user", lower != "x5" else { return nil }
+        guard !value.isEmpty, !["user", "x5", "xfive", "xfive marketing"].contains(lower) else { return nil }
         return value
     }
 

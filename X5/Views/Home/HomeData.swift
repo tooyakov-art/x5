@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 /// Storage prefix for App Store-safe home videos.
-/// Only X5-owned Kling AI exports should be placed here.
+/// Only app-owned Kling AI exports should be placed here.
 let X5_HOME_VIDEO_BASE = "https://afwznqjpshybmqhlewmy.supabase.co/storage/v1/object/public/videos/home"
 
 struct HomeBanner: Identifiable, Hashable {

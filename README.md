@@ -1,4 +1,4 @@
-# X5
+# Xfive marketing
 
 Native iOS app — AI caption writer for marketers. SwiftUI, single screen, zero third-party dependencies.
 
@@ -7,11 +7,11 @@ Built specifically to **maximize App Store approval probability** under a fresh 
 ## Status
 
 - **Bundle ID:** `com.x5studio.app` (NEW, no rejection history)
-- **App Store name:** `X5`
+- **App Store name:** `Xfive marketing`
 - **Version:** 1.0.0 (build 1)
-- **Apple Team:** F8LA8PC4U6 (same as X5 Marketing)
+- **Apple Team:** F8LA8PC4U6 (same as Xfive marketing)
 - **Stack:** Swift 5.9 + SwiftUI, iOS 16+, no external libraries
-- **Backend:** Reuses X5 Supabase (`afwznqjpshybmqhlewmy`) only for Apple Sign-In + delete-account RPC
+- **Backend:** Reuses Xfive marketing Supabase (`afwznqjpshybmqhlewmy`) only for Apple Sign-In + delete-account RPC
 - **Build:** GitHub Actions macOS runner (free tier)
 
 ## What's inside
@@ -24,9 +24,9 @@ Built specifically to **maximize App Store approval probability** under a fresh 
 - **Delete account** calls `public.delete_own_account()` Supabase RPC
 - **Privacy Manifest** declares 4 standard Apple-required API reasons; no tracking, no third-party SDKs
 
-## Why this passes review (vs X5 Marketing)
+## Why this passes review (vs Xfive marketing)
 
-| Past X5 reject | Closed in X5 |
+| Past Xfive marketing reject | Closed in Xfive marketing |
 |---|---|
 | 5.2.3 Audio/Video Download | No media features at all |
 | 3.1.1 External Payments | No payments — fully free |

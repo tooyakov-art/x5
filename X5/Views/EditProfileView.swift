@@ -127,7 +127,7 @@ struct EditProfileView: View {
     private var isValid: Bool {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanNickname = nickname.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if cleanName.count < 2 || cleanName.lowercased() == "user" || cleanName.lowercased() == "x5" { return false }
+        if cleanName.count < 2 || ["user", "x5", "xfive", "xfive marketing"].contains(cleanName.lowercased()) { return false }
         if cleanNickname.range(of: "^[a-z0-9_]{3,}$", options: .regularExpression) == nil { return false }
         return bio.count <= 500
     }

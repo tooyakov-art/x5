@@ -1,6 +1,6 @@
 name: ASC attach TestFlight build to version
 
-# Resolves the most recent processed TestFlight build for X5 Creators
+# Resolves the most recent processed TestFlight build for Xfive marketing Creators
 # and attaches it to the editable AppStoreVersion (1.1.0). Required
 # before Submit for Review — Apple needs to know which binary the
 # reviewer should download.

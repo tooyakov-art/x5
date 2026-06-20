@@ -1,6 +1,6 @@
 import Foundation
 
-/// Shared compile-time configuration for X5. Replaces 3+ duplicates of the
+/// Shared compile-time configuration for Xfive marketing. Replaces 3+ duplicates of the
 /// same Supabase URL/anonKey scattered across IAPService, UserProfileView,
 /// OnboardingView. Single source of truth so future credential rotation
 /// is a one-line change.
