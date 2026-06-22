@@ -729,7 +729,7 @@ private struct PortfolioInstagramPostPage: View {
                     Image(systemName: "person.crop.circle.fill")
                         .foregroundColor(.white.opacity(0.5))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(comment.userName?.isEmpty == false ? comment.userName! : "X5")
+                        Text(comment.userName?.isEmpty == false ? comment.userName! : "Xfive marketing")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(.white.opacity(0.65))
                         Text(comment.text)
@@ -737,7 +737,7 @@ private struct PortfolioInstagramPostPage: View {
                             .foregroundColor(.white)
                         HStack(spacing: 12) {
                             Button("Ответить") {
-                                commentDraft = "@\(comment.userName?.isEmpty == false ? comment.userName! : "x5") "
+                                commentDraft = "@\(comment.userName?.isEmpty == false ? comment.userName! : "xfive") "
                             }
                             Button(localLikedComments.contains(comment.id) ? "Нравится" : "Лайк") {
                                 if localLikedComments.contains(comment.id) {
@@ -923,7 +923,7 @@ private struct PortfolioPostViewer: View {
                     Image(systemName: "person.crop.circle.fill")
                         .foregroundColor(.white.opacity(0.5))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(comment.userName?.isEmpty == false ? comment.userName! : "X5")
+                        Text(comment.userName?.isEmpty == false ? comment.userName! : "Xfive marketing")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(.white.opacity(0.65))
                         Text(comment.text)

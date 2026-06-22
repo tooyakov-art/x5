@@ -10,6 +10,7 @@
 //   APNS_BUNDLE_ID          -- "com.x5studio.app"
 //   APNS_PRIVATE_KEY        -- contents of AuthKey_<KEY_ID>.p8 (PEM with -----BEGIN/END PRIVATE KEY-----)
 //   APNS_USE_SANDBOX        -- "1" for debug/dev APNs tokens, "0" for TestFlight/App Store
+//   FCM_SERVER_KEY          -- optional, enables Android FCM sends for platform=android push_tokens
 //
 // Auto-injected by the Supabase Edge runtime (we cannot set SUPABASE_*
 // secrets manually — the prefix is reserved):
@@ -77,6 +78,17 @@ interface SocialPushPayload {
   thread_id?: string;
 }
 
+interface PushTarget {
+  platform: "ios" | "android";
+  token: string;
+}
+
+interface FCMMessage {
+  title: string;
+  body: string;
+  data: Record<string, string | undefined>;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
 
@@ -113,16 +125,16 @@ Deno.serve(async (req) => {
   const recipient = chat.participants.find((p) => p !== body.sender_id);
   if (!recipient) return new Response("no recipient", { status: 200 });
 
-  // Look up sender for notification title and recipient token for APNs.
+  // Look up sender for notification title and recipient tokens.
   const [{ data: sender }, tokenLookup] = await Promise.all([
     supabase.from("profiles").select("name, nickname").eq("id", body.sender_id).maybeSingle(),
-    loadAPNsToken(supabase, recipient)
+    loadPushTargets(supabase, recipient)
   ]);
 
   if (tokenLookup.error) return new Response(`token lookup error: ${tokenLookup.error}`, { status: 500 });
-  if (!tokenLookup.token) return new Response("no push token", { status: 200 });
+  if (tokenLookup.targets.length === 0) return new Response("no push token", { status: 200 });
 
-  const senderName: string = (sender?.name as string) || (sender?.nickname as string) || "X5";
+  const senderName: string = (sender?.name as string) || (sender?.nickname as string) || "Xfive marketing";
 
   const previewBody =
     body.type === "text"
@@ -145,7 +157,15 @@ Deno.serve(async (req) => {
     sender_id: body.sender_id
   };
 
-  return await sendAPNs(tokenLookup.token, payload);
+  return await sendPushTargets(tokenLookup.targets, payload, {
+    title: chat.task_title || senderName,
+    body: previewBody,
+    data: {
+      type: "message",
+      chat_id: chat.id,
+      sender_id: body.sender_id
+    }
+  });
 });
 
 function isSocialPushPayload(value: IncomingPayload | SocialPushPayload): value is SocialPushPayload {
@@ -158,13 +178,13 @@ async function sendSocialPush(supabase: any, body: SocialPushPayload): Promise<R
 
   const [{ data: actor }, tokenLookup] = await Promise.all([
     supabase.from("profiles").select("name, nickname").eq("id", body.actor_id).maybeSingle(),
-    loadAPNsToken(supabase, body.recipient_id)
+    loadPushTargets(supabase, body.recipient_id)
   ]);
 
   if (tokenLookup.error) return new Response(`token lookup error: ${tokenLookup.error}`, { status: 500 });
-  if (!tokenLookup.token) return new Response("no push token", { status: 200 });
+  if (tokenLookup.targets.length === 0) return new Response("no push token", { status: 200 });
 
-  const actorName: string = (actor?.name as string) || (actor?.nickname as string) || "X5";
+  const actorName: string = (actor?.name as string) || (actor?.nickname as string) || "Xfive marketing";
   const title = body.title || actorName;
   const text = body.body || defaultSocialBody(body.type, actorName);
 
@@ -185,35 +205,61 @@ async function sendSocialPush(supabase: any, body: SocialPushPayload): Promise<R
     object_id: body.object_id
   };
 
-  return await sendAPNs(tokenLookup.token, payload);
+  return await sendPushTargets(tokenLookup.targets, payload, {
+    title,
+    body: text,
+    data: {
+      type: body.type,
+      actor_id: body.actor_id,
+      object_type: body.object_type,
+      object_id: body.object_id
+    }
+  });
 }
 
-async function loadAPNsToken(
+async function loadPushTargets(
   supabase: any,
   userId: string
-): Promise<{ token?: string; error?: string }> {
+): Promise<{ targets: PushTarget[]; error?: string }> {
+  const targets: PushTarget[] = [];
+  const seen = new Set<string>();
+  const addTarget = (platform: "ios" | "android", token: string | undefined) => {
+    if (!token) return;
+    const key = `${platform}:${token}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    targets.push({ platform, token });
+  };
+
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("push_token")
     .eq("id", userId)
     .maybeSingle();
 
-  if (profileError) return { error: profileError.message };
+  if (profileError) return { targets, error: profileError.message };
 
   const profileToken = cleanAPNsToken(profile?.push_token as string | undefined);
-  if (profileToken) return { token: profileToken };
+  addTarget("ios", profileToken);
 
   const { data: legacyRows, error: legacyError } = await supabase
     .from("push_tokens")
-    .select("token, updated_at")
+    .select("token, platform, updated_at")
     .eq("user_id", userId)
-    .eq("platform", "ios")
     .order("updated_at", { ascending: false })
-    .limit(1);
+    .limit(10);
 
-  if (legacyError) return { error: legacyError.message };
+  if (legacyError) return { targets, error: legacyError.message };
 
-  return { token: cleanAPNsToken(legacyRows?.[0]?.token as string | undefined) };
+  for (const row of legacyRows || []) {
+    const platform = row?.platform === "android" ? "android" : "ios";
+    const token = platform === "android"
+      ? cleanAndroidToken(row?.token as string | undefined)
+      : cleanAPNsToken(row?.token as string | undefined);
+    addTarget(platform, token);
+  }
+
+  return { targets };
 }
 
 function cleanAPNsToken(token: string | undefined): string | undefined {
@@ -232,15 +278,67 @@ function cleanAPNsToken(token: string | undefined): string | undefined {
   return undefined;
 }
 
+function cleanAndroidToken(token: string | undefined): string | undefined {
+  const trimmed = token?.trim();
+  if (!trimmed || trimmed.startsWith("ExponentPushToken")) return undefined;
+  if (trimmed.length < 20 || trimmed.length > 4096) return undefined;
+  return /^[A-Za-z0-9:_-]+$/.test(trimmed) ? trimmed : undefined;
+}
+
 function defaultSocialBody(type: string, actorName: string): string {
   switch (type) {
     case "portfolio_like":
       return `${actorName} liked your case`;
     case "followed_user_posted":
-      return `${actorName} posted in X5`;
+      return `${actorName} posted in Xfive marketing`;
     default:
       return `${actorName} has an update`;
   }
+}
+
+async function sendPushTargets(targets: PushTarget[], apnsPayload: unknown, fcmMessage: FCMMessage): Promise<Response> {
+  const successes: string[] = [];
+  const failures: string[] = [];
+
+  for (const target of targets) {
+    const response = target.platform === "android"
+      ? await sendFCM(target.token, fcmMessage)
+      : await sendAPNs(target.token, apnsPayload);
+    const text = await response.text();
+    if (response.ok) {
+      successes.push(`${target.platform}:${text}`);
+    } else {
+      failures.push(`${target.platform}:${response.status}:${text}`);
+    }
+  }
+
+  if (successes.length > 0) {
+    const suffix = failures.length > 0 ? `; failures ${failures.join("; ")}` : "";
+    return new Response(`ok ${successes.join("; ")}${suffix}`);
+  }
+
+  return new Response(`push errors ${failures.join("; ")}`, { status: 502 });
+}
+
+async function sendFCM(pushToken: string, message: FCMMessage): Promise<Response> {
+  const serverKey = Deno.env.get("FCM_SERVER_KEY");
+  if (!serverKey) return new Response("missing FCM env", { status: 500 });
+
+  return await fetch("https://fcm.googleapis.com/fcm/send", {
+    method: "POST",
+    headers: {
+      "authorization": `key=${serverKey}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      to: pushToken,
+      notification: {
+        title: message.title,
+        body: message.body
+      },
+      data: message.data
+    })
+  });
 }
 
 async function sendAPNs(pushToken: string, payload: unknown): Promise<Response> {

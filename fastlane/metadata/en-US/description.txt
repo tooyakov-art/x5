@@ -1,4 +1,4 @@
-X5 is a creator workspace for marketers, entrepreneurs and creative specialists.
+Xfive marketing is a creator workspace for marketers, entrepreneurs and creative specialists.
 
 Organize your portfolio, learn from courses, find specialists in Hub, post tasks and keep client conversations in one app.
 
@@ -16,7 +16,7 @@ WHO IT'S FOR
 SMM managers, designers, photographers, video editors, copywriters, marketers, founders and creators who need learning tools, client chats and a public work profile.
 
 SUBSCRIPTIONS
-X5 Lite, X5 Pro and X5 Max are optional monthly auto-renewable subscriptions. Paid plans unlock creator tools and add credits for image generation and other creator features. The verified badge is a separate optional monthly auto-renewable subscription.
+Xfive Lite, Xfive Pro and Xfive Max are optional monthly auto-renewable subscriptions. Paid plans unlock creator tools and add credits for image generation and other creator features. The verified badge is a separate optional monthly auto-renewable subscription.
 
 Payment is charged to your Apple ID at confirmation of purchase. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel the subscription in your App Store account settings.
 
@@ -24,7 +24,7 @@ SAFETY
 Chats include report and block controls. Users can delete their account from Settings. User-generated content is handled with moderation support through support@x5studio.app.
 
 PRIVACY
-Authentication uses Sign in with Apple, Google or email. Profile data, chats, tasks and portfolio items are handled through Supabase. X5 does not use third-party advertising trackers.
+Authentication uses Sign in with Apple, Google or email. Profile data, chats, tasks and portfolio items are handled through Supabase. Xfive marketing does not use third-party advertising trackers.
 
 Terms of Service: https://tooyakov-art.github.io/x5site/terms.html
 Privacy Policy: https://tooyakov-art.github.io/x5site/privacy.html

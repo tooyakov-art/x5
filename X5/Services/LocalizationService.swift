@@ -130,7 +130,7 @@ extension LocalizationService {
             "tool_desc_instagram": "Контент-план на 14 дней под твою нишу и тон.",
             "tool_desc_video_creative": "Сценарии Reels и TikTok по схеме hook → tension → CTA — готовы к съёмке.",
             "tool_desc_lawyer": "Договоры, NDA, акты и оферты под твой бизнес.",
-            "tool_desc_academy": "Открой X5 Academy — вкладка «Курсы» внизу.",
+            "tool_desc_academy": "Открой Xfive Academy — вкладка «Курсы» внизу.",
             "tool_desc_crm": "Лёгкая CRM для соло-фаундеров и небольших агентств. Воронка, сделки, контакты.",
             "tool_desc_analytics": "Ежедневный KPI-дайджест: расход на рекламу, ROAS, топ-креативы, конверсия.",
             "tool_desc_captions": "Шаблоны подписей с учётом длины платформы. Этот инструмент уже работает — открой карточку.",
@@ -163,9 +163,9 @@ extension LocalizationService {
             "tab_profile": "Профиль",
 
             // Login
-            "login_title": "Welcome to X5",
+            "login_title": "Welcome to Xfive marketing",
             "login_subtitle": "Маркетинг студия для креаторов.\nСоздавай, учись и нанимай — в одном приложении.",
-            "login_signin": "Войти в X5",
+            "login_signin": "Войти в Xfive marketing",
             "login_signup": "Создать аккаунт",
             "login_continue_apple": "Continue with Apple",
             "login_continue_google": "Continue with Google",
@@ -307,17 +307,17 @@ extension LocalizationService {
             "chats_view_profile": "тапни, чтобы открыть профиль",
             "chats_loading": "Загружаем чаты…",
 
-            // Paywall (paywall_title is defined again below with "X5 Pro" — Swift dictionary literal dedup;
+            // Paywall (paywall_title is defined again below with "Xfive Pro" — Swift dictionary literal dedup;
             // iOS 26.5 beta Swift runtime trap-s on duplicate keys, so we keep only one entry.)
             "paywall_desc": "Тарифы с кредитами 1:1 для AI-инструментов, курсов и Hub.",
-            "paywall_active": "X5 Pro активна",
+            "paywall_active": "Xfive Pro активна",
             "paywall_until": "До",
             "paywall_subscribe": "Подписаться",
             "paywall_loading": "Загружаем подписку…",
             "paywall_unavailable": "Подписка сейчас недоступна. Попробуйте позже.",
             "paywall_cancel_anytime": "Отменить можно в любой момент в настройках iOS",
             "paywall_privacy_link": "Политика конфиденциальности",
-            "paywall_subscription_terms": "X5 Lite, X5 Pro и X5 Max — автоматически продлеваемые ежемесячные подписки от 1000 ₸ до 5000 ₸. Синяя галочка покупается отдельно через App Store. Оплата списывается с Apple ID при подтверждении покупки. Подписки продлеваются автоматически, если не отменить их минимум за 24 часа до окончания периода. Управлять и отменить можно в Настройках Apple ID. Любая неиспользованная часть бесплатного периода (если есть) сгорает при покупке подписки.",
+            "paywall_subscription_terms": "Xfive Lite, Xfive Pro и Xfive Max — автоматически продлеваемые ежемесячные подписки от 1000 ₸ до 5000 ₸. Синяя галочка покупается отдельно через App Store. Оплата списывается с Apple ID при подтверждении покупки. Подписки продлеваются автоматически, если не отменить их минимум за 24 часа до окончания периода. Управлять и отменить можно в Настройках Apple ID. Любая неиспользованная часть бесплатного периода (если есть) сгорает при покупке подписки.",
             "paywall_restore": "Восстановить покупки",
 
             // Profile
@@ -337,7 +337,7 @@ extension LocalizationService {
             "profile_creations": "Работы",
             "profile_follow_action": "Подписаться",
             "profile_following_action": "Вы подписаны",
-            "profile_pro_active": "X5 Pro активна",
+            "profile_pro_active": "Xfive Pro активна",
             "profile_manage": "Управлять",
             "profile_renews": "Продление",
             "profile_month": "месяц",
@@ -469,11 +469,11 @@ extension LocalizationService {
             "verified_active": "Галочка активна до",
 
             // App lock
-            "app_lock_unlock_title": "Разблокируй X5",
+            "app_lock_unlock_title": "Разблокируй Xfive marketing",
             "app_lock_button": "Разблокировать",
             "app_lock_checking": "Проверяем…",
-            "app_lock_unavailable": "Биометрия недоступна на устройстве. Отключи Face ID в настройках X5.",
-            "app_lock_reason": "Доступ к X5",
+            "app_lock_unavailable": "Биометрия недоступна на устройстве. Отключи Face ID в настройках Xfive marketing.",
+            "app_lock_reason": "Доступ к Xfive marketing",
             "app_lock_failed": "Не удалось разблокировать",
             "app_lock_passcode_fallback": "Введи код-пароль",
 
@@ -519,14 +519,14 @@ extension LocalizationService {
             "onb_name_step_title": "Как тебя зовут?",
             "onb_name_step_subtitle": "Покажем это имя в профиле и чатах.",
             "onb_nickname_step_title": "Придумай ник",
-            "onb_nickname_step_subtitle": "По нему тебя смогут найти в X5.",
+            "onb_nickname_step_subtitle": "По нему тебя смогут найти в Xfive marketing.",
             "onb_categories_step_title": "Выбери специализацию",
             "onb_categories_step_subtitle": "Это нужно только специалистам для Hub.",
             "onb_identity_section": "Профиль",
             "onb_identity_hint": "Имя и ник обязательны. Ник: минимум 3 символа, латиница, цифры или _.",
             "onb_name_hint": "Минимум 2 символа.",
             "onb_nickname_hint": "Минимум 3 символа: a-z, 0-9 или _.",
-            "onb_name_required": "Введи настоящее имя. User и X5 нельзя оставить.",
+            "onb_name_required": "Введи настоящее имя. User и Xfive marketing нельзя оставить.",
             "onb_nickname_required": "Ник должен быть от 3 символов: a-z, 0-9 или _.",
             "onb_role_section": "Роль",
             "onb_role_required": "Выбери роль, чтобы продолжить.",
@@ -547,7 +547,7 @@ extension LocalizationService {
             "onb_save_failed": "Не удалось сохранить роль.",
 
             // Paywall extra
-            "paywall_title": "X5 Pro",
+            "paywall_title": "Xfive Pro",
             "paywall_feat_credits": "1 кредит = 1 ₸",
             "paywall_feat_tools": "Все ИИ-инструменты (фото, видео, lipsync, дизайн)",
             "paywall_feat_courses": "Полная библиотека курсов",
@@ -618,7 +618,7 @@ extension LocalizationService {
             "tool_desc_instagram": "Content plan generator. Get a 14-day Instagram schedule tuned to your niche and tone.",
             "tool_desc_video_creative": "Reels and TikTok scripts with hook → tension → CTA structure, ready to film.",
             "tool_desc_lawyer": "Generate vetted contracts, NDAs, service acts and proposals tailored to your business.",
-            "tool_desc_academy": "Open the X5 Academy. Tap the Courses tab in the navigation.",
+            "tool_desc_academy": "Open the Xfive Academy. Tap the Courses tab in the navigation.",
             "tool_desc_crm": "Lightweight CRM for solo founders and small agencies. Pipeline, deals, contacts.",
             "tool_desc_analytics": "Daily KPI digest from your channels: ad spend, ROAS, top creatives, conversion.",
             "tool_desc_captions": "Caption templates with platform-aware length. This one is live today — tap the card to open.",
@@ -649,9 +649,9 @@ extension LocalizationService {
             "tab_hub": "Hub",
             "tab_profile": "Profile",
 
-            "login_title": "Welcome to X5",
+            "login_title": "Welcome to Xfive marketing",
             "login_subtitle": "Marketing studio for creators.\nGenerate, learn, and hire — in one app.",
-            "login_signin": "Sign in to X5",
+            "login_signin": "Sign in to Xfive marketing",
             "login_signup": "Create your account",
             "login_continue_apple": "Continue with Apple",
             "login_continue_google": "Continue with Google",
@@ -790,17 +790,17 @@ extension LocalizationService {
             "chats_view_profile": "tap to view profile",
             "chats_loading": "Loading chats…",
 
-            // paywall_title is defined again below with "X5 Pro" — kept single to avoid
+            // paywall_title is defined again below with "Xfive Pro" — kept single to avoid
             // Swift duplicate-key dictionary trap on iOS 26.5 beta.
             "paywall_desc": "Credit plans at 1:1 for AI tools, courses, and Hub.",
-            "paywall_active": "X5 Pro Active",
+            "paywall_active": "Xfive Pro Active",
             "paywall_until": "Until",
             "paywall_subscribe": "Subscribe",
             "paywall_loading": "Loading subscription…",
             "paywall_unavailable": "Subscription is not available right now. Please try again later.",
             "paywall_cancel_anytime": "Cancel anytime in iOS Settings",
             "paywall_privacy_link": "Privacy Policy",
-            "paywall_subscription_terms": "X5 Lite, X5 Pro, and X5 Max are auto-renewing monthly subscriptions from 1000 ₸ to 5000 ₸. The blue verified badge is purchased separately through the App Store. Payment will be charged to your Apple ID at purchase confirmation. Subscriptions auto-renew unless cancelled at least 24 hours before the end of the current period. Manage or cancel anytime in your Apple ID settings. Any unused portion of a free trial period, if offered, will be forfeited when you purchase a subscription.",
+            "paywall_subscription_terms": "Xfive Lite, Xfive Pro, and Xfive Max are auto-renewing monthly subscriptions from 1000 ₸ to 5000 ₸. The blue verified badge is purchased separately through the App Store. Payment will be charged to your Apple ID at purchase confirmation. Subscriptions auto-renew unless cancelled at least 24 hours before the end of the current period. Manage or cancel anytime in your Apple ID settings. Any unused portion of a free trial period, if offered, will be forfeited when you purchase a subscription.",
             "paywall_restore": "Restore purchases",
 
             "profile_title": "Profile",
@@ -819,7 +819,7 @@ extension LocalizationService {
             "profile_creations": "Creations",
             "profile_follow_action": "Follow",
             "profile_following_action": "Following",
-            "profile_pro_active": "X5 Pro active",
+            "profile_pro_active": "Xfive Pro active",
             "profile_manage": "Manage",
             "profile_renews": "Renews",
             "profile_month": "month",
@@ -949,11 +949,11 @@ extension LocalizationService {
             "verified_active": "Verified until",
 
             // App lock
-            "app_lock_unlock_title": "Unlock X5",
+            "app_lock_unlock_title": "Unlock Xfive marketing",
             "app_lock_button": "Unlock",
             "app_lock_checking": "Checking…",
-            "app_lock_unavailable": "Biometry unavailable on this device. Disable Face ID in X5 settings.",
-            "app_lock_reason": "Access X5",
+            "app_lock_unavailable": "Biometry unavailable on this device. Disable Face ID in Xfive marketing settings.",
+            "app_lock_reason": "Access Xfive marketing",
             "app_lock_failed": "Could not unlock",
             "app_lock_passcode_fallback": "Enter passcode",
 
@@ -999,14 +999,14 @@ extension LocalizationService {
             "onb_name_step_title": "What's your name?",
             "onb_name_step_subtitle": "This name appears in your profile and chats.",
             "onb_nickname_step_title": "Choose a username",
-            "onb_nickname_step_subtitle": "People can find you by this username in X5.",
+            "onb_nickname_step_subtitle": "People can find you by this username in Xfive marketing.",
             "onb_categories_step_title": "Choose your specialty",
             "onb_categories_step_subtitle": "Only specialists need this for Hub.",
             "onb_identity_section": "Profile",
             "onb_identity_hint": "Name and username are required. Username: 3+ chars, a-z, 0-9, or _.",
             "onb_name_hint": "At least 2 characters.",
             "onb_nickname_hint": "At least 3 characters: a-z, 0-9, or _.",
-            "onb_name_required": "Enter a real name. User and X5 cannot be kept.",
+            "onb_name_required": "Enter a real name. User and Xfive marketing cannot be kept.",
             "onb_nickname_required": "Username must be 3+ chars: a-z, 0-9, or _.",
             "onb_role_section": "Role",
             "onb_role_required": "Choose a role to continue.",
@@ -1027,7 +1027,7 @@ extension LocalizationService {
             "onb_save_failed": "Could not save your role.",
 
             // Paywall extra
-            "paywall_title": "X5 Pro",
+            "paywall_title": "Xfive Pro",
             "paywall_feat_credits": "1 credit = 1 ₸",
             "paywall_feat_tools": "All AI tools (image, video, lipsync, design)",
             "paywall_feat_courses": "Full courses library",
@@ -1098,7 +1098,7 @@ extension LocalizationService {
             "tool_desc_instagram": "14 күнге Instagram контент-жоспары — сенің нишаң мен үніңе сай.",
             "tool_desc_video_creative": "Reels және TikTok сценарийлері: hook → tension → CTA, түсіруге дайын.",
             "tool_desc_lawyer": "Сенің бизнесіңе бейімделген келісімшарт, NDA, акт және ұсыныстар.",
-            "tool_desc_academy": "X5 Academy ашу. Төмендегі «Курстар» бөлімін бас.",
+            "tool_desc_academy": "Xfive Academy ашу. Төмендегі «Курстар» бөлімін бас.",
             "tool_desc_crm": "Соло-фаундерлер мен шағын агенттіктерге арналған жеңіл CRM. Шұңғыма, мәмілелер, контактілер.",
             "tool_desc_analytics": "Күн сайынғы KPI-дайджест: жарнама шығыны, ROAS, үздік креативтер, конверсия.",
             "tool_desc_captions": "Платформаға бейім ұзындықпен подпись шаблондары. Бұл құрал қазір жұмыс істейді — картаны бас.",
@@ -1129,9 +1129,9 @@ extension LocalizationService {
             "tab_hub": "Hub",
             "tab_profile": "Профиль",
 
-            "login_title": "X5-ке қош келдің",
+            "login_title": "Xfive marketing-ке қош келдің",
             "login_subtitle": "Креаторларға арналған маркетинг студиясы.\nГенерациялау, оқу, жалдау — бір қосымшада.",
-            "login_signin": "X5-ке кіру",
+            "login_signin": "Xfive marketing-ке кіру",
             "login_signup": "Аккаунт құру",
             "login_continue_apple": "Apple арқылы кіру",
             "login_continue_google": "Google арқылы кіру",
@@ -1270,17 +1270,17 @@ extension LocalizationService {
             "chats_view_profile": "профильді ашу үшін басыңыз",
             "chats_loading": "Чаттар жүктелуде…",
 
-            // paywall_title is defined again below with "X5 Pro" — kept single to avoid
+            // paywall_title is defined again below with "Xfive Pro" — kept single to avoid
             // Swift duplicate-key dictionary trap on iOS 26.5 beta.
             "paywall_desc": "AI-құралдар, курстар және Hub үшін 1:1 кредит тарифтері.",
-            "paywall_active": "X5 Pro белсенді",
+            "paywall_active": "Xfive Pro белсенді",
             "paywall_until": "Дейін",
             "paywall_subscribe": "Жазылу",
             "paywall_loading": "Жазылым жүктелуде…",
             "paywall_unavailable": "Жазылым қазір қол жетімсіз. Кейінірек көріңіз.",
             "paywall_cancel_anytime": "Кез келген уақытта iOS баптауларынан тоқтатуға болады",
             "paywall_privacy_link": "Құпиялылық саясаты",
-            "paywall_subscription_terms": "X5 Lite, X5 Pro және X5 Max — 1000 ₸-ден 5000 ₸-ге дейінгі автоматты жаңартылатын айлық жазылымдар. Көк растау белгісі App Store арқылы бөлек сатып алынады. Төлем сатып алуды растаған кезде Apple ID-ге жазылады. Ағымдағы кезеңнің аяқталуына кемінде 24 сағат қалғанда тоқтатылмаса, жазылым автоматты түрде жаңарады. Жазылымды Apple ID параметрлерінде басқаруға және тоқтатуға болады.",
+            "paywall_subscription_terms": "Xfive Lite, Xfive Pro және Xfive Max — 1000 ₸-ден 5000 ₸-ге дейінгі автоматты жаңартылатын айлық жазылымдар. Көк растау белгісі App Store арқылы бөлек сатып алынады. Төлем сатып алуды растаған кезде Apple ID-ге жазылады. Ағымдағы кезеңнің аяқталуына кемінде 24 сағат қалғанда тоқтатылмаса, жазылым автоматты түрде жаңарады. Жазылымды Apple ID параметрлерінде басқаруға және тоқтатуға болады.",
             "paywall_restore": "Сатып алуларды қалпына келтіру",
 
             "profile_title": "Профиль",
@@ -1299,7 +1299,7 @@ extension LocalizationService {
             "profile_creations": "Жұмыстар",
             "profile_follow_action": "Жазылу",
             "profile_following_action": "Жазылған",
-            "profile_pro_active": "X5 Pro белсенді",
+            "profile_pro_active": "Xfive Pro белсенді",
             "profile_manage": "Басқару",
             "profile_renews": "Жаңарады",
             "profile_month": "ай",
@@ -1429,11 +1429,11 @@ extension LocalizationService {
             "verified_active": "Дейін расталған",
 
             // App lock
-            "app_lock_unlock_title": "X5-ті ашу",
+            "app_lock_unlock_title": "Xfive marketing-ті ашу",
             "app_lock_button": "Ашу",
             "app_lock_checking": "Тексеру…",
-            "app_lock_unavailable": "Биометрия қол жетімсіз. X5 параметрлерінде Face ID өшіріңіз.",
-            "app_lock_reason": "X5-ке кіру",
+            "app_lock_unavailable": "Биометрия қол жетімсіз. Xfive marketing параметрлерінде Face ID өшіріңіз.",
+            "app_lock_reason": "Xfive marketing-ке кіру",
             "app_lock_failed": "Аша алмадық",
             "app_lock_passcode_fallback": "Құпиясөзді еңгіз",
 
@@ -1479,14 +1479,14 @@ extension LocalizationService {
             "onb_name_step_title": "Атың кім?",
             "onb_name_step_subtitle": "Бұл ат профильде және чаттарда көрінеді.",
             "onb_nickname_step_title": "Ник таңда",
-            "onb_nickname_step_subtitle": "X5 ішінде сені осы ник арқылы табады.",
+            "onb_nickname_step_subtitle": "Xfive marketing ішінде сені осы ник арқылы табады.",
             "onb_categories_step_title": "Мамандығыңды таңда",
             "onb_categories_step_subtitle": "Бұл Hub үшін тек мамандарға керек.",
             "onb_identity_section": "Профиль",
             "onb_identity_hint": "Аты мен никнейм міндетті. Никнейм: кемі 3 таңба, a-z, 0-9 немесе _.",
             "onb_name_hint": "Кемі 2 таңба.",
             "onb_nickname_hint": "Кемі 3 таңба: a-z, 0-9 немесе _.",
-            "onb_name_required": "Нақты атыңды енгіз. User және X5 қалдыруға болмайды.",
+            "onb_name_required": "Нақты атыңды енгіз. User және Xfive marketing қалдыруға болмайды.",
             "onb_nickname_required": "Никнейм кемі 3 таңба болуы керек: a-z, 0-9 немесе _.",
             "onb_role_section": "Рөл",
             "onb_role_required": "Жалғастыру үшін рөлді таңда.",
@@ -1507,7 +1507,7 @@ extension LocalizationService {
             "onb_save_failed": "Рөлді сақтау сәтсіз.",
 
             // Paywall extra
-            "paywall_title": "X5 Pro",
+            "paywall_title": "Xfive Pro",
             "paywall_feat_credits": "1 кредит = 1 ₸",
             "paywall_feat_tools": "Барлық ИИ-құралдар (фото, видео, lipsync, дизайн)",
             "paywall_feat_courses": "Курстар кітапханасы толық",

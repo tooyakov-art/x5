@@ -230,7 +230,7 @@ struct CoursesView: View {
             description: description,
             marketingHook: nil,
             coverUrl: nil,
-            authorName: "X5 CourseUP",
+            authorName: "Xfive CourseUP",
             price: 0,
             isFree: true,
             isPublic: true,
@@ -1184,7 +1184,7 @@ private struct CourseSubmissionView: View {
                 } header: {
                     Text("Заявка на курс")
                 } footer: {
-                    Text("Опиши идею курса и прикрепи первое видео. Команда X5 проверит заявку и свяжется с тобой.")
+                    Text("Опиши идею курса и прикрепи первое видео. Команда Xfive marketing проверит заявку и свяжется с тобой.")
                 }
 
                 Section("Видео") {

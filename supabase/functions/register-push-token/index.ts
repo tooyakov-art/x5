@@ -26,8 +26,9 @@ Deno.serve(async (req) => {
   if (userError || !userData.user) return new Response("invalid user", { status: 401 });
 
   const body = (await req.json()) as RegisterBody;
-  const token = normalizeAPNsToken(body.token);
-  if (!token) return new Response("invalid APNs token", { status: 400 });
+  const platform = normalizePlatform(body.platform);
+  const token = normalizePushToken(body.token, platform);
+  if (!token) return new Response(`invalid ${platform} token`, { status: 400 });
 
   const admin = createClient(SUPABASE_URL, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false }
@@ -35,22 +36,32 @@ Deno.serve(async (req) => {
   const now = new Date().toISOString();
   const userId = userData.user.id;
 
-  const { error: profileError } = await admin
-    .from("profiles")
-    .update({ push_token: token, push_token_updated_at: now })
-    .eq("id", userId);
-  if (profileError) return new Response(`profile update error: ${profileError.message}`, { status: 500 });
+  if (platform === "ios") {
+    const { error: profileError } = await admin
+      .from("profiles")
+      .update({ push_token: token, push_token_updated_at: now })
+      .eq("id", userId);
+    if (profileError) return new Response(`profile update error: ${profileError.message}`, { status: 500 });
+  }
 
   const { error: tokenError } = await admin
     .from("push_tokens")
     .upsert(
-      { user_id: userId, token, platform: "ios", updated_at: now },
+      { user_id: userId, token, platform, updated_at: now },
       { onConflict: "user_id,platform" }
     );
   if (tokenError) return new Response(`token upsert error: ${tokenError.message}`, { status: 500 });
 
-  return Response.json({ ok: true, updated_at: now });
+  return Response.json({ ok: true, platform, updated_at: now });
 });
+
+function normalizePlatform(raw: string | undefined): "ios" | "android" {
+  return raw?.trim().toLowerCase() === "android" ? "android" : "ios";
+}
+
+function normalizePushToken(raw: string | undefined, platform: "ios" | "android"): string | undefined {
+  return platform === "android" ? normalizeAndroidToken(raw) : normalizeAPNsToken(raw);
+}
 
 function normalizeAPNsToken(raw: string | undefined): string | undefined {
   const trimmed = raw?.trim();
@@ -66,4 +77,11 @@ function normalizeAPNsToken(raw: string | undefined): string | undefined {
   }
 
   return undefined;
+}
+
+function normalizeAndroidToken(raw: string | undefined): string | undefined {
+  const trimmed = raw?.trim();
+  if (!trimmed || trimmed.startsWith("ExponentPushToken")) return undefined;
+  if (trimmed.length < 20 || trimmed.length > 4096) return undefined;
+  return /^[A-Za-z0-9:_-]+$/.test(trimmed) ? trimmed : undefined;
 }

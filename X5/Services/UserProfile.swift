@@ -61,7 +61,7 @@ struct UserProfile: Codable, Equatable, Identifiable {
             let emailName = String(prefix).replacingOccurrences(of: ".", with: " ").capitalized
             if let n = Self.cleanDisplayName(emailName) { return n }
         }
-        return "X5"
+        return "Xfive marketing"
     }
 
     private static func cleanDisplayName(_ raw: String?) -> String? {
