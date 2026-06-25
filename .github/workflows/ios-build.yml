@@ -149,38 +149,11 @@ jobs:
         env:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
-          ASC_PROVIDER_PUBLIC_ID: ${{ secrets.ASC_PROVIDER_PUBLIC_ID }}
         run: |
           set -euo pipefail
           IPA=$(ls "$EXPORT_PATH"/*.ipa | head -n 1)
           LOG="$RUNNER_TEMP/altool-upload.log"
-          PROVIDER_ARGS=()
-          if [[ -n "${ASC_PROVIDER_PUBLIC_ID:-}" ]]; then
-            PROVIDER_ARGS=(--provider-public-id "$ASC_PROVIDER_PUBLIC_ID")
-          else
-            PROVIDERS_LOG="$RUNNER_TEMP/altool-providers.log"
-            xcrun altool --list-providers \
-              --apiKey "$ASC_API_KEY_ID" \
-              --apiIssuer "$ASC_API_ISSUER_ID" 2>&1 | tee "$PROVIDERS_LOG" || true
-            mapfile -t PROVIDER_IDS < <(grep -Eo '[0-9A-Fa-f-]{36}' "$PROVIDERS_LOG" | sort -u)
-            for provider_id in "${PROVIDER_IDS[@]}"; do
-              APPS_LOG="$RUNNER_TEMP/altool-apps-${provider_id}.log"
-              xcrun altool --list-apps \
-                --provider-public-id "$provider_id" \
-                --filter "$BUNDLE_ID" \
-                --apiKey "$ASC_API_KEY_ID" \
-                --apiIssuer "$ASC_API_ISSUER_ID" 2>&1 | tee "$APPS_LOG" || true
-              if grep -q "$BUNDLE_ID" "$APPS_LOG"; then
-                PROVIDER_ARGS=(--provider-public-id "$provider_id")
-                echo "Resolved App Store provider: $provider_id"
-                break
-              fi
-            done
-          fi
-          xcrun altool --upload-app \
-            --type ios \
-            --file "$IPA" \
-            "${PROVIDER_ARGS[@]}" \
+          xcrun altool --upload-package "$IPA" \
             --apiKey "$ASC_API_KEY_ID" \
             --apiIssuer "$ASC_API_ISSUER_ID" 2>&1 | tee "$LOG"
           if grep -E "UPLOAD FAILED|Failed to upload package|STATE_ERROR|Validation failed" "$LOG"; then
