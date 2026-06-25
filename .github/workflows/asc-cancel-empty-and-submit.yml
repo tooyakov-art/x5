@@ -19,8 +19,8 @@ jobs:
       ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
       ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
       BUNDLE_ID: com.x5studio.app
-      TARGET_VERSION: "1.1.3"
-      TARGET_BUILD: "168"
+      TARGET_VERSION: "1.1.4"
+      TARGET_BUILD: "176"
       RELEASE_NOTES: "Исправлены ошибки и улучшена стабильность приложения."
     steps:
       - uses: actions/checkout@v4

@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
   if (tokenLookup.error) return new Response(`token lookup error: ${tokenLookup.error}`, { status: 500 });
   if (tokenLookup.targets.length === 0) return new Response("no push token", { status: 200 });
 
-  const senderName: string = (sender?.name as string) || (sender?.nickname as string) || "Xfive marketing";
+  const senderName: string = (sender?.name as string) || (sender?.nickname as string) || "x five marketing";
 
   const previewBody =
     body.type === "text"
@@ -184,7 +184,7 @@ async function sendSocialPush(supabase: any, body: SocialPushPayload): Promise<R
   if (tokenLookup.error) return new Response(`token lookup error: ${tokenLookup.error}`, { status: 500 });
   if (tokenLookup.targets.length === 0) return new Response("no push token", { status: 200 });
 
-  const actorName: string = (actor?.name as string) || (actor?.nickname as string) || "Xfive marketing";
+  const actorName: string = (actor?.name as string) || (actor?.nickname as string) || "x five marketing";
   const title = body.title || actorName;
   const text = body.body || defaultSocialBody(body.type, actorName);
 
@@ -290,7 +290,7 @@ function defaultSocialBody(type: string, actorName: string): string {
     case "portfolio_like":
       return `${actorName} liked your case`;
     case "followed_user_posted":
-      return `${actorName} posted in Xfive marketing`;
+      return `${actorName} posted in x five marketing`;
     default:
       return `${actorName} has an update`;
   }

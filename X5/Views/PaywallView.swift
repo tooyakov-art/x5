@@ -189,9 +189,9 @@ private enum PaywallPlan: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .lite: return "Xfive Lite"
-        case .pro: return "Xfive Pro"
-        case .max: return "Xfive Max"
+        case .lite: return "x five Lite"
+        case .pro: return "x five Pro"
+        case .max: return "x five Max"
         }
     }
 

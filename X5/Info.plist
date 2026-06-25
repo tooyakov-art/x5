@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Xfive marketing</string>
+	<string>x five marketing</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -50,7 +50,7 @@
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>Used to lock Xfive marketing — only the device owner can open the app.</string>
+	<string>Used to lock x five marketing — only the device owner can open the app.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Microphone access is needed to record voice messages in chats.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

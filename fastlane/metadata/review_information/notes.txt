@@ -1,4 +1,4 @@
-Xfive marketing is a creator workspace and marketplace for creators, marketers,
+x five marketing is a creator workspace and marketplace for creators, marketers,
 specialists and clients. Version 1.1.4 build 176 includes Home creator tools,
 image generation, Generated Gallery, Hub, Chats, Portfolio, CourseUP, Profile,
 paid plans, credits, verified badge, report/block controls and account deletion.
@@ -30,16 +30,16 @@ Quick test flow:
     out and Delete Account.
 
 Image generation:
-The app sends the user's prompt and optional reference images to the Xfive marketing Supabase
+The app sends the user's prompt and optional reference images to the x five marketing Supabase
 Edge Function generate-image. Generation is credit-based and the UI shows cost
 before generation. Generated images can be kept on-device, saved to Photos or
 shared. Reference images are chosen by the user through the iOS photo picker.
 Unfinished video/startup-chat cards are marked as in development.
 
 Subscriptions:
-Xfive Lite Monthly: com.x5studio.app.lite.monthly.
-Xfive Pro Monthly: com.x5studio.app.pro.monthly.
-Xfive Max Monthly: com.x5studio.app.max.monthly.
+x five Lite Monthly: com.x5studio.app.lite.monthly.
+x five Pro Monthly: com.x5studio.app.pro.monthly.
+x five Max Monthly: com.x5studio.app.max.monthly.
 Verified Badge Monthly: com.x5studio.app.verified.monthly.
 The paywall is available from Profile -> Upgrade to Pro. Paid plans grant Pro
 access and credits for creator tools. The verified badge is a separate App
@@ -53,7 +53,7 @@ calls Supabase delete_own_account and signs the user out.
 
 Biometrics:
 The app does not collect, store, transmit or process face data. Apple's
-LocalAuthentication framework is used only for optional App Lock. Xfive marketing receives
+LocalAuthentication framework is used only for optional App Lock. x five marketing receives
 only success/fail result and no biometric data.
 
 Permissions:

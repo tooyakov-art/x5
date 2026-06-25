@@ -134,6 +134,11 @@ function extractEntitlement(
   requestedProductId: string,
   purchase: any
 ): { ok: true; expiry: string } | { ok: false; status: number; error: string } {
+  const state = purchase?.subscriptionState;
+  const activeStates = new Set(["SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIOD"]);
+  if (state && !activeStates.has(state)) {
+    return { ok: false, status: 402, error: `purchase not active: ${state}` };
+  }
   const lineItems = Array.isArray(purchase?.lineItems) ? purchase.lineItems : [];
   const matching = lineItems.find((item: any) => item?.productId === requestedProductId) || lineItems[0];
   const expiry = matching?.expiryTime;
