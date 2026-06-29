@@ -145,10 +145,96 @@ jobs:
           mkdir -p ./private_keys
           cp "$P8_PATH" ./private_keys/
 
+      - name: Resolve App Store Connect provider
+        id: provider
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          PROVIDERS_JSON="$RUNNER_TEMP/providers.json"
+          xcrun altool --list-providers \
+            --apiKey "$ASC_API_KEY_ID" \
+            --apiIssuer "$ASC_API_ISSUER_ID" \
+            --output-format json > "$PROVIDERS_JSON"
+
+          PROVIDER_PUBLIC_ID=$(python3 - "$PROVIDERS_JSON" <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          raw = Path(sys.argv[1]).read_text(encoding="utf-8", errors="ignore")
+          match = re.search(r"(\{.*\})", raw, re.S)
+          if not match:
+              raise SystemExit(f"Could not parse altool provider JSON:\n{raw[:2000]}")
+          payload = json.loads(match.group(1))
+
+          candidates = []
+          def walk(node):
+              if isinstance(node, dict):
+                  value = None
+                  for key, item in node.items():
+                      lowered = key.lower()
+                      if "provider" in lowered and "public" in lowered and "id" in lowered:
+                          value = str(item)
+                          break
+                      if lowered in {"providerpublicid", "provider_public_id"}:
+                          value = str(item)
+                          break
+                  if value:
+                      candidates.append(value)
+                  for item in node.values():
+                      walk(item)
+              elif isinstance(node, list):
+                  for item in node:
+                      walk(item)
+          walk(payload)
+
+          seen = []
+          for candidate in candidates:
+              if candidate and candidate not in seen:
+                  seen.append(candidate)
+
+          if not seen:
+              raise SystemExit(f"No provider public ids found in:\n{json.dumps(payload, indent=2)[:4000]}")
+
+          if len(seen) == 1:
+              print(seen[0])
+              raise SystemExit(0)
+
+          api_key = os.environ["ASC_API_KEY_ID"]
+          api_issuer = os.environ["ASC_API_ISSUER_ID"]
+          bundle_id = os.environ["BUNDLE_ID"]
+          for provider in seen:
+              cmd = [
+                  "xcrun", "altool", "--list-apps",
+                  "--provider-public-id", provider,
+                  "--filter-bundle-id", bundle_id,
+                  "--apiKey", api_key,
+                  "--apiIssuer", api_issuer,
+                  "--output-format", "json",
+              ]
+              result = subprocess.run(cmd, capture_output=True, text=True)
+              combined = result.stdout + "\n" + result.stderr
+              if result.returncode == 0 and (bundle_id in combined or "6764340680" in combined):
+                  print(provider)
+                  raise SystemExit(0)
+
+          raise SystemExit(f"No provider contained {bundle_id}. Providers: {seen}")
+          PY
+          )
+
+          echo "Resolved provider public id: $PROVIDER_PUBLIC_ID"
+          echo "provider_public_id=$PROVIDER_PUBLIC_ID" >> "$GITHUB_OUTPUT"
+
       - name: Upload to TestFlight
         env:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          PROVIDER_PUBLIC_ID: ${{ steps.provider.outputs.provider_public_id }}
         run: |
           set -euo pipefail
           IPA=$(ls "$EXPORT_PATH"/*.ipa | head -n 1)
@@ -156,6 +242,7 @@ jobs:
           xcrun altool --upload-app \
             --type ios \
             --file "$IPA" \
+            --provider-public-id "$PROVIDER_PUBLIC_ID" \
             --apiKey "$ASC_API_KEY_ID" \
             --apiIssuer "$ASC_API_ISSUER_ID" 2>&1 | tee "$LOG"
           if grep -E "UPLOAD FAILED|Failed to upload package|STATE_ERROR|Validation failed" "$LOG"; then
