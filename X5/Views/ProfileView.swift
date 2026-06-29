@@ -389,9 +389,9 @@ struct ProfileView: View {
 
     private var displayName: String {
         let raw = currentUser.profile?.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let raw, !raw.isEmpty, raw != "User", raw != "x five marketing" { return raw }
+        if let raw, !raw.isEmpty, raw != "User", raw != "X Five Marketing" { return raw }
         if let emailName = emailPrefix { return emailName }
-        return "x five marketing"
+        return "X Five Marketing"
     }
 
     private var handleText: String {

@@ -23,7 +23,7 @@ struct TaskDetailView: View {
 
     private func reportTask() {
         let subject = "Report task \(task.id)"
-        let body = "Hi x five marketing team,\n\nI'd like to report this task. Please review the content.\n\nTask ID: \(task.id)\nAuthor ID: \(task.authorId)\n"
+        let body = "Hi X Five Marketing team,\n\nI'd like to report this task. Please review the content.\n\nTask ID: \(task.id)\nAuthor ID: \(task.authorId)\n"
         let to = "appreview@x5studio.app"
         let s = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let b = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""

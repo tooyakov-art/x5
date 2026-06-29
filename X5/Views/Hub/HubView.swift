@@ -849,7 +849,7 @@ private struct SpecialistRow: View {
             AvatarView(urlString: person.avatar, name: person.name, size: 48)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(person.name ?? person.nickname ?? "x five marketing")
+                    Text(person.name ?? person.nickname ?? "X Five Marketing")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
                     if person.isVerified == true {

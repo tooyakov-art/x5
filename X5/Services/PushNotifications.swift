@@ -74,14 +74,14 @@ final class PushNotifications: NSObject, ObservableObject {
     /// Localized headlines + bodies. Cycle through on each scheduled slot.
     /// Tone: friendly, action-oriented, never aggressive.
     private static let promoMessages: [(title: String, body: String)] = [
-        ("x five ✨", "Закинь новый кадр в портфолио — пусть видят твой стиль."),
+        ("X Five ✨", "Закинь новый кадр в портфолио — пусть видят твой стиль."),
         ("Hub 🔥", "В Hub появились задания. Лови, пока не разобрали."),
         ("Курсы 🎓", "Новые уроки вышли — прокачай навыки."),
         ("Сторис ✦", "Добавь сторис чтоб подписчики не забыли тебя."),
         ("Чаты 💬", "Кто-то ищет тебя для проекта. Глянь сообщения."),
         ("Профиль 🌟", "Подкрути аватар — на яркие профили кликают чаще."),
         ("Pro 🚀", "Pro даёт безлимит на всё. Посмотри что внутри."),
-        ("x five ✨", "Покажи новую работу — лента ждёт.")
+        ("X Five ✨", "Покажи новую работу — лента ждёт.")
     ]
 
     /// Schedule a rolling batch of 12 future promos, one every 5 minutes.
