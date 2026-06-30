@@ -11,7 +11,7 @@ struct CoursesView: View {
     @State private var showingCourseSubmission = false
     @State private var showingSubmissions = false
 
-    private var isDev: Bool { Roles.isDeveloper(auth.userEmail) }
+    private var isDev: Bool { Roles.isDeveloper(email: auth.userEmail, userId: auth.userId) }
     private var featuredCourse: Course? { service.courses.first }
     private var academyCourses: [Course] { Array(service.courses.dropFirst()) + Self.upcomingCourses }
 

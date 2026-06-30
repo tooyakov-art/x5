@@ -5,6 +5,7 @@ import {
   IMAGE_CREDIT_COST,
   buildFinalPrompt,
   generationCategories,
+  generationModels,
   generationSizes,
   normalizeImages,
   normalizeGenerationRequest,
@@ -19,35 +20,47 @@ test("normalizes provider, category, prompt, and fixed credit cost", () => {
   });
 
   assert.equal(request.provider, "google");
-  assert.equal(request.model, "gemini-3.1-flash-image-preview");
+  assert.equal(request.model, "gemini-3.1-flash-image");
   assert.equal(request.category.id, "logo");
   assert.equal(request.prompt, "premium bakery mark");
   assert.equal(request.costCredits, IMAGE_CREDIT_COST);
 });
 
-test("keeps exact Nano Banana model ids", () => {
+test("keeps only supported image model ids", () => {
+  const gptImage2 = normalizeGenerationRequest({
+    model: "gpt-image-2",
+    category: "post",
+    prompt: "make a premium post",
+  });
   const nanoBanana2 = normalizeGenerationRequest({
-    model: "gemini-3.1-flash-image-preview",
+    model: "gemini-3.1-flash-image",
     category: "post",
     prompt: "make a post",
   });
-  const nanoBananaPro = normalizeGenerationRequest({
-    model: "gemini-3-pro-image-preview",
-    category: "packaging",
-    prompt: "make the text readable on this box",
-  });
-  const request = normalizeGenerationRequest({
-    model: "gemini-2.5-flash-image",
-    category: "logo",
-    prompt: "simple banana logo",
-  });
 
+  assert.equal(gptImage2.provider, "gpt");
+  assert.equal(gptImage2.model, "gpt-image-2");
   assert.equal(nanoBanana2.provider, "google");
-  assert.equal(nanoBanana2.model, "gemini-3.1-flash-image-preview");
-  assert.equal(nanoBananaPro.provider, "google");
-  assert.equal(nanoBananaPro.model, "gemini-3-pro-image-preview");
-  assert.equal(request.provider, "google");
-  assert.equal(request.model, "gemini-2.5-flash-image");
+  assert.equal(nanoBanana2.model, "gemini-3.1-flash-image");
+});
+
+test("rejects removed image models before credits are spent", () => {
+  assert.throws(
+    () => normalizeGenerationRequest({
+      model: "gpt-image-1.5",
+      category: "post",
+      prompt: "old model",
+    }),
+    /unsupported_model/,
+  );
+  assert.throws(
+    () => normalizeGenerationRequest({
+      model: "gemini-3.1-flash-image-preview",
+      category: "post",
+      prompt: "old preview model",
+    }),
+    /unsupported_model/,
+  );
 });
 
 test("falls back to GPT and custom category for unknown values", () => {
@@ -63,7 +76,7 @@ test("falls back to GPT and custom category for unknown values", () => {
 
 test("normalizes quantity, size, and multiplied credit cost", () => {
   const request = normalizeGenerationRequest({
-    model: "gemini-3.1-flash-image-preview",
+    model: "gemini-3.1-flash-image",
     category: "post",
     prompt: "make three vertical posts",
     quantity: 3,
@@ -81,6 +94,16 @@ test("clamps generation quantity to supported UI range", () => {
   assert.equal(normalizeQuantity(0), 1);
   assert.equal(normalizeQuantity(99), 4);
   assert.equal(normalizeQuantity("bad"), 1);
+});
+
+test("defines supported generation models", () => {
+  assert.deepEqual(
+    generationModels.map((model) => model.id),
+    [
+      "gpt-image-2",
+      "gemini-3.1-flash-image",
+    ],
+  );
 });
 
 test("defines supported generation sizes", () => {
@@ -112,7 +135,7 @@ test("rejects missing prompts", () => {
 
 test("allows image edit requests without a prompt", () => {
   const request = normalizeGenerationRequest({
-    model: "gemini-3.1-flash-image-preview",
+    model: "gemini-3.1-flash-image",
     category: "custom",
     prompt: "",
     images: [{ mimeType: "image/png", data: "abc123" }],

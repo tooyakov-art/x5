@@ -1,15 +1,10 @@
-export const IMAGE_CREDIT_COST = 10;
+export const IMAGE_CREDIT_COST = 60;
 export const MIN_IMAGE_QUANTITY = 1;
 export const MAX_IMAGE_QUANTITY = 4;
 
 export const generationModels = [
   { id: "gpt-image-2", provider: "gpt", title: "GPT Image 2" },
-  { id: "gpt-image-1.5", provider: "gpt", title: "GPT Image 1.5" },
-  { id: "gpt-image-1-mini", provider: "gpt", title: "GPT Image Mini" },
-  { id: "gpt-image-1", provider: "gpt", title: "GPT Image" },
-  { id: "gemini-3.1-flash-image-preview", provider: "google", title: "Nano Banana 2" },
-  { id: "gemini-3-pro-image-preview", provider: "google", title: "Nano Banana Pro" },
-  { id: "gemini-2.5-flash-image", provider: "google", title: "Nano Banana" },
+  { id: "gemini-3.1-flash-image", provider: "google", title: "Nano Banana 2" },
 ];
 
 export const generationProviders = [
@@ -171,10 +166,18 @@ export function normalizeGenerationRequest(body) {
   }
 
   const requestedProvider = String(body?.provider || "").trim();
-  const model =
-    generationModels.find((item) => item.id === body?.model) ||
-    generationModels.find((item) => item.provider === requestedProvider) ||
-    generationModels[0];
+  const requestedModel = String(body?.model || "").trim();
+  let model;
+  if (requestedModel) {
+    model = generationModels.find((item) => item.id === requestedModel);
+    if (!model) {
+      throw new GenerationRequestError("unsupported_model", 400);
+    }
+  } else {
+    model =
+      generationModels.find((item) => item.provider === requestedProvider) ||
+      generationModels[0];
+  }
   const provider = model.provider;
   const category =
     generationCategories.find((item) => item.id === body?.category) ||

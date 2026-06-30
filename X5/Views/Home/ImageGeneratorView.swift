@@ -157,23 +157,16 @@ struct ImageGeneratorView: View {
 
             Menu {
                 ForEach(ImageGenerationProvider.allCases) { model in
-                    if model.isComingSoon {
-                        Button {} label: {
-                            Label("\(model.title) · скоро", systemImage: "clock")
-                        }
-                        .disabled(true)
-                    } else {
-                        Button {
-                            X5Feedback.selection()
-                            selectedProvider = model
-                        } label: {
-                            Label(model.title, systemImage: model == selectedProvider ? "checkmark" : "cpu")
-                        }
+                    Button {
+                        X5Feedback.selection()
+                        selectedProvider = model
+                    } label: {
+                        Label(model.title, systemImage: model == selectedProvider ? "checkmark" : model.menuSystemImage)
                     }
                 }
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "cpu")
+                    ProviderLogo(provider: selectedProvider)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(selectedProvider.title)
                             .font(.system(size: 15, weight: .heavy))
@@ -753,6 +746,26 @@ private struct ImageReferenceAsset: Identifiable {
     let id = UUID()
     let image: UIImage
     let reference: ImageGenerationReference
+}
+
+private struct ProviderLogo: View {
+    let provider: ImageGenerationProvider
+
+    var body: some View {
+        Text(provider.brandLabel)
+            .font(.system(size: provider == .gptImage2 ? 10 : 16, weight: .black, design: .rounded))
+            .foregroundColor(provider == .gptImage2 ? .black : .white)
+            .frame(width: 34, height: 34)
+            .background(
+                Circle()
+                    .fill(provider.brandColor)
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(0.26), lineWidth: 1)
+                    )
+            )
+            .accessibilityLabel(provider.title)
+    }
 }
 
 private struct GenerationAnimationView: View {

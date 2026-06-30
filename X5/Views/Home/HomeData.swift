@@ -39,74 +39,52 @@ struct HomeTool: Identifiable, Hashable {
 
 enum ImageGenerationProvider: String, CaseIterable, Identifiable, Hashable {
     case gptImage2 = "gpt-image-2"
-    case gptImage15 = "gpt-image-1.5"
-    case gptImageMini = "gpt-image-1-mini"
-    case gptImage = "gpt-image-1"
-    case nanoBananaPro = "gemini-3-pro-image-preview"
-    case nanoBanana2 = "gemini-3.1-flash-image-preview"
-    case nanoBanana = "gemini-2.5-flash-image"
-    case imagen4 = "imagen-4"
-    case fluxPro = "flux-pro"
-    case midjourney = "midjourney-v7"
-    case runwayFrames = "runway-frames"
-    case adobeFirefly = "adobe-firefly"
-    case leonardoPhoenix = "leonardo-phoenix"
+    case nanoBanana2 = "gemini-3.1-flash-image"
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .gptImage2: return "GPT Image 2"
-        case .gptImage15: return "GPT Image 1.5"
-        case .gptImageMini: return "GPT Image Mini"
-        case .gptImage: return "GPT Image"
-        case .nanoBananaPro: return "Nano Banana Pro"
         case .nanoBanana2: return "Nano Banana 2"
-        case .nanoBanana: return "Nano Banana"
-        case .imagen4: return "Imagen 4"
-        case .fluxPro: return "FLUX Pro"
-        case .midjourney: return "Midjourney"
-        case .runwayFrames: return "Runway Frames"
-        case .adobeFirefly: return "Adobe Firefly"
-        case .leonardoPhoenix: return "Leonardo Phoenix"
         }
     }
 
     var provider: String {
         switch self {
-        case .gptImage2, .gptImage15, .gptImageMini, .gptImage:
+        case .gptImage2:
             return "gpt"
-        case .nanoBananaPro, .nanoBanana2, .nanoBanana:
+        case .nanoBanana2:
             return "google"
-        default:
-            return "soon"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .gptImage2: return "latest OpenAI image model"
-        case .gptImage15: return "state-of-the-art OpenAI image model"
-        case .gptImageMini: return "fast OpenAI image model"
-        case .gptImage: return "higher quality OpenAI image model"
-        case .nanoBananaPro: return "Gemini 3 Pro Image · best text"
-        case .nanoBanana2: return "Gemini 3.1 Flash Image · fast"
-        case .nanoBanana: return "Gemini 2.5 Flash Image · simple"
-        case .imagen4: return "Google image model · soon"
-        case .fluxPro: return "Black Forest Labs · soon"
-        case .midjourney: return "creative image model · soon"
-        case .runwayFrames: return "Runway image model · soon"
-        case .adobeFirefly: return "Adobe image model · soon"
-        case .leonardoPhoenix: return "Leonardo image model · soon"
+        case .gptImage2: return "OpenAI · премиальная генерация"
+        case .nanoBanana2: return "Google Gemini · Nano Banana 2"
         }
     }
 
-    var isAvailable: Bool {
-        provider != "soon"
+    var menuSystemImage: String {
+        switch self {
+        case .gptImage2: return "sparkles"
+        case .nanoBanana2: return "g.circle.fill"
+        }
     }
 
-    var isComingSoon: Bool {
-        !isAvailable
+    var brandLabel: String {
+        switch self {
+        case .gptImage2: return "GPT"
+        case .nanoBanana2: return "G"
+        }
+    }
+
+    var brandColor: Color {
+        switch self {
+        case .gptImage2: return Color(red: 0.76, green: 0.84, blue: 0.92)
+        case .nanoBanana2: return Color(red: 0.26, green: 0.52, blue: 0.96)
+        }
     }
 }
 
@@ -213,7 +191,7 @@ struct ImageGenerationCategory: Identifiable, Hashable {
 }
 
 enum ImageGenerationCatalog {
-    static let creditCost: Int = 10
+    static let creditCost: Int = 60
 
     static let custom = ImageGenerationCategory(
         id: "custom",

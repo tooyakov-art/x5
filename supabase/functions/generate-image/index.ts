@@ -15,7 +15,8 @@ import {
 
 const OPENAI_URL = "https://api.openai.com/v1/images/generations";
 const OPENAI_EDIT_URL = "https://api.openai.com/v1/images/edits";
-const GOOGLE_MODEL = "gemini-3.1-flash-image-preview";
+const GOOGLE_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
+const GOOGLE_MODEL = "gemini-3.1-flash-image";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -182,7 +183,7 @@ async function editWithGPT(apiKey: string, finalPrompt: string, model: string, i
     const bytes = decodeBase64(image.data);
     const mimeType = image.mimeType || "image/jpeg";
     const ext = mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg";
-    form.append("image", new Blob([bytes], { type: mimeType }), `reference-${index + 1}.${ext}`);
+    form.append("image[]", new Blob([bytes], { type: mimeType }), `reference-${index + 1}.${ext}`);
   });
 
   const response = await fetch(OPENAI_EDIT_URL, {
@@ -228,33 +229,28 @@ async function generateOneWithGoogle(
   size: any = {},
 ): Promise<string> {
   const model = requestedModel || Deno.env.get("GOOGLE_IMAGE_MODEL") || GOOGLE_MODEL;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-  const requestParts = [
-    { text: finalPrompt },
+  const input = [
+    { type: "text", text: finalPrompt },
     ...images.slice(0, 6).map((image) => ({
-      inline_data: {
-        mime_type: image.mimeType || "image/jpeg",
-        data: image.data,
-      },
+      type: "image",
+      mime_type: image.mimeType || "image/jpeg",
+      data: image.data,
     })),
   ];
   const bodyWithSize = {
-    contents: [{ parts: requestParts }],
-    generationConfig: {
-      responseModalities: ["TEXT", "IMAGE"],
-      imageConfig: googleImageConfig(size),
-    },
+    model,
+    input,
+    response_format: googleResponseFormat(size),
   };
   const bodyWithoutSize = {
-    contents: [{ parts: requestParts }],
-    generationConfig: {
-      responseModalities: ["TEXT", "IMAGE"],
-    },
+    model,
+    input,
+    response_format: { type: "image" },
   };
-  let response = await postGoogleImageRequest(url, apiKey, bodyWithSize);
+  let response = await postGoogleImageRequest(apiKey, bodyWithSize);
   let payload = await response.json().catch(() => ({}));
   if (!response.ok && shouldRetryGoogleWithoutImageConfig(payload)) {
-    response = await postGoogleImageRequest(url, apiKey, bodyWithoutSize);
+    response = await postGoogleImageRequest(apiKey, bodyWithoutSize);
     payload = await response.json().catch(() => ({}));
   }
 
@@ -262,17 +258,22 @@ async function generateOneWithGoogle(
     throw new Error(payload?.error?.message || `Google error ${response.status}`);
   }
 
-  const responseParts = payload?.candidates?.[0]?.content?.parts || [];
-  const imagePart = responseParts.find((part: any) => part?.inlineData?.data || part?.inline_data?.data);
-  const imageBase64 = imagePart?.inlineData?.data || imagePart?.inline_data?.data;
+  const responseParts = payload?.candidates?.[0]?.content?.parts || payload?.output || [];
+  const imagePart = Array.isArray(responseParts)
+    ? responseParts.find((part: any) => part?.inlineData?.data || part?.inline_data?.data || part?.data)
+    : undefined;
+  const imageBase64 = payload?.output_image?.data ||
+    imagePart?.inlineData?.data ||
+    imagePart?.inline_data?.data ||
+    imagePart?.data;
   if (!imageBase64) {
     throw new Error("Google returned no image");
   }
   return imageBase64;
 }
 
-function postGoogleImageRequest(url: string, apiKey: string, body: Record<string, unknown>): Promise<Response> {
-  return fetch(url, {
+function postGoogleImageRequest(apiKey: string, body: Record<string, unknown>): Promise<Response> {
+  return fetch(GOOGLE_INTERACTIONS_URL, {
     method: "POST",
     headers: {
       "x-goog-api-key": apiKey,
@@ -282,12 +283,13 @@ function postGoogleImageRequest(url: string, apiKey: string, body: Record<string
   });
 }
 
-function googleImageConfig(size: any): Record<string, string> {
+function googleResponseFormat(size: any): Record<string, string> {
   const config: Record<string, string> = {
-    aspectRatio: size.googleAspectRatio || "1:1",
+    type: "image",
+    aspect_ratio: size.googleAspectRatio || "1:1",
   };
   if (size.googleImageSize) {
-    config.imageSize = size.googleImageSize;
+    config.image_size = size.googleImageSize;
   }
   return config;
 }
