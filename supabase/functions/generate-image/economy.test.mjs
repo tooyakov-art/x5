@@ -7,6 +7,7 @@ import {
   generationCategories,
   generationModels,
   generationSizes,
+  googleResponseFormat,
   normalizeImages,
   normalizeGenerationRequest,
   normalizeQuantity,
@@ -37,11 +38,18 @@ test("keeps only supported image model ids", () => {
     category: "post",
     prompt: "make a post",
   });
+  const nanoBanana2Lite = normalizeGenerationRequest({
+    model: "gemini-3.1-flash-lite-image",
+    category: "post",
+    prompt: "make a fast draft",
+  });
 
   assert.equal(gptImage2.provider, "gpt");
   assert.equal(gptImage2.model, "gpt-image-2");
   assert.equal(nanoBanana2.provider, "google");
   assert.equal(nanoBanana2.model, "gemini-3.1-flash-image");
+  assert.equal(nanoBanana2Lite.provider, "google");
+  assert.equal(nanoBanana2Lite.model, "gemini-3.1-flash-lite-image");
 });
 
 test("rejects removed image models before credits are spent", () => {
@@ -102,7 +110,21 @@ test("defines supported generation models", () => {
     [
       "gpt-image-2",
       "gemini-3.1-flash-image",
+      "gemini-3.1-flash-lite-image",
     ],
+  );
+});
+
+test("downgrades Nano Banana 2 Lite image size to its supported 1K output", () => {
+  const twoKSize = generationSizes.find((size) => size.id === "square_2k");
+
+  assert.equal(
+    googleResponseFormat(twoKSize, "gemini-3.1-flash-image").image_size,
+    "2K",
+  );
+  assert.equal(
+    googleResponseFormat(twoKSize, "gemini-3.1-flash-lite-image").image_size,
+    "1K",
   );
 });
 

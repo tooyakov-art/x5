@@ -10,6 +10,7 @@
 import {
   GenerationRequestError,
   buildFinalPrompt,
+  googleResponseFormat,
   normalizeGenerationRequest,
 } from "./economy.mjs";
 
@@ -240,12 +241,12 @@ async function generateOneWithGoogle(
   const bodyWithSize = {
     model,
     input,
-    response_format: googleResponseFormat(size),
+    response_format: googleResponseFormat(size, model),
   };
   const bodyWithoutSize = {
     model,
     input,
-    response_format: { type: "image" },
+    response_format: { type: "image", mime_type: "image/png" },
   };
   let response = await postGoogleImageRequest(apiKey, bodyWithSize);
   let payload = await response.json().catch(() => ({}));
@@ -281,17 +282,6 @@ function postGoogleImageRequest(apiKey: string, body: Record<string, unknown>): 
     },
     body: JSON.stringify(body),
   });
-}
-
-function googleResponseFormat(size: any): Record<string, string> {
-  const config: Record<string, string> = {
-    type: "image",
-    aspect_ratio: size.googleAspectRatio || "1:1",
-  };
-  if (size.googleImageSize) {
-    config.image_size = size.googleImageSize;
-  }
-  return config;
 }
 
 function shouldRetryGoogleWithoutImageConfig(payload: any): boolean {

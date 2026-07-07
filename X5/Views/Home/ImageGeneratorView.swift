@@ -90,7 +90,7 @@ struct ImageGeneratorView: View {
             Task { await loadReferenceImages(newItems) }
         }
         .onChange(of: selectedProvider) { provider in
-            if provider.provider == "gpt", selectedSize.isGoogleOnly {
+            if !selectedSize.isSupported(by: provider) {
                 selectedSize = .square
             }
         }
@@ -220,9 +220,9 @@ struct ImageGeneratorView: View {
 
             Menu {
                 ForEach(ImageGenerationSize.allCases) { size in
-                    if selectedProvider.provider == "gpt", size.isGoogleOnly {
+                    if !size.isSupported(by: selectedProvider) {
                         Button {} label: {
-                            Label("\(size.title) · Nano Banana", systemImage: "lock")
+                            Label("\(size.title) · \(size.unavailableLabel(for: selectedProvider))", systemImage: "lock")
                         }
                         .disabled(true)
                     } else {

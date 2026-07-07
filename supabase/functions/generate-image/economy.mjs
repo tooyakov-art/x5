@@ -5,6 +5,7 @@ export const MAX_IMAGE_QUANTITY = 4;
 export const generationModels = [
   { id: "gpt-image-2", provider: "gpt", title: "GPT Image 2" },
   { id: "gemini-3.1-flash-image", provider: "google", title: "Nano Banana 2" },
+  { id: "gemini-3.1-flash-lite-image", provider: "google", title: "Nano Banana 2 Lite" },
 ];
 
 export const generationProviders = [
@@ -214,6 +215,20 @@ export function normalizeImages(rawImages) {
     if (!data || !/^image\/(jpeg|jpg|png|webp)$/i.test(mimeType)) return [];
     return [{ data, mimeType: mimeType.toLowerCase().replace("image/jpg", "image/jpeg") }];
   });
+}
+
+export function googleResponseFormat(size = generationSizes[0], model = "") {
+  const config = {
+    type: "image",
+    mime_type: "image/png",
+    aspect_ratio: size.googleAspectRatio || "1:1",
+  };
+  if (model === "gemini-3.1-flash-lite-image") {
+    config.image_size = "1K";
+  } else if (size.googleImageSize) {
+    config.image_size = size.googleImageSize;
+  }
+  return config;
 }
 
 export function buildFinalPrompt(prompt, category = generationCategories[0], hasImages = false) {

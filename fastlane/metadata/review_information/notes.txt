@@ -1,5 +1,5 @@
 X Five Marketing is a creator workspace and marketplace for creators, marketers,
-specialists and clients. Version 1.1.4 build 177 includes Home creator tools,
+specialists and clients. Version 1.1.4 build 178 includes Home creator tools,
 image generation, Generated Gallery, Hub, Chats, Portfolio, CourseUP, Profile,
 paid plans, credits, verified badge, report/block controls and account deletion.
 

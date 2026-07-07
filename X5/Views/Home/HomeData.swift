@@ -40,6 +40,7 @@ struct HomeTool: Identifiable, Hashable {
 enum ImageGenerationProvider: String, CaseIterable, Identifiable, Hashable {
     case gptImage2 = "gpt-image-2"
     case nanoBanana2 = "gemini-3.1-flash-image"
+    case nanoBanana2Lite = "gemini-3.1-flash-lite-image"
 
     var id: String { rawValue }
 
@@ -47,6 +48,7 @@ enum ImageGenerationProvider: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .gptImage2: return "GPT Image 2"
         case .nanoBanana2: return "Nano Banana 2"
+        case .nanoBanana2Lite: return "Nano Banana 2 Lite"
         }
     }
 
@@ -54,7 +56,7 @@ enum ImageGenerationProvider: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .gptImage2:
             return "gpt"
-        case .nanoBanana2:
+        case .nanoBanana2, .nanoBanana2Lite:
             return "google"
         }
     }
@@ -63,6 +65,7 @@ enum ImageGenerationProvider: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .gptImage2: return "OpenAI · премиальная генерация"
         case .nanoBanana2: return "Google Gemini · Nano Banana 2"
+        case .nanoBanana2Lite: return "Google Gemini · Nano Banana 2 Lite"
         }
     }
 
@@ -70,6 +73,7 @@ enum ImageGenerationProvider: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .gptImage2: return "sparkles"
         case .nanoBanana2: return "g.circle.fill"
+        case .nanoBanana2Lite: return "g.circle.fill"
         }
     }
 
@@ -77,6 +81,7 @@ enum ImageGenerationProvider: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .gptImage2: return "GPT"
         case .nanoBanana2: return "G"
+        case .nanoBanana2Lite: return "G"
         }
     }
 
@@ -84,6 +89,7 @@ enum ImageGenerationProvider: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .gptImage2: return Color(red: 0.76, green: 0.84, blue: 0.92)
         case .nanoBanana2: return Color(red: 0.26, green: 0.52, blue: 0.96)
+        case .nanoBanana2Lite: return Color(red: 0.32, green: 0.69, blue: 0.98)
         }
     }
 }
@@ -176,6 +182,26 @@ enum ImageGenerationSize: String, CaseIterable, Identifiable, Hashable {
             return false
         case .vertical23, .portrait34, .portrait45, .landscape32, .landscape43, .wide, .square2K, .portrait2K, .landscape2K:
             return true
+        }
+    }
+
+    func isSupported(by provider: ImageGenerationProvider) -> Bool {
+        switch provider {
+        case .gptImage2:
+            return !isGoogleOnly
+        case .nanoBanana2:
+            return true
+        case .nanoBanana2Lite:
+            return googleImageSize == nil
+        }
+    }
+
+    func unavailableLabel(for provider: ImageGenerationProvider) -> String {
+        switch provider {
+        case .gptImage2:
+            return "Nano Banana"
+        case .nanoBanana2, .nanoBanana2Lite:
+            return "Nano Banana 2"
         }
     }
 }
