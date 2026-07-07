@@ -81,10 +81,7 @@ jobs:
           elsif ["PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "READY_FOR_REVIEW"].include?(version.app_store_state)
             puts "Version is editable/submittable; no developer reject needed."
           elsif version.app_store_state == "WAITING_FOR_REVIEW"
-            puts "Removing waiting version from review so build #{ENV.fetch("EXPECTED_BUILD")} can be attached."
-            abort "Version cannot be removed from review via ASC API." unless version.can_reject?
-            abort "Remove from review returned false." unless version.reject!
-            puts "Removed from review."
+            puts "Version is waiting for review; the active review submission will be cancelled before replacing the build."
           elsif version.app_store_state == "IN_REVIEW"
             abort "Version is already in Apple review; do not replace while state=#{version.app_store_state}"
           elsif version.app_store_state == "READY_FOR_SALE"
@@ -183,7 +180,68 @@ jobs:
           if state != "WAITING_FOR_REVIEW":
               sys.exit(f"Version is not safe to replace yet: {state}")
 
-          print("Waiting for remove-from-review to finish propagating in App Store Connect.")
+          review_payload = api(
+              "GET",
+              f"/reviewSubmissions?filter[app]={app_id}&filter[platform]=IOS&include=items",
+          )
+          included = {
+              (row.get("type"), row.get("id")): row
+              for row in review_payload.get("included", [])
+          }
+          active = []
+          for row in review_payload.get("data", []):
+              row_state = row.get("attributes", {}).get("state")
+              if row_state not in {"WAITING_FOR_REVIEW", "READY_FOR_REVIEW"}:
+                  continue
+              item_refs = row.get("relationships", {}).get("items", {}).get("data", []) or []
+              item_rows = [included.get((ref.get("type"), ref.get("id"))) for ref in item_refs]
+              item_rows = [item for item in item_rows if item]
+              version_item = any(
+                  (item.get("relationships", {})
+                       .get("appStoreVersion", {})
+                       .get("data", {})
+                       .get("id") == version_id)
+                  for item in item_rows
+              )
+              print(f"Review submission {row['id']} state={row_state} includes_target_version={version_item}")
+              if version_item:
+                  active.append(row)
+
+          if not active:
+              fallback = [
+                  row for row in review_payload.get("data", [])
+                  if row.get("attributes", {}).get("state") == "WAITING_FOR_REVIEW"
+              ]
+              if len(fallback) == 1:
+                  print("No item relationship matched; using the single WAITING_FOR_REVIEW submission as fallback.")
+                  active = fallback
+              else:
+                  sys.exit("Version is waiting for review, but no matching active review submission was found.")
+          if len(active) > 1:
+              for row in active:
+                  print(f"Active review submission: {row['id']} state={row.get('attributes', {}).get('state')}")
+              sys.exit("More than one matching active review submission exists; refusing to choose automatically.")
+
+          submission_id = active[0]["id"]
+          submission_state = active[0].get("attributes", {}).get("state")
+          print(f"Cancelling review submission: {submission_id} state={submission_state}")
+          cancel_response = requests.patch(
+              f"{BASE}/reviewSubmissions/{submission_id}",
+              headers={**headers, "Content-Type": "application/json"},
+              json={
+                  "data": {
+                      "type": "reviewSubmissions",
+                      "id": submission_id,
+                      "attributes": {"canceled": True},
+                  }
+              },
+              timeout=60,
+          )
+          if cancel_response.status_code >= 300:
+              print(f"PATCH reviewSubmissions/{submission_id} -> HTTP {cancel_response.status_code}")
+              print(cancel_response.text[:3000])
+              raise SystemExit(1)
+          print(f"Cancel response state={cancel_response.json()['data']['attributes'].get('state')}")
 
           for attempt in range(1, 31):
               refreshed = find_version()
