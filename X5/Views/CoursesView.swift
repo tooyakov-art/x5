@@ -1184,7 +1184,7 @@ private struct CourseSubmissionView: View {
                 } header: {
                     Text("Заявка на курс")
                 } footer: {
-                    Text("Опиши идею курса и прикрепи первое видео. Команда X Five Marketing проверит заявку и свяжется с тобой.")
+                    Text("Опиши идею курса и прикрепи первое видео. Команда Xfive marketing проверит заявку и свяжется с тобой.")
                 }
 
                 Section("Видео") {

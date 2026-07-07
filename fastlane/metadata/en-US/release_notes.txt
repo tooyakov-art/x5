@@ -1,4 +1,4 @@
-This update expands X Five Marketing into a fuller creator workspace.
+This update expands Xfive marketing into a fuller creator workspace.
 
 New in this version:
 - Updated Home screen with creator and marketing tools.

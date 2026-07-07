@@ -530,7 +530,7 @@ final class IAPService: ObservableObject {
                     "source": source,
                     "product": transaction.productID
                 ])
-                lastError = "This purchase is already linked to another X Five Marketing account."
+                lastError = "This purchase is already linked to another Xfive marketing account."
                 return .ownedByOther
             default:
                 DiagnosticLogger.log(event: "iap_claim_unknown_response", extra: [

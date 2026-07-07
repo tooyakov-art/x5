@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 
 /// Public profile — same hero language as the main profile, with public actions.
 struct UserProfileView: View {
@@ -324,11 +324,11 @@ struct UserProfileView: View {
     // MARK: - Helpers
 
     private var displayName: String {
-        profile?.displayName ?? fallback?.name ?? fallback?.nickname ?? "X Five Marketing"
+        profile?.displayName ?? fallback?.name ?? fallback?.nickname ?? "Xfive marketing"
     }
 
     private var isMe: Bool { auth.userId == userId }
-    private var profileShareText: String { "X Five Marketing: \(displayName)" }
+    private var profileShareText: String { "Xfive marketing: \(displayName)" }
 
     private func openChat() {
         guard let me = auth.userId else { return }
@@ -346,7 +346,7 @@ struct UserProfileView: View {
 
     private func reportUser() {
         let subject = "Report user \(userId)"
-        let body = "Hi X Five Marketing team,\n\nI'd like to report this user. Please review their content.\n\nUser ID: \(userId)\n"
+        let body = "Hi Xfive marketing team,\n\nI'd like to report this user. Please review their content.\n\nUser ID: \(userId)\n"
         let to = "appreview@x5studio.app"
         let s = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let b = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""

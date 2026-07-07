@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 
 /// Hub — bottom tab matching web HireView. Two segmented sub-tabs:
 /// Specialists (profiles where show_in_hub=true) and Tasks (open task marketplace).
@@ -818,7 +818,7 @@ private struct SpecialistRow: View {
             AvatarView(urlString: person.avatar, name: person.name, size: 48)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(person.name ?? person.nickname ?? "X Five Marketing")
+                    Text(person.name ?? person.nickname ?? "Xfive marketing")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
                     if person.isVerified == true {

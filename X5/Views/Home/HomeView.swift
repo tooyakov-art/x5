@@ -306,7 +306,7 @@ struct HomeView: View {
         HomeTool(
             id: id,
             title: title,
-            subtitle: "Скоро добавим полный запуск внутри X Five Marketing.",
+            subtitle: "Скоро добавим полный запуск внутри Xfive marketing.",
             icon: icon,
             videoFile: nil,
             gradientStart: Color.accentColor.opacity(0.34),

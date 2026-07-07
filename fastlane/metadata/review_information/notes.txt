@@ -1,5 +1,5 @@
-X Five Marketing is a creator workspace and marketplace for creators, marketers,
-specialists and clients. Version 1.1.4 build 178 includes Home creator tools,
+Xfive marketing is a creator workspace and marketplace for creators, marketers,
+specialists and clients. Version 1.1.4 build 179 includes Home creator tools,
 image generation, Generated Gallery, Hub, Chats, Portfolio, CourseUP, Profile,
 paid plans, credits, verified badge, report/block controls and account deletion.
 
@@ -30,7 +30,7 @@ Quick test flow:
     out and Delete Account.
 
 Image generation:
-The app sends the user's prompt and optional reference images to the X Five Marketing Supabase
+The app sends the user's prompt and optional reference images to the Xfive marketing Supabase
 Edge Function generate-image. Generation is credit-based and the UI shows cost
 before generation. Generated images can be kept on-device, saved to Photos or
 shared. Reference images are chosen by the user through the iOS photo picker.
@@ -53,7 +53,7 @@ calls Supabase delete_own_account and signs the user out.
 
 Biometrics:
 The app does not collect, store, transmit or process face data. Apple's
-LocalAuthentication framework is used only for optional App Lock. X Five Marketing receives
+LocalAuthentication framework is used only for optional App Lock. Xfive marketing receives
 only success/fail result and no biometric data.
 
 Permissions:

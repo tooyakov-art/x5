@@ -18,7 +18,7 @@ jobs:
       ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
       BUNDLE_ID: com.x5studio.app
       EXPECTED_VERSION: "1.1.4"
-      EXPECTED_BUILD: "178"
+      EXPECTED_BUILD: "179"
     steps:
       - uses: actions/checkout@v4
 
