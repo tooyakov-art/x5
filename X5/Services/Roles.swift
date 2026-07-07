@@ -5,6 +5,7 @@ import Foundation
 /// Source-of-truth admin check is enforced by Supabase RLS — this is just UI gating.
 enum Roles {
     static let developerEmails: Set<String> = [
+        "adilkhanskii@gmail.com",
         "tuakov.ursa@gmail.com",
         "tooyakov.art@gmail.com",
         "tooyakov.icloud@gmail.com",
