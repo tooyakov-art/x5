@@ -81,7 +81,10 @@ jobs:
           elsif ["PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "READY_FOR_REVIEW"].include?(version.app_store_state)
             puts "Version is editable/submittable; no developer reject needed."
           elsif version.app_store_state == "WAITING_FOR_REVIEW"
-            puts "Version is waiting for review; the active review submission will be cancelled before replacing the build."
+            puts "Removing waiting version from review so build #{ENV.fetch("EXPECTED_BUILD")} can be attached."
+            abort "Version cannot be removed from review via ASC API." unless version.can_reject?
+            abort "Remove from review returned false." unless version.reject!
+            puts "Removed from review."
           elsif version.app_store_state == "IN_REVIEW"
             abort "Version is already in Apple review; do not replace while state=#{version.app_store_state}"
           elsif version.app_store_state == "READY_FOR_SALE"
@@ -103,7 +106,6 @@ jobs:
           import requests
 
           BASE = "https://api.appstoreconnect.apple.com/v1"
-          ACTIVE_REVIEW = {"WAITING_FOR_REVIEW", "READY_FOR_REVIEW"}
           READY_TO_REPLACE = {"PREPARE_FOR_SUBMISSION", "READY_FOR_REVIEW", "DEVELOPER_REJECTED", "REJECTED"}
 
           token = jwt.encode(
@@ -175,30 +177,13 @@ jobs:
 
           if state == "IN_REVIEW":
               sys.exit("Version is already IN_REVIEW; refusing to replace build automatically.")
-          if state not in ACTIVE_REVIEW:
+          if state in READY_TO_REPLACE:
               print("Version is not in a waiting review state; no review cancellation needed.")
               raise SystemExit(0)
+          if state != "WAITING_FOR_REVIEW":
+              sys.exit(f"Version is not safe to replace yet: {state}")
 
-          review_payload = api(
-              "GET",
-              f"/reviewSubmissions?filter[app]={app_id}&filter[platform]=IOS&include=items",
-          )
-          active = [
-              row
-              for row in review_payload.get("data", [])
-              if row.get("attributes", {}).get("state") in ACTIVE_REVIEW
-          ]
-          if not active:
-              sys.exit("Version is waiting for review, but no active review submission was found.")
-          if len(active) > 1:
-              for row in active:
-                  print(f"Active review submission: {row['id']} state={row.get('attributes', {}).get('state')}")
-              sys.exit("More than one active review submission exists; refusing to choose automatically.")
-
-          submission_id = active[0]["id"]
-          submission_state = active[0].get("attributes", {}).get("state")
-          print(f"Cancelling active review submission: {submission_id} state={submission_state}")
-          api("DELETE", f"/reviewSubmissions/{submission_id}", expected=(204,))
+          print("Waiting for remove-from-review to finish propagating in App Store Connect.")
 
           for attempt in range(1, 31):
               refreshed = find_version()
