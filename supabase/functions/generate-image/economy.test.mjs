@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import * as economyModule from "./economy.mjs";
 
 import {
   IMAGE_CREDIT_COST,
@@ -128,6 +129,17 @@ test("downgrades Nano Banana 2 Lite image size to its supported 1K output", () =
   );
 });
 
+test("requests the JPEG response format supported by current Nano Banana models", () => {
+  assert.equal(
+    googleResponseFormat(generationSizes[0], "gemini-3.1-flash-image").mime_type,
+    "image/jpeg",
+  );
+  assert.equal(
+    googleResponseFormat(generationSizes[0], "gemini-3.1-flash-lite-image").mime_type,
+    "image/jpeg",
+  );
+});
+
 test("defines supported generation sizes", () => {
   assert.deepEqual(
     generationSizes.map((size) => size.id),
@@ -192,4 +204,50 @@ test("normalizes image references for edit requests", () => {
   assert.deepEqual(images, [
     { mimeType: "image/jpeg", data: "abc123" },
   ]);
+});
+
+test("prefers the Gemini key and removes duplicate provider keys", () => {
+  const keys = economyModule.normalizeProviderKeys?.([
+    " new-gemini-key ",
+    "old-google-key",
+    "new-gemini-key",
+    "",
+  ]);
+
+  assert.deepEqual(keys, ["new-gemini-key", "old-google-key"]);
+});
+
+test("retries Google generation with another key only for authentication failures", () => {
+  const suspended = economyModule.shouldRetryGoogleWithNextKey?.({
+    error: {
+      code: 403,
+      status: "PERMISSION_DENIED",
+      message: "Permission denied: Consumer 'api_key:redacted' has been suspended.",
+      details: [{ reason: "CONSUMER_SUSPENDED" }],
+    },
+  }, 403);
+  const invalidPrompt = economyModule.shouldRetryGoogleWithNextKey?.({
+    error: { code: 400, status: "INVALID_ARGUMENT", message: "Prompt is invalid." },
+  }, 400);
+
+  assert.equal(suspended, true);
+  assert.equal(invalidPrompt, false);
+});
+
+test("never exposes provider API keys in user-facing errors", () => {
+  const safeMessage = economyModule.safeProviderErrorMessage?.(
+    "google",
+    "Permission denied: Consumer 'api_key:AIzaSySecretValue' has been suspended.",
+  );
+
+  assert.equal(safeMessage, "Google image generation is temporarily unavailable. Please try again.");
+  assert.doesNotMatch(safeMessage || "", /AIza|api_key|consumer/i);
+});
+
+test("keeps deployed Google batch error parsing when syncing the function source", () => {
+  const message = economyModule.extractGoogleErrorMessage?.([
+    { error: { message: "Batch request was rejected" } },
+  ], 400);
+
+  assert.equal(message, "Batch request was rejected");
 });

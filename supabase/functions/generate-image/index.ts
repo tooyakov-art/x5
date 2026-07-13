@@ -10,8 +10,12 @@
 import {
   GenerationRequestError,
   buildFinalPrompt,
+  extractGoogleErrorMessage,
   googleResponseFormat,
+  normalizeProviderKeys,
   normalizeGenerationRequest,
+  safeProviderErrorMessage,
+  shouldRetryGoogleWithNextKey,
 } from "./economy.mjs";
 
 const OPENAI_URL = "https://api.openai.com/v1/images/generations";
@@ -53,8 +57,8 @@ Deno.serve(async (req) => {
     return json({ error: "invalid_json" }, 400);
   }
 
-  const providerKey = getProviderKey(normalized.provider);
-  if (!providerKey) {
+  const providerKeys = getProviderKeys(normalized.provider);
+  if (providerKeys.length === 0) {
     return json({
       error: "provider_not_configured",
       provider: normalized.provider,
@@ -85,7 +89,7 @@ Deno.serve(async (req) => {
     const imageBase64s =
       normalized.provider === "google"
         ? await generateWithGoogle(
-          providerKey,
+          providerKeys,
           finalPrompt,
           normalized.model,
           normalized.images,
@@ -93,7 +97,7 @@ Deno.serve(async (req) => {
           normalized.size,
         )
         : await generateWithGPT(
-          providerKey,
+          providerKeys[0],
           finalPrompt,
           normalized.model,
           normalized.images,
@@ -118,16 +122,22 @@ Deno.serve(async (req) => {
     return json({
       error: "provider_error",
       provider: normalized.provider,
-      message: error instanceof Error ? error.message : "Image generation failed",
+      message: safeProviderErrorMessage(
+        normalized.provider,
+        error instanceof Error ? error.message : "Image generation failed",
+      ),
     }, 502);
   }
 });
 
-function getProviderKey(provider: string): string | undefined {
+function getProviderKeys(provider: string): string[] {
   if (provider === "google") {
-    return Deno.env.get("GOOGLE_API_KEY") || Deno.env.get("GEMINI_API_KEY") || undefined;
+    return normalizeProviderKeys([
+      Deno.env.get("GEMINI_API_KEY"),
+      Deno.env.get("GOOGLE_API_KEY"),
+    ]);
   }
-  return Deno.env.get("OPENAI_API_KEY") || undefined;
+  return normalizeProviderKeys([Deno.env.get("OPENAI_API_KEY")]);
 }
 
 async function generateWithGPT(
@@ -208,7 +218,7 @@ async function editWithGPT(apiKey: string, finalPrompt: string, model: string, i
 }
 
 async function generateWithGoogle(
-  apiKey: string,
+  apiKeys: string[],
   finalPrompt: string,
   requestedModel: string,
   images: any[] = [],
@@ -217,13 +227,13 @@ async function generateWithGoogle(
 ): Promise<string[]> {
   const results = [];
   for (let index = 0; index < quantity; index += 1) {
-    results.push(await generateOneWithGoogle(apiKey, finalPrompt, requestedModel, images, size));
+    results.push(await generateOneWithGoogle(apiKeys, finalPrompt, requestedModel, images, size));
   }
   return results;
 }
 
 async function generateOneWithGoogle(
-  apiKey: string,
+  apiKeys: string[],
   finalPrompt: string,
   requestedModel: string,
   images: any[] = [],
@@ -246,17 +256,30 @@ async function generateOneWithGoogle(
   const bodyWithoutSize = {
     model,
     input,
-    response_format: { type: "image", mime_type: "image/png" },
+    response_format: { type: "image", mime_type: "image/jpeg" },
   };
-  let response = await postGoogleImageRequest(apiKey, bodyWithSize);
-  let payload = await response.json().catch(() => ({}));
-  if (!response.ok && shouldRetryGoogleWithoutImageConfig(payload)) {
-    response = await postGoogleImageRequest(apiKey, bodyWithoutSize);
+  let response: Response | undefined;
+  let payload: any = {};
+  for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex += 1) {
+    const apiKey = apiKeys[keyIndex];
+    response = await postGoogleImageRequest(apiKey, bodyWithSize);
     payload = await response.json().catch(() => ({}));
+    if (!response.ok && shouldRetryGoogleWithoutImageConfig(payload)) {
+      response = await postGoogleImageRequest(apiKey, bodyWithoutSize);
+      payload = await response.json().catch(() => ({}));
+    }
+    if (response.ok) break;
+    if (
+      keyIndex < apiKeys.length - 1 &&
+      shouldRetryGoogleWithNextKey(payload, response.status)
+    ) {
+      continue;
+    }
+    throw new Error(extractGoogleErrorMessage(payload, response.status));
   }
 
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || `Google error ${response.status}`);
+  if (!response?.ok) {
+    throw new Error(extractGoogleErrorMessage(payload, response?.status || 502));
   }
 
   const responseParts = payload?.candidates?.[0]?.content?.parts || payload?.output || [];

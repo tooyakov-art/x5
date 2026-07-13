@@ -220,7 +220,7 @@ export function normalizeImages(rawImages) {
 export function googleResponseFormat(size = generationSizes[0], model = "") {
   const config = {
     type: "image",
-    mime_type: "image/png",
+    mime_type: "image/jpeg",
     aspect_ratio: size.googleAspectRatio || "1:1",
   };
   if (model === "gemini-3.1-flash-lite-image") {
@@ -229,6 +229,43 @@ export function googleResponseFormat(size = generationSizes[0], model = "") {
     config.image_size = size.googleImageSize;
   }
   return config;
+}
+
+export function extractGoogleErrorMessage(payload, status) {
+  const directMessage = payload?.error?.message;
+  if (typeof directMessage === "string" && directMessage.trim()) {
+    return directMessage.trim();
+  }
+
+  if (Array.isArray(payload)) {
+    const nestedMessage = payload.find((item) =>
+      typeof item?.error?.message === "string" && item.error.message.trim()
+    )?.error?.message;
+    if (nestedMessage) return nestedMessage.trim();
+  }
+
+  return `Google error ${status}`;
+}
+
+export function normalizeProviderKeys(rawKeys) {
+  const seen = new Set();
+  return (Array.isArray(rawKeys) ? rawKeys : []).flatMap((rawKey) => {
+    const key = String(rawKey || "").trim();
+    if (!key || seen.has(key)) return [];
+    seen.add(key);
+    return [key];
+  });
+}
+
+export function shouldRetryGoogleWithNextKey(_payload, status) {
+  return status === 401 || status === 403;
+}
+
+export function safeProviderErrorMessage(provider, _upstreamMessage = "") {
+  if (provider === "google") {
+    return "Google image generation is temporarily unavailable. Please try again.";
+  }
+  return "Image generation is temporarily unavailable. Please try again.";
 }
 
 export function buildFinalPrompt(prompt, category = generationCategories[0], hasImages = false) {
