@@ -58,8 +58,102 @@ begin
   if v_count <> 1 or v_source_module is null then
     raise exception 'exact_recovery_module_missing:%:%', v_source_id, v_recovered_module_id;
   end if;
-  if (v_categories -> 0) - 'order' is distinct from v_source_module - 'order' then
-    raise exception 'recovered_module_differs_from_incident_source';
+  -- A later editor save may legitimately retain old lesson-commerce metadata
+  -- or omit an empty videoUrl field. Compare the content-bearing hierarchy
+  -- instead of requiring byte-for-byte equality with the hidden incident row.
+  if (v_categories -> 0) - 'order' - 'days'
+     is distinct from v_source_module - 'order' - 'days' then
+    raise exception 'recovered_module_root_differs_from_incident_source';
+  end if;
+
+  select count(*)
+  into v_count
+  from (
+    (
+      select
+        day ->> 'id' as day_id,
+        day ->> 'title' as day_title,
+        day ->> 'order' as day_order
+      from jsonb_array_elements(coalesce(v_source_module -> 'days', '[]'::jsonb)) as day
+      except
+      select
+        day ->> 'id',
+        day ->> 'title',
+        day ->> 'order'
+      from jsonb_array_elements(coalesce(v_categories -> 0 -> 'days', '[]'::jsonb)) as day
+    )
+    union all
+    (
+      select
+        day ->> 'id',
+        day ->> 'title',
+        day ->> 'order'
+      from jsonb_array_elements(coalesce(v_categories -> 0 -> 'days', '[]'::jsonb)) as day
+      except
+      select
+        day ->> 'id',
+        day ->> 'title',
+        day ->> 'order'
+      from jsonb_array_elements(coalesce(v_source_module -> 'days', '[]'::jsonb)) as day
+    )
+  ) as day_diff;
+  if v_count <> 0 then
+    raise exception 'recovered_module_day_hierarchy_differs:%', v_count;
+  end if;
+
+  select count(*)
+  into v_count
+  from (
+    (
+      select
+        day ->> 'id' as day_id,
+        lesson ->> 'id' as lesson_id,
+        lesson ->> 'title' as lesson_title,
+        lesson ->> 'order' as lesson_order,
+        lesson ->> 'duration' as lesson_duration,
+        lesson ->> 'isFreePreview' as free_preview,
+        nullif(btrim(coalesce(lesson ->> 'videoUrl', '')), '') as real_video_url
+      from jsonb_array_elements(coalesce(v_source_module -> 'days', '[]'::jsonb)) as day
+      cross join lateral jsonb_array_elements(coalesce(day -> 'lessons', '[]'::jsonb)) as lesson
+      except
+      select
+        day ->> 'id',
+        lesson ->> 'id',
+        lesson ->> 'title',
+        lesson ->> 'order',
+        lesson ->> 'duration',
+        lesson ->> 'isFreePreview',
+        nullif(btrim(coalesce(lesson ->> 'videoUrl', '')), '')
+      from jsonb_array_elements(coalesce(v_categories -> 0 -> 'days', '[]'::jsonb)) as day
+      cross join lateral jsonb_array_elements(coalesce(day -> 'lessons', '[]'::jsonb)) as lesson
+    )
+    union all
+    (
+      select
+        day ->> 'id',
+        lesson ->> 'id',
+        lesson ->> 'title',
+        lesson ->> 'order',
+        lesson ->> 'duration',
+        lesson ->> 'isFreePreview',
+        nullif(btrim(coalesce(lesson ->> 'videoUrl', '')), '')
+      from jsonb_array_elements(coalesce(v_categories -> 0 -> 'days', '[]'::jsonb)) as day
+      cross join lateral jsonb_array_elements(coalesce(day -> 'lessons', '[]'::jsonb)) as lesson
+      except
+      select
+        day ->> 'id',
+        lesson ->> 'id',
+        lesson ->> 'title',
+        lesson ->> 'order',
+        lesson ->> 'duration',
+        lesson ->> 'isFreePreview',
+        nullif(btrim(coalesce(lesson ->> 'videoUrl', '')), '')
+      from jsonb_array_elements(coalesce(v_source_module -> 'days', '[]'::jsonb)) as day
+      cross join lateral jsonb_array_elements(coalesce(day -> 'lessons', '[]'::jsonb)) as lesson
+    )
+  ) as lesson_diff;
+  if v_count <> 0 then
+    raise exception 'recovered_module_lesson_hierarchy_differs:%', v_count;
   end if;
 
   if not exists (

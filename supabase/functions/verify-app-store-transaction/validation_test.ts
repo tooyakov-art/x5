@@ -140,18 +140,20 @@ Deno.test("legacy nil appAccountToken is deferred to the ownership-aware RPC", (
   assertEquals(normalized.appAccountToken, null);
 });
 
-Deno.test("verified transaction rejects wrong account, product, bundle, or environment", () => {
-  assertInputError(
-    () =>
-      validateVerifiedTransaction(
-        validTransaction,
-        "ed0fe39b-a7cd-4e64-a443-0266125ff3ea",
-        "Production",
-        Date.UTC(2026, 6, 14),
-      ),
-    "transaction_owned_by_other",
-    403,
+Deno.test("legacy mismatched appAccountToken is deferred to the ownership-aware RPC", () => {
+  const normalized = validateVerifiedTransaction(
+    validTransaction,
+    "ed0fe39b-a7cd-4e64-a443-0266125ff3ea",
+    "Production",
+    Date.UTC(2026, 6, 14),
   );
+  assertEquals(
+    normalized.appAccountToken,
+    "7b5a5cb8-239a-4cd1-b5d8-968cc1d437f4",
+  );
+});
+
+Deno.test("verified transaction rejects wrong product, bundle, or environment", () => {
   assertInputError(
     () =>
       validateVerifiedTransaction(

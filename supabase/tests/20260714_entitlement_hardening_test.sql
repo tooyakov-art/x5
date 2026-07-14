@@ -1,5 +1,19 @@
 begin;
 
+-- On a pre-migration database this fixture is rolled back with the test. Once
+-- the production migration exists, IF NOT EXISTS leaves the real private
+-- allowlist untouched.
+create table if not exists public.app_store_legacy_bindings (
+  original_transaction_id text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  app_account_token uuid not null,
+  product_id text not null,
+  legacy_credited_at timestamptz not null,
+  legacy_subscription_end_date timestamptz,
+  legacy_created_at timestamptz,
+  bound_at timestamptz
+);
+
 select set_config(
   'x5.test_user_id',
   (
@@ -295,6 +309,38 @@ begin
     raise exception 'verified_app_store_rpc_is_not_service_callable';
   end if;
 
+  v_rejected := false;
+  begin
+    perform public.apply_verified_app_store_transaction(
+      v_uid,
+      'codex-sandbox-transaction',
+      'codex-sandbox-original',
+      'com.x5studio.app.pro.monthly',
+      'Sandbox',
+      v_uid,
+      now() - interval '1 minute',
+      now() + interval '1 month',
+      now(),
+      null
+    );
+  exception when sqlstate '22023' then
+    if sqlerrm <> 'sandbox_not_allowed' then
+      raise;
+    end if;
+    v_rejected := true;
+  end;
+  if not v_rejected then
+    raise exception 'sandbox_transaction_minted_production_entitlement';
+  end if;
+
+  if exists (
+    select 1
+      from public.app_store_transactions
+     where transaction_id = 'codex-sandbox-transaction'
+  ) then
+    raise exception 'sandbox_transaction_reached_production_ledger';
+  end if;
+
   -- Simulate the upgrade from the old exact-once table. Restoring the current
   -- already-credited period must backfill the new ledger without minting again.
   insert into public.iap_entitlements (
@@ -332,7 +378,7 @@ begin
     'codex-verified-transaction-1',
     'codex-verified-original-1',
     'com.x5studio.app.pro.monthly',
-    'Sandbox',
+    'Production',
     v_uid,
     now() - interval '1 minute',
     now() + interval '1 month',
@@ -362,7 +408,7 @@ begin
     'codex-verified-transaction-2',
     'codex-verified-original-1',
     'com.x5studio.app.pro.monthly',
-    'Sandbox',
+    'Production',
     v_uid,
     now() - interval '1 minute',
     now() + interval '2 months',
@@ -382,7 +428,7 @@ begin
     'codex-verified-transaction-2',
     'codex-verified-original-1',
     'com.x5studio.app.pro.monthly',
-    'Sandbox',
+    'Production',
     v_uid,
     now() - interval '1 minute',
     now() + interval '2 months',
@@ -410,7 +456,7 @@ begin
       'codex-verified-transaction-2',
       'codex-verified-original-1',
       'com.x5studio.app.pro.monthly',
-      'Sandbox',
+      'Production',
       v_other_uid,
       now() - interval '1 minute',
       now() + interval '2 months',
@@ -434,7 +480,7 @@ begin
       'codex-cross-user-original-transaction',
       'codex-verified-original-1',
       'com.x5studio.app.pro.monthly',
-      'Sandbox',
+      'Production',
       v_other_uid,
       now() - interval '1 minute',
       now() + interval '1 month',
@@ -480,7 +526,7 @@ begin
       'codex-missing-token-transaction',
       'codex-missing-token-original',
       'com.x5studio.app.lite.monthly',
-      'Sandbox',
+      'Production',
       null,
       now() - interval '1 minute',
       now() + interval '1 month',
@@ -530,7 +576,7 @@ begin
       'codex-android-restore-transaction',
       'codex-android-original',
       'com.x5studio.app.lite.monthly',
-      'Sandbox',
+      'Production',
       null,
       now() - interval '1 minute',
       now() + interval '1 month',
@@ -591,6 +637,105 @@ begin
     raise exception 'legacy_nil_token_restore_failed:%:%', v_response, v_profile.credits;
   end if;
 
+  -- Two production subscriptions were created by the retired client-claim
+  -- flow with a stable random appAccountToken. They may bind only after a
+  -- genuine Apple JWS exactly matches a closed server-side allowlist.
+  insert into public.iap_entitlements (
+    original_transaction_id,
+    user_id,
+    product_id,
+    platform,
+    app_account_token,
+    credited_at,
+    credits_granted,
+    subscription_end_date,
+    last_transaction_id
+  ) values (
+    'codex-legacy-mismatched-original',
+    v_uid,
+    'com.x5studio.app.lite.monthly',
+    'ios',
+    '66666666-6666-4666-8666-666666666666'::uuid,
+    now() - interval '2 months',
+    1000,
+    now() - interval '1 month',
+    null
+  )
+  on conflict (original_transaction_id) do update
+     set user_id = excluded.user_id,
+         product_id = excluded.product_id,
+         platform = excluded.platform,
+         app_account_token = excluded.app_account_token,
+         credited_at = excluded.credited_at,
+         credits_granted = excluded.credits_granted,
+         subscription_end_date = excluded.subscription_end_date,
+         last_transaction_id = excluded.last_transaction_id;
+
+  insert into public.app_store_legacy_bindings (
+    original_transaction_id,
+    user_id,
+    app_account_token,
+    product_id,
+    legacy_credited_at,
+    legacy_subscription_end_date,
+    legacy_created_at
+  )
+  select
+    original_transaction_id,
+    user_id,
+    app_account_token,
+    product_id,
+    credited_at,
+    subscription_end_date,
+    created_at
+  from public.iap_entitlements
+  where original_transaction_id = 'codex-legacy-mismatched-original';
+
+  v_response := public.apply_verified_app_store_transaction(
+    v_uid,
+    'codex-legacy-mismatched-renewal',
+    'codex-legacy-mismatched-original',
+    'com.x5studio.app.lite.monthly',
+    'Production',
+    '66666666-6666-4666-8666-666666666666'::uuid,
+    now() - interval '1 minute',
+    now() + interval '1 month',
+    now(),
+    null
+  );
+
+  select * into v_profile from public.profiles where id = v_uid;
+  if v_response ->> 'status' <> 'applied'
+     or (v_response ->> 'credits_granted')::integer <> 1000
+     or v_profile.credits <> 54000 then
+    raise exception 'exact_legacy_mismatch_binding_failed:%:%',
+      v_response, v_profile.credits;
+  end if;
+
+  v_rejected := false;
+  begin
+    perform public.apply_verified_app_store_transaction(
+      v_other_uid,
+      'codex-legacy-mismatched-cross-user',
+      'codex-legacy-mismatched-original',
+      'com.x5studio.app.lite.monthly',
+      'Production',
+      '66666666-6666-4666-8666-666666666666'::uuid,
+      now() - interval '1 minute',
+      now() + interval '2 months',
+      now(),
+      null
+    );
+  exception when sqlstate '22023' then
+    if sqlerrm <> 'owned_by_other' then
+      raise;
+    end if;
+    v_rejected := true;
+  end;
+  if not v_rejected then
+    raise exception 'legacy_mismatch_cross_user_replay_was_accepted';
+  end if;
+
   v_rejected := false;
   begin
     perform public.apply_verified_app_store_transaction(
@@ -598,7 +743,7 @@ begin
       'codex-account-mismatch-transaction',
       'codex-account-mismatch-original',
       'com.x5studio.app.lite.monthly',
-      'Sandbox',
+      'Production',
       '33333333-3333-4333-8333-333333333333'::uuid,
       now() - interval '1 minute',
       now() + interval '1 month',
@@ -622,7 +767,7 @@ begin
       'codex-legacy-product-alias-transaction',
       'codex-legacy-product-alias-original',
       'x5_pro_monthly',
-      'Sandbox',
+      'Production',
       v_uid,
       now() - interval '1 minute',
       now() + interval '1 month',
@@ -651,7 +796,7 @@ begin
       'codex-expired-transaction',
       'codex-expired-original',
       'com.x5studio.app.lite.monthly',
-      'Sandbox',
+      'Production',
       v_uid,
       now() - interval '2 months',
       now() - interval '1 month',

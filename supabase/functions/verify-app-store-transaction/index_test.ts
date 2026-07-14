@@ -135,6 +135,38 @@ Deno.test("handler verifies, validates, and applies the Apple payload", async ()
   assertEquals(applied.environment, "Production");
 });
 
+Deno.test("handler verifies but never applies Sandbox transactions to production", async () => {
+  let verified = false;
+  let applied = false;
+  const handler = createHandler(dependencies({
+    verifySignedTransaction: () => {
+      verified = true;
+      return Promise.resolve({
+        ...verifiedPayload,
+        environment: "Sandbox",
+      });
+    },
+    applyVerifiedTransaction: () => {
+      applied = true;
+      return Promise.resolve({
+        status: "applied",
+        credits_granted: 2000,
+        subscription_end_date: "2026-08-01T00:00:00.000Z",
+        is_verified: false,
+      });
+    },
+  }));
+
+  const response = await handler(
+    post({ signed_transaction: signedTransaction("Sandbox") }),
+  );
+
+  assertEquals(verified, true);
+  assertEquals(response.status, 403);
+  assertEquals((await response.json()).error, "sandbox_not_allowed");
+  assertEquals(applied, false);
+});
+
 Deno.test("handler returns exact already_applied and owned_by_other status contracts", async () => {
   const alreadyHandler = createHandler(dependencies({
     applyVerifiedTransaction: () =>

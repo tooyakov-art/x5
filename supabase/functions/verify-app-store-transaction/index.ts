@@ -108,6 +108,13 @@ export function createHandler(
         environment,
         _dependencies.now(),
       );
+      // This function is deployed against the production credit ledger.
+      // Sandbox/TestFlight purchases are free and must never mint spendable
+      // production credits. Use a separate staging Supabase project for IAP
+      // tests instead of adding a production allowlist here.
+      if (transaction.environment !== "Production") {
+        throw new InputError("sandbox_not_allowed", 403);
+      }
       const result = await _dependencies.applyVerifiedTransaction(
         userId,
         transaction,

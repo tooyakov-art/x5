@@ -141,9 +141,11 @@ export function validateVerifiedTransaction(
       throw new InputError("invalid_app_account_token");
     }
     appAccountToken = payload.appAccountToken.toLowerCase();
-    if (appAccountToken !== userId.toLowerCase()) {
-      throw new InputError("transaction_owned_by_other", 403);
-    }
+    // Ownership is decided by the service-only RPC after Apple verification.
+    // Normal purchases still require token == authenticated user, while two
+    // explicitly grandfathered legacy chains can bind an older random token
+    // only when original transaction, user, product, and token all match the
+    // closed server-side allowlist.
   }
 
   if (payload.revocationDate !== undefined && payload.revocationDate !== null) {
