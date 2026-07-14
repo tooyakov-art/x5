@@ -2,7 +2,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct CoursesView: View {
-    @EnvironmentObject private var sub: Subscription
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = CoursesService()
@@ -271,6 +270,30 @@ struct CoursesView: View {
     }
 }
 
+private struct CourseAuthorLine: View {
+    let authorName: String?
+    var compact = false
+
+    private var cleanName: String? {
+        let value = (authorName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if let cleanName {
+            HStack(spacing: compact ? 4 : 6) {
+                Image(systemName: "person.crop.circle.fill")
+                Text("Автор: \(cleanName)")
+                    .lineLimit(1)
+            }
+            .font(.system(size: compact ? 10 : 12, weight: .semibold))
+            .foregroundColor(.white.opacity(compact ? 0.46 : 0.58))
+            .accessibilityElement(children: .combine)
+        }
+    }
+}
+
 /// Big card with cover image taking ~50% of card height — matches web Академия style.
 private struct CourseCard: View {
     let course: Course
@@ -325,6 +348,8 @@ private struct CourseCard: View {
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(2)
+
+                CourseAuthorLine(authorName: course.authorName)
 
                 if let desc = course.description, !desc.isEmpty {
                     Text(desc)
@@ -405,6 +430,7 @@ private struct CourseRow: View {
                             .clipShape(Capsule())
                     }
                 }
+                CourseAuthorLine(authorName: course.authorName, compact: true)
                 if let summary = course.description, !summary.isEmpty {
                     Text(summary)
                         .font(.system(size: 13))
@@ -604,6 +630,8 @@ private struct AcademyCourseCard: View {
                     .foregroundColor(.white)
                     .lineLimit(2)
 
+                CourseAuthorLine(authorName: course.authorName)
+
                 if let desc = course.description, !desc.isEmpty {
                     Text(desc)
                         .font(.system(size: 15, weight: .medium))
@@ -788,11 +816,17 @@ struct CourseDetailView: View {
     let course: Course
     var openPaywall: () -> Void
 
-    @EnvironmentObject private var sub: Subscription
+    @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var loc: LocalizationService
+    @StateObject private var purchaseService = CoursePurchaseService()
     @State private var expandedCategoryIds: Set<String> = []
+    @State private var showingPurchaseConfirmation = false
+    @State private var purchaseNotice: CoursePurchaseNotice?
 
-    var hasFullAccess: Bool { (course.isFree ?? false) || (course.price ?? 0) == 0 || sub.isPro }
+    var hasFullAccess: Bool {
+        CourseAccessPolicy.hasFullAccess(to: course, profile: currentUser.profile)
+    }
 
     var body: some View {
         ScrollView {
@@ -812,6 +846,8 @@ struct CourseDetailView: View {
                 Text(course.title)
                     .font(.system(size: 26, weight: .heavy))
                     .foregroundColor(.white)
+
+                CourseAuthorLine(authorName: course.authorName)
 
                 if let hook = course.marketingHook, !hook.isEmpty {
                     Text(hook)
@@ -836,18 +872,7 @@ struct CourseDetailView: View {
                 }
 
                 if !hasFullAccess {
-                    Button(action: openPaywall) {
-                        HStack {
-                            Image(systemName: "lock.fill")
-                            Text(loc.t("courses_unlock_pro"))
-                        }
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Color.accentColor)
-                        .cornerRadius(14)
-                    }
+                    purchaseButton
                 }
 
                 lessonsHeader
@@ -858,7 +883,15 @@ struct CourseDetailView: View {
                         category: category,
                         isExpanded: categoryBinding(category.id)
                     ) { lesson in
-                        LessonRow(lesson: lesson, hasFullAccess: hasFullAccess, openPaywall: openPaywall)
+                        LessonRow(
+                            lesson: lesson,
+                            canPlay: CourseAccessPolicy.canAccess(
+                                lesson: lesson,
+                                in: course,
+                                profile: currentUser.profile
+                            ),
+                            requestUnlock: requestUnlock
+                        )
                     }
                 }
             }
@@ -872,6 +905,152 @@ struct CourseDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .onAppear { expandAllIfNeeded() }
+        .confirmationDialog(
+            "Купить курс?",
+            isPresented: $showingPurchaseConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Купить за \(formattedPrice) кредитов") {
+                Task { await completePurchase() }
+            }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Баланс: \(formattedCredits) кредитов. Списание и выдача доступа выполняются одной операцией.")
+        }
+        .alert(item: $purchaseNotice) { notice in
+            notice.makeAlert(openTopUp: openPaywall)
+        }
+    }
+
+    private var coursePrice: Int { max(course.price ?? 0, 0) }
+    private var availableCredits: Int { max(currentUser.profile?.credits ?? 0, 0) }
+    private var formattedPrice: String { coursePrice.formatted() }
+    private var formattedCredits: String { availableCredits.formatted() }
+
+    private var purchaseButton: some View {
+        Button(action: requestUnlock) {
+            HStack(spacing: 12) {
+                if purchaseService.isPurchasing {
+                    ProgressView()
+                        .tint(.black)
+                } else {
+                    Image(systemName: "creditcard.fill")
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Купить курс · \(formattedPrice) кредитов")
+                        .font(.system(size: 15, weight: .bold))
+                    Text("Баланс: \(formattedCredits)")
+                        .font(.system(size: 11, weight: .semibold))
+                        .opacity(0.68)
+                }
+                Spacer()
+            }
+            .foregroundColor(.black)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
+            .background(Color.accentColor)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .disabled(purchaseService.isPurchasing)
+        .accessibilityHint("Открывает подтверждение покупки этого курса за кредиты")
+    }
+
+    private func requestUnlock() {
+        guard auth.isAuthenticated else {
+            purchaseNotice = CoursePurchaseNotice(
+                title: "Нужен вход",
+                message: "Войдите в Xfive marketing, чтобы купить курс.",
+                offersTopUp: false
+            )
+            return
+        }
+
+        guard availableCredits >= coursePrice else {
+            purchaseNotice = CoursePurchaseNotice(
+                title: "Недостаточно кредитов",
+                message: "Нужно \(formattedPrice), на балансе \(formattedCredits). Пополните баланс и повторите покупку.",
+                offersTopUp: true
+            )
+            return
+        }
+
+        showingPurchaseConfirmation = true
+    }
+
+    @MainActor
+    private func completePurchase() async {
+        guard let token = await auth.freshAccessToken() else {
+            purchaseNotice = CoursePurchaseNotice(
+                title: "Сессия истекла",
+                message: "Войдите снова и повторите покупку.",
+                offersTopUp: false
+            )
+            return
+        }
+
+        do {
+            let response = try await purchaseService.purchase(courseId: course.id, accessToken: token)
+            currentUser.applyCoursePurchase(response)
+
+            switch response.status {
+            case .purchased:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Курс куплен",
+                    message: "Доступ ко всем урокам открыт.",
+                    offersTopUp: false
+                )
+            case .alreadyOwned:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Курс уже доступен",
+                    message: "Повторного списания не было.",
+                    offersTopUp: false
+                )
+            case .insufficientCredits:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Недостаточно кредитов",
+                    message: "Баланс изменился. Пополните его и повторите покупку.",
+                    offersTopUp: true
+                )
+            case .courseUnavailable:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Курс недоступен",
+                    message: "Обновите список курсов и попробуйте позже.",
+                    offersTopUp: false
+                )
+            case .profileUnavailable:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Профиль не готов",
+                    message: "Перезапустите приложение или войдите снова.",
+                    offersTopUp: false
+                )
+            case .notAuthenticated:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Нужен вход",
+                    message: "Войдите снова и повторите покупку.",
+                    offersTopUp: false
+                )
+            case .unknown(let status):
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Покупка не завершена",
+                    message: "Сервер вернул статус: \(status).",
+                    offersTopUp: false
+                )
+            }
+
+            if response.grantsOwnership,
+               let userId = auth.userId,
+               let refreshedToken = await auth.freshAccessToken() {
+                await currentUser.load(userId: userId, accessToken: refreshedToken)
+            }
+        } catch {
+            purchaseNotice = CoursePurchaseNotice(
+                title: "Покупка не выполнена",
+                message: purchaseService.error ?? error.localizedDescription,
+                offersTopUp: false
+            )
+        }
     }
 
     private var sortedCategories: [CourseCategory] {
@@ -922,6 +1101,29 @@ struct CourseDetailView: View {
                     expandedCategoryIds.remove(id)
                 }
             }
+        )
+    }
+}
+
+private struct CoursePurchaseNotice: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+    let offersTopUp: Bool
+
+    func makeAlert(openTopUp: @escaping () -> Void) -> Alert {
+        if offersTopUp {
+            return Alert(
+                title: Text(title),
+                message: Text(message),
+                primaryButton: .default(Text("Пополнить"), action: openTopUp),
+                secondaryButton: .cancel(Text("Отмена"))
+            )
+        }
+        return Alert(
+            title: Text(title),
+            message: Text(message),
+            dismissButton: .default(Text("OK"))
         )
     }
 }
@@ -1054,11 +1256,10 @@ private struct LockedSoonLessonRow: View {
 
 private struct LessonRow: View {
     let lesson: CourseLesson
-    let hasFullAccess: Bool
-    let openPaywall: () -> Void
+    let canPlay: Bool
+    let requestUnlock: () -> Void
     @EnvironmentObject private var loc: LocalizationService
 
-    var canPlay: Bool { hasFullAccess || lesson.freePreview }
     var hasVideo: Bool { lesson.playableURL != nil }
 
     var body: some View {
@@ -1069,7 +1270,7 @@ private struct LessonRow: View {
                 } label: { content }
                 .buttonStyle(.plain)
             } else {
-                Button(action: { if !canPlay { openPaywall() } }) { content }
+                Button(action: { if !canPlay { requestUnlock() } }) { content }
                     .buttonStyle(.plain)
             }
         }

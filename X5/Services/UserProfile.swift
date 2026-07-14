@@ -166,6 +166,25 @@ final class CurrentUser: ObservableObject {
         self.profile = profile
     }
 
+    /// Applies the server-authoritative result of the atomic course-purchase
+    /// RPC so the course unlocks immediately while a full profile refresh is
+    /// in flight. Failed business outcomes only reconcile the known balance.
+    func applyCoursePurchase(_ response: CoursePurchaseResponse) {
+        guard var profile else { return }
+
+        if let credits = response.creditsRemaining {
+            profile.credits = credits
+        }
+        if response.grantsOwnership {
+            var purchased = profile.purchasedCourseIds ?? []
+            if !purchased.contains(response.courseId) {
+                purchased.append(response.courseId)
+            }
+            profile.purchasedCourseIds = purchased
+        }
+        self.profile = profile
+    }
+
     deinit {
         if let observer { NotificationCenter.default.removeObserver(observer) }
     }
