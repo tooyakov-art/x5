@@ -110,6 +110,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.x5studio.app.tests
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGNING_ALLOWED: NO
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Xfive marketing.app/Xfive marketing"
+        BUNDLE_LOADER: "$(TEST_HOST)"
 
 schemes:
   X5-Course-CI:
