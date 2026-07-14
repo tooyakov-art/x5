@@ -69,6 +69,35 @@ final class CoursePurchaseServiceRetryTests: XCTestCase {
         XCTAssertEqual(recorder.authorizationHeaders.count, 2)
     }
 
+    func testServerFailureIsNotRetriedBecausePostOutcomeCouldBeUnknown() async throws {
+        let recorder = LockedRequestRecorder()
+        CoursePurchaseURLProtocol.handler = { request in
+            _ = recorder.record(request)
+            return Self.response(for: request, statusCode: 500, body: #"{"message":"server failed"}"#)
+        }
+
+        let service = makeService()
+        var refreshCount = 0
+
+        do {
+            _ = try await service.purchase(
+                courseId: "11111111-1111-4111-8111-111111111111",
+                expectedPrice: 50_000,
+                accessToken: "valid-token",
+                refreshAccessToken: {
+                    refreshCount += 1
+                    return "unused-token"
+                }
+            )
+            XCTFail("Expected the server failure to be returned")
+        } catch let error as CoursePurchaseServiceError {
+            XCTAssertEqual(error, .http(statusCode: 500, message: "server failed"))
+        }
+
+        XCTAssertEqual(refreshCount, 0)
+        XCTAssertEqual(recorder.authorizationHeaders, ["Bearer valid-token"])
+    }
+
     private func makeService() -> CoursePurchaseService {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CoursePurchaseURLProtocol.self]
