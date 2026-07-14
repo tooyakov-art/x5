@@ -66,11 +66,13 @@ Deno.serve(async (req) => {
   const fallbackOpenAIKey = normalized.provider === "google"
     ? getProviderKeys("gpt")[0]
     : undefined;
-  if (!hasUsableGenerationProvider(
-    normalized.provider,
-    providerKeys.length,
-    fallbackOpenAIKey ? 1 : 0,
-  )) {
+  if (
+    !hasUsableGenerationProvider(
+      normalized.provider,
+      providerKeys.length,
+      fallbackOpenAIKey ? 1 : 0,
+    )
+  ) {
     return json({
       error: "provider_not_configured",
       provider: normalized.provider,
