@@ -19,8 +19,8 @@ jobs:
           - version_in_review
           - version_pending_release
           - version_editable
-          - build_176_valid
-          - build_176_attached
+          - target_build_valid
+          - target_build_attached
           - open_review_active
           - open_review_ready
           - open_review_unresolved
@@ -30,7 +30,7 @@ jobs:
       ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
       BUNDLE_ID: com.x5studio.app
       TARGET_VERSION: "1.1.4"
-      TARGET_BUILD: "179"
+      TARGET_BUILD: "180"
       PROBE: ${{ matrix.probe }}
     steps:
       - uses: actions/setup-python@v5
@@ -126,8 +126,8 @@ jobs:
               "version_in_review": state in ACTIVE,
               "version_pending_release": state == "PENDING_DEVELOPER_RELEASE",
               "version_editable": state in EDITABLE,
-              "build_176_valid": build_valid,
-              "build_176_attached": attached_build == os.environ["TARGET_BUILD"],
+              "target_build_valid": build_valid,
+              "target_build_attached": attached_build == os.environ["TARGET_BUILD"],
               "open_review_active": any(s in ACTIVE for s in open_states),
               "open_review_ready": "READY_FOR_REVIEW" in open_states,
               "open_review_unresolved": "UNRESOLVED_ISSUES" in open_states,

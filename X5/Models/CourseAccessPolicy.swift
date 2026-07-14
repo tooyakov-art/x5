@@ -5,7 +5,11 @@ import Foundation
 enum CourseAccessPolicy {
     static func hasFullAccess(to course: Course, profile: UserProfile?) -> Bool {
         if course.isFree == true { return true }
-        if let price = course.price, price <= 0 { return true }
+        if (course.price ?? 0) <= 0 { return true }
+        if let authorId = course.authorId,
+           profile?.id.caseInsensitiveCompare(authorId) == .orderedSame {
+            return true
+        }
 
         return profile?.purchasedCourseIds?.contains(course.id) == true
     }
@@ -17,8 +21,6 @@ enum CourseAccessPolicy {
     ) -> Bool {
         if hasFullAccess(to: course, profile: profile) { return true }
         if lesson.freePreview { return true }
-
-        let purchaseKey = "\(course.id):\(lesson.id)"
-        return profile?.purchasedLessonIds?.contains(purchaseKey) == true
+        return false
     }
 }

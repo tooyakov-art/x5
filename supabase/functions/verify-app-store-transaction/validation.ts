@@ -1,0 +1,292 @@
+export type AppStoreEnvironment = "Production" | "Sandbox";
+
+export const APP_BUNDLE_ID = "com.x5studio.app";
+export const ALLOWED_PRODUCT_IDS = new Set([
+  "com.x5studio.app.lite.monthly",
+  "com.x5studio.app.pro.monthly",
+  "com.x5studio.app.max.monthly",
+  "com.x5studio.app.verified.monthly",
+]);
+
+const MAX_SIGNED_TRANSACTION_LENGTH = 64 * 1024;
+const MAX_CLOCK_SKEW_MS = 5 * 60_000;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export class InputError extends Error {
+  constructor(
+    readonly code: string,
+    readonly status = 400,
+  ) {
+    super(code);
+  }
+}
+
+export interface VerifiedTransactionPayload {
+  bundleId?: string;
+  productId?: string;
+  transactionId?: string;
+  originalTransactionId?: string;
+  appAccountToken?: string;
+  purchaseDate?: number;
+  expiresDate?: number;
+  signedDate?: number;
+  revocationDate?: number;
+  isUpgraded?: boolean;
+  environment?: string;
+}
+
+export interface NormalizedTransaction {
+  transactionId: string;
+  originalTransactionId: string;
+  productId: string;
+  environment: AppStoreEnvironment;
+  appAccountToken: string | null;
+  purchaseDate: string;
+  expiresDate: string;
+  signedDate: string;
+  revocationDate: null;
+}
+
+export function parseVerifyRequestBody(body: unknown): string {
+  if (!isRecord(body) || Array.isArray(body)) {
+    throw new InputError("invalid_request_body");
+  }
+
+  const keys = Object.keys(body);
+  if (keys.length !== 1 || keys[0] !== "signed_transaction") {
+    throw new InputError("invalid_request_body");
+  }
+
+  const signedTransaction = body.signed_transaction;
+  if (typeof signedTransaction !== "string") {
+    throw new InputError("invalid_signed_transaction");
+  }
+
+  const trimmed = signedTransaction.trim();
+  if (!trimmed || trimmed.length > MAX_SIGNED_TRANSACTION_LENGTH) {
+    throw new InputError("invalid_signed_transaction");
+  }
+  return trimmed;
+}
+
+/**
+ * Reads the unsigned payload solely to choose the correct Apple verifier.
+ * No value from this function is trusted until SignedDataVerifier succeeds.
+ */
+export function parseUntrustedTransactionEnvironment(
+  signedTransaction: string,
+): AppStoreEnvironment {
+  const segments = signedTransaction.split(".");
+  if (
+    segments.length !== 3 || segments.some((segment) => segment.length === 0)
+  ) {
+    throw new InputError("invalid_signed_transaction");
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(
+      new TextDecoder().decode(decodeBase64URL(segments[1])),
+    );
+  } catch {
+    throw new InputError("invalid_signed_transaction");
+  }
+
+  if (!isRecord(payload)) throw new InputError("invalid_signed_transaction");
+  if (
+    payload.environment === "Production" || payload.environment === "Sandbox"
+  ) {
+    return payload.environment;
+  }
+  throw new InputError("invalid_environment");
+}
+
+export function validateVerifiedTransaction(
+  payload: VerifiedTransactionPayload,
+  userId: string,
+  expectedEnvironment: AppStoreEnvironment,
+  nowMs: number,
+): NormalizedTransaction {
+  if (!UUID_PATTERN.test(userId)) throw new InputError("invalid_user_id", 401);
+  if (payload.bundleId !== APP_BUNDLE_ID) {
+    throw new InputError("invalid_bundle");
+  }
+  if (payload.environment !== expectedEnvironment) {
+    throw new InputError("invalid_environment");
+  }
+
+  const productId = requiredString(payload.productId, "unknown_product");
+  if (!ALLOWED_PRODUCT_IDS.has(productId)) {
+    throw new InputError("unknown_product");
+  }
+
+  const transactionId = requiredString(
+    payload.transactionId,
+    "invalid_transaction_id",
+  );
+  const originalTransactionId = requiredString(
+    payload.originalTransactionId,
+    "invalid_original_transaction_id",
+  );
+
+  let appAccountToken: string | null = null;
+  if (
+    payload.appAccountToken !== undefined && payload.appAccountToken !== null
+  ) {
+    if (
+      typeof payload.appAccountToken !== "string" ||
+      !UUID_PATTERN.test(payload.appAccountToken)
+    ) {
+      throw new InputError("invalid_app_account_token");
+    }
+    appAccountToken = payload.appAccountToken.toLowerCase();
+    if (appAccountToken !== userId.toLowerCase()) {
+      throw new InputError("transaction_owned_by_other", 403);
+    }
+  }
+
+  if (payload.revocationDate !== undefined && payload.revocationDate !== null) {
+    throw new InputError("transaction_revoked", 402);
+  }
+  if (payload.isUpgraded === true) {
+    throw new InputError("transaction_superseded", 402);
+  }
+
+  const purchaseDateMs = requiredTimestamp(
+    payload.purchaseDate,
+    "invalid_purchase_date",
+  );
+  const expiresDateMs = requiredTimestamp(
+    payload.expiresDate,
+    "invalid_expiration_date",
+  );
+  const signedDateMs = requiredTimestamp(
+    payload.signedDate,
+    "invalid_signed_date",
+  );
+  if (purchaseDateMs > nowMs + MAX_CLOCK_SKEW_MS) {
+    throw new InputError("invalid_purchase_date");
+  }
+  if (signedDateMs > nowMs + MAX_CLOCK_SKEW_MS) {
+    throw new InputError("invalid_signed_date");
+  }
+  if (expiresDateMs <= nowMs) throw new InputError("transaction_expired", 402);
+  if (expiresDateMs <= purchaseDateMs) {
+    throw new InputError("invalid_expiration_date");
+  }
+
+  return {
+    transactionId,
+    originalTransactionId,
+    productId,
+    environment: expectedEnvironment,
+    appAccountToken,
+    purchaseDate: new Date(purchaseDateMs).toISOString(),
+    expiresDate: new Date(expiresDateMs).toISOString(),
+    signedDate: new Date(signedDateMs).toISOString(),
+    revocationDate: null,
+  };
+}
+
+export function parseAppleRootCertificates(
+  pem: string | undefined,
+  base64: string | undefined,
+): Uint8Array[] {
+  const certificates: Uint8Array[] = [];
+
+  if (pem?.trim()) {
+    const matches = [
+      ...pem.matchAll(
+        /-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/g,
+      ),
+    ];
+    if (matches.length === 0) {
+      throw new InputError("invalid_apple_root_certificates", 500);
+    }
+    for (const match of matches) certificates.push(decodeBase64(match[1]));
+  }
+
+  if (base64?.trim()) {
+    let encodedCertificates: unknown;
+    try {
+      encodedCertificates = JSON.parse(base64);
+    } catch {
+      encodedCertificates = base64.split(/[\n,;]/).map((value) => value.trim())
+        .filter(Boolean);
+    }
+    if (
+      !Array.isArray(encodedCertificates) || encodedCertificates.length === 0
+    ) {
+      throw new InputError("invalid_apple_root_certificates", 500);
+    }
+    for (const encoded of encodedCertificates) {
+      if (typeof encoded !== "string") {
+        throw new InputError("invalid_apple_root_certificates", 500);
+      }
+      certificates.push(decodeBase64(encoded));
+    }
+  }
+
+  if (certificates.length === 0) {
+    throw new InputError("missing_apple_root_certificates", 500);
+  }
+  if (certificates.length > 10) {
+    throw new InputError("invalid_apple_root_certificates", 500);
+  }
+  return certificates;
+}
+
+export function parseAppAppleId(raw: string | undefined): number {
+  if (!raw?.trim()) throw new InputError("missing_apple_app_id", 500);
+  if (!/^\d+$/.test(raw.trim())) {
+    throw new InputError("invalid_apple_app_id", 500);
+  }
+  const parsed = Number(raw.trim());
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new InputError("invalid_apple_app_id", 500);
+  }
+  return parsed;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function requiredString(value: unknown, code: string): string {
+  if (typeof value !== "string") throw new InputError(code);
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 128) throw new InputError(code);
+  return trimmed;
+}
+
+function requiredTimestamp(value: unknown, code: string): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+    throw new InputError(code);
+  }
+  return value;
+}
+
+function decodeBase64URL(value: string): Uint8Array {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error("invalid base64url");
+  const standard = value.replaceAll("-", "+").replaceAll("_", "/");
+  return decodeBase64(standard.padEnd(Math.ceil(standard.length / 4) * 4, "="));
+}
+
+function decodeBase64(value: string): Uint8Array {
+  const compact = value.replace(/\s+/g, "");
+  if (
+    !compact || compact.length % 4 === 1 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(compact)
+  ) {
+    throw new InputError("invalid_apple_root_certificates", 500);
+  }
+  try {
+    const decoded = atob(compact);
+    if (!decoded) throw new Error("empty certificate");
+    return Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+  } catch (error) {
+    if (error instanceof InputError) throw error;
+    throw new InputError("invalid_apple_root_certificates", 500);
+  }
+}

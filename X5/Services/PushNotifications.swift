@@ -230,11 +230,50 @@ final class PushNotifications: NSObject, ObservableObject {
 
 // MARK: - AppDelegate adapter (handles APNs callbacks)
 
+/// Keeps the application portrait-only except while the dedicated lesson-video
+/// cover is on screen. The scene geometry request makes the transition work on
+/// iOS 16+ without relying on the private `UIDevice.setValue` rotation hack.
+enum AppOrientationCoordinator {
+    private(set) static var supportedOrientations: UIInterfaceOrientationMask = .portrait
+
+    static func enterVideoFullscreen() {
+        supportedOrientations = .landscape
+        requestGeometryUpdate(orientations: .landscape)
+    }
+
+    static func leaveVideoFullscreen() {
+        supportedOrientations = .portrait
+        requestGeometryUpdate(orientations: .portrait)
+    }
+
+    private static func requestGeometryUpdate(orientations: UIInterfaceOrientationMask) {
+        DispatchQueue.main.async {
+            guard Self.supportedOrientations == orientations,
+                  let windowScene = UIApplication.shared.connectedScenes
+                    .compactMap({ $0 as? UIWindowScene })
+                    .first(where: { $0.activationState == .foregroundActive })
+            else { return }
+
+            windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: orientations)) { _ in
+                // A scene can reject rotation while another system transition
+                // is running. The delegate mask remains authoritative for the
+                // next orientation update, so no private fallback is needed.
+            }
+            UIViewController.attemptRotationToDeviceOrientation()
+        }
+    }
+}
+
 final class X5AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         return true
+    }
+
+    func application(_ application: UIApplication,
+                     supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        AppOrientationCoordinator.supportedOrientations
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {

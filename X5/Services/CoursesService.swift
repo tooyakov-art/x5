@@ -2,6 +2,35 @@ import Foundation
 
 // MARK: - Models
 
+private struct CourseDynamicCodingKey: CodingKey, Hashable {
+    let stringValue: String
+    let intValue: Int?
+
+    init(_ stringValue: String) {
+        self.stringValue = stringValue
+        intValue = nil
+    }
+
+    init?(stringValue: String) {
+        self.init(stringValue)
+    }
+
+    init?(intValue: Int) {
+        stringValue = String(intValue)
+        self.intValue = intValue
+    }
+}
+
+private extension KeyedDecodingContainer where Key == CourseDynamicCodingKey {
+    func preservedCourseFields(excluding knownFields: Set<String>) throws -> [String: CourseJSONValue] {
+        var result: [String: CourseJSONValue] = [:]
+        for key in allKeys where !knownFields.contains(key.stringValue) {
+            result[key.stringValue] = try decode(CourseJSONValue.self, forKey: key)
+        }
+        return result
+    }
+}
+
 struct CourseLesson: Codable, Identifiable, Hashable {
     let id: String
     let title: String
@@ -13,14 +42,73 @@ struct CourseLesson: Codable, Identifiable, Hashable {
     let thumbnailUrl: String?
     let isFreePreview: Bool?
     let sellSeparately: Bool?
+    let preservedFields: [String: CourseJSONValue]
 
-    enum CodingKeys: String, CodingKey {
-        case id, title, duration, order, price
-        case videoUrl
-        case youtubeUrl
-        case thumbnailUrl
-        case isFreePreview
-        case sellSeparately
+    private static let knownFields: Set<String> = [
+        "id", "title", "duration", "order", "price", "videoUrl",
+        "youtubeUrl", "thumbnailUrl", "isFreePreview", "sellSeparately"
+    ]
+
+    init(
+        id: String,
+        title: String,
+        duration: String?,
+        order: Int?,
+        price: Int?,
+        videoUrl: String?,
+        youtubeUrl: String?,
+        thumbnailUrl: String?,
+        isFreePreview: Bool?,
+        sellSeparately: Bool?,
+        preservedFields: [String: CourseJSONValue] = [:]
+    ) {
+        self.id = id
+        self.title = title
+        self.duration = duration
+        self.order = order
+        self.price = price
+        self.videoUrl = videoUrl
+        self.youtubeUrl = youtubeUrl
+        self.thumbnailUrl = thumbnailUrl
+        self.isFreePreview = isFreePreview
+        self.sellSeparately = sellSeparately
+        self.preservedFields = preservedFields
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CourseDynamicCodingKey.self)
+        id = try container.decode(String.self, forKey: CourseDynamicCodingKey("id"))
+        title = try container.decode(String.self, forKey: CourseDynamicCodingKey("title"))
+        duration = try container.decodeIfPresent(String.self, forKey: CourseDynamicCodingKey("duration"))
+        order = try container.decodeIfPresent(Int.self, forKey: CourseDynamicCodingKey("order"))
+        price = try container.decodeIfPresent(Int.self, forKey: CourseDynamicCodingKey("price"))
+        videoUrl = try container.decodeIfPresent(String.self, forKey: CourseDynamicCodingKey("videoUrl"))
+        youtubeUrl = try container.decodeIfPresent(String.self, forKey: CourseDynamicCodingKey("youtubeUrl"))
+        thumbnailUrl = try container.decodeIfPresent(String.self, forKey: CourseDynamicCodingKey("thumbnailUrl"))
+        isFreePreview = try container.decodeIfPresent(Bool.self, forKey: CourseDynamicCodingKey("isFreePreview"))
+        sellSeparately = try container.decodeIfPresent(Bool.self, forKey: CourseDynamicCodingKey("sellSeparately"))
+        preservedFields = try container.preservedCourseFields(excluding: Self.knownFields)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CourseDynamicCodingKey.self)
+        for (key, value) in preservedFields where !Self.knownFields.contains(key) {
+            try container.encode(value, forKey: CourseDynamicCodingKey(key))
+        }
+        try container.encode(id, forKey: CourseDynamicCodingKey("id"))
+        try container.encode(title, forKey: CourseDynamicCodingKey("title"))
+        try container.encodeIfPresent(duration, forKey: CourseDynamicCodingKey("duration"))
+        try container.encodeIfPresent(order, forKey: CourseDynamicCodingKey("order"))
+        try container.encodeIfPresent(price, forKey: CourseDynamicCodingKey("price"))
+        try container.encodeIfPresent(videoUrl, forKey: CourseDynamicCodingKey("videoUrl"))
+        try container.encodeIfPresent(youtubeUrl, forKey: CourseDynamicCodingKey("youtubeUrl"))
+        try container.encodeIfPresent(thumbnailUrl, forKey: CourseDynamicCodingKey("thumbnailUrl"))
+        try container.encodeIfPresent(isFreePreview, forKey: CourseDynamicCodingKey("isFreePreview"))
+        try container.encodeIfPresent(sellSeparately, forKey: CourseDynamicCodingKey("sellSeparately"))
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 
     var freePreview: Bool { isFreePreview ?? false }
@@ -44,6 +132,47 @@ struct CourseDay: Codable, Identifiable, Hashable {
     let title: String
     let order: Int?
     let lessons: [CourseLesson]
+    let preservedFields: [String: CourseJSONValue]
+
+    private static let knownFields: Set<String> = ["id", "title", "order", "lessons"]
+
+    init(
+        id: String,
+        title: String,
+        order: Int?,
+        lessons: [CourseLesson],
+        preservedFields: [String: CourseJSONValue] = [:]
+    ) {
+        self.id = id
+        self.title = title
+        self.order = order
+        self.lessons = lessons
+        self.preservedFields = preservedFields
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CourseDynamicCodingKey.self)
+        id = try container.decode(String.self, forKey: CourseDynamicCodingKey("id"))
+        title = try container.decode(String.self, forKey: CourseDynamicCodingKey("title"))
+        order = try container.decodeIfPresent(Int.self, forKey: CourseDynamicCodingKey("order"))
+        lessons = try container.decode([CourseLesson].self, forKey: CourseDynamicCodingKey("lessons"))
+        preservedFields = try container.preservedCourseFields(excluding: Self.knownFields)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CourseDynamicCodingKey.self)
+        for (key, value) in preservedFields where !Self.knownFields.contains(key) {
+            try container.encode(value, forKey: CourseDynamicCodingKey(key))
+        }
+        try container.encode(id, forKey: CourseDynamicCodingKey("id"))
+        try container.encode(title, forKey: CourseDynamicCodingKey("title"))
+        try container.encodeIfPresent(order, forKey: CourseDynamicCodingKey("order"))
+        try container.encode(lessons, forKey: CourseDynamicCodingKey("lessons"))
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 }
 
 struct CourseCategory: Codable, Identifiable, Hashable {
@@ -52,6 +181,51 @@ struct CourseCategory: Codable, Identifiable, Hashable {
     let order: Int?
     let icon: String?
     let days: [CourseDay]
+    let preservedFields: [String: CourseJSONValue]
+
+    private static let knownFields: Set<String> = ["id", "title", "order", "icon", "days"]
+
+    init(
+        id: String,
+        title: String,
+        order: Int?,
+        icon: String?,
+        days: [CourseDay],
+        preservedFields: [String: CourseJSONValue] = [:]
+    ) {
+        self.id = id
+        self.title = title
+        self.order = order
+        self.icon = icon
+        self.days = days
+        self.preservedFields = preservedFields
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CourseDynamicCodingKey.self)
+        id = try container.decode(String.self, forKey: CourseDynamicCodingKey("id"))
+        title = try container.decode(String.self, forKey: CourseDynamicCodingKey("title"))
+        order = try container.decodeIfPresent(Int.self, forKey: CourseDynamicCodingKey("order"))
+        icon = try container.decodeIfPresent(String.self, forKey: CourseDynamicCodingKey("icon"))
+        days = try container.decode([CourseDay].self, forKey: CourseDynamicCodingKey("days"))
+        preservedFields = try container.preservedCourseFields(excluding: Self.knownFields)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CourseDynamicCodingKey.self)
+        for (key, value) in preservedFields where !Self.knownFields.contains(key) {
+            try container.encode(value, forKey: CourseDynamicCodingKey(key))
+        }
+        try container.encode(id, forKey: CourseDynamicCodingKey("id"))
+        try container.encode(title, forKey: CourseDynamicCodingKey("title"))
+        try container.encodeIfPresent(order, forKey: CourseDynamicCodingKey("order"))
+        try container.encodeIfPresent(icon, forKey: CourseDynamicCodingKey("icon"))
+        try container.encode(days, forKey: CourseDynamicCodingKey("days"))
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 }
 
 struct Course: Codable, Identifiable, Hashable {
@@ -61,6 +235,7 @@ struct Course: Codable, Identifiable, Hashable {
     let marketingHook: String?
     let coverUrl: String?
     let authorName: String?
+    let authorId: String?
     let price: Int?
     let isFree: Bool?
     let isPublic: Bool?
@@ -70,6 +245,40 @@ struct Course: Codable, Identifiable, Hashable {
     let sortOrder: Int?
     let categoriesRaw: [CourseCategory]?
 
+    init(
+        id: String,
+        title: String,
+        description: String?,
+        marketingHook: String?,
+        coverUrl: String?,
+        authorName: String?,
+        authorId: String? = nil,
+        price: Int?,
+        isFree: Bool?,
+        isPublic: Bool?,
+        courseLanguage: String?,
+        averageRating: Double?,
+        studentsCount: Int?,
+        sortOrder: Int?,
+        categoriesRaw: [CourseCategory]?
+    ) {
+        self.id = id
+        self.title = title
+        self.description = description
+        self.marketingHook = marketingHook
+        self.coverUrl = coverUrl
+        self.authorName = authorName
+        self.authorId = authorId
+        self.price = price
+        self.isFree = isFree
+        self.isPublic = isPublic
+        self.courseLanguage = courseLanguage
+        self.averageRating = averageRating
+        self.studentsCount = studentsCount
+        self.sortOrder = sortOrder
+        self.categoriesRaw = categoriesRaw
+    }
+
     var categories: [CourseCategory] { categoriesRaw ?? [] }
 
     enum CodingKeys: String, CodingKey {
@@ -78,6 +287,7 @@ struct Course: Codable, Identifiable, Hashable {
         case marketingHook = "marketing_hook"
         case coverUrl = "cover_url"
         case authorName = "author_name"
+        case authorId = "author_id"
         case isFree = "is_free"
         case isPublic = "is_public"
         case courseLanguage = "course_language"
@@ -153,7 +363,7 @@ final class CoursesService: ObservableObject {
         error = nil
         defer { isLoading = false }
 
-        let select = "id,title,description,marketing_hook,cover_url,author_name,price,is_free,is_public,course_language,average_rating,students_count,sort_order,categories"
+        let select = "id,title,description,marketing_hook,cover_url,author_name,author_id,price,is_free,is_public,course_language,average_rating,students_count,sort_order,categories"
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/courses"), resolvingAgainstBaseURL: false)!
         var items: [URLQueryItem] = [
             URLQueryItem(name: "select", value: select),
@@ -367,14 +577,6 @@ final class CoursesService: ObservableObject {
         let path = "course-submissions/\(UUID().uuidString)-\(Int(Date().timeIntervalSince1970)).\(ext)"
         let uploadURL = baseURL.appendingPathComponent("storage/v1/object/videos/\(path)")
 
-        let data: Data
-        do {
-            data = try Data(contentsOf: fileURL)
-        } catch {
-            self.error = "Не удалось прочитать видео."
-            return nil
-        }
-
         var req = URLRequest(url: uploadURL)
         req.httpMethod = "POST"
         req.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -382,10 +584,9 @@ final class CoursesService: ObservableObject {
         req.setValue(mime, forHTTPHeaderField: "Content-Type")
         req.setValue("3600", forHTTPHeaderField: "Cache-Control")
         req.setValue("true", forHTTPHeaderField: "x-upsert")
-        req.httpBody = data
 
         do {
-            let (body, response) = try await URLSession.shared.data(for: req)
+            let (body, response) = try await URLSession.shared.upload(for: req, fromFile: fileURL)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 let details = String(data: body, encoding: .utf8) ?? ""
                 self.error = "Видео заявки не загружено. \(details)"
@@ -399,7 +600,9 @@ final class CoursesService: ObservableObject {
         return baseURL.appendingPathComponent("storage/v1/object/public/videos/\(path)").absoluteString
     }
 
-    /// Uploads `jpegData` to Storage `course-covers` bucket and PATCHes courses.cover_url.
+    /// Uploads `jpegData` to Storage `course-covers`. The editor writes the
+    /// returned URL only as part of the final course PATCH, keeping metadata
+    /// atomic when a later video upload fails.
     @discardableResult
     func uploadCover(courseId: String, jpegData: Data, accessToken: String) async -> String? {
         let path = "\(courseId)/\(Int(Date().timeIntervalSince1970)).jpg"
@@ -419,7 +622,6 @@ final class CoursesService: ObservableObject {
             return nil
         }
         let publicURL = baseURL.appendingPathComponent("storage/v1/object/public/course-covers/\(path)").absoluteString
-        _ = await updateCourse(id: courseId, fields: ["cover_url": publicURL], accessToken: accessToken)
         return publicURL
     }
 
@@ -439,14 +641,6 @@ final class CoursesService: ObservableObject {
         let path = "courses/\(courseId)/\(lessonId)-\(Int(Date().timeIntervalSince1970)).\(ext)"
         let uploadURL = baseURL.appendingPathComponent("storage/v1/object/videos/\(path)")
 
-        let data: Data
-        do {
-            data = try Data(contentsOf: fileURL)
-        } catch {
-            self.error = "Не удалось прочитать выбранный видеофайл."
-            return nil
-        }
-
         var req = URLRequest(url: uploadURL)
         req.httpMethod = "POST"
         req.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -454,10 +648,9 @@ final class CoursesService: ObservableObject {
         req.setValue(mime, forHTTPHeaderField: "Content-Type")
         req.setValue("3600", forHTTPHeaderField: "Cache-Control")
         req.setValue("true", forHTTPHeaderField: "x-upsert")
-        req.httpBody = data
 
         do {
-            let (body, response) = try await URLSession.shared.data(for: req)
+            let (body, response) = try await URLSession.shared.upload(for: req, fromFile: fileURL)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 let details = String(data: body, encoding: .utf8) ?? ""
                 self.error = "Видео не загружено. Блокер: Storage bucket `videos` должен разрешать authenticated/developer INSERT/UPDATE в `courses/*`. \(details)"

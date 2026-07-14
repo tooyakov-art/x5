@@ -120,7 +120,26 @@
 5. Read again and write the post-change JSON plus SHA-256.
 6. Verify exactly one public target, two modules, preserved author, and playable video.
 
-## Task 8: Full verification and handoff
+## Task 8: Harden credits and App Store entitlement delivery
+
+**Files:**
+
+- Modify: `X5/Services/IAPService.swift`
+- Modify: `X5/X5App.swift`
+- Create: `supabase/functions/verify-app-store-transaction/`
+- Create: `supabase/migrations/20260714160000_verified_app_store_transaction_ledger.sql`
+- Test: `X5Tests/IAPLifecycleDecisionTests.swift`
+- Test: `supabase/tests/20260714_entitlement_hardening_test.sql`
+
+1. Revoke client execution of every direct credit/IAP mutation function.
+2. Send only StoreKit's signed transaction JWS from iOS.
+3. Verify Apple certificate chain, bundle, product, environment, expiry, revocation, and account token in a JWT-authenticated Edge Function.
+4. Apply verified transactions through a service-role-only, exact-once ledger RPC.
+5. Preserve prior legitimate periods without double-crediting the first restore after upgrade.
+6. Keep one app-lifetime StoreKit listener, retry one expired Supabase JWT, and finish only applied/skipped transactions.
+7. Re-evaluate paid state against the subscription expiration when the app becomes active.
+
+## Task 9: Full verification and handoff
 
 **Files:**
 
@@ -134,3 +153,11 @@
 4. Review the diff for secrets, unrelated changes, and live-data safety.
 5. Confirm the production course read matches the post-repair assertions.
 6. Report branch, commits, CI URL, repaired data, and any step that still requires a physical-device check.
+
+## Completion state (2026-07-14)
+
+- Tasks 1-8 are implemented locally.
+- The exact-ID production course repair and validator passed.
+- Database migration `20260714160000` and `verify-app-store-transaction` are deployed.
+- Apple verifier tests: 12 passed; database rollback suite passed.
+- Task 9 remains open until the pushed macOS/Xcode CI run is green.

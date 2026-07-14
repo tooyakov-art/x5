@@ -1,5 +1,103 @@
 import Foundation
 
+/// JSON values that are not yet modeled by the iOS app.
+///
+/// Keeping them alongside the typed course fields lets the editor change the
+/// fields it understands without deleting data produced by the web editor or
+/// by a newer app version.
+enum CourseJSONValue: Codable, Hashable {
+    case string(String)
+    case integer(Int)
+    case number(Double)
+    case bool(Bool)
+    case object([String: CourseJSONValue])
+    case array([CourseJSONValue])
+    case null
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode(Int.self) {
+            self = .integer(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .number(value)
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? container.decode([String: CourseJSONValue].self) {
+            self = .object(value)
+        } else if let value = try? container.decode([CourseJSONValue].self) {
+            self = .array(value)
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unsupported course JSON value"
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case let .string(value): try container.encode(value)
+        case let .integer(value): try container.encode(value)
+        case let .number(value): try container.encode(value)
+        case let .bool(value): try container.encode(value)
+        case let .object(value): try container.encode(value)
+        case let .array(value): try container.encode(value)
+        case .null: try container.encodeNil()
+        }
+    }
+
+    func hash(into hasher: inout Hasher) {
+        switch self {
+        case let .string(value):
+            hasher.combine(0)
+            hasher.combine(value)
+        case let .integer(value):
+            hasher.combine(1)
+            hasher.combine(value)
+        case let .number(value):
+            hasher.combine(2)
+            hasher.combine(value)
+        case let .bool(value):
+            hasher.combine(3)
+            hasher.combine(value)
+        case let .object(value):
+            hasher.combine(4)
+            for key in value.keys.sorted() {
+                hasher.combine(key)
+                hasher.combine(value[key])
+            }
+        case let .array(value):
+            hasher.combine(5)
+            hasher.combine(value)
+        case .null:
+            hasher.combine(6)
+        }
+    }
+
+    var foundationValue: Any {
+        switch self {
+        case let .string(value): return value
+        case let .integer(value): return value
+        case let .number(value): return value
+        case let .bool(value): return value
+        case let .object(value): return value.mapValues(\.foundationValue)
+        case let .array(value): return value.map(\.foundationValue)
+        case .null: return NSNull()
+        }
+    }
+}
+
+private extension Dictionary where Key == String, Value == CourseJSONValue {
+    var courseFoundationPayload: [String: Any] {
+        mapValues(\.foundationValue)
+    }
+}
+
 /// A lossless, editable representation of the nested `courses.categories` JSON.
 ///
 /// Drafts keep server IDs stable and keep uploaded media URLs separate from local
@@ -32,13 +130,22 @@ struct CourseCategoryDraft: Identifiable, Equatable {
     var order: Int
     var icon: String?
     var days: [CourseDayDraft]
+    var preservedFields: [String: CourseJSONValue]
 
-    init(id: String, title: String, order: Int, icon: String? = nil, days: [CourseDayDraft]) {
+    init(
+        id: String,
+        title: String,
+        order: Int,
+        icon: String? = nil,
+        days: [CourseDayDraft],
+        preservedFields: [String: CourseJSONValue] = [:]
+    ) {
         self.id = id
         self.title = title
         self.order = order
         self.icon = icon
         self.days = days
+        self.preservedFields = preservedFields
     }
 
     init(category: CourseCategory) {
@@ -47,6 +154,7 @@ struct CourseCategoryDraft: Identifiable, Equatable {
         order = category.order ?? 0
         icon = category.icon
         days = category.days.map { CourseDayDraft(day: $0) }
+        preservedFields = category.preservedFields
     }
 
     var orderedDays: [CourseDayDraft] {
@@ -73,16 +181,17 @@ struct CourseCategoryDraft: Identifiable, Equatable {
     }
 
     func payload(order: Int) -> [String: Any] {
-        var result: [String: Any] = [
-            "id": id,
-            "title": title,
-            "order": order,
-            "days": orderedDays.enumerated().map { offset, day in
-                day.payload(order: offset + 1)
-            }
-        ]
+        var result = preservedFields.courseFoundationPayload
+        result["id"] = id
+        result["title"] = title
+        result["order"] = order
+        result["days"] = orderedDays.enumerated().map { offset, day in
+            day.payload(order: offset + 1)
+        }
         if let icon = icon?.courseDraftTrimmed, !icon.isEmpty {
             result["icon"] = icon
+        } else {
+            result.removeValue(forKey: "icon")
         }
         return result
     }
@@ -93,12 +202,20 @@ struct CourseDayDraft: Identifiable, Equatable {
     var title: String
     var order: Int
     var lessons: [CourseLessonDraft]
+    var preservedFields: [String: CourseJSONValue]
 
-    init(id: String, title: String, order: Int, lessons: [CourseLessonDraft]) {
+    init(
+        id: String,
+        title: String,
+        order: Int,
+        lessons: [CourseLessonDraft],
+        preservedFields: [String: CourseJSONValue] = [:]
+    ) {
         self.id = id
         self.title = title
         self.order = order
         self.lessons = lessons
+        self.preservedFields = preservedFields
     }
 
     init(day: CourseDay) {
@@ -106,6 +223,7 @@ struct CourseDayDraft: Identifiable, Equatable {
         title = day.title
         order = day.order ?? 0
         lessons = day.lessons.map { CourseLessonDraft(lesson: $0) }
+        preservedFields = day.preservedFields
     }
 
     var orderedLessons: [CourseLessonDraft] {
@@ -113,14 +231,14 @@ struct CourseDayDraft: Identifiable, Equatable {
     }
 
     func payload(order: Int) -> [String: Any] {
-        [
-            "id": id,
-            "title": title,
-            "order": order,
-            "lessons": orderedLessons.enumerated().map { offset, lesson in
-                lesson.payload(order: offset + 1)
-            }
-        ]
+        var result = preservedFields.courseFoundationPayload
+        result["id"] = id
+        result["title"] = title
+        result["order"] = order
+        result["lessons"] = orderedLessons.enumerated().map { offset, lesson in
+            lesson.payload(order: offset + 1)
+        }
+        return result
     }
 }
 
@@ -138,6 +256,7 @@ struct CourseLessonDraft: Identifiable, Equatable {
     var pendingVideoFileURL: URL?
     var pendingVideoFileName: String?
     var pendingThumbnailData: Data?
+    var preservedFields: [String: CourseJSONValue]
 
     /// Editing aliases keep URL text fields ergonomic while the saved/pending
     /// distinction remains explicit in the underlying draft model.
@@ -169,7 +288,8 @@ struct CourseLessonDraft: Identifiable, Equatable {
         sellSeparately: Bool,
         pendingVideoFileURL: URL? = nil,
         pendingVideoFileName: String? = nil,
-        pendingThumbnailData: Data? = nil
+        pendingThumbnailData: Data? = nil,
+        preservedFields: [String: CourseJSONValue] = [:]
     ) {
         self.id = id
         self.title = title
@@ -184,6 +304,7 @@ struct CourseLessonDraft: Identifiable, Equatable {
         self.pendingVideoFileURL = pendingVideoFileURL
         self.pendingVideoFileName = pendingVideoFileName
         self.pendingThumbnailData = pendingThumbnailData
+        self.preservedFields = preservedFields
     }
 
     init(
@@ -199,7 +320,8 @@ struct CourseLessonDraft: Identifiable, Equatable {
         sellSeparately: Bool,
         pendingVideoFileURL: URL? = nil,
         pendingVideoFileName: String? = nil,
-        pendingThumbnailData: Data? = nil
+        pendingThumbnailData: Data? = nil,
+        preservedFields: [String: CourseJSONValue] = [:]
     ) {
         self.init(
             id: id,
@@ -214,7 +336,8 @@ struct CourseLessonDraft: Identifiable, Equatable {
             sellSeparately: sellSeparately,
             pendingVideoFileURL: pendingVideoFileURL,
             pendingVideoFileName: pendingVideoFileName,
-            pendingThumbnailData: pendingThumbnailData
+            pendingThumbnailData: pendingThumbnailData,
+            preservedFields: preservedFields
         )
     }
 
@@ -232,6 +355,35 @@ struct CourseLessonDraft: Identifiable, Equatable {
         pendingVideoFileURL = nil
         pendingVideoFileName = nil
         pendingThumbnailData = nil
+        preservedFields = lesson.preservedFields
+    }
+
+    func applyingEditorChanges(
+        title: String,
+        duration: String,
+        price: String,
+        videoUrl: String,
+        youtubeUrl: String,
+        thumbnailUrl: String,
+        isFreePreview: Bool,
+        sellSeparately: Bool,
+        pendingVideoFileURL: URL?,
+        pendingVideoFileName: String?,
+        pendingThumbnailData: Data?
+    ) -> CourseLessonDraft {
+        var updated = self
+        updated.title = title
+        updated.duration = duration
+        updated.price = price
+        updated.videoUrl = videoUrl
+        updated.youtubeUrl = youtubeUrl
+        updated.thumbnailUrl = thumbnailUrl
+        updated.isFreePreview = isFreePreview
+        updated.sellSeparately = sellSeparately
+        updated.pendingVideoFileURL = pendingVideoFileURL
+        updated.pendingVideoFileName = pendingVideoFileName
+        updated.pendingThumbnailData = pendingThumbnailData
+        return updated
     }
 
     static func new(order: Int) -> CourseLessonDraft {
@@ -286,25 +438,32 @@ struct CourseLessonDraft: Identifiable, Equatable {
     }
 
     func payload(order: Int) -> [String: Any] {
-        var result: [String: Any] = [
-            "id": id,
-            "title": title,
-            "order": order,
-            "price": Int(price) ?? 0,
-            "isFreePreview": isFreePreview,
-            "sellSeparately": sellSeparately
-        ]
+        var result = preservedFields.courseFoundationPayload
+        result["id"] = id
+        result["title"] = title
+        result["order"] = order
+        result["price"] = Int(price) ?? 0
+        result["isFreePreview"] = isFreePreview
+        result["sellSeparately"] = sellSeparately
         if !duration.courseDraftTrimmed.isEmpty {
             result["duration"] = duration.courseDraftTrimmed
+        } else {
+            result.removeValue(forKey: "duration")
         }
         if !savedVideoURL.courseDraftTrimmed.isEmpty {
             result["videoUrl"] = savedVideoURL.courseDraftTrimmed
+        } else {
+            result.removeValue(forKey: "videoUrl")
         }
         if !youtubeURL.courseDraftTrimmed.isEmpty {
             result["youtubeUrl"] = youtubeURL.courseDraftTrimmed
+        } else {
+            result.removeValue(forKey: "youtubeUrl")
         }
         if !savedThumbnailURL.courseDraftTrimmed.isEmpty {
             result["thumbnailUrl"] = savedThumbnailURL.courseDraftTrimmed
+        } else {
+            result.removeValue(forKey: "thumbnailUrl")
         }
         return result
     }

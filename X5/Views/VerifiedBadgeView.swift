@@ -6,7 +6,7 @@ struct VerifiedBadgeView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var loc: LocalizationService
-    @StateObject private var iap = IAPService()
+    @EnvironmentObject private var iap: IAPService
     @Environment(\.dismiss) private var dismiss
     @State private var showSuccess = false
     @State private var errorText: String?
@@ -163,7 +163,7 @@ struct VerifiedBadgeView: View {
         Task {
             let ok = await iap.purchase(productID: IAPService.verifiedMonthlyProductID)
             if ok {
-                if let uid = auth.userId, let token = auth.accessToken {
+                if let uid = auth.userId, let token = await auth.freshAccessToken() {
                     await currentUser.load(userId: uid, accessToken: token)
                 }
                 showSuccess = true

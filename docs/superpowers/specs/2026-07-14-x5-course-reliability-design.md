@@ -60,17 +60,27 @@ Add a pure `CourseAccessPolicy`:
 - otherwise: only free-preview lessons are playable;
 - Pro subscription alone does not unlock an independently priced course.
 
-Add a security-definer Postgres RPC `purchase_course(p_course_id text)` that:
+Add a security-definer Postgres RPC `purchase_course(p_course_id text, p_expected_price integer)` that:
 
 - derives the buyer from `auth.uid()` and rejects anonymous calls;
 - locks the buyer profile row;
 - reads the current public course price on the server;
+- refuses a stale client confirmation with `price_changed` and performs no charge;
 - returns success without charging again when already purchased;
 - rejects missing/hidden courses and insufficient credits;
 - atomically deducts credits and appends the course ID once;
 - grants execute only to `authenticated`.
 
 The iOS `CoursePurchaseService` calls the RPC with the access token. On success it refreshes `CurrentUser`, so the access gate updates from server state. When credits are insufficient, the existing subscription/credit paywall can be opened, but it is not mistaken for course ownership.
+
+Credits obtained through StoreKit are server-owned. iOS sends only
+`VerificationResult.jwsRepresentation` to a JWT-authenticated Edge Function.
+The function uses Apple's official App Store Server Library and current Apple
+Root CAs to verify the signature, bundle, environment, product, expiration,
+revocation, and `appAccountToken`. A service-role-only Postgres function records
+the verified transaction in a globally unique ledger and grants each renewal
+exactly once. Legacy client claim and direct credit mutation functions are not
+executable by `anon` or `authenticated`.
 
 ### 4. Full-screen and zoomable video
 

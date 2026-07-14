@@ -4,6 +4,7 @@ enum CoursePurchaseStatus: Equatable, Codable {
     case purchased
     case alreadyOwned
     case insufficientCredits
+    case priceChanged
     case courseUnavailable
     case profileUnavailable
     case notAuthenticated
@@ -15,6 +16,7 @@ enum CoursePurchaseStatus: Equatable, Codable {
         case "purchased": self = .purchased
         case "already_owned": self = .alreadyOwned
         case "insufficient_credits": self = .insufficientCredits
+        case "price_changed": self = .priceChanged
         case "course_unavailable": self = .courseUnavailable
         case "profile_unavailable": self = .profileUnavailable
         case "not_authenticated": self = .notAuthenticated
@@ -28,6 +30,7 @@ enum CoursePurchaseStatus: Equatable, Codable {
         case .purchased: value = "purchased"
         case .alreadyOwned: value = "already_owned"
         case .insufficientCredits: value = "insufficient_credits"
+        case .priceChanged: value = "price_changed"
         case .courseUnavailable: value = "course_unavailable"
         case .profileUnavailable: value = "profile_unavailable"
         case .notAuthenticated: value = "not_authenticated"
@@ -42,15 +45,29 @@ struct CoursePurchaseResponse: Codable, Equatable {
     let status: CoursePurchaseStatus
     let courseId: String
     let creditsRemaining: Int?
+    let coursePrice: Int?
+    let chargedAmount: Int?
 
     enum CodingKeys: String, CodingKey {
         case status
         case courseId = "course_id"
         case creditsRemaining = "credits_remaining"
+        case coursePrice = "course_price"
+        case chargedAmount = "charged_amount"
     }
 
     var grantsOwnership: Bool {
         status == .purchased || status == .alreadyOwned
+    }
+
+    /// Reconciles the price the user must explicitly confirm on the next
+    /// attempt. A price-changed response never charges, so adopting the
+    /// server-returned value is safe only after showing a fresh confirmation.
+    func reconciledExpectedPrice(currentPrice: Int) -> Int {
+        guard status == .priceChanged, let coursePrice else {
+            return max(currentPrice, 0)
+        }
+        return max(coursePrice, 0)
     }
 }
 
@@ -97,7 +114,11 @@ final class CoursePurchaseService: ObservableObject {
         self.anonKey = anonKey
     }
 
-    func purchase(courseId: String, accessToken: String) async throws -> CoursePurchaseResponse {
+    func purchase(
+        courseId: String,
+        expectedPrice: Int,
+        accessToken: String
+    ) async throws -> CoursePurchaseResponse {
         let trimmedCourseId = courseId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard UUID(uuidString: trimmedCourseId) != nil else {
             throw record(.invalidCourseId)
@@ -117,7 +138,21 @@ final class CoursePurchaseService: ObservableObject {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.httpBody = try JSONEncoder().encode(["p_course_id": trimmedCourseId])
+        struct PurchaseRequest: Encodable {
+            let pCourseId: String
+            let pExpectedPrice: Int
+
+            enum CodingKeys: String, CodingKey {
+                case pCourseId = "p_course_id"
+                case pExpectedPrice = "p_expected_price"
+            }
+        }
+        request.httpBody = try JSONEncoder().encode(
+            PurchaseRequest(
+                pCourseId: trimmedCourseId,
+                pExpectedPrice: max(expectedPrice, 0)
+            )
+        )
 
         let data: Data
         let response: URLResponse

@@ -6,7 +6,7 @@ struct PaywallView: View {
     @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var loc: LocalizationService
-    @StateObject private var iap = IAPService()
+    @EnvironmentObject private var iap: IAPService
     @Environment(\.dismiss) private var dismiss
 
     @State private var showSuccess = false
@@ -72,7 +72,7 @@ struct PaywallView: View {
                         Task {
                             let ok = await iap.purchase(productID: selectedPlan.productID)
                             if ok {
-                                if let uid = auth.userId, let token = auth.accessToken {
+                                if let uid = auth.userId, let token = await auth.freshAccessToken() {
                                     await currentUser.load(userId: uid, accessToken: token)
                                 }
                                 showSuccess = true
@@ -106,7 +106,7 @@ struct PaywallView: View {
                     Button(loc.t("paywall_restore")) {
                         Task {
                             await iap.restore()
-                            if let uid = auth.userId, let token = auth.accessToken {
+                            if let uid = auth.userId, let token = await auth.freshAccessToken() {
                                 await currentUser.load(userId: uid, accessToken: token)
                             }
                         }
@@ -238,11 +238,11 @@ private enum PaywallPlan: String, CaseIterable, Identifiable {
     var benefits: [String] {
         switch self {
         case .lite:
-            return ["ИИ-картинки и тексты", "Базовые курсы", "Доступ к Hub"]
+            return ["ИИ-картинки и тексты", "1000 кредитов на курсы и инструменты", "Доступ к Hub"]
         case .pro:
-            return ["Все AI-инструменты", "Премиум-курсы", "Приоритет в Hub"]
+            return ["Все AI-инструменты", "2000 кредитов на курсы и инструменты", "Приоритет в Hub"]
         case .max:
-            return ["5000 кредитов", "Все курсы и инструменты", "Топ-приоритет в Hub"]
+            return ["5000 кредитов", "Кредиты на курсы и инструменты", "Топ-приоритет в Hub"]
         }
     }
 }

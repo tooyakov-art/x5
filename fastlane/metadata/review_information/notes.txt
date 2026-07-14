@@ -1,5 +1,5 @@
 Xfive marketing is a creator workspace and marketplace for creators, marketers,
-specialists and clients. Version 1.1.4 build 179 includes Home creator tools,
+specialists and clients. Version 1.1.4 build 180 includes Home creator tools,
 image generation, Generated Gallery, Hub, Chats, Portfolio, CourseUP, Profile,
 paid plans, credits, verified badge, report/block controls and account deletion.
 
@@ -24,7 +24,7 @@ Quick test flow:
    archive, report or block.
 7. Portfolio/Profile - add photos or videos, edit public visibility and social
    links.
-8. CourseUP - open a course and play a lesson. Pro-gated courses show paywall.
+8. CourseUP - open a course, preview a lesson and buy a paid course with credits.
 9. Profile -> Upgrade to Pro - review terms, purchase, restore and manage.
 10. Profile -> Settings - language, Face ID lock, cache, notifications, sign
     out and Delete Account.
@@ -42,7 +42,7 @@ X Five Pro Monthly: com.x5studio.app.pro.monthly.
 X Five Max Monthly: com.x5studio.app.max.monthly.
 Verified Badge Monthly: com.x5studio.app.verified.monthly.
 The paywall is available from Profile -> Upgrade to Pro. Paid plans grant Pro
-access and credits for creator tools. The verified badge is a separate App
+creator-tool access and monthly credits that can also buy courses. The verified badge is a separate App
 Store subscription from Profile -> Get verified.
 
 UGC safety:

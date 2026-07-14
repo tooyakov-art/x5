@@ -50,14 +50,15 @@ final class Subscription: ObservableObject {
         // Server `profiles.plan` is the single source of truth — the local
         // UserDefaults cache is reconciled here so SettingsView ("Pro активна")
         // and ProfileView (server `isPro`) never disagree.
-        // Payload is only the plan string (narrowed for PII safety).
+        // Payload is only the already-evaluated paid-access flag (narrowed for
+        // PII safety and inclusive of the subscription expiration date).
         profileObserver = NotificationCenter.default.addObserver(
             forName: .x5ProfileDidUpdate,
             object: nil,
             queue: .main
         ) { [weak self] note in
-            let plan = note.userInfo?["plan"] as? String
-            Task { @MainActor in self?.syncPlan(plan) }
+            let isPro = note.userInfo?["is_pro"] as? Bool ?? false
+            Task { @MainActor in self?.syncIsPro(isPro) }
         }
     }
 
@@ -72,15 +73,13 @@ final class Subscription: ObservableObject {
     /// build-12 paywall or an outdated IAP cache cannot survive a clean
     /// server-side state of "no plan column / null".
     func sync(from profile: UserProfile?) {
-        syncPlan(profile?.plan)
+        syncIsPro(profile?.isPro ?? false)
     }
 
-    /// String-level entry point used by the notification observer — keeps the
+    /// Boolean entry point used by the notification observer — keeps the
     /// observer payload narrow (no full UserProfile broadcast).
-    func syncPlan(_ plan: String?) {
-        let normalized = (plan?.isEmpty == false) ? plan : nil
-        let pro = normalized == "pro" || normalized == "black"
-        if pro != isPro { setPro(pro) }
+    func syncIsPro(_ value: Bool) {
+        if value != isPro { setPro(value) }
     }
 
     func reset() {

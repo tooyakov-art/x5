@@ -18,7 +18,7 @@ struct UserProfile: Codable, Equatable, Identifiable {
     var avatar: String?
     var bio: String?
     var services: [String]?
-    var plan: String?               // free | pro | black
+    var plan: String?               // free | lite | pro | max | black
     var credits: Int?
     var purchasedCourseIds: [String]?
     var purchasedLessonIds: [String]?
@@ -73,13 +73,30 @@ struct UserProfile: Codable, Equatable, Identifiable {
 
     var planLabel: String {
         switch plan ?? "free" {
+        case "lite": return "Lite"
         case "pro": return "Pro"
+        case "max": return "Max"
         case "black": return "Black"
         default: return "Free"
         }
     }
 
-    var isPro: Bool { plan == "pro" || plan == "black" }
+    /// Paid access is active only while the server-recorded StoreKit period is
+    /// active. Legacy paid profiles that predate expiration tracking keep their
+    /// access; new verified transactions always include an end date.
+    var isPro: Bool {
+        let normalizedPlan = plan?.lowercased()
+        if normalizedPlan == "black" { return true }
+        guard ["lite", "pro", "max"].contains(normalizedPlan ?? "") else { return false }
+        guard let end = subscriptionEndDate?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !end.isEmpty
+        else { return true }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let expiration = formatter.date(from: end) ?? ISO8601DateFormatter().date(from: end)
+        return expiration.map { $0 > Date() } ?? false
+    }
 
     /// True only if is_verified is set AND the paid period hasn't expired.
     var hasActiveVerifiedBadge: Bool {
@@ -99,7 +116,7 @@ final class CurrentUser: ObservableObject {
     /// services (Subscription, etc.) reconcile their local cache to match the
     /// server — the single source of truth for plan / Pro state.
     ///
-    /// Notification payload is intentionally narrow (`plan` only). Posting
+    /// Notification payload is intentionally narrow (`is_pro` only). Posting
     /// the full struct via the default NotificationCenter would expose PII
     /// (email, credits, push_token) to any in-process observer including
     /// linked third-party SDKs.
@@ -112,7 +129,7 @@ final class CurrentUser: ObservableObject {
             NotificationCenter.default.post(
                 name: .x5ProfileDidUpdate,
                 object: nil,
-                userInfo: ["plan": profile?.plan ?? ""]
+                userInfo: ["is_pro": profile?.isPro ?? false]
             )
             persistCachedProfile()
         }
@@ -120,7 +137,8 @@ final class CurrentUser: ObservableObject {
     @Published private(set) var isLoading: Bool = false
     @Published private(set) var error: String?
 
-    private let cachedProfileKey = "x5.profile.cache"
+    private let cachedProfileKeyPrefix = "x5.profile.cache."
+    private var lastCachedProfileId: String?
 
     private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
     private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
@@ -141,9 +159,16 @@ final class CurrentUser: ObservableObject {
     }
 
     private func restoreCachedProfile() {
-        guard let data = UserDefaults.standard.data(forKey: cachedProfileKey),
+        let defaults = UserDefaults.standard
+        guard let sessionUserId = defaults.string(forKey: "x5.session.user_id")?.lowercased(),
+              let data = defaults.data(forKey: cachedProfileKeyPrefix + sessionUserId),
               let cached = try? JSONDecoder().decode(UserProfile.self, from: data)
         else { return }
+        guard cached.id.caseInsensitiveCompare(sessionUserId) == .orderedSame else {
+            defaults.removeObject(forKey: cachedProfileKeyPrefix + sessionUserId)
+            return
+        }
+        lastCachedProfileId = cached.id.lowercased()
         // Routing through the setter re-persists the same bytes (no-op write)
         // and re-broadcasts the cached plan — which is fine: Subscription
         // syncs to the cached state until the server fetch overrides it,
@@ -154,9 +179,13 @@ final class CurrentUser: ObservableObject {
     private func persistCachedProfile() {
         let defaults = UserDefaults.standard
         if let profile, let data = try? JSONEncoder().encode(profile) {
-            defaults.set(data, forKey: cachedProfileKey)
-        } else {
-            defaults.removeObject(forKey: cachedProfileKey)
+            let profileId = profile.id.lowercased()
+            defaults.set(data, forKey: cachedProfileKeyPrefix + profileId)
+            lastCachedProfileId = profileId
+            defaults.removeObject(forKey: "x5.profile.cache")
+        } else if let lastCachedProfileId {
+            defaults.removeObject(forKey: cachedProfileKeyPrefix + lastCachedProfileId)
+            self.lastCachedProfileId = nil
         }
     }
 

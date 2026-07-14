@@ -97,71 +97,102 @@ private struct FullScreenVideoPlayer: View {
         return CGFloat(min(max(proposed, VideoViewportState.minimumScale), VideoViewportState.maximumScale))
     }
 
-    private var displayedTranslation: CGSize {
+    private func displayedTranslation(in viewportSize: CGSize) -> CGSize {
         guard displayedScale > CGFloat(VideoViewportState.minimumScale) else { return .zero }
+        let clamped = viewport.clampedTranslation(
+            x: Double(CGFloat(viewport.translationX) + gestureTranslation.width),
+            y: Double(CGFloat(viewport.translationY) + gestureTranslation.height),
+            scale: Double(displayedScale),
+            viewportWidth: Double(viewportSize.width),
+            viewportHeight: Double(viewportSize.height)
+        )
         return CGSize(
-            width: CGFloat(viewport.translationX) + gestureTranslation.width,
-            height: CGFloat(viewport.translationY) + gestureTranslation.height
+            width: CGFloat(clamped.x),
+            height: CGFloat(clamped.y)
         )
     }
 
     var body: some View {
-        NavigationStack {
-            GeometryReader { proxy in
-                ZStack {
-                    Color.black
+        GeometryReader { proxy in
+            ZStack(alignment: .top) {
+                Color.black
 
-                    VideoPlayer(player: player)
-                        .scaleEffect(displayedScale)
-                        .offset(displayedTranslation)
-                }
-                .frame(width: proxy.size.width, height: proxy.size.height)
-                .contentShape(Rectangle())
-                .clipped()
-                .simultaneousGesture(magnificationGesture)
-                .simultaneousGesture(translationGesture)
-                .simultaneousGesture(resetGesture)
-            }
-            .ignoresSafeArea(edges: .bottom)
-            .navigationTitle("Video")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.black, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") {
+                VideoPlayer(player: player)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .scaleEffect(displayedScale)
+                    .offset(displayedTranslation(in: proxy.size))
+
+                HStack {
+                    Button {
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 42, height: 42)
+                            .background(Color.black.opacity(0.58), in: Circle())
                     }
-                }
+                    .accessibilityLabel("Close")
 
-                ToolbarItem(placement: .topBarTrailing) {
+                    Spacer()
+
                     Button {
                         viewport.reset()
                     } label: {
-                        Label("Reset zoom", systemImage: "arrow.counterclockwise")
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 42, height: 42)
+                            .background(Color.black.opacity(0.58), in: Circle())
                     }
                     .disabled(viewport == VideoViewportState())
+                    .opacity(viewport == VideoViewportState() ? 0.45 : 1)
+                    .accessibilityLabel("Reset zoom")
                 }
+                .padding(.leading, max(16, proxy.safeAreaInsets.leading))
+                .padding(.trailing, max(16, proxy.safeAreaInsets.trailing))
+                .padding(.top, max(12, proxy.safeAreaInsets.top))
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .contentShape(Rectangle())
+            .clipped()
+            .simultaneousGesture(magnificationGesture(in: proxy.size))
+            .simultaneousGesture(translationGesture(in: proxy.size))
+            .simultaneousGesture(resetGesture)
+            .onChange(of: proxy.size) { newSize in
+                viewport.clampTranslation(
+                    viewportWidth: Double(newSize.width),
+                    viewportHeight: Double(newSize.height)
+                )
             }
         }
+        .ignoresSafeArea()
+        .statusBarHidden(true)
         .background(Color.black.ignoresSafeArea())
         .onAppear {
+            AppOrientationCoordinator.enterVideoFullscreen()
             player.play()
+        }
+        .onDisappear {
+            AppOrientationCoordinator.leaveVideoFullscreen()
         }
     }
 
-    private var magnificationGesture: some Gesture {
+    private func magnificationGesture(in viewportSize: CGSize) -> some Gesture {
         MagnificationGesture()
             .updating($gestureMagnification) { value, state, _ in
                 state = value
             }
             .onEnded { value in
-                viewport.applyMagnification(viewport.scale * Double(value))
+                viewport.applyMagnification(
+                    viewport.scale * Double(value),
+                    viewportWidth: Double(viewportSize.width),
+                    viewportHeight: Double(viewportSize.height)
+                )
             }
     }
 
-    private var translationGesture: some Gesture {
+    private func translationGesture(in viewportSize: CGSize) -> some Gesture {
         DragGesture()
             .updating($gestureTranslation) { value, state, _ in
                 guard viewport.scale > VideoViewportState.minimumScale else { return }
@@ -171,7 +202,9 @@ private struct FullScreenVideoPlayer: View {
                 guard viewport.scale > VideoViewportState.minimumScale else { return }
                 viewport.applyTranslation(
                     x: viewport.translationX + Double(value.translation.width),
-                    y: viewport.translationY + Double(value.translation.height)
+                    y: viewport.translationY + Double(value.translation.height),
+                    viewportWidth: Double(viewportSize.width),
+                    viewportHeight: Double(viewportSize.height)
                 )
             }
     }

@@ -332,7 +332,7 @@ private struct CourseCard: View {
                             .clipShape(Capsule())
                     }
                     if !(course.isFree ?? false) && (course.price ?? 0) > 0 {
-                        Text(loc.t("courses_pro_chip").uppercased())
+                        Text("\(max(course.price ?? 0, 0).formatted()) кр.")
                             .font(.system(size: 10, weight: .heavy))
                             .padding(.horizontal, 8).padding(.vertical, 4)
                             .background(Color.accentColor)
@@ -422,7 +422,7 @@ private struct CourseRow: View {
                         .foregroundColor(.white)
                         .lineLimit(2)
                     if !(course.isFree ?? false) && (course.price ?? 0) > 0 {
-                        Text(loc.t("courses_pro_chip").uppercased())
+                        Text("\(max(course.price ?? 0, 0).formatted()) кр.")
                             .font(.system(size: 9, weight: .heavy))
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(Color.accentColor)
@@ -823,9 +823,18 @@ struct CourseDetailView: View {
     @State private var expandedCategoryIds: Set<String> = []
     @State private var showingPurchaseConfirmation = false
     @State private var purchaseNotice: CoursePurchaseNotice?
+    @State private var serverConfirmedPrice: Int?
+
+    private var activeProfile: UserProfile? {
+        guard let profile = currentUser.profile,
+              let userId = auth.userId,
+              profile.id.caseInsensitiveCompare(userId) == .orderedSame
+        else { return nil }
+        return profile
+    }
 
     var hasFullAccess: Bool {
-        CourseAccessPolicy.hasFullAccess(to: course, profile: currentUser.profile)
+        CourseAccessPolicy.hasFullAccess(to: course, profile: activeProfile)
     }
 
     var body: some View {
@@ -888,7 +897,7 @@ struct CourseDetailView: View {
                             canPlay: CourseAccessPolicy.canAccess(
                                 lesson: lesson,
                                 in: course,
-                                profile: currentUser.profile
+                                profile: activeProfile
                             ),
                             requestUnlock: requestUnlock
                         )
@@ -922,8 +931,8 @@ struct CourseDetailView: View {
         }
     }
 
-    private var coursePrice: Int { max(course.price ?? 0, 0) }
-    private var availableCredits: Int { max(currentUser.profile?.credits ?? 0, 0) }
+    private var coursePrice: Int { max(serverConfirmedPrice ?? course.price ?? 0, 0) }
+    private var availableCredits: Int { max(activeProfile?.credits ?? 0, 0) }
     private var formattedPrice: String { coursePrice.formatted() }
     private var formattedCredits: String { availableCredits.formatted() }
 
@@ -967,15 +976,6 @@ struct CourseDetailView: View {
             return
         }
 
-        guard availableCredits >= coursePrice else {
-            purchaseNotice = CoursePurchaseNotice(
-                title: "Недостаточно кредитов",
-                message: "Нужно \(formattedPrice), на балансе \(formattedCredits). Пополните баланс и повторите покупку.",
-                offersTopUp: true
-            )
-            return
-        }
-
         showingPurchaseConfirmation = true
     }
 
@@ -991,7 +991,11 @@ struct CourseDetailView: View {
         }
 
         do {
-            let response = try await purchaseService.purchase(courseId: course.id, accessToken: token)
+            let response = try await purchaseService.purchase(
+                courseId: course.id,
+                expectedPrice: coursePrice,
+                accessToken: token
+            )
             currentUser.applyCoursePurchase(response)
 
             switch response.status {
@@ -1012,6 +1016,14 @@ struct CourseDetailView: View {
                     title: "Недостаточно кредитов",
                     message: "Баланс изменился. Пополните его и повторите покупку.",
                     offersTopUp: true
+                )
+            case .priceChanged:
+                let latestPrice = response.reconciledExpectedPrice(currentPrice: coursePrice)
+                serverConfirmedPrice = latestPrice
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Цена изменилась",
+                    message: "Списание не выполнялось. Новая цена — \(latestPrice.formatted()) кредитов. Нажмите купить ещё раз и подтвердите новую цену.",
+                    offersTopUp: false
                 )
             case .courseUnavailable:
                 purchaseNotice = CoursePurchaseNotice(
@@ -1153,12 +1165,8 @@ private struct CourseProgramCategorySection<LessonContent: View>: View {
         category.days.reduce(0) { $0 + $1.lessons.count }
     }
 
-    private var sortedLessons: [CourseLesson] {
-        category.days
-            .sorted { ($0.order ?? 0) < ($1.order ?? 0) }
-            .flatMap { day in
-                day.lessons.sorted { ($0.order ?? 0) < ($1.order ?? 0) }
-            }
+    private var sortedDays: [CourseDay] {
+        category.days.sorted { ($0.order ?? 0) < ($1.order ?? 0) }
     }
 
     var body: some View {
@@ -1191,9 +1199,20 @@ private struct CourseProgramCategorySection<LessonContent: View>: View {
             .buttonStyle(.plain)
 
             if isExpanded.wrappedValue {
-                VStack(spacing: 8) {
-                    ForEach(sortedLessons) { lesson in
-                        lessonContent(lesson)
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(sortedDays) { day in
+                        VStack(alignment: .leading, spacing: 8) {
+                            if !day.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text(day.title)
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.68))
+                                    .padding(.horizontal, 4)
+                            }
+
+                            ForEach(day.lessons.sorted { ($0.order ?? 0) < ($1.order ?? 0) }) { lesson in
+                                lessonContent(lesson)
+                            }
+                        }
                     }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))

@@ -14,6 +14,12 @@ final class CourseAccessPolicyTests: XCTestCase {
         XCTAssertTrue(CourseAccessPolicy.hasFullAccess(to: course, profile: makeProfile()))
     }
 
+    func testMissingPriceUsesSameFreeSemanticsAsServer() {
+        let course = makeCourse(id: "course-nil-price", price: nil, isFree: false)
+
+        XCTAssertTrue(CourseAccessPolicy.hasFullAccess(to: course, profile: makeProfile()))
+    }
+
     func testPurchasedCourseIdHasFullAccess() {
         let course = makeCourse(id: "course-paid", price: 50_000, isFree: false)
         let profile = makeProfile(purchasedCourseIds: ["course-paid"])
@@ -26,6 +32,36 @@ final class CourseAccessPolicyTests: XCTestCase {
         let profile = makeProfile(plan: "pro")
 
         XCTAssertFalse(CourseAccessPolicy.hasFullAccess(to: course, profile: profile))
+    }
+
+    func testCourseAuthorHasFullAccess() {
+        let course = makeCourse(
+            id: "course-paid",
+            price: 50_000,
+            isFree: false,
+            authorId: "user-1"
+        )
+
+        XCTAssertTrue(CourseAccessPolicy.hasFullAccess(to: course, profile: makeProfile()))
+    }
+
+    func testLegacyLessonPurchaseDoesNotBypassCourseGate() {
+        let course = makeCourse(id: "course-paid", price: 50_000, isFree: false)
+        let lesson = CourseLesson(
+            id: "lesson-paid",
+            title: "Paid",
+            duration: nil,
+            order: 1,
+            price: 1,
+            videoUrl: nil,
+            youtubeUrl: nil,
+            thumbnailUrl: nil,
+            isFreePreview: false,
+            sellSeparately: true
+        )
+        let profile = makeProfile(purchasedLessonIds: ["course-paid:lesson-paid"])
+
+        XCTAssertFalse(CourseAccessPolicy.canAccess(lesson: lesson, in: course, profile: profile))
     }
 
     func testFreePreviewLessonIsAccessibleWhenCourseIsLocked() {
@@ -52,7 +88,12 @@ final class CourseAccessPolicyTests: XCTestCase {
         )
     }
 
-    private func makeCourse(id: String, price: Int, isFree: Bool) -> Course {
+    private func makeCourse(
+        id: String,
+        price: Int?,
+        isFree: Bool,
+        authorId: String? = nil
+    ) -> Course {
         Course(
             id: id,
             title: "Course",
@@ -60,6 +101,7 @@ final class CourseAccessPolicyTests: XCTestCase {
             marketingHook: nil,
             coverUrl: nil,
             authorName: "DOPAMINE",
+            authorId: authorId,
             price: price,
             isFree: isFree,
             isPublic: true,
@@ -73,7 +115,8 @@ final class CourseAccessPolicyTests: XCTestCase {
 
     private func makeProfile(
         plan: String = "free",
-        purchasedCourseIds: [String] = []
+        purchasedCourseIds: [String] = [],
+        purchasedLessonIds: [String]? = nil
     ) -> UserProfile {
         UserProfile(
             id: "user-1",
@@ -86,7 +129,7 @@ final class CourseAccessPolicyTests: XCTestCase {
             plan: plan,
             credits: 100_000,
             purchasedCourseIds: purchasedCourseIds,
-            purchasedLessonIds: nil,
+            purchasedLessonIds: purchasedLessonIds,
             subscriptionType: nil,
             subscriptionDate: nil,
             subscriptionEndDate: nil,

@@ -40,7 +40,7 @@ struct CourseEditorView: View {
     @State private var errorText: String?
     @State private var saveIdentity: CourseSaveIdentity
 
-    private var isCreating: Bool { editing == nil }
+    private var isCreating: Bool { saveIdentity.persistedCourseID == nil }
     private var existingId: String? { saveIdentity.persistedCourseID }
 
     init(editing: Course?, onChange: @escaping () -> Void) {
@@ -114,7 +114,8 @@ struct CourseEditorView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") { dismiss() }
+                    Button("Отмена") { Task { await cancelEditing() } }
+                        .disabled(saving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
@@ -150,6 +151,7 @@ struct CourseEditorView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .interactiveDismissDisabled(saving || (editing == nil && existingId != nil))
     }
 
     @ViewBuilder
@@ -194,7 +196,7 @@ struct CourseEditorView: View {
         Section {
             ForEach(orderedCategoryIndices, id: \.self) { categoryIndex in
                 VStack(alignment: .leading, spacing: 12) {
-                    TextField("Название раздела", text: $categories[categoryIndex].title)
+                    TextField("Название модуля", text: $categories[categoryIndex].title)
                         .font(.headline)
                         .textInputAutocapitalization(.sentences)
 
@@ -206,7 +208,7 @@ struct CourseEditorView: View {
                     ForEach(orderedDayIndices(in: categoryIndex), id: \.self) { dayIndex in
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 8) {
-                                TextField("Название дня или модуля", text: $categories[categoryIndex].days[dayIndex].title)
+                                TextField("Название дня или блока", text: $categories[categoryIndex].days[dayIndex].title)
                                     .font(.subheadline)
                                     .textInputAutocapitalization(.sentences)
 
@@ -263,7 +265,7 @@ struct CourseEditorView: View {
                         Button {
                             addDay(categoryIndex: categoryIndex)
                         } label: {
-                            Label("Добавить день / модуль", systemImage: "calendar.badge.plus")
+                            Label("Добавить день / блок", systemImage: "calendar.badge.plus")
                         }
 
                         Spacer()
@@ -272,7 +274,7 @@ struct CourseEditorView: View {
                             Button(role: .destructive) {
                                 deleteCategory(categoryIndex)
                             } label: {
-                                Label("Удалить раздел", systemImage: "trash")
+                                Label("Удалить модуль", systemImage: "trash")
                             }
                         }
                     }
@@ -284,12 +286,12 @@ struct CourseEditorView: View {
             Button {
                 addCategory()
             } label: {
-                Label("Добавить раздел", systemImage: "folder.badge.plus")
+                Label("Добавить модуль", systemImage: "folder.badge.plus")
             }
         } header: {
             Text("Программа курса")
         } footer: {
-            Text("Можно менять названия разделов и дней, добавлять модули и уроки. Видео у урока задается прямой ссылкой MP4/HLS или импортом файла.")
+            Text("Модули отображаются в заданном порядке; внутри можно добавлять дни, блоки и уроки. Видео задаётся прямой ссылкой MP4/HLS или импортом файла.")
         }
     }
 
@@ -497,6 +499,27 @@ struct CourseEditorView: View {
 
     private func categoriesPayload() -> [[String: Any]] {
         CourseDraft(categories: categories).categoriesPayload
+    }
+
+    private func cancelEditing() async {
+        guard editing == nil, let id = existingId else {
+            dismiss()
+            return
+        }
+
+        guard let token = await auth.freshAccessToken() else {
+            errorText = "Не удалось закрыть черновик: войдите снова и удалите его."
+            return
+        }
+
+        saving = true
+        let deleted = await service.deleteCourse(id: id, accessToken: token)
+        saving = false
+        if deleted {
+            dismiss()
+        } else {
+            errorText = service.error ?? "Не удалось удалить незавершённый черновик."
+        }
     }
 
     private var resolvedAuthorName: String {
@@ -767,18 +790,12 @@ private struct LessonEditorSheet: View {
                     Text("Видео и обложка остаются черновиком до сохранения всего курса. Текущая опубликованная ссылка не удаляется, пока новый файл не загрузится успешно.")
                 }
 
-                Section("Отдельная продажа") {
-                    Toggle("Продавать отдельно", isOn: $sellSeparately)
-                    if sellSeparately {
-                        HStack {
-                            Text("Цена")
-                            Spacer()
-                            TextField("0", text: $price)
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.trailing)
-                                .frame(width: 90)
-                        }
-                    }
+                Section {
+                    Text("Доступ к уроку задаётся покупкой всего курса или флагом бесплатного preview.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("Доступ")
                 }
 
                 if let errorText {
@@ -959,11 +976,9 @@ private struct LessonEditorSheet: View {
     }
 
     private func updatedLesson() -> EditableLesson {
-        EditableLesson(
-            id: lesson.id,
+        lesson.applyingEditorChanges(
             title: title.x5Trimmed,
             duration: duration.x5Trimmed,
-            order: lesson.order,
             price: price.x5Trimmed.isEmpty ? "0" : price.x5Trimmed,
             videoUrl: videoUrl.x5Trimmed,
             youtubeUrl: youtubeUrl.x5Trimmed,

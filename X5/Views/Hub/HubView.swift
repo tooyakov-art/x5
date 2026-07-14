@@ -824,7 +824,7 @@ private struct SpecialistRow: View {
                     if person.isVerified == true {
                         VerifiedChip(size: 12)
                     }
-                    if person.plan == "pro" {
+                    if person.isPro {
                         Text("PRO").font(.system(size: 9, weight: .heavy))
                             .foregroundColor(.black)
                             .padding(.horizontal, 5).padding(.vertical, 2)
