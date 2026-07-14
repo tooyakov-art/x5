@@ -2,6 +2,7 @@ begin;
 
 select set_config('x5.test_developer_course_id', gen_random_uuid()::text, true);
 select set_config('x5.test_developer_submission_id', gen_random_uuid()::text, true);
+select set_config('x5.test_developer_config_key', '__developer_access_' || gen_random_uuid()::text, true);
 
 insert into public.courses (
   id,
@@ -31,6 +32,12 @@ insert into public.course_submissions (
   'pending'
 );
 
+insert into public.system_config (key, value)
+values (
+  current_setting('x5.test_developer_config_key'),
+  '{"enabled":false}'::jsonb
+);
+
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -56,6 +63,14 @@ begin
   get diagnostics v_rows = row_count;
   if v_rows <> 1 then
     raise exception 'owner_account_cannot_update_courses';
+  end if;
+
+  update public.system_config
+     set value = '{"enabled":true}'::jsonb
+   where key = current_setting('x5.test_developer_config_key');
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then
+    raise exception 'owner_account_cannot_update_system_config';
   end if;
 end;
 $owner_account$;
@@ -84,6 +99,14 @@ begin
   get diagnostics v_rows = row_count;
   if v_rows <> 1 then
     raise exception 'adilkhan_account_cannot_update_courses';
+  end if;
+
+  update public.system_config
+     set value = '{"enabled":false}'::jsonb
+   where key = current_setting('x5.test_developer_config_key');
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then
+    raise exception 'adilkhan_account_cannot_update_system_config';
   end if;
 end;
 $adilkhan_account$;
@@ -120,6 +143,14 @@ begin
   get diagnostics v_rows = row_count;
   if v_rows <> 0 then
     raise exception 'former_developer_updated_submission';
+  end if;
+
+  update public.system_config
+     set value = '{"enabled":true}'::jsonb
+   where key = current_setting('x5.test_developer_config_key');
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then
+    raise exception 'former_developer_updated_system_config';
   end if;
 end;
 $former_developer_account$;
@@ -195,6 +226,14 @@ begin
     raise exception 'non_developer_can_read_foreign_submission';
   end if;
 
+  if exists (
+    select 1
+      from public.system_config
+     where key = current_setting('x5.test_developer_config_key')
+  ) then
+    raise exception 'non_developer_can_read_private_system_config';
+  end if;
+
   insert into public.course_submissions (
     author_id,
     title,
@@ -232,17 +271,64 @@ begin
        and tablename = 'course_submissions'
        and policyname in (
          'Authenticated users can read submissions',
-         'Authenticated users can update submissions'
+         'Authenticated users can update submissions',
+         'Users can insert own submissions'
        )
   ) then
     raise exception 'broad_submission_policy_still_exists';
   end if;
 
+  if exists (
+    select 1
+      from pg_policies
+     where schemaname = 'public'
+       and tablename = 'system_config'
+       and policyname in (
+         'Allow public insert system_config',
+         'Allow public update system_config'
+       )
+  ) then
+    raise exception 'public_system_config_write_policy_still_exists';
+  end if;
+
+  if exists (
+    select 1
+      from pg_policies
+     where schemaname = 'storage'
+       and tablename = 'objects'
+       and policyname = 'course_media_insert_public'
+  ) then
+    raise exception 'anonymous_course_media_upload_policy_still_exists';
+  end if;
+
+  if exists (
+    select 1
+      from pg_policies
+     where schemaname = 'storage'
+       and tablename = 'objects'
+       and policyname in (
+         'x5 storage authenticated write',
+         'x5 storage authenticated update',
+         'x5 storage authenticated delete own'
+       )
+       and concat_ws(' ', qual, with_check) like '%course-covers%'
+  ) then
+    raise exception 'generic_storage_policy_bypasses_course_cover_gate';
+  end if;
+
   if has_table_privilege('anon', 'public.courses', 'truncate')
      or has_table_privilege('authenticated', 'public.courses', 'truncate')
      or has_table_privilege('anon', 'public.course_submissions', 'truncate')
-     or has_table_privilege('authenticated', 'public.course_submissions', 'truncate') then
+     or has_table_privilege('authenticated', 'public.course_submissions', 'truncate')
+     or has_table_privilege('anon', 'public.system_config', 'truncate')
+     or has_table_privilege('authenticated', 'public.system_config', 'truncate') then
     raise exception 'client_role_still_has_truncate_privilege';
+  end if;
+
+  if has_table_privilege('anon', 'public.system_config', 'insert')
+     or has_table_privilege('anon', 'public.system_config', 'update')
+     or has_table_privilege('anon', 'public.system_config', 'delete') then
+    raise exception 'anonymous_role_can_still_write_system_config';
   end if;
 end;
 $policy_and_acl_checks$;
