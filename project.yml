@@ -96,3 +96,30 @@ targets:
         Release:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: Apple Distribution
+
+  X5Tests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: X5Tests
+    dependencies:
+      - target: X5
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.x5studio.app.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+
+schemes:
+  X5-Course-CI:
+    build:
+      targets:
+        X5: all
+        X5Tests: [test]
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - name: X5Tests
+          parallelizable: false
