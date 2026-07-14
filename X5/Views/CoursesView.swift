@@ -994,7 +994,8 @@ struct CourseDetailView: View {
             let response = try await purchaseService.purchase(
                 courseId: course.id,
                 expectedPrice: coursePrice,
-                accessToken: token
+                accessToken: token,
+                refreshAccessToken: { await auth.freshAccessToken() }
             )
             currentUser.applyCoursePurchase(response)
 

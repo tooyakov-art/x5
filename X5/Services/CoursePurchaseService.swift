@@ -117,7 +117,8 @@ final class CoursePurchaseService: ObservableObject {
     func purchase(
         courseId: String,
         expectedPrice: Int,
-        accessToken: String
+        accessToken: String,
+        refreshAccessToken: (() async -> String?)? = nil
     ) async throws -> CoursePurchaseResponse {
         let trimmedCourseId = courseId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard UUID(uuidString: trimmedCourseId) != nil else {
@@ -154,31 +155,52 @@ final class CoursePurchaseService: ObservableObject {
             )
         )
 
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            throw record(.transport(error.localizedDescription))
-        }
+        var didRetryUnauthorized = false
 
-        guard let http = response as? HTTPURLResponse else {
-            throw record(.invalidResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            let message = Self.serverMessage(from: data)
-            throw record(.http(statusCode: http.statusCode, message: message))
-        }
-
-        do {
-            return try JSONDecoder().decode(CoursePurchaseResponse.self, from: data)
-        } catch {
-            // Some PostgREST configurations wrap a scalar JSON result in a
-            // single-element array. Accept both forms without weakening types.
-            if let first = try? JSONDecoder().decode([CoursePurchaseResponse].self, from: data).first {
-                return first
+        while true {
+            let data: Data
+            let response: URLResponse
+            do {
+                (data, response) = try await session.data(for: request)
+            } catch {
+                throw record(.transport(error.localizedDescription))
             }
-            throw record(.invalidResponse)
+
+            guard let http = response as? HTTPURLResponse else {
+                throw record(.invalidResponse)
+            }
+
+            if http.statusCode == 401,
+               !didRetryUnauthorized,
+               let refreshAccessToken {
+                // Authentication is rejected before PostgREST invokes the RPC,
+                // so this is the only POST failure that is safe to retry. Mark
+                // the attempt before awaiting to guarantee a strict one-retry cap.
+                didRetryUnauthorized = true
+                guard let refreshedToken = await refreshAccessToken()?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                      !refreshedToken.isEmpty else {
+                    throw record(.missingAccessToken)
+                }
+                request.setValue("Bearer \(refreshedToken)", forHTTPHeaderField: "Authorization")
+                continue
+            }
+
+            guard (200..<300).contains(http.statusCode) else {
+                let message = Self.serverMessage(from: data)
+                throw record(.http(statusCode: http.statusCode, message: message))
+            }
+
+            do {
+                return try JSONDecoder().decode(CoursePurchaseResponse.self, from: data)
+            } catch {
+                // Some PostgREST configurations wrap a scalar JSON result in a
+                // single-element array. Accept both forms without weakening types.
+                if let first = try? JSONDecoder().decode([CoursePurchaseResponse].self, from: data).first {
+                    return first
+                }
+                throw record(.invalidResponse)
+            }
         }
     }
 
