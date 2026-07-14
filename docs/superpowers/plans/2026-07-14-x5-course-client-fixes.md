@@ -134,4 +134,3 @@
 4. Review the diff for secrets, unrelated changes, and live-data safety.
 5. Confirm the production course read matches the post-repair assertions.
 6. Report branch, commits, CI URL, repaired data, and any step that still requires a physical-device check.
-

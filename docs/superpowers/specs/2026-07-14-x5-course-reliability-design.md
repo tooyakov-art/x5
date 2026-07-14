@@ -1,7 +1,7 @@
 # X5 Course Reliability Design
 
-**Date:** 2026-07-14  
-**Source branch:** `codex/xfive-marketing-testflight-169` at `635f604d5f85e745c0e8c888599c7266724c1ba3`  
+**Date:** 2026-07-14
+**Source branch:** `codex/xfive-marketing-testflight-169` at `635f604d5f85e745c0e8c888599c7266724c1ba3`
 **Implementation branch:** `codex/x5-course-client-fixes-20260714`
 
 ## Goal
@@ -123,4 +123,3 @@ A separate non-signing GitHub Actions workflow runs `xcodegen` and `xcodebuild t
 7. Pro-only users cannot open a paid course unless its ID is in `purchased_course_ids`.
 8. Purchase is atomic and idempotent; a repeated request never double-charges.
 9. Unit tests and the unsigned iOS simulator build pass on GitHub Actions.
-
