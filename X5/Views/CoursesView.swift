@@ -34,7 +34,7 @@ struct CoursesView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let err = service.error, service.courses.isEmpty {
                     ErrorState(message: err) {
-                        Task { await service.loadCourses() }
+                        Task { await reloadCourses() }
                     }
                 } else {
                     ScrollView {
@@ -69,7 +69,7 @@ struct CoursesView: View {
                                                 Task {
                                                     guard let token = auth.accessToken else { return }
                                                     _ = await service.deleteCourse(id: course.id, accessToken: token)
-                                                    await service.loadCourses(includeHidden: isDev)
+                                                    await reloadCourses()
                                                 }
                                             } label: {
                                                 Label("Удалить", systemImage: "trash")
@@ -115,7 +115,7 @@ struct CoursesView: View {
                         .frame(maxWidth: 640)
                         .frame(maxWidth: .infinity)
                     }
-                    .refreshable { await service.loadCourses() }
+                    .refreshable { await reloadCourses() }
                 }
             }
             .background { X5Background() }
@@ -171,16 +171,21 @@ struct CoursesView: View {
                 switch target {
                 case .create:
                     CourseEditorView(editing: nil) {
-                        Task { await service.loadCourses(includeHidden: isDev) }
+                        Task { await reloadCourses() }
                     }
                 case .edit(let course):
                     CourseEditorView(editing: course) {
-                        Task { await service.loadCourses(includeHidden: isDev) }
+                        Task { await reloadCourses() }
                     }
                 }
             }
-            .task { await service.loadCourses(includeHidden: isDev) }
+            .task { await reloadCourses() }
         }
+    }
+
+    private func reloadCourses() async {
+        let accessToken = isDev ? await auth.freshAccessToken() : nil
+        await service.loadCourses(includeHidden: isDev, accessToken: accessToken)
     }
 
     private static let upcomingCourses: [Course] = [

@@ -152,6 +152,7 @@ struct CourseEditorView: View {
         }
         .preferredColorScheme(.dark)
         .interactiveDismissDisabled(saving || (editing == nil && existingId != nil))
+        .onDisappear { cleanupPendingLessonVideos() }
     }
 
     @ViewBuilder
@@ -417,6 +418,7 @@ struct CourseEditorView: View {
         defer { saving = false }
         let ok = await service.deleteCourse(id: id, accessToken: token)
         if ok {
+            cleanupPendingLessonVideos()
             onChange()
             dismiss()
         } else {
@@ -438,6 +440,7 @@ struct CourseEditorView: View {
                         return false
                     }
 
+                    CourseVideoStaging.removeIfManaged(fileURL)
                     categories[categoryIndex].days[dayIndex].lessons[lessonIndex]
                         .markVideoUploadSucceeded(publicURL: publicURL)
                 }
@@ -503,6 +506,7 @@ struct CourseEditorView: View {
 
     private func cancelEditing() async {
         guard editing == nil, let id = existingId else {
+            cleanupPendingLessonVideos()
             dismiss()
             return
         }
@@ -516,6 +520,7 @@ struct CourseEditorView: View {
         let deleted = await service.deleteCourse(id: id, accessToken: token)
         saving = false
         if deleted {
+            cleanupPendingLessonVideos()
             dismiss()
         } else {
             errorText = service.error ?? "Не удалось удалить незавершённый черновик."
@@ -551,6 +556,9 @@ struct CourseEditorView: View {
 
     private func deleteCategory(_ categoryIndex: Int) {
         guard categories.indices.contains(categoryIndex), categories.count > 1 else { return }
+        cleanupPendingLessonVideos(
+            categories[categoryIndex].days.flatMap(\.lessons)
+        )
         categories.remove(at: categoryIndex)
         normalizeCategoryOrder()
     }
@@ -565,6 +573,7 @@ struct CourseEditorView: View {
         guard categories.indices.contains(categoryIndex),
               categories[categoryIndex].days.indices.contains(dayIndex),
               categories[categoryIndex].days.count > 1 else { return }
+        cleanupPendingLessonVideos(categories[categoryIndex].days[dayIndex].lessons)
         categories[categoryIndex].days.remove(at: dayIndex)
         normalizeDayOrder(categoryIndex: categoryIndex)
     }
@@ -572,8 +581,20 @@ struct CourseEditorView: View {
     private func deleteLesson(_ lessonId: String, categoryIndex: Int, dayIndex: Int) {
         guard categories.indices.contains(categoryIndex),
               categories[categoryIndex].days.indices.contains(dayIndex) else { return }
+        if let lesson = categories[categoryIndex].days[dayIndex].lessons.first(where: { $0.id == lessonId }) {
+            CourseVideoStaging.removeIfManaged(lesson.pendingVideoFileURL)
+        }
         categories[categoryIndex].days[dayIndex].lessons.removeAll { $0.id == lessonId }
         normalizeLessonOrder(categoryIndex: categoryIndex, dayIndex: dayIndex)
+    }
+
+    private func cleanupPendingLessonVideos(_ lessons: [EditableLesson]? = nil) {
+        let pendingLessons = lessons ?? categories
+            .flatMap(\.days)
+            .flatMap(\.lessons)
+        for lesson in pendingLessons {
+            CourseVideoStaging.removeIfManaged(lesson.pendingVideoFileURL)
+        }
     }
 
     private func normalizeCategoryOrder() {
@@ -708,6 +729,7 @@ private struct LessonEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     private let lesson: EditableLesson
+    private let initialPendingVideoFileURL: URL?
     let onSave: (EditableLesson) -> Void
 
     @State private var title: String
@@ -726,12 +748,14 @@ private struct LessonEditorSheet: View {
     @State private var uploading = false
     @State private var uploadingThumbnail = false
     @State private var errorText: String?
+    @State private var didCommit = false
 
     init(
         lesson: EditableLesson,
         onSave: @escaping (EditableLesson) -> Void
     ) {
         self.lesson = lesson
+        initialPendingVideoFileURL = lesson.pendingVideoFileURL
         self.onSave = onSave
         _title = State(initialValue: lesson.title)
         _duration = State(initialValue: lesson.duration)
@@ -806,12 +830,12 @@ private struct LessonEditorSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") { dismiss() }
+                    Button("Отмена") { cancelAndDismiss() }
+                        .disabled(uploading || uploadingThumbnail)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Сохранить") {
-                        onSave(updatedLesson())
-                        dismiss()
+                        commitAndDismiss()
                     }
                     .disabled(title.x5Trimmed.isEmpty || uploading || uploadingThumbnail)
                 }
@@ -832,6 +856,12 @@ private struct LessonEditorSheet: View {
             .onChange(of: thumbnailItem) { newValue in
                 guard let newValue else { return }
                 Task { await importThumbnail(newValue) }
+            }
+        }
+        .interactiveDismissDisabled(uploading || uploadingThumbnail)
+        .onDisappear {
+            if !didCommit {
+                cleanupUncommittedVideo()
             }
         }
     }
@@ -923,7 +953,24 @@ private struct LessonEditorSheet: View {
         uploading = true
         defer { uploading = false }
         errorText = nil
-        stagePendingVideo(url)
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess { url.stopAccessingSecurityScopedResource() }
+        }
+
+        do {
+            let stagedURL = try await CourseVideoStaging.stageAsync(
+                sourceURL: url,
+                lessonID: lesson.id
+            )
+            if pendingVideoFileURL != initialPendingVideoFileURL {
+                CourseVideoStaging.removeIfManaged(pendingVideoFileURL)
+            }
+            pendingVideoFileURL = stagedURL
+            pendingVideoFileName = url.lastPathComponent
+        } catch {
+            errorText = "Не удалось подготовить видеофайл: \(error.localizedDescription)"
+        }
     }
 
     private func importThumbnail(_ item: PhotosPickerItem) async {
@@ -941,38 +988,23 @@ private struct LessonEditorSheet: View {
         pendingThumbnailData = jpeg
     }
 
-    private func stagePendingVideo(_ url: URL) {
-        let didAccess = url.startAccessingSecurityScopedResource()
-        defer {
-            if didAccess { url.stopAccessingSecurityScopedResource() }
+    private func commitAndDismiss() {
+        if pendingVideoFileURL != initialPendingVideoFileURL {
+            CourseVideoStaging.removeIfManaged(initialPendingVideoFileURL)
         }
-
-        do {
-            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("x5-course-videos", isDirectory: true)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-
-            let ext = normalizedVideoExtension(from: url)
-            let fileName = "\(lesson.id)-\(UUID().uuidString).\(ext)"
-            let destination = directory.appendingPathComponent(fileName)
-            if FileManager.default.fileExists(atPath: destination.path) {
-                try FileManager.default.removeItem(at: destination)
-            }
-            try FileManager.default.copyItem(at: url, to: destination)
-
-            pendingVideoFileURL = destination
-            pendingVideoFileName = url.lastPathComponent
-        } catch {
-            errorText = "Не удалось подготовить видеофайл: \(error.localizedDescription)"
-        }
+        didCommit = true
+        onSave(updatedLesson())
+        dismiss()
     }
 
-    private func normalizedVideoExtension(from url: URL) -> String {
-        let ext = url.pathExtension.lowercased()
-        guard !ext.isEmpty else { return "mp4" }
-        switch ext {
-        case "mov", "m4v", "mp4": return ext
-        default: return "mp4"
-        }
+    private func cancelAndDismiss() {
+        cleanupUncommittedVideo()
+        dismiss()
+    }
+
+    private func cleanupUncommittedVideo() {
+        guard pendingVideoFileURL != initialPendingVideoFileURL else { return }
+        CourseVideoStaging.removeIfManaged(pendingVideoFileURL)
     }
 
     private func updatedLesson() -> EditableLesson {

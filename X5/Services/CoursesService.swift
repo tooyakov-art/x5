@@ -347,24 +347,26 @@ struct CourseSubmission: Codable, Identifiable, Hashable {
 
 // MARK: - Service
 
-@MainActor
-final class CoursesService: ObservableObject {
-    @Published private(set) var courses: [Course] = []
-    @Published private(set) var submissions: [CourseSubmission] = []
-    @Published private(set) var isLoading: Bool = false
-    @Published private(set) var isLoadingSubmissions: Bool = false
-    @Published private(set) var error: String?
+enum CourseListRequestError: LocalizedError, Equatable {
+    case missingAccessToken
 
-    private var baseURL: URL { X5Config.supabaseBaseURL }
-    private var anonKey: String { X5Config.supabaseAnonKey }
+    var errorDescription: String? {
+        "Sign in again to load private course drafts."
+    }
+}
 
-    func loadCourses(includeHidden: Bool = false) async {
-        isLoading = true
-        error = nil
-        defer { isLoading = false }
-
+enum CourseListRequestBuilder {
+    static func makeRequest(
+        baseURL: URL,
+        anonKey: String,
+        includeHidden: Bool,
+        accessToken: String?
+    ) throws -> URLRequest {
         let select = "id,title,description,marketing_hook,cover_url,author_name,author_id,price,is_free,is_public,course_language,average_rating,students_count,sort_order,categories"
-        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/courses"), resolvingAgainstBaseURL: false)!
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("rest/v1/courses"),
+            resolvingAgainstBaseURL: false
+        )!
         var items: [URLQueryItem] = [
             URLQueryItem(name: "select", value: select),
             URLQueryItem(name: "order", value: "sort_order.asc")
@@ -378,7 +380,41 @@ final class CoursesService: ObservableObject {
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
+        if includeHidden {
+            guard let token = accessToken?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !token.isEmpty else {
+                throw CourseListRequestError.missingAccessToken
+            }
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        return request
+    }
+}
+
+@MainActor
+final class CoursesService: ObservableObject {
+    @Published private(set) var courses: [Course] = []
+    @Published private(set) var submissions: [CourseSubmission] = []
+    @Published private(set) var isLoading: Bool = false
+    @Published private(set) var isLoadingSubmissions: Bool = false
+    @Published private(set) var error: String?
+
+    private var baseURL: URL { X5Config.supabaseBaseURL }
+    private var anonKey: String { X5Config.supabaseAnonKey }
+
+    func loadCourses(includeHidden: Bool = false, accessToken: String? = nil) async {
+        isLoading = true
+        error = nil
+        defer { isLoading = false }
+
         do {
+            let request = try CourseListRequestBuilder.makeRequest(
+                baseURL: baseURL,
+                anonKey: anonKey,
+                includeHidden: includeHidden,
+                accessToken: accessToken
+            )
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 let body = String(data: data, encoding: .utf8) ?? ""
