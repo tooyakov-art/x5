@@ -24,6 +24,21 @@ enum IAPVerificationRetryPolicy {
     }
 }
 
+enum IAPOwnershipRoutingPolicy {
+    /// Apple JWS ownership is decided only by the server. A non-nil token that
+    /// differs from the current user can be either another account or one of
+    /// the exact legacy chains in the private server allowlist; the client
+    /// cannot distinguish those cases safely.
+    static func shouldVerifyOnServer(
+        signedInUserID: String?,
+        transactionAppAccountToken: UUID?
+    ) -> Bool {
+        _ = transactionAppAccountToken
+        guard let signedInUserID else { return false }
+        return UUID(uuidString: signedInUserID.trimmingCharacters(in: .whitespacesAndNewlines)) != nil
+    }
+}
+
 @MainActor
 final class IAPService: ObservableObject {
     nonisolated static let liteMonthlyProductID = "com.x5studio.app.lite.monthly"
@@ -236,7 +251,10 @@ final class IAPService: ObservableObject {
         signedTransaction: String,
         source: String
     ) async -> IAPEntitlementDisposition {
-        guard let userId = auth.userId else {
+        guard IAPOwnershipRoutingPolicy.shouldVerifyOnServer(
+            signedInUserID: auth.userId,
+            transactionAppAccountToken: transaction.appAccountToken
+        ) else {
             DiagnosticLogger.log(event: "iap_subscription_missing_session", extra: [
                 "source": source,
                 "product": transaction.productID
@@ -245,25 +263,17 @@ final class IAPService: ObservableObject {
             return .failed
         }
 
-        // Cross-account guard: an Apple ID can be shared between several X5
-        // accounts on the same device. StoreKit returns the active
-        // subscription regardless of which X5 user is currently signed in,
-        // so without this gate signing into a second X5 account would
-        // silently mark it Pro and credit paid credits for free (build 43 bug).
-        //
-        // We bind appAccountToken at purchase time to the buyer's user id;
-        // here we ignore any transaction whose token doesn't match. Old
-        // pre-fix transactions have a nil token — those we let through so
-        // legit existing subscribers don't lose their Pro on upgrade.
-        if let token = transaction.appAccountToken {
-            guard let buyerId = UUID(uuidString: userId), token == buyerId else {
-                DiagnosticLogger.log(event: "iap_subscription_token_mismatch", extra: [
-                    "source": source,
-                    "product": transaction.productID
-                ])
-                lastError = accountMismatchError
-                return .skipped
-            }
+        // Never decide mismatched-token ownership locally. The server checks
+        // Apple's signed JWS against the permanent owner ledger and the exact
+        // private allowlist for the two grandfathered legacy chains.
+        if let token = transaction.appAccountToken,
+           let userID = auth.userId,
+           let buyerID = UUID(uuidString: userID),
+           token != buyerID {
+            DiagnosticLogger.log(event: "iap_subscription_token_mismatch_deferred_to_server", extra: [
+                "source": source,
+                "product": transaction.productID
+            ])
         }
 
         let verificationResult = await verifyAppStoreTransaction(
@@ -296,18 +306,22 @@ final class IAPService: ObservableObject {
         signedTransaction: String,
         source: String
     ) async -> IAPEntitlementDisposition {
-        guard let userId = auth.userId else {
+        guard IAPOwnershipRoutingPolicy.shouldVerifyOnServer(
+            signedInUserID: auth.userId,
+            transactionAppAccountToken: transaction.appAccountToken
+        ) else {
             DiagnosticLogger.log(event: "iap_verified_missing_session", extra: ["source": source])
             lastError = "Sign in again, then restore purchases."
             return .failed
         }
 
-        if let token = transaction.appAccountToken {
-            guard let buyerId = UUID(uuidString: userId), token == buyerId else {
-                DiagnosticLogger.log(event: "iap_verified_token_mismatch", extra: ["source": source])
-                lastError = accountMismatchError
-                return .skipped
-            }
+        if let token = transaction.appAccountToken,
+           let userID = auth.userId,
+           let buyerID = UUID(uuidString: userID),
+           token != buyerID {
+            DiagnosticLogger.log(event: "iap_verified_token_mismatch_deferred_to_server", extra: [
+                "source": source
+            ])
         }
 
         let verificationResult = await verifyAppStoreTransaction(
