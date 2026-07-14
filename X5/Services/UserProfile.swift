@@ -85,10 +85,14 @@ struct UserProfile: Codable, Equatable, Identifiable {
     /// active. Legacy paid profiles that predate expiration tracking keep their
     /// access; new verified transactions always include an end date.
     var isPro: Bool {
+        Self.isPaidPlanActive(plan: plan, endDate: subscriptionEndDate)
+    }
+
+    static func isPaidPlanActive(plan: String?, endDate: String?) -> Bool {
         let normalizedPlan = plan?.lowercased()
         if normalizedPlan == "black" { return true }
         guard ["lite", "pro", "max"].contains(normalizedPlan ?? "") else { return false }
-        guard let end = subscriptionEndDate?.trimmingCharacters(in: .whitespacesAndNewlines),
+        guard let end = endDate?.trimmingCharacters(in: .whitespacesAndNewlines),
               !end.isEmpty
         else { return true }
 

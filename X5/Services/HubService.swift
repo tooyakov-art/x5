@@ -14,6 +14,11 @@ struct HubSpecialist: Codable, Identifiable, Hashable {
     let socialLinks: SocialLinks?
     let isVerified: Bool?
     let verifiedUntil: String?
+    var subscriptionEndDate: String? = nil
+
+    var isPro: Bool {
+        UserProfile.isPaidPlanActive(plan: plan, endDate: subscriptionEndDate)
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, name, nickname, avatar, bio, plan, services
@@ -21,6 +26,7 @@ struct HubSpecialist: Codable, Identifiable, Hashable {
         case socialLinks = "social_links"
         case isVerified = "is_verified"
         case verifiedUntil = "verified_until"
+        case subscriptionEndDate = "subscription_end_date"
     }
 }
 
@@ -188,7 +194,7 @@ final class HubService: ObservableObject {
         defer { isLoading = false }
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
-            URLQueryItem(name: "select", value: "id,name,nickname,avatar,bio,specialist_category,plan,services,social_links,is_verified,verified_until"),
+            URLQueryItem(name: "select", value: "id,name,nickname,avatar,bio,specialist_category,plan,services,social_links,is_verified,verified_until,subscription_end_date"),
             URLQueryItem(name: "show_in_hub", value: "eq.true"),
             URLQueryItem(name: "is_public", value: "eq.true"),
             URLQueryItem(name: "order", value: "created_at.desc")

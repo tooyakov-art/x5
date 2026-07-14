@@ -22,6 +22,15 @@ final class UserProfileEntitlementTests: XCTestCase {
         XCTAssertFalse(makeProfile(plan: "free", endDate: "2099-01-01T00:00:00Z").isPro)
     }
 
+    func testHubSpecialistUsesTheSameServerExpirationRule() {
+        var specialist = makeSpecialist(plan: "pro")
+        specialist.subscriptionEndDate = "2000-01-01T00:00:00Z"
+        XCTAssertFalse(specialist.isPro)
+
+        specialist.subscriptionEndDate = "2099-01-01T00:00:00Z"
+        XCTAssertTrue(specialist.isPro)
+    }
+
     private func makeProfile(plan: String, endDate: String?) -> UserProfile {
         UserProfile(
             id: "entitlement-test-user",
@@ -46,6 +55,22 @@ final class UserProfileEntitlementTests: XCTestCase {
             signupNumber: nil,
             language: nil,
             lastSeen: nil,
+            isVerified: nil,
+            verifiedUntil: nil
+        )
+    }
+
+    private func makeSpecialist(plan: String) -> HubSpecialist {
+        HubSpecialist(
+            id: "hub-entitlement-test-user",
+            name: nil,
+            nickname: nil,
+            avatar: nil,
+            bio: nil,
+            specialistCategory: nil,
+            plan: plan,
+            services: nil,
+            socialLinks: nil,
             isVerified: nil,
             verifiedUntil: nil
         )
