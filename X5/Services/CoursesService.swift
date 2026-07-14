@@ -185,7 +185,12 @@ final class CoursesService: ObservableObject {
     // Mutations require an authenticated developer (RLS enforces on the server).
 
     /// Creates a draft course owned by the caller. Returns the new course on success.
-    func createCourse(title: String, accessToken: String) async -> Course? {
+    func createCourse(
+        title: String,
+        authorName: String,
+        authorId: String?,
+        accessToken: String
+    ) async -> Course? {
         let id = UUID().uuidString
         var post = URLRequest(url: baseURL.appendingPathComponent("rest/v1/courses"))
         post.httpMethod = "POST"
@@ -193,24 +198,40 @@ final class CoursesService: ObservableObject {
         post.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         post.setValue("application/json", forHTTPHeaderField: "Content-Type")
         post.setValue("return=representation", forHTTPHeaderField: "Prefer")
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "id": id,
             "title": title,
+            "author_name": authorName,
             "is_public": false,
             "is_free": true,
             "price": 0,
             "course_language": "ru",
             "categories": []
         ]
-        post.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        guard let (data, resp) = try? await URLSession.shared.data(for: post),
-              let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              let rows = try? JSONDecoder().decode([Course].self, from: data),
-              let row = rows.first else {
-            self.error = "Не удалось создать курс. Проверь права в Supabase RLS."
+        if let authorId, UUID(uuidString: authorId) != nil {
+            body["author_id"] = authorId
+        }
+
+        do {
+            post.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await URLSession.shared.data(for: post)
+            guard let http = response as? HTTPURLResponse else {
+                self.error = "Не удалось создать курс: сервер не ответил."
+                return nil
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                self.error = Self.httpError(prefix: "Не удалось создать курс", status: http.statusCode, data: data)
+                return nil
+            }
+            guard let row = try JSONDecoder().decode([Course].self, from: data).first else {
+                self.error = "Не удалось создать курс: сервер вернул пустой ответ."
+                return nil
+            }
+            return row
+        } catch {
+            self.error = "Не удалось создать курс: \(error.localizedDescription)"
             return nil
         }
-        return row
     }
 
     /// PATCH selected fields on a course row. Pass only the fields you want to change.
@@ -222,13 +243,38 @@ final class CoursesService: ObservableObject {
         patch.setValue(anonKey, forHTTPHeaderField: "apikey")
         patch.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         patch.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        patch.httpBody = try? JSONSerialization.data(withJSONObject: fields)
-        guard let (_, resp) = try? await URLSession.shared.data(for: patch),
-              let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            self.error = "Не удалось сохранить курс."
+        patch.setValue("application/json", forHTTPHeaderField: "Accept")
+        patch.setValue("return=representation", forHTTPHeaderField: "Prefer")
+
+        do {
+            patch.httpBody = try JSONSerialization.data(withJSONObject: fields)
+            let (data, response) = try await URLSession.shared.data(for: patch)
+            guard let http = response as? HTTPURLResponse else {
+                self.error = "Не удалось сохранить курс: сервер не ответил."
+                return false
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                self.error = Self.httpError(prefix: "Не удалось сохранить курс", status: http.statusCode, data: data)
+                return false
+            }
+            guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]], !rows.isEmpty else {
+                self.error = "Курс не сохранён: сервер не изменил ни одной записи."
+                return false
+            }
+            return true
+        } catch {
+            self.error = "Не удалось сохранить курс: \(error.localizedDescription)"
             return false
         }
-        return true
+    }
+
+    private static func httpError(prefix: String, status: Int, data: Data) -> String {
+        let raw = String(data: data, encoding: .utf8) ?? ""
+        let compact = raw
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let suffix = compact.isEmpty ? "" : ": \(String(compact.prefix(240)))"
+        return "\(prefix) (\(status))\(suffix)"
     }
 
     func deleteCourse(id: String, accessToken: String) async -> Bool {
