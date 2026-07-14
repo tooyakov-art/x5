@@ -5,7 +5,11 @@ export const MAX_IMAGE_QUANTITY = 4;
 export const generationModels = [
   { id: "gpt-image-2", provider: "gpt", title: "GPT Image 2" },
   { id: "gemini-3.1-flash-image", provider: "google", title: "Nano Banana 2" },
-  { id: "gemini-3.1-flash-lite-image", provider: "google", title: "Nano Banana 2 Lite" },
+  {
+    id: "gemini-3.1-flash-lite-image",
+    provider: "google",
+    title: "Nano Banana 2 Lite",
+  },
 ];
 
 export const generationProviders = [
@@ -100,47 +104,56 @@ export const generationCategories = [
   {
     id: "logo",
     title: "Logo",
-    promptGuide: "Design a premium logo concept with clear shape, strong silhouette, and no tiny unreadable text.",
+    promptGuide:
+      "Design a premium logo concept with clear shape, strong silhouette, and no tiny unreadable text.",
   },
   {
     id: "square_1_1",
     title: "1:1 Creative",
-    promptGuide: "Create a square 1:1 advertising creative with a clear product or offer, strong hierarchy, and readable mobile composition.",
+    promptGuide:
+      "Create a square 1:1 advertising creative with a clear product or offer, strong hierarchy, and readable mobile composition.",
   },
   {
     id: "story",
     title: "Story",
-    promptGuide: "Create a vertical Instagram story creative with strong central composition and space for overlay text.",
+    promptGuide:
+      "Create a vertical Instagram story creative with strong central composition and space for overlay text.",
   },
   {
     id: "target_ad",
     title: "Target Ad",
-    promptGuide: "Create a performance ad creative for Instagram or TikTok with a clear hook, benefit, and call-to-action area.",
+    promptGuide:
+      "Create a performance ad creative for Instagram or TikTok with a clear hook, benefit, and call-to-action area.",
   },
   {
     id: "youtube_cover",
     title: "YouTube Cover",
-    promptGuide: "Create a clickable YouTube thumbnail with bold readable headline space, strong subject focus, and high contrast.",
+    promptGuide:
+      "Create a clickable YouTube thumbnail with bold readable headline space, strong subject focus, and high contrast.",
   },
   {
     id: "post",
     title: "Post",
-    promptGuide: "Create a square Instagram post creative with premium commercial lighting and a clear focal point.",
+    promptGuide:
+      "Create a square Instagram post creative with premium commercial lighting and a clear focal point.",
   },
   {
     id: "insta_pack",
     title: "Instagram Pack",
-    promptGuide: "Create a cohesive Instagram packaging-style visual system: post cover, story mood, and brand texture in one square preview.",
+    promptGuide:
+      "Create a cohesive Instagram packaging-style visual system: post cover, story mood, and brand texture in one square preview.",
   },
   {
     id: "product",
     title: "Product",
-    promptGuide: "Create a product advertising visual with clean studio lighting, premium reflections, and sharp product focus.",
+    promptGuide:
+      "Create a product advertising visual with clean studio lighting, premium reflections, and sharp product focus.",
   },
   {
     id: "packaging",
     title: "Packaging",
-    promptGuide: "Create a premium packaging concept with realistic material, label hierarchy, and shelf-ready presentation.",
+    promptGuide:
+      "Create a premium packaging concept with realistic material, label hierarchy, and shelf-ready presentation.",
   },
 ];
 
@@ -175,8 +188,9 @@ export function normalizeGenerationRequest(body) {
       throw new GenerationRequestError("unsupported_model", 400);
     }
   } else {
-    model =
-      generationModels.find((item) => item.provider === requestedProvider) ||
+    model = generationModels.find((item) =>
+      item.provider === requestedProvider
+    ) ||
       generationModels[0];
   }
   const provider = model.provider;
@@ -184,8 +198,7 @@ export function normalizeGenerationRequest(body) {
     generationCategories.find((item) => item.id === body?.category) ||
     generationCategories[0];
   const quantity = normalizeQuantity(body?.quantity);
-  const size =
-    generationSizes.find((item) => item.id === body?.size) ||
+  const size = generationSizes.find((item) => item.id === body?.size) ||
     generationSizes[0];
 
   return {
@@ -210,10 +223,17 @@ export function normalizeImages(rawImages) {
   if (!Array.isArray(rawImages)) return [];
 
   return rawImages.slice(0, 6).flatMap((item) => {
-    const data = String(item?.data || "").trim().replace(/^data:[^;]+;base64,/, "");
-    const mimeType = String(item?.mimeType || item?.mime_type || "image/jpeg").trim();
+    const data = String(item?.data || "").trim().replace(
+      /^data:[^;]+;base64,/,
+      "",
+    );
+    const mimeType = String(item?.mimeType || item?.mime_type || "image/jpeg")
+      .trim();
     if (!data || !/^image\/(jpeg|jpg|png|webp)$/i.test(mimeType)) return [];
-    return [{ data, mimeType: mimeType.toLowerCase().replace("image/jpg", "image/jpeg") }];
+    return [{
+      data,
+      mimeType: mimeType.toLowerCase().replace("image/jpg", "image/jpeg"),
+    }];
   });
 }
 
@@ -258,7 +278,47 @@ export function normalizeProviderKeys(rawKeys) {
 }
 
 export function shouldRetryGoogleWithNextKey(_payload, status) {
-  return status === 401 || status === 403;
+  return shouldFallbackGoogleToGPT(status);
+}
+
+export function shouldFallbackGoogleToGPT(status) {
+  return status === 401 ||
+    status === 403 ||
+    status === 408 ||
+    status === 429 ||
+    status >= 500;
+}
+
+export function extractGoogleImageData(payload) {
+  const stepContent = Array.isArray(payload?.steps)
+    ? payload.steps.flatMap((step) =>
+      Array.isArray(step?.content) ? step.content : []
+    )
+    : [];
+  const stepImage = stepContent.find((part) =>
+    part?.type === "image" && part?.data
+  );
+
+  const candidateParts = payload?.candidates?.[0]?.content?.parts || [];
+  const candidateImage = Array.isArray(candidateParts)
+    ? candidateParts.find((part) =>
+      part?.inlineData?.data || part?.inline_data?.data || part?.data
+    )
+    : undefined;
+  const legacyOutput = Array.isArray(payload?.output)
+    ? payload.output.find((part) =>
+      part?.inlineData?.data || part?.inline_data?.data || part?.data
+    )
+    : undefined;
+
+  return stepImage?.data ||
+    payload?.output_image?.data ||
+    legacyOutput?.inlineData?.data ||
+    legacyOutput?.inline_data?.data ||
+    legacyOutput?.data ||
+    candidateImage?.inlineData?.data ||
+    candidateImage?.inline_data?.data ||
+    candidateImage?.data;
 }
 
 export function safeProviderErrorMessage(provider, _upstreamMessage = "") {
@@ -268,7 +328,11 @@ export function safeProviderErrorMessage(provider, _upstreamMessage = "") {
   return "Image generation is temporarily unavailable. Please try again.";
 }
 
-export function buildFinalPrompt(prompt, category = generationCategories[0], hasImages = false) {
+export function buildFinalPrompt(
+  prompt,
+  category = generationCategories[0],
+  hasImages = false,
+) {
   if (hasImages) {
     return [
       "Edit the provided image(s). Preserve the original subject, product, packaging, composition, layout, camera angle, background, and text placement unless the user explicitly asks to change them.",

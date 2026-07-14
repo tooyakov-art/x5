@@ -8,24 +8,28 @@
 //   SUPABASE_SERVICE_ROLE_KEY
 
 import {
-  GenerationRequestError,
   buildFinalPrompt,
   extractGoogleErrorMessage,
+  extractGoogleImageData,
+  GenerationRequestError,
   googleResponseFormat,
-  normalizeProviderKeys,
   normalizeGenerationRequest,
+  normalizeProviderKeys,
   safeProviderErrorMessage,
+  shouldFallbackGoogleToGPT,
   shouldRetryGoogleWithNextKey,
 } from "./economy.mjs";
 
 const OPENAI_URL = "https://api.openai.com/v1/images/generations";
 const OPENAI_EDIT_URL = "https://api.openai.com/v1/images/edits";
-const GOOGLE_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
+const GOOGLE_INTERACTIONS_URL =
+  "https://generativelanguage.googleapis.com/v1beta/interactions";
 const GOOGLE_MODEL = "gemini-3.1-flash-image";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -86,31 +90,68 @@ Deno.serve(async (req) => {
       normalized.category,
       normalized.images.length > 0,
     );
-    const imageBase64s =
-      normalized.provider === "google"
-        ? await generateWithGoogle(
+    let responseProvider = normalized.provider;
+    let responseModel = normalized.model;
+    let fallbackFrom: string | undefined;
+    let imageBase64s: string[];
+
+    if (normalized.provider === "google") {
+      try {
+        imageBase64s = await generateWithGoogle(
           providerKeys,
           finalPrompt,
           normalized.model,
           normalized.images,
           normalized.quantity,
           normalized.size,
-        )
-        : await generateWithGPT(
-          providerKeys[0],
+        );
+      } catch (googleError) {
+        const googleStatus = Number(
+          googleError instanceof Error && "status" in googleError
+            ? (googleError as Error & { status?: number }).status || 503
+            : 503,
+        );
+        const openAIKey = getProviderKeys("gpt")[0];
+        if (!openAIKey || !shouldFallbackGoogleToGPT(googleStatus)) {
+          throw googleError;
+        }
+
+        console.warn(JSON.stringify({
+          event: "google_image_fallback",
+          google_status: googleStatus,
+          requested_model: normalized.model,
+          fallback_provider: "gpt",
+        }));
+        imageBase64s = await generateWithGPT(
+          openAIKey,
           finalPrompt,
-          normalized.model,
+          "gpt-image-2",
           normalized.images,
           normalized.quantity,
           normalized.size,
         );
+        responseProvider = "gpt";
+        responseModel = "gpt-image-2";
+        fallbackFrom = "google";
+      }
+    } else {
+      imageBase64s = await generateWithGPT(
+        providerKeys[0],
+        finalPrompt,
+        normalized.model,
+        normalized.images,
+        normalized.quantity,
+        normalized.size,
+      );
+    }
 
     return json({
       imageBase64: imageBase64s[0],
       imageBase64s,
       prompt: normalized.prompt,
-      provider: normalized.provider,
-      model: normalized.model,
+      provider: responseProvider,
+      model: responseModel,
+      fallbackFrom,
       category: normalized.category.id,
       size: normalized.size.id,
       quantity: imageBase64s.length,
@@ -173,19 +214,31 @@ async function generateWithGPT(
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload?.error?.message || `OpenAI error ${response.status}`);
+    throw new Error(
+      payload?.error?.message || `OpenAI error ${response.status}`,
+    );
   }
 
-  const imageBase64s = (payload?.data || []).map((item: any) => item?.b64_json).filter(Boolean);
+  const imageBase64s = (payload?.data || []).map((item: any) => item?.b64_json)
+    .filter(Boolean);
   if (imageBase64s.length === 0) {
     throw new Error("OpenAI returned no image");
   }
   return imageBase64s;
 }
 
-async function editWithGPT(apiKey: string, finalPrompt: string, model: string, images: any[], size: any): Promise<string> {
+async function editWithGPT(
+  apiKey: string,
+  finalPrompt: string,
+  model: string,
+  images: any[],
+  size: any,
+): Promise<string> {
   const form = new FormData();
-  form.append("model", model || Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-2");
+  form.append(
+    "model",
+    model || Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-2",
+  );
   form.append("prompt", finalPrompt);
   form.append("size", size.openaiSize || "1024x1024");
   form.append("quality", "low");
@@ -193,8 +246,16 @@ async function editWithGPT(apiKey: string, finalPrompt: string, model: string, i
   images.slice(0, 6).forEach((image, index) => {
     const bytes = decodeBase64(image.data);
     const mimeType = image.mimeType || "image/jpeg";
-    const ext = mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg";
-    form.append("image[]", new Blob([bytes], { type: mimeType }), `reference-${index + 1}.${ext}`);
+    const ext = mimeType.includes("png")
+      ? "png"
+      : mimeType.includes("webp")
+      ? "webp"
+      : "jpg";
+    form.append(
+      "image[]",
+      new Blob([bytes.buffer as ArrayBuffer], { type: mimeType }),
+      `reference-${index + 1}.${ext}`,
+    );
   });
 
   const response = await fetch(OPENAI_EDIT_URL, {
@@ -207,7 +268,9 @@ async function editWithGPT(apiKey: string, finalPrompt: string, model: string, i
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload?.error?.message || `OpenAI edit error ${response.status}`);
+    throw new Error(
+      payload?.error?.message || `OpenAI edit error ${response.status}`,
+    );
   }
 
   const imageBase64 = payload?.data?.[0]?.b64_json;
@@ -227,7 +290,15 @@ async function generateWithGoogle(
 ): Promise<string[]> {
   const results = [];
   for (let index = 0; index < quantity; index += 1) {
-    results.push(await generateOneWithGoogle(apiKeys, finalPrompt, requestedModel, images, size));
+    results.push(
+      await generateOneWithGoogle(
+        apiKeys,
+        finalPrompt,
+        requestedModel,
+        images,
+        size,
+      ),
+    );
   }
   return results;
 }
@@ -239,7 +310,8 @@ async function generateOneWithGoogle(
   images: any[] = [],
   size: any = {},
 ): Promise<string> {
-  const model = requestedModel || Deno.env.get("GOOGLE_IMAGE_MODEL") || GOOGLE_MODEL;
+  const model = requestedModel || Deno.env.get("GOOGLE_IMAGE_MODEL") ||
+    GOOGLE_MODEL;
   const input = [
     { type: "text", text: finalPrompt },
     ...images.slice(0, 6).map((image) => ({
@@ -275,28 +347,35 @@ async function generateOneWithGoogle(
     ) {
       continue;
     }
-    throw new Error(extractGoogleErrorMessage(payload, response.status));
+    const providerError = Object.assign(
+      new Error(extractGoogleErrorMessage(payload, response.status)),
+      { status: response.status },
+    );
+    throw providerError;
   }
 
   if (!response?.ok) {
-    throw new Error(extractGoogleErrorMessage(payload, response?.status || 502));
+    const providerError = Object.assign(
+      new Error(extractGoogleErrorMessage(payload, response?.status || 502)),
+      { status: response?.status || 502 },
+    );
+    throw providerError;
   }
 
-  const responseParts = payload?.candidates?.[0]?.content?.parts || payload?.output || [];
-  const imagePart = Array.isArray(responseParts)
-    ? responseParts.find((part: any) => part?.inlineData?.data || part?.inline_data?.data || part?.data)
-    : undefined;
-  const imageBase64 = payload?.output_image?.data ||
-    imagePart?.inlineData?.data ||
-    imagePart?.inline_data?.data ||
-    imagePart?.data;
+  const imageBase64 = extractGoogleImageData(payload);
   if (!imageBase64) {
-    throw new Error("Google returned no image");
+    const providerError = Object.assign(new Error("Google returned no image"), {
+      status: 422,
+    });
+    throw providerError;
   }
   return imageBase64;
 }
 
-function postGoogleImageRequest(apiKey: string, body: Record<string, unknown>): Promise<Response> {
+function postGoogleImageRequest(
+  apiKey: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
   return fetch(GOOGLE_INTERACTIONS_URL, {
     method: "POST",
     headers: {
@@ -326,7 +405,9 @@ function decodeBase64(data: string): Uint8Array {
   return bytes;
 }
 
-async function verifyUser(authorization: string): Promise<{ id: string } | null> {
+async function verifyUser(
+  authorization: string,
+): Promise<{ id: string } | null> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
   if (!supabaseUrl || !anonKey) return null;
@@ -344,14 +425,26 @@ async function verifyUser(authorization: string): Promise<{ id: string } | null>
 async function spendCredits(
   userId: string,
   amount: number,
-): Promise<{ ok: true; credits: number } | { ok: false; status: number; error: string; credits?: number }> {
+): Promise<
+  { ok: true; credits: number } | {
+    ok: false;
+    status: number;
+    error: string;
+    credits?: number;
+  }
+> {
   const rows = await callCreditRpc("spend_generation_credits", userId, amount);
   if (rows === null) {
     return { ok: false, status: 500, error: "credit_service_unavailable" };
   }
   if (!rows[0]) {
     const credits = await readCredits(userId);
-    return { ok: false, status: 402, error: "insufficient_credits", credits: credits ?? 0 };
+    return {
+      ok: false,
+      status: 402,
+      error: "insufficient_credits",
+      credits: credits ?? 0,
+    };
   }
   return { ok: true, credits: Number(rows[0].credits ?? 0) };
 }
@@ -360,7 +453,11 @@ async function refundCredits(userId: string, amount: number): Promise<void> {
   await callCreditRpc("refund_generation_credits", userId, amount);
 }
 
-async function callCreditRpc(name: string, userId: string, amount: number): Promise<any[] | null> {
+async function callCreditRpc(
+  name: string,
+  userId: string,
+  amount: number,
+): Promise<any[] | null> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceKey) return null;

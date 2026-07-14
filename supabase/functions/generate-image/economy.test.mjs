@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import * as economyModule from "./economy.mjs";
 
 import {
-  IMAGE_CREDIT_COST,
   buildFinalPrompt,
   generationCategories,
   generationModels,
   generationSizes,
   googleResponseFormat,
-  normalizeImages,
+  IMAGE_CREDIT_COST,
   normalizeGenerationRequest,
+  normalizeImages,
   normalizeQuantity,
 } from "./economy.mjs";
 
@@ -55,19 +55,21 @@ test("keeps only supported image model ids", () => {
 
 test("rejects removed image models before credits are spent", () => {
   assert.throws(
-    () => normalizeGenerationRequest({
-      model: "gpt-image-1.5",
-      category: "post",
-      prompt: "old model",
-    }),
+    () =>
+      normalizeGenerationRequest({
+        model: "gpt-image-1.5",
+        category: "post",
+        prompt: "old model",
+      }),
     /unsupported_model/,
   );
   assert.throws(
-    () => normalizeGenerationRequest({
-      model: "gemini-3.1-flash-image-preview",
-      category: "post",
-      prompt: "old preview model",
-    }),
+    () =>
+      normalizeGenerationRequest({
+        model: "gemini-3.1-flash-image-preview",
+        category: "post",
+        prompt: "old preview model",
+      }),
     /unsupported_model/,
   );
 });
@@ -131,11 +133,13 @@ test("downgrades Nano Banana 2 Lite image size to its supported 1K output", () =
 
 test("requests the JPEG response format supported by current Nano Banana models", () => {
   assert.equal(
-    googleResponseFormat(generationSizes[0], "gemini-3.1-flash-image").mime_type,
+    googleResponseFormat(generationSizes[0], "gemini-3.1-flash-image")
+      .mime_type,
     "image/jpeg",
   );
   assert.equal(
-    googleResponseFormat(generationSizes[0], "gemini-3.1-flash-lite-image").mime_type,
+    googleResponseFormat(generationSizes[0], "gemini-3.1-flash-lite-image")
+      .mime_type,
     "image/jpeg",
   );
 });
@@ -162,7 +166,12 @@ test("defines supported generation sizes", () => {
 
 test("rejects missing prompts", () => {
   assert.throws(
-    () => normalizeGenerationRequest({ provider: "gpt", category: "post", prompt: "  " }),
+    () =>
+      normalizeGenerationRequest({
+        provider: "gpt",
+        category: "post",
+        prompt: "  ",
+      }),
     /prompt_required/,
   );
 });
@@ -188,7 +197,11 @@ test("builds category-specific generation prompt", () => {
 });
 
 test("builds conservative edit prompt when images are attached", () => {
-  const finalPrompt = buildFinalPrompt("improve image", generationCategories[0], true);
+  const finalPrompt = buildFinalPrompt(
+    "improve image",
+    generationCategories[0],
+    true,
+  );
 
   assert.match(finalPrompt, /Preserve the original subject/i);
   assert.match(finalPrompt, /Do not invent unrelated objects/i);
@@ -217,21 +230,78 @@ test("prefers the Gemini key and removes duplicate provider keys", () => {
   assert.deepEqual(keys, ["new-gemini-key", "old-google-key"]);
 });
 
-test("retries Google generation with another key only for authentication failures", () => {
+test("rotates Google keys for authentication, quota, and transient failures", () => {
   const suspended = economyModule.shouldRetryGoogleWithNextKey?.({
     error: {
       code: 403,
       status: "PERMISSION_DENIED",
-      message: "Permission denied: Consumer 'api_key:redacted' has been suspended.",
+      message:
+        "Permission denied: Consumer 'api_key:redacted' has been suspended.",
       details: [{ reason: "CONSUMER_SUSPENDED" }],
     },
   }, 403);
   const invalidPrompt = economyModule.shouldRetryGoogleWithNextKey?.({
-    error: { code: 400, status: "INVALID_ARGUMENT", message: "Prompt is invalid." },
+    error: {
+      code: 400,
+      status: "INVALID_ARGUMENT",
+      message: "Prompt is invalid.",
+    },
   }, 400);
 
   assert.equal(suspended, true);
+  assert.equal(economyModule.shouldRetryGoogleWithNextKey?.({}, 429), true);
+  assert.equal(economyModule.shouldRetryGoogleWithNextKey?.({}, 503), true);
   assert.equal(invalidPrompt, false);
+});
+
+test("falls back from Google to GPT only for provider availability failures", () => {
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(401), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(403), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(408), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(429), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(500), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(400), false);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(422), false);
+});
+
+test("extracts image data from the current Interactions API steps response", () => {
+  const payload = {
+    steps: [
+      {
+        type: "model_output",
+        content: [
+          { type: "text", text: "Done" },
+          {
+            type: "image",
+            mime_type: "image/jpeg",
+            data: "current-image-data",
+          },
+        ],
+      },
+    ],
+  };
+
+  assert.equal(
+    economyModule.extractGoogleImageData?.(payload),
+    "current-image-data",
+  );
+});
+
+test("keeps legacy Google image response fallbacks", () => {
+  assert.equal(
+    economyModule.extractGoogleImageData?.({
+      output_image: { data: "sdk-image-data" },
+    }),
+    "sdk-image-data",
+  );
+  assert.equal(
+    economyModule.extractGoogleImageData?.({
+      candidates: [{
+        content: { parts: [{ inlineData: { data: "candidate-image-data" } }] },
+      }],
+    }),
+    "candidate-image-data",
+  );
 });
 
 test("never exposes provider API keys in user-facing errors", () => {
@@ -240,7 +310,10 @@ test("never exposes provider API keys in user-facing errors", () => {
     "Permission denied: Consumer 'api_key:AIzaSySecretValue' has been suspended.",
   );
 
-  assert.equal(safeMessage, "Google image generation is temporarily unavailable. Please try again.");
+  assert.equal(
+    safeMessage,
+    "Google image generation is temporarily unavailable. Please try again.",
+  );
   assert.doesNotMatch(safeMessage || "", /AIza|api_key|consumer/i);
 });
 
