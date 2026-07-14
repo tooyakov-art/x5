@@ -301,6 +301,18 @@ begin
     raise exception 'anonymous_course_media_upload_policy_still_exists';
   end if;
 
+  if not exists (
+    select 1
+      from pg_policies
+     where schemaname = 'storage'
+       and tablename = 'objects'
+       and policyname = 'course_media_submission_insert'
+       and with_check like '%submissions%'
+       and with_check like '%auth.uid()%'
+  ) then
+    raise exception 'owned_course_submission_media_policy_missing';
+  end if;
+
   if exists (
     select 1
       from pg_policies
