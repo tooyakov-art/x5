@@ -13,6 +13,7 @@ import {
   extractGoogleImageData,
   GenerationRequestError,
   googleResponseFormat,
+  hasUsableGenerationProvider,
   normalizeGenerationRequest,
   normalizeProviderKeys,
   safeProviderErrorMessage,
@@ -62,7 +63,14 @@ Deno.serve(async (req) => {
   }
 
   const providerKeys = getProviderKeys(normalized.provider);
-  if (providerKeys.length === 0) {
+  const fallbackOpenAIKey = normalized.provider === "google"
+    ? getProviderKeys("gpt")[0]
+    : undefined;
+  if (!hasUsableGenerationProvider(
+    normalized.provider,
+    providerKeys.length,
+    fallbackOpenAIKey ? 1 : 0,
+  )) {
     return json({
       error: "provider_not_configured",
       provider: normalized.provider,
@@ -95,7 +103,29 @@ Deno.serve(async (req) => {
     let fallbackFrom: string | undefined;
     let imageBase64s: string[];
 
-    if (normalized.provider === "google") {
+    if (normalized.provider === "google" && providerKeys.length === 0) {
+      if (!fallbackOpenAIKey) {
+        throw new Error("No image provider is configured");
+      }
+      console.warn(JSON.stringify({
+        event: "google_image_fallback",
+        google_status: 503,
+        google_reason: "provider_not_configured",
+        requested_model: normalized.model,
+        fallback_provider: "gpt",
+      }));
+      imageBase64s = await generateWithGPT(
+        fallbackOpenAIKey,
+        finalPrompt,
+        "gpt-image-2",
+        normalized.images,
+        normalized.quantity,
+        normalized.size,
+      );
+      responseProvider = "gpt";
+      responseModel = "gpt-image-2";
+      fallbackFrom = "google";
+    } else if (normalized.provider === "google") {
       try {
         imageBase64s = await generateWithGoogle(
           providerKeys,
@@ -111,8 +141,7 @@ Deno.serve(async (req) => {
             ? (googleError as Error & { status?: number }).status || 503
             : 503,
         );
-        const openAIKey = getProviderKeys("gpt")[0];
-        if (!openAIKey || !shouldFallbackGoogleToGPT(googleStatus)) {
+        if (!fallbackOpenAIKey || !shouldFallbackGoogleToGPT(googleStatus)) {
           throw googleError;
         }
 
@@ -123,7 +152,7 @@ Deno.serve(async (req) => {
           fallback_provider: "gpt",
         }));
         imageBase64s = await generateWithGPT(
-          openAIKey,
+          fallbackOpenAIKey,
           finalPrompt,
           "gpt-image-2",
           normalized.images,

@@ -257,11 +257,27 @@ test("rotates Google keys for authentication, quota, and transient failures", ()
 test("falls back from Google to GPT only for provider availability failures", () => {
   assert.equal(economyModule.shouldFallbackGoogleToGPT?.(401), true);
   assert.equal(economyModule.shouldFallbackGoogleToGPT?.(403), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(404), true);
   assert.equal(economyModule.shouldFallbackGoogleToGPT?.(408), true);
   assert.equal(economyModule.shouldFallbackGoogleToGPT?.(429), true);
   assert.equal(economyModule.shouldFallbackGoogleToGPT?.(500), true);
   assert.equal(economyModule.shouldFallbackGoogleToGPT?.(400), false);
   assert.equal(economyModule.shouldFallbackGoogleToGPT?.(422), false);
+});
+
+test("keeps Google requests available when only the GPT fallback key exists", () => {
+  assert.equal(
+    economyModule.hasUsableGenerationProvider?.("google", 0, 1),
+    true,
+  );
+  assert.equal(
+    economyModule.hasUsableGenerationProvider?.("google", 0, 0),
+    false,
+  );
+  assert.equal(
+    economyModule.hasUsableGenerationProvider?.("gpt", 0, 1),
+    false,
+  );
 });
 
 test("extracts image data from the current Interactions API steps response", () => {

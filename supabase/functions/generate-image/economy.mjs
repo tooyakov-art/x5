@@ -284,9 +284,19 @@ export function shouldRetryGoogleWithNextKey(_payload, status) {
 export function shouldFallbackGoogleToGPT(status) {
   return status === 401 ||
     status === 403 ||
+    status === 404 ||
     status === 408 ||
     status === 429 ||
     status >= 500;
+}
+
+export function hasUsableGenerationProvider(
+  requestedProvider,
+  primaryKeyCount,
+  fallbackKeyCount,
+) {
+  if (Number(primaryKeyCount) > 0) return true;
+  return requestedProvider === "google" && Number(fallbackKeyCount) > 0;
 }
 
 export function extractGoogleImageData(payload) {
