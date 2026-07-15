@@ -19,6 +19,13 @@ class IOSPurchaseLifecycleSourceTests(unittest.TestCase):
         self.assertEqual(source.count("await transaction.finish()"), 1)
         self.assertIn("if disposition == .applied", source)
 
+    def test_transaction_completion_cache_is_scoped_to_authenticated_account(self):
+        source = IAP_SERVICE.read_text(encoding="utf-8")
+
+        self.assertIn("struct IAPTransactionDeliveryKey: Hashable", source)
+        self.assertIn("authenticatedUserID: String?", source)
+        self.assertIn("authenticatedUserID: auth.userId", source)
+
     def test_verified_purchase_records_and_syncs_active_entitlements(self):
         source = IAP_SERVICE.read_text(encoding="utf-8")
 

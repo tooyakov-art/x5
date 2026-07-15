@@ -11,6 +11,7 @@ final class IAPLifecycleDecisionTests: XCTestCase {
 
         let disposition = await lifecycle.deliver(
             transactionID: 101,
+            authenticatedUserID: "11111111-1111-4111-8111-111111111111",
             verifyDelivery: {
                 verificationCalls += 1
                 return .failed
@@ -32,6 +33,7 @@ final class IAPLifecycleDecisionTests: XCTestCase {
 
         let firstAttempt = await lifecycle.deliver(
             transactionID: 202,
+            authenticatedUserID: "11111111-1111-4111-8111-111111111111",
             verifyDelivery: {
                 verificationCalls += 1
                 return verificationResults.removeFirst()
@@ -40,6 +42,7 @@ final class IAPLifecycleDecisionTests: XCTestCase {
         )
         let retryAfterAlreadyApplied = await lifecycle.deliver(
             transactionID: 202,
+            authenticatedUserID: "11111111-1111-4111-8111-111111111111",
             verifyDelivery: {
                 verificationCalls += 1
                 // `.applied` is the client disposition for both the server's
@@ -58,11 +61,13 @@ final class IAPLifecycleDecisionTests: XCTestCase {
     @MainActor
     func testDuplicateDeliveryDoesNotVerifyOrFinishTransactionTwice() async {
         let lifecycle = IAPTransactionLifecycleCoordinator()
+        let accountID = "11111111-1111-4111-8111-111111111111"
         var verificationCalls = 0
         var finishCalls = 0
 
         let firstDelivery = await lifecycle.deliver(
             transactionID: 303,
+            authenticatedUserID: accountID,
             verifyDelivery: {
                 verificationCalls += 1
                 return .applied
@@ -71,6 +76,7 @@ final class IAPLifecycleDecisionTests: XCTestCase {
         )
         let duplicateDelivery = await lifecycle.deliver(
             transactionID: 303,
+            authenticatedUserID: accountID,
             verifyDelivery: {
                 verificationCalls += 1
                 return .applied
@@ -85,14 +91,88 @@ final class IAPLifecycleDecisionTests: XCTestCase {
     }
 
     @MainActor
+    func testAppliedTransactionIsReverifiedWhenAuthenticatedAccountChanges() async {
+        let lifecycle = IAPTransactionLifecycleCoordinator()
+        let accountA = "11111111-1111-4111-8111-111111111111"
+        let accountB = "22222222-2222-4222-8222-222222222222"
+        var verificationCalls = 0
+        var finishCalls = 0
+
+        let firstAccount = await lifecycle.deliver(
+            transactionID: 353,
+            authenticatedUserID: accountA,
+            verifyDelivery: {
+                verificationCalls += 1
+                return .applied
+            },
+            finish: { finishCalls += 1 }
+        )
+        let secondAccount = await lifecycle.deliver(
+            transactionID: 353,
+            authenticatedUserID: accountB,
+            verifyDelivery: {
+                verificationCalls += 1
+                // The server maps a restorable entitlement owned by account A
+                // to `.skipped` when account B attempts to claim it.
+                return .skipped
+            },
+            finish: { finishCalls += 1 }
+        )
+
+        XCTAssertEqual(firstAccount, .applied)
+        XCTAssertEqual(secondAccount, .skipped)
+        XCTAssertFalse(secondAccount.isPurchaseSuccess)
+        XCTAssertEqual(verificationCalls, 2)
+        XCTAssertEqual(finishCalls, 2)
+    }
+
+    @MainActor
+    func testRejectedCrossAccountConsumableRemainsUnfinished() async {
+        let lifecycle = IAPTransactionLifecycleCoordinator()
+        let accountA = "11111111-1111-4111-8111-111111111111"
+        let accountB = "22222222-2222-4222-8222-222222222222"
+        var verificationCalls = 0
+        var finishCalls = 0
+
+        _ = await lifecycle.deliver(
+            transactionID: 363,
+            authenticatedUserID: accountA,
+            verifyDelivery: {
+                verificationCalls += 1
+                return .applied
+            },
+            finish: { finishCalls += 1 }
+        )
+        let secondAccount = await lifecycle.deliver(
+            transactionID: 363,
+            authenticatedUserID: accountB,
+            verifyDelivery: {
+                verificationCalls += 1
+                // Consumable ownership rejection maps to `.failed`, keeping
+                // StoreKit delivery retryable for the owning X5 account.
+                return .failed
+            },
+            finish: { finishCalls += 1 }
+        )
+
+        XCTAssertEqual(secondAccount, .failed)
+        XCTAssertFalse(secondAccount.isPurchaseSuccess)
+        XCTAssertEqual(verificationCalls, 2)
+        XCTAssertEqual(finishCalls, 1)
+    }
+
+    @MainActor
     func testSkippedOwnershipCanBeVerifiedAgainAfterAccountChanges() async {
         let lifecycle = IAPTransactionLifecycleCoordinator()
+        let otherAccountID = "11111111-1111-4111-8111-111111111111"
+        let ownerAccountID = "22222222-2222-4222-8222-222222222222"
         var verificationResults: [IAPEntitlementDisposition] = [.skipped, .applied]
         var verificationCalls = 0
         var finishCalls = 0
 
         let otherAccount = await lifecycle.deliver(
             transactionID: 404,
+            authenticatedUserID: otherAccountID,
             verifyDelivery: {
                 verificationCalls += 1
                 return verificationResults.removeFirst()
@@ -101,6 +181,7 @@ final class IAPLifecycleDecisionTests: XCTestCase {
         )
         let owningAccount = await lifecycle.deliver(
             transactionID: 404,
+            authenticatedUserID: ownerAccountID,
             verifyDelivery: {
                 verificationCalls += 1
                 return verificationResults.removeFirst()

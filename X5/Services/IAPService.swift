@@ -18,34 +18,45 @@ enum IAPEntitlementDisposition: Equatable {
     }
 }
 
+struct IAPTransactionDeliveryKey: Hashable {
+    let transactionID: UInt64
+    let authenticatedUserID: String?
+}
+
 /// Coalesces every StoreKit delivery path for the lifetime of the service.
 /// A server failure remains retryable, while a delivered transaction is never
 /// verified or finished twice if `purchase`, `updates`, and `unfinished`
-/// surface the same transaction during one app session.
+/// surface the same transaction for the same X5 account during one app session.
 @MainActor
 final class IAPTransactionLifecycleCoordinator {
-    private var inFlight: [UInt64: Task<IAPEntitlementDisposition, Never>] = [:]
-    private var completed: [UInt64: IAPEntitlementDisposition] = [:]
+    private var inFlight: [IAPTransactionDeliveryKey: Task<IAPEntitlementDisposition, Never>] = [:]
+    private var completed: [IAPTransactionDeliveryKey: IAPEntitlementDisposition] = [:]
 
     func deliver(
         transactionID: UInt64,
+        authenticatedUserID: String?,
         verifyDelivery: @escaping @MainActor () async -> IAPEntitlementDisposition,
         finish: @escaping @MainActor () async -> Void
     ) async -> IAPEntitlementDisposition {
-        if let completedDisposition = completed[transactionID] {
+        let deliveryKey = IAPTransactionDeliveryKey(
+            transactionID: transactionID,
+            authenticatedUserID: authenticatedUserID
+        )
+
+        if let completedDisposition = completed[deliveryKey] {
             return completedDisposition
         }
 
-        if let existingDelivery = inFlight[transactionID] {
+        if let existingDelivery = inFlight[deliveryKey] {
             return await existingDelivery.value
         }
 
         let delivery = Task { @MainActor in
             await verifyDelivery()
         }
-        inFlight[transactionID] = delivery
+        inFlight[deliveryKey] = delivery
         let disposition = await delivery.value
-        inFlight[transactionID] = nil
+        inFlight[deliveryKey] = nil
 
         guard disposition.shouldFinishTransaction else {
             return disposition
@@ -56,8 +67,10 @@ final class IAPTransactionLifecycleCoordinator {
         // subscription, so it must remain eligible for a later account retry.
         if disposition == .applied {
             // Store completion before the suspension point so a duplicate
-            // listener event cannot enter a second finish while this one awaits.
-            completed[transactionID] = disposition
+            // listener event for this account cannot enter a second finish
+            // while this one awaits. Another signed-in account must still ask
+            // the server to resolve ownership for the same StoreKit transaction.
+            completed[deliveryKey] = disposition
         }
         await finish()
         return disposition
@@ -405,6 +418,7 @@ final class IAPService: ObservableObject {
     ) async -> IAPEntitlementDisposition {
         await transactionLifecycle.deliver(
             transactionID: transaction.id,
+            authenticatedUserID: auth.userId,
             verifyDelivery: { [self] in
                 await processVerifiedTransaction(
                     transaction: transaction,
