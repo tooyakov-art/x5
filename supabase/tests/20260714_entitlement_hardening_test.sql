@@ -300,6 +300,15 @@ declare
   v_rejected boolean;
   v_count integer;
   v_subscription_end_before timestamptz;
+  v_badge_purchase_date timestamptz;
+  v_badge_expires_date timestamptz;
+  v_badge_signed_date timestamptz;
+  v_badge_resigned_date timestamptz;
+  v_verified_until_before timestamptz;
+  v_legacy_purchase_date timestamptz;
+  v_legacy_expires_date timestamptz;
+  v_legacy_signed_date timestamptz;
+  v_legacy_resigned_date timestamptz;
 begin
   if not has_function_privilege(
     'service_role',
@@ -307,6 +316,63 @@ begin
     'execute'
   ) then
     raise exception 'verified_app_store_rpc_is_not_service_callable';
+  end if;
+
+  if not has_table_privilege(
+    'service_role', 'public.app_store_transactions', 'select'
+  ) or not has_table_privilege(
+    'service_role', 'public.app_store_transactions', 'insert'
+  ) or has_table_privilege(
+    'service_role', 'public.app_store_transactions', 'update'
+  ) or has_table_privilege(
+    'service_role', 'public.app_store_transactions', 'delete'
+  ) or has_table_privilege(
+    'service_role', 'public.app_store_transactions', 'truncate'
+  ) then
+    raise exception 'app_store_transactions_is_not_append_only_for_service_role';
+  end if;
+
+  if not has_table_privilege(
+    'service_role', 'public.app_store_entitlement_owners', 'select'
+  ) or not has_table_privilege(
+    'service_role', 'public.app_store_entitlement_owners', 'insert'
+  ) or has_table_privilege(
+    'service_role', 'public.app_store_entitlement_owners', 'update'
+  ) or has_table_privilege(
+    'service_role', 'public.app_store_entitlement_owners', 'delete'
+  ) or has_table_privilege(
+    'service_role', 'public.app_store_entitlement_owners', 'truncate'
+  ) then
+    raise exception 'app_store_entitlement_owners_is_not_append_only_for_service_role';
+  end if;
+
+  if not has_table_privilege(
+    'service_role', 'public.app_store_legacy_bindings', 'select'
+  ) or not has_table_privilege(
+    'service_role', 'public.app_store_legacy_bindings', 'insert'
+  ) or has_table_privilege(
+    'service_role', 'public.app_store_legacy_bindings', 'update'
+  ) or has_table_privilege(
+    'service_role', 'public.app_store_legacy_bindings', 'delete'
+  ) or has_table_privilege(
+    'service_role', 'public.app_store_legacy_bindings', 'truncate'
+  ) then
+    raise exception 'app_store_legacy_bindings_is_not_append_only_for_service_role';
+  end if;
+
+  if exists (
+    select 1
+      from pg_catalog.pg_class as c
+      join pg_catalog.pg_namespace as n on n.oid = c.relnamespace
+     where n.nspname = 'public'
+       and c.relname in (
+         'app_store_transactions',
+         'app_store_entitlement_owners',
+         'app_store_legacy_bindings'
+       )
+       and pg_catalog.pg_get_userbyid(c.relowner) = 'service_role'
+  ) then
+    raise exception 'service_role_owns_a_production_app_store_ledger';
   end if;
 
   v_rejected := false;
@@ -497,6 +563,11 @@ begin
     raise exception 'cross_user_original_transaction_replay_was_accepted';
   end if;
 
+  v_badge_purchase_date := now() - interval '1 minute';
+  v_badge_expires_date := now() + interval '1 month';
+  v_badge_signed_date := clock_timestamp() - interval '30 seconds';
+  v_badge_resigned_date := clock_timestamp();
+
   v_response := public.apply_verified_app_store_transaction(
     v_uid,
     'codex-verified-badge-transaction-1',
@@ -504,9 +575,9 @@ begin
     'com.x5studio.app.verified.monthly',
     'Production',
     v_uid,
-    now() - interval '1 minute',
-    now() + interval '1 month',
-    now(),
+    v_badge_purchase_date,
+    v_badge_expires_date,
+    v_badge_signed_date,
     null
   );
 
@@ -516,6 +587,131 @@ begin
      or not coalesce(v_profile.is_verified, false)
      or v_profile.credits <> 52000 then
     raise exception 'verified_badge_product_mapping_failed:%:%', v_response, v_profile.credits;
+  end if;
+
+  v_verified_until_before := v_profile.verified_until;
+  v_response := public.apply_verified_app_store_transaction(
+    v_uid,
+    'codex-verified-badge-transaction-1',
+    'codex-verified-badge-original-1',
+    'com.x5studio.app.verified.monthly',
+    'Production',
+    v_uid,
+    v_badge_purchase_date,
+    v_badge_expires_date,
+    v_badge_resigned_date,
+    null
+  );
+
+  select * into v_profile from public.profiles where id = v_uid;
+  select count(*) into v_count
+    from public.app_store_transactions
+   where transaction_id = 'codex-verified-badge-transaction-1';
+  if v_response ->> 'status' <> 'already_applied'
+     or (v_response ->> 'credits_granted')::integer <> 0
+     or v_profile.credits <> 52000
+     or v_profile.verified_until is distinct from v_verified_until_before
+     or v_count <> 1 then
+    raise exception 'verified_badge_resigned_replay_was_not_idempotent:%:%:%',
+      v_response, v_profile.credits, v_count;
+  end if;
+
+  -- Re-signing changes only signedDate. Every immutable transaction/account
+  -- identity field must still be rejected when the transaction id is reused.
+  v_rejected := false;
+  begin
+    perform public.apply_verified_app_store_transaction(
+      v_uid,
+      'codex-verified-badge-transaction-1',
+      'codex-resigned-wrong-original',
+      'com.x5studio.app.verified.monthly',
+      'Production',
+      v_uid,
+      v_badge_purchase_date,
+      v_badge_expires_date,
+      v_badge_resigned_date,
+      null
+    );
+  exception when sqlstate '22023' then
+    if sqlerrm <> 'transaction_id_conflict' then
+      raise;
+    end if;
+    v_rejected := true;
+  end;
+  if not v_rejected then
+    raise exception 'resigned_replay_original_id_mismatch_was_accepted';
+  end if;
+
+  v_rejected := false;
+  begin
+    perform public.apply_verified_app_store_transaction(
+      v_other_uid,
+      'codex-verified-badge-transaction-1',
+      'codex-verified-badge-original-1',
+      'com.x5studio.app.verified.monthly',
+      'Production',
+      v_other_uid,
+      v_badge_purchase_date,
+      v_badge_expires_date,
+      v_badge_resigned_date,
+      null
+    );
+  exception when sqlstate '22023' then
+    if sqlerrm <> 'transaction_id_conflict' then
+      raise;
+    end if;
+    v_rejected := true;
+  end;
+  if not v_rejected then
+    raise exception 'resigned_replay_user_mismatch_was_accepted';
+  end if;
+
+  v_rejected := false;
+  begin
+    perform public.apply_verified_app_store_transaction(
+      v_uid,
+      'codex-verified-badge-transaction-1',
+      'codex-verified-badge-original-1',
+      'com.x5studio.app.pro.monthly',
+      'Production',
+      v_uid,
+      v_badge_purchase_date,
+      v_badge_expires_date,
+      v_badge_resigned_date,
+      null
+    );
+  exception when sqlstate '22023' then
+    if sqlerrm <> 'transaction_id_conflict' then
+      raise;
+    end if;
+    v_rejected := true;
+  end;
+  if not v_rejected then
+    raise exception 'resigned_replay_product_mismatch_was_accepted';
+  end if;
+
+  v_rejected := false;
+  begin
+    perform public.apply_verified_app_store_transaction(
+      v_uid,
+      'codex-verified-badge-transaction-1',
+      'codex-verified-badge-original-1',
+      'com.x5studio.app.verified.monthly',
+      'Production',
+      null,
+      v_badge_purchase_date,
+      v_badge_expires_date,
+      v_badge_resigned_date,
+      null
+    );
+  exception when sqlstate '22023' then
+    if sqlerrm <> 'transaction_id_conflict' then
+      raise;
+    end if;
+    v_rejected := true;
+  end;
+  if not v_rejected then
+    raise exception 'resigned_replay_account_token_mismatch_was_accepted';
   end if;
 
   -- A new transaction without appAccountToken must never create an owner.
@@ -691,6 +887,11 @@ begin
   from public.iap_entitlements
   where original_transaction_id = 'codex-legacy-mismatched-original';
 
+  v_legacy_purchase_date := now() - interval '1 minute';
+  v_legacy_expires_date := now() + interval '1 month';
+  v_legacy_signed_date := clock_timestamp() - interval '30 seconds';
+  v_legacy_resigned_date := clock_timestamp();
+
   v_response := public.apply_verified_app_store_transaction(
     v_uid,
     'codex-legacy-mismatched-renewal',
@@ -698,9 +899,9 @@ begin
     'com.x5studio.app.lite.monthly',
     'Production',
     '66666666-6666-4666-8666-666666666666'::uuid,
-    now() - interval '1 minute',
-    now() + interval '1 month',
-    now(),
+    v_legacy_purchase_date,
+    v_legacy_expires_date,
+    v_legacy_signed_date,
     null
   );
 
@@ -710,6 +911,31 @@ begin
      or v_profile.credits <> 54000 then
     raise exception 'exact_legacy_mismatch_binding_failed:%:%',
       v_response, v_profile.credits;
+  end if;
+
+  v_response := public.apply_verified_app_store_transaction(
+    v_uid,
+    'codex-legacy-mismatched-renewal',
+    'codex-legacy-mismatched-original',
+    'com.x5studio.app.lite.monthly',
+    'Production',
+    '66666666-6666-4666-8666-666666666666'::uuid,
+    v_legacy_purchase_date,
+    v_legacy_expires_date,
+    v_legacy_resigned_date,
+    null
+  );
+
+  select * into v_profile from public.profiles where id = v_uid;
+  select count(*) into v_count
+    from public.app_store_transactions
+   where transaction_id = 'codex-legacy-mismatched-renewal';
+  if v_response ->> 'status' <> 'already_applied'
+     or (v_response ->> 'credits_granted')::integer <> 1000
+     or v_profile.credits <> 54000
+     or v_count <> 1 then
+    raise exception 'legacy_resigned_replay_was_not_idempotent:%:%:%',
+      v_response, v_profile.credits, v_count;
   end if;
 
   v_rejected := false;
