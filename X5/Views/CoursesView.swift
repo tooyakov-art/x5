@@ -1471,14 +1471,20 @@ private struct CourseSubmissionView: View {
     }
 
     private func send() async {
-        guard let token = await auth.freshAccessToken(), let videoFileURL else {
+        guard let token = await auth.freshAccessToken(),
+              let userID = auth.userId,
+              let videoFileURL else {
             message = "Нужно войти и прикрепить видео."
             return
         }
         isSending = true
         defer { isSending = false }
 
-        let uploadedVideo = await service.uploadCourseSubmissionVideo(fileURL: videoFileURL, accessToken: token)
+        let uploadedVideo = await service.uploadCourseSubmissionVideo(
+            fileURL: videoFileURL,
+            userID: userID,
+            accessToken: token
+        )
         guard let uploadedVideo else {
             message = service.error ?? "Видео не загрузилось."
             return

@@ -9,6 +9,7 @@ select set_config('x5.test_owner_invite_id', gen_random_uuid()::text, true);
 select set_config('x5.test_owner_invite_code', '__owner_invite_' || gen_random_uuid()::text, true);
 select set_config('x5.test_submission_object', 'course-submissions/00000000-0000-4000-8000-000000000099/' || gen_random_uuid()::text || '.mp4', true);
 select set_config('x5.test_foreign_submission_object', 'course-submissions/00000000-0000-4000-8000-000000000100/' || gen_random_uuid()::text || '.mp4', true);
+select set_config('x5.test_foreign_submission_insert_object', 'course-submissions/00000000-0000-4000-8000-000000000100/' || gen_random_uuid()::text || '.mp4', true);
 select set_config('x5.test_flat_submission_object', 'course-submissions/' || gen_random_uuid()::text || '.mp4', true);
 
 insert into public.courses (
@@ -55,6 +56,14 @@ insert into public.course_invites (
   current_setting('x5.test_developer_invite_code'),
   '9ae99a45-91ac-486a-b7ec-e6614b7bc257'::uuid,
   true
+);
+
+insert into storage.objects (bucket_id, name, owner, owner_id)
+values (
+  'videos',
+  current_setting('x5.test_foreign_submission_object'),
+  '00000000-0000-4000-8000-000000000100'::uuid,
+  '00000000-0000-4000-8000-000000000100'
 );
 
 set local role authenticated;
@@ -287,6 +296,8 @@ do $legacy_email_alias$
 declare
   v_rows integer;
 begin
+  perform set_config('storage.allow_delete_query', 'true', true);
+
   if public.is_x5_developer() or public.x5_is_developer() then
     raise exception 'legacy_email_alias_still_grants_developer_access';
   end if;
@@ -346,7 +357,7 @@ begin
     insert into storage.objects (bucket_id, name, owner, owner_id)
     values (
       'videos',
-      current_setting('x5.test_foreign_submission_object'),
+      current_setting('x5.test_foreign_submission_insert_object'),
       auth.uid(),
       auth.uid()::text
     );
@@ -355,18 +366,43 @@ begin
     when insufficient_privilege then null;
   end;
 
-  begin
-    insert into storage.objects (bucket_id, name, owner, owner_id)
-    values (
-      'videos',
-      current_setting('x5.test_flat_submission_object'),
-      auth.uid(),
-      auth.uid()::text
-    );
-    raise exception 'submission_owner_inserted_flat_video';
-  exception
-    when insufficient_privilege then null;
-  end;
+  insert into storage.objects (bucket_id, name, owner, owner_id)
+  values (
+    'videos',
+    current_setting('x5.test_flat_submission_object'),
+    auth.uid(),
+    auth.uid()::text
+  );
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then
+    raise exception 'legacy_submission_owner_cannot_insert_own_video';
+  end if;
+
+  update storage.objects
+     set metadata = '{"legacy":true}'::jsonb
+   where bucket_id = 'videos'
+     and name = current_setting('x5.test_flat_submission_object');
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then
+    raise exception 'legacy_submission_owner_cannot_update_own_video';
+  end if;
+
+  update storage.objects
+     set metadata = '{"unauthorized":true}'::jsonb
+   where bucket_id = 'videos'
+     and name = current_setting('x5.test_foreign_submission_object');
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then
+    raise exception 'submission_owner_updated_foreign_video';
+  end if;
+
+  delete from storage.objects
+   where bucket_id = 'videos'
+     and name = current_setting('x5.test_foreign_submission_object');
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then
+    raise exception 'submission_owner_deleted_foreign_video';
+  end if;
 
   delete from storage.objects
    where bucket_id = 'videos'
@@ -374,6 +410,14 @@ begin
   get diagnostics v_rows = row_count;
   if v_rows <> 1 then
     raise exception 'submission_owner_cannot_delete_own_video';
+  end if;
+
+  delete from storage.objects
+   where bucket_id = 'videos'
+     and name = current_setting('x5.test_flat_submission_object');
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then
+    raise exception 'legacy_submission_owner_cannot_delete_own_video';
   end if;
 end;
 $legacy_email_alias$;
@@ -494,7 +538,9 @@ begin
        and tablename = 'objects'
        and policyname = 'course submission videos owner insert'
        and with_check like '%course-submissions%'
+       and with_check like '%owner_id%'
        and with_check like '%auth.uid()%'
+       and with_check like '%array_length%'
   ) then
     raise exception 'owned_course_submission_video_insert_policy_missing';
   end if;
@@ -504,9 +550,25 @@ begin
       from pg_policies
      where schemaname = 'storage'
        and tablename = 'objects'
+       and policyname = 'course submission videos owner update'
+       and qual like '%owner_id%'
+       and qual like '%auth.uid()%'
+       and with_check like '%owner_id%'
+       and with_check like '%auth.uid()%'
+  ) then
+    raise exception 'owned_course_submission_video_update_policy_missing';
+  end if;
+
+  if not exists (
+    select 1
+      from pg_policies
+     where schemaname = 'storage'
+       and tablename = 'objects'
        and policyname = 'course submission videos owner delete'
        and qual like '%course-submissions%'
+       and qual like '%owner_id%'
        and qual like '%auth.uid()%'
+       and qual like '%array_length%'
   ) then
     raise exception 'owned_course_submission_video_delete_policy_missing';
   end if;

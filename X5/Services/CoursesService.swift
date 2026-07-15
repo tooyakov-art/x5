@@ -392,6 +392,35 @@ enum CourseListRequestBuilder {
     }
 }
 
+enum CourseSubmissionVideoPathError: Error {
+    case invalidUserID
+    case invalidFileExtension
+}
+
+enum CourseSubmissionVideoPath {
+    static func make(
+        userID: String,
+        fileExtension: String,
+        uniqueID: UUID = UUID(),
+        timestamp: Int = Int(Date().timeIntervalSince1970)
+    ) throws -> String {
+        let trimmedUserID = userID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let canonicalUserID = UUID(uuidString: trimmedUserID)?.uuidString.lowercased() else {
+            throw CourseSubmissionVideoPathError.invalidUserID
+        }
+
+        let normalizedExtension = fileExtension.lowercased()
+        guard !normalizedExtension.isEmpty,
+              normalizedExtension.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) })
+        else {
+            throw CourseSubmissionVideoPathError.invalidFileExtension
+        }
+
+        let fileID = uniqueID.uuidString.lowercased()
+        return "course-submissions/\(canonicalUserID)/\(fileID)-\(timestamp).\(normalizedExtension)"
+    }
+}
+
 @MainActor
 final class CoursesService: ObservableObject {
     @Published private(set) var courses: [Course] = []
@@ -600,7 +629,7 @@ final class CoursesService: ObservableObject {
     }
 
     @discardableResult
-    func uploadCourseSubmissionVideo(fileURL: URL, accessToken: String) async -> String? {
+    func uploadCourseSubmissionVideo(fileURL: URL, userID: String, accessToken: String) async -> String? {
         error = nil
 
         let didAccess = fileURL.startAccessingSecurityScopedResource()
@@ -610,7 +639,13 @@ final class CoursesService: ObservableObject {
 
         let ext = normalizedVideoExtension(from: fileURL)
         let mime = videoMimeType(for: ext)
-        let path = "course-submissions/\(UUID().uuidString)-\(Int(Date().timeIntervalSince1970)).\(ext)"
+        let path: String
+        do {
+            path = try CourseSubmissionVideoPath.make(userID: userID, fileExtension: ext)
+        } catch {
+            self.error = "Не удалось определить владельца видео. Войди снова."
+            return nil
+        }
         let uploadURL = baseURL.appendingPathComponent("storage/v1/object/videos/\(path)")
 
         var req = URLRequest(url: uploadURL)
