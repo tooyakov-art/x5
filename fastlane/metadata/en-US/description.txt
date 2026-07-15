@@ -15,10 +15,12 @@ KEY FEATURES
 WHO IT'S FOR
 SMM managers, designers, photographers, video editors, copywriters, marketers, founders and creators who need learning tools, client chats and a public work profile.
 
-SUBSCRIPTIONS
-X Five Lite, X Five Pro and X Five Max are optional monthly auto-renewable subscriptions. Paid plans unlock creator tools and add credits for image generation and other creator features. The verified badge is a separate optional monthly auto-renewable subscription.
+IN-APP PURCHASES
+The Store offers optional one-time packs of 1,000, 2,000 or 5,000 credits. Credits are added to the signed-in Xfive marketing account and can be used for credit-based creator features and courses. These consumable purchases do not activate a subscription.
 
-Payment is charged to your Apple ID at confirmation of purchase. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel the subscription in your App Store account settings.
+The verified badge is a separate optional monthly auto-renewable subscription. It does not include credits.
+
+Payment is charged to your Apple ID at confirmation of purchase. The verified badge subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel it in your App Store account settings.
 
 SAFETY
 Chats include report and block controls. Users can delete their account from Settings. User-generated content is handled with moderation support through support@x5studio.app.

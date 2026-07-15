@@ -72,6 +72,27 @@ final class IAPCreditStoreTests: XCTestCase {
         XCTAssertTrue(IAPEntitlementDisposition.applied.shouldFinishTransaction)
     }
 
+    func testSettingsShowsSubscriptionActionsOnlyForActiveSubscriptionEntitlements() {
+        XCTAssertFalse(
+            IAPSettingsPurchaseVisibilityPolicy.shouldShowSubscriptionActions(
+                isLegacyPro: false,
+                hasActiveVerifiedBadge: false
+            )
+        )
+        XCTAssertTrue(
+            IAPSettingsPurchaseVisibilityPolicy.shouldShowSubscriptionActions(
+                isLegacyPro: true,
+                hasActiveVerifiedBadge: false
+            )
+        )
+        XCTAssertTrue(
+            IAPSettingsPurchaseVisibilityPolicy.shouldShowSubscriptionActions(
+                isLegacyPro: false,
+                hasActiveVerifiedBadge: true
+            )
+        )
+    }
+
     @MainActor
     func testCreditStoreAndVerificationStringsExistInEverySupportedLanguage() {
         let requiredKeys = [
@@ -86,6 +107,7 @@ final class IAPCreditStoreTests: XCTestCase {
             "credit_store_success_message",
             "profile_store_title",
             "profile_store_subtitle",
+            "settings_restore_subscriptions",
             "verified_price_period",
             "verified_purchase_note",
             "verified_buy_button",

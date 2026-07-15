@@ -8,6 +8,7 @@ struct SettingsView: View {
     @EnvironmentObject private var subscription: Subscription
     @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var loc: LocalizationService
+    @EnvironmentObject private var iap: IAPService
     @Environment(\.dismiss) private var dismiss
 
     @State private var deleteStage: DeleteStage = .idle
@@ -15,6 +16,8 @@ struct SettingsView: View {
     @AppStorage("x5.face_id_enabled") private var faceIDEnabled = false
     @AppStorage("x5.promo.enabled") private var promoEnabled = true
     @State private var publicToggle: Bool = true
+    @State private var showingStore = false
+    @State private var isRestoringSubscriptions = false
 
     private enum DeleteStage { case idle, firstConfirm, finalConfirm, deleting }
 
@@ -26,26 +29,61 @@ struct SettingsView: View {
                     if let email = auth.userEmail {
                         LabeledContent(loc.t("settings_email"), value: email)
                     }
-                    HStack {
-                        Text(loc.t("settings_subscription"))
-                        Spacer()
-                        Text(subscription.isPro ? loc.t("settings_pro_active") : loc.t("settings_free"))
-                            .foregroundColor(subscription.isPro ? .accentColor : .secondary)
-                    }
-                    Button {
-                        if let url = URL(string: "itms-apps://apps.apple.com/account/subscriptions") {
-                            UIApplication.shared.open(url)
-                        }
-                    } label: {
+
+                    Button { showingStore = true } label: {
                         HStack {
-                            Image(systemName: "creditcard")
+                            Image(systemName: "cart.fill")
                                 .foregroundColor(.accentColor)
                                 .frame(width: 22)
-                            Text(loc.t("settings_manage_subscription"))
-                                .foregroundColor(.primary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(loc.t("profile_store_title"))
+                                    .foregroundColor(.primary)
+                                Text(loc.t("profile_buy_credits"))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                             Spacer()
-                            Image(systemName: "arrow.up.forward.app")
+                            Image(systemName: "chevron.right")
                                 .foregroundColor(.secondary)
+                        }
+                    }
+
+                    if IAPSettingsPurchaseVisibilityPolicy.shouldShowSubscriptionActions(
+                        isLegacyPro: currentUser.profile?.isPro == true,
+                        hasActiveVerifiedBadge: currentUser.profile?.hasActiveVerifiedBadge == true
+                    ) {
+                        Button {
+                            restoreSubscriptions()
+                        } label: {
+                            HStack {
+                                Image(systemName: "arrow.clockwise")
+                                    .foregroundColor(.accentColor)
+                                    .frame(width: 22)
+                                Text(loc.t("settings_restore_subscriptions"))
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                if isRestoringSubscriptions {
+                                    ProgressView()
+                                }
+                            }
+                        }
+                        .disabled(isRestoringSubscriptions || iap.isPurchasing)
+
+                        Button {
+                            if let url = URL(string: "itms-apps://apps.apple.com/account/subscriptions") {
+                                UIApplication.shared.open(url)
+                            }
+                        } label: {
+                            HStack {
+                                Image(systemName: "creditcard")
+                                    .foregroundColor(.accentColor)
+                                    .frame(width: 22)
+                                Text(loc.t("settings_manage_subscription"))
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Image(systemName: "arrow.up.forward.app")
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                 }
@@ -271,12 +309,28 @@ struct SettingsView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showingStore) { PaywallView() }
     }
 
     private var versionString: String {
         let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
         return "Xfive marketing · v\(v) (\(b))"
+    }
+
+    private func restoreSubscriptions() {
+        errorMessage = nil
+        isRestoringSubscriptions = true
+        Task {
+            defer { isRestoringSubscriptions = false }
+            await iap.restore()
+            if let userID = auth.userId,
+               let accessToken = await auth.freshAccessToken() {
+                await currentUser.load(userId: userID, accessToken: accessToken)
+            }
+            subscription.sync(from: currentUser.profile)
+            errorMessage = iap.lastError
+        }
     }
 
     private func updatePublic(_ value: Bool) async {

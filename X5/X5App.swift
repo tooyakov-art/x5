@@ -80,6 +80,7 @@ struct X5App: App {
 
     private func syncStoreKitAndProfile(source: String) async {
         guard auth.isAuthenticated else { return }
+        await iap.retryUnfinishedConsumables(source: "\(source)_unfinished")
         await iap.syncCurrentEntitlements(source: source)
 
         if let userId = auth.userId,

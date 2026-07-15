@@ -10,7 +10,7 @@ struct ProfileView: View {
 
     var showsDoneButton: Bool = true
 
-    @State private var showingPaywall = false
+    @State private var showingStore = false
     @State private var showingVerified = false
     @State private var showingSettings = false
     @State private var showingEdit = false
@@ -80,7 +80,7 @@ struct ProfileView: View {
                 }
             }
             .sheet(isPresented: $showingSettings) { SettingsView() }
-            .sheet(isPresented: $showingPaywall) { PaywallView() }
+            .sheet(isPresented: $showingStore) { PaywallView() }
             .sheet(isPresented: $showingVerified) { VerifiedBadgeView() }
             .sheet(isPresented: $showingEdit) { EditProfileView() }
             .alert("Фото не сохранилось", isPresented: Binding(
@@ -233,11 +233,7 @@ struct ProfileView: View {
 
     private var overviewSection: some View {
         VStack(spacing: 16) {
-            if currentUser.profile?.isPro == true {
-                proHero
-            } else {
-                upgradeCard
-            }
+            storeCard
             if let bio = currentUser.profile?.bio, !bio.isEmpty {
                 BioCard(text: bio)
             }
@@ -406,48 +402,29 @@ struct ProfileView: View {
         return cleaned.isEmpty ? nil : cleaned.capitalized
     }
 
-    // MARK: - Pro hero / upgrade card
+    // MARK: - Credit store
 
-    private var proHero: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: "sparkles").foregroundColor(.accentColor)
-                Text(loc.t("profile_pro_active"))
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.white)
-                Spacer()
-                Button(loc.t("profile_manage")) {
-                    if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
-                        UIApplication.shared.open(url)
-                    }
-                }
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.accentColor)
-            }
-            if let end = currentUser.profile?.subscriptionEndDate {
-                Text("\(loc.t("profile_renews")) \(formatDate(end))")
-                    .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.55))
-            }
-        }
-        .padding(14)
-        .x5ClearGlass(cornerRadius: 16, highlight: 0.12)
-    }
-
-    private var upgradeCard: some View {
+    private var storeCard: some View {
         Button {
-            showingPaywall = true
+            showingStore = true
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: "sparkles")
+                Image(systemName: "cart.fill")
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundColor(.black)
                     .frame(width: 40, height: 40)
                     .background(Color.accentColor)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(loc.t("profile_upgrade")).font(.system(size: 15, weight: .bold)).foregroundColor(.white)
-                    Text(upgradeSubtitle).font(.system(size: 12)).foregroundColor(.white.opacity(0.55))
+                    Text(loc.t("profile_store_title"))
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                    Text(String(
+                        format: loc.t("profile_store_subtitle"),
+                        currentUser.profile?.credits ?? 0
+                    ))
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.55))
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundColor(.white.opacity(0.4))
@@ -553,19 +530,6 @@ struct ProfileView: View {
     }
 
     // MARK: - Helpers
-
-    private var upgradeSubtitle: String {
-        "от 1000 ₸ / \(loc.t("profile_month")) - \(loc.t("profile_upgrade_sub"))"
-    }
-
-    private func formatDate(_ iso: String) -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let d = f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return iso }
-        let out = DateFormatter()
-        out.dateStyle = .medium
-        return out.string(from: d)
-    }
 
     private func makeSocialItems(from links: SocialLinks) -> [ProfileSocialLinkItem] {
         [
