@@ -1,4 +1,5 @@
 import importlib.util
+import inspect
 import pathlib
 import sys
 import unittest
@@ -61,6 +62,13 @@ class CreditStoreConfigurationTests(unittest.TestCase):
         self.assertEqual(
             included["relationships"]["inAppPurchasePricePoint"]["data"]["id"],
             "point-1000",
+        )
+
+    def test_localizations_are_listed_through_the_v2_purchase_relationship(self):
+        source = inspect.getsource(MODULE.configure)
+        self.assertIn(
+            "/v2/inAppPurchases/{iap_id}/inAppPurchaseLocalizations?limit=200",
+            source,
         )
 
 

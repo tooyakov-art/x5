@@ -367,7 +367,7 @@ def configure() -> None:
             print(f"Created {pack.product_id} -> {iap_id}")
 
         localizations = api.list_all(
-            f"/v1/inAppPurchases/{iap_id}/inAppPurchaseLocalizations?limit=200"
+            f"/v2/inAppPurchases/{iap_id}/inAppPurchaseLocalizations?limit=200"
         )
         ensure_localization(
             api,
