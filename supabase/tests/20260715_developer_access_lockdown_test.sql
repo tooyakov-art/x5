@@ -3,6 +3,13 @@ begin;
 select set_config('x5.test_developer_course_id', gen_random_uuid()::text, true);
 select set_config('x5.test_developer_submission_id', gen_random_uuid()::text, true);
 select set_config('x5.test_developer_config_key', '__developer_access_' || gen_random_uuid()::text, true);
+select set_config('x5.test_developer_invite_id', gen_random_uuid()::text, true);
+select set_config('x5.test_developer_invite_code', '__developer_invite_' || gen_random_uuid()::text, true);
+select set_config('x5.test_owner_invite_id', gen_random_uuid()::text, true);
+select set_config('x5.test_owner_invite_code', '__owner_invite_' || gen_random_uuid()::text, true);
+select set_config('x5.test_submission_object', 'course-submissions/00000000-0000-4000-8000-000000000099/' || gen_random_uuid()::text || '.mp4', true);
+select set_config('x5.test_foreign_submission_object', 'course-submissions/00000000-0000-4000-8000-000000000100/' || gen_random_uuid()::text || '.mp4', true);
+select set_config('x5.test_flat_submission_object', 'course-submissions/' || gen_random_uuid()::text || '.mp4', true);
 
 insert into public.courses (
   id,
@@ -38,6 +45,18 @@ values (
   '{"enabled":false}'::jsonb
 );
 
+insert into public.course_invites (
+  id,
+  code,
+  created_by,
+  active
+) values (
+  current_setting('x5.test_developer_invite_id')::uuid,
+  current_setting('x5.test_developer_invite_code'),
+  '9ae99a45-91ac-486a-b7ec-e6614b7bc257'::uuid,
+  true
+);
+
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -71,6 +90,37 @@ begin
   get diagnostics v_rows = row_count;
   if v_rows <> 1 then
     raise exception 'owner_account_cannot_update_system_config';
+  end if;
+
+  insert into public.course_invites (
+    id,
+    code,
+    created_by,
+    active
+  ) values (
+    current_setting('x5.test_owner_invite_id')::uuid,
+    current_setting('x5.test_owner_invite_code'),
+    auth.uid(),
+    true
+  );
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then
+    raise exception 'owner_account_cannot_insert_course_invite';
+  end if;
+
+  update public.course_invites
+     set max_uses = 1
+   where id = current_setting('x5.test_owner_invite_id')::uuid;
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then
+    raise exception 'owner_account_cannot_update_course_invite';
+  end if;
+
+  delete from public.course_invites
+   where id = current_setting('x5.test_owner_invite_id')::uuid;
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then
+    raise exception 'owner_account_cannot_delete_course_invite';
   end if;
 end;
 $owner_account$;
@@ -151,6 +201,38 @@ begin
   get diagnostics v_rows = row_count;
   if v_rows <> 0 then
     raise exception 'former_developer_updated_system_config';
+  end if;
+
+  if not exists (
+    select 1
+      from public.course_invites
+     where id = current_setting('x5.test_developer_invite_id')::uuid
+       and active = true
+  ) then
+    raise exception 'non_developer_cannot_read_active_course_invite';
+  end if;
+
+  begin
+    insert into public.course_invites (code, created_by, active)
+    values ('__unauthorized_invite_' || gen_random_uuid()::text, auth.uid(), true);
+    raise exception 'non_developer_inserted_course_invite';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  update public.course_invites
+     set max_uses = 999
+   where id = current_setting('x5.test_developer_invite_id')::uuid;
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then
+    raise exception 'invite_author_policy_bypassed_developer_lockdown';
+  end if;
+
+  delete from public.course_invites
+   where id = current_setting('x5.test_developer_invite_id')::uuid;
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then
+    raise exception 'invite_author_deleted_course_invite';
   end if;
 end;
 $former_developer_account$;
@@ -247,6 +329,52 @@ begin
   if v_rows <> 1 then
     raise exception 'non_developer_cannot_submit_own_course';
   end if;
+
+  insert into storage.objects (bucket_id, name, owner, owner_id)
+  values (
+    'videos',
+    current_setting('x5.test_submission_object'),
+    auth.uid(),
+    auth.uid()::text
+  );
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then
+    raise exception 'submission_owner_cannot_insert_own_video';
+  end if;
+
+  begin
+    insert into storage.objects (bucket_id, name, owner, owner_id)
+    values (
+      'videos',
+      current_setting('x5.test_foreign_submission_object'),
+      auth.uid(),
+      auth.uid()::text
+    );
+    raise exception 'submission_owner_inserted_foreign_video';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  begin
+    insert into storage.objects (bucket_id, name, owner, owner_id)
+    values (
+      'videos',
+      current_setting('x5.test_flat_submission_object'),
+      auth.uid(),
+      auth.uid()::text
+    );
+    raise exception 'submission_owner_inserted_flat_video';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  delete from storage.objects
+   where bucket_id = 'videos'
+     and name = current_setting('x5.test_submission_object');
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then
+    raise exception 'submission_owner_cannot_delete_own_video';
+  end if;
 end;
 $legacy_email_alias$;
 
@@ -328,6 +456,61 @@ begin
     raise exception 'generic_storage_policy_bypasses_course_cover_gate';
   end if;
 
+  if exists (
+    select 1
+      from pg_policies
+     where schemaname = 'public'
+       and tablename = 'course_invites'
+       and policyname = 'Authors can manage invites'
+  ) then
+    raise exception 'invite_author_mutation_policy_still_exists';
+  end if;
+
+  if (
+    select count(*)
+      from pg_policies
+     where schemaname = 'public'
+       and tablename = 'course_invites'
+       and cmd in ('INSERT', 'UPDATE', 'DELETE')
+       and concat_ws(' ', qual, with_check) like '%is_x5_developer()%'
+  ) <> 3 then
+    raise exception 'course_invite_developer_mutation_policies_missing';
+  end if;
+
+  if exists (
+    select 1
+      from pg_policies
+     where schemaname = 'storage'
+       and tablename = 'objects'
+       and policyname = 'course submission videos authenticated upload'
+  ) then
+    raise exception 'broad_course_submission_video_upload_policy_still_exists';
+  end if;
+
+  if not exists (
+    select 1
+      from pg_policies
+     where schemaname = 'storage'
+       and tablename = 'objects'
+       and policyname = 'course submission videos owner insert'
+       and with_check like '%course-submissions%'
+       and with_check like '%auth.uid()%'
+  ) then
+    raise exception 'owned_course_submission_video_insert_policy_missing';
+  end if;
+
+  if not exists (
+    select 1
+      from pg_policies
+     where schemaname = 'storage'
+       and tablename = 'objects'
+       and policyname = 'course submission videos owner delete'
+       and qual like '%course-submissions%'
+       and qual like '%auth.uid()%'
+  ) then
+    raise exception 'owned_course_submission_video_delete_policy_missing';
+  end if;
+
   if has_table_privilege('anon', 'public.courses', 'truncate')
      or has_table_privilege('authenticated', 'public.courses', 'truncate')
      or has_table_privilege('anon', 'public.course_submissions', 'truncate')
@@ -341,6 +524,14 @@ begin
      or has_table_privilege('anon', 'public.system_config', 'update')
      or has_table_privilege('anon', 'public.system_config', 'delete') then
     raise exception 'anonymous_role_can_still_write_system_config';
+  end if;
+
+  if has_table_privilege('anon', 'public.course_invites', 'insert')
+     or has_table_privilege('anon', 'public.course_invites', 'update')
+     or has_table_privilege('anon', 'public.course_invites', 'delete')
+     or has_table_privilege('anon', 'public.course_invites', 'truncate')
+     or has_table_privilege('authenticated', 'public.course_invites', 'truncate') then
+    raise exception 'client_role_has_unsafe_course_invite_table_privilege';
   end if;
 end;
 $policy_and_acl_checks$;
