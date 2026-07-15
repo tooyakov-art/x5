@@ -61,6 +61,16 @@ const validTransaction = {
   environment: "Production",
 };
 
+const validConsumable = {
+  ...validTransaction,
+  productId: "com.x5studio.app.credits.1000",
+  transactionId: "2000000123456790",
+  originalTransactionId: "2000000123456790",
+  type: "Consumable",
+  quantity: 1,
+  expiresDate: undefined,
+};
+
 Deno.test("request accepts only one signed_transaction field", () => {
   assertEquals(
     parseVerifyRequestBody({
@@ -119,6 +129,7 @@ Deno.test("verified transaction is normalized for the service-only RPC", () => {
   );
 
   assertEquals(normalized.productId, "com.x5studio.app.pro.monthly");
+  assertEquals(normalized.productKind, "subscription");
   assertEquals(normalized.environment, "Production");
   assertEquals(normalized.purchaseDate, "2026-07-01T00:00:00.000Z");
   assertEquals(normalized.expiresDate, "2026-08-01T00:00:00.000Z");
@@ -128,6 +139,120 @@ Deno.test("verified transaction is normalized for the service-only RPC", () => {
     "7b5a5cb8-239a-4cd1-b5d8-968cc1d437f4",
   );
   assertEquals(normalized.revocationDate, null);
+});
+
+Deno.test("all Apple credit packs accept only signed consumable quantity-one claims", () => {
+  for (
+    const productId of [
+      "com.x5studio.app.credits.1000",
+      "com.x5studio.app.credits.2000",
+      "com.x5studio.app.credits.5000",
+    ]
+  ) {
+    const normalized = validateVerifiedTransaction(
+      { ...validConsumable, productId },
+      validConsumable.appAccountToken,
+      "Production",
+      Date.UTC(2026, 6, 14),
+    );
+
+    assertEquals(normalized.productId, productId);
+    assertEquals(normalized.productKind, "consumable");
+    assertEquals(normalized.quantity, 1);
+    assertEquals(normalized.expiresDate, null);
+  }
+
+  assertInputError(
+    () =>
+      validateVerifiedTransaction(
+        { ...validConsumable, type: "Non-Consumable" },
+        validConsumable.appAccountToken,
+        "Production",
+        Date.UTC(2026, 6, 14),
+      ),
+    "invalid_product_type",
+  );
+  assertInputError(
+    () =>
+      validateVerifiedTransaction(
+        { ...validConsumable, quantity: 2 },
+        validConsumable.appAccountToken,
+        "Production",
+        Date.UTC(2026, 6, 14),
+      ),
+    "invalid_quantity",
+  );
+  assertInputError(
+    () =>
+      validateVerifiedTransaction(
+        { ...validConsumable, quantity: undefined },
+        validConsumable.appAccountToken,
+        "Production",
+        Date.UTC(2026, 6, 14),
+      ),
+    "invalid_quantity",
+  );
+});
+
+Deno.test("Apple consumables preserve account, bundle, and revocation checks", () => {
+  const now = Date.UTC(2026, 6, 14);
+  assertInputError(
+    () =>
+      validateVerifiedTransaction(
+        { ...validConsumable, appAccountToken: undefined },
+        validConsumable.appAccountToken,
+        "Production",
+        now,
+      ),
+    "missing_account_token",
+  );
+  assertInputError(
+    () =>
+      validateVerifiedTransaction(
+        {
+          ...validConsumable,
+          appAccountToken: "ed0fe39b-a7cd-4e64-a443-0266125ff3ea",
+        },
+        validConsumable.appAccountToken,
+        "Production",
+        now,
+      ),
+    "account_token_mismatch",
+  );
+  assertInputError(
+    () =>
+      validateVerifiedTransaction(
+        { ...validConsumable, bundleId: "attacker.app" },
+        validConsumable.appAccountToken,
+        "Production",
+        now,
+      ),
+    "invalid_bundle",
+  );
+  assertInputError(
+    () =>
+      validateVerifiedTransaction(
+        { ...validConsumable, revocationDate: now - 1 },
+        validConsumable.appAccountToken,
+        "Production",
+        now,
+      ),
+    "transaction_revoked",
+    402,
+  );
+});
+
+Deno.test("missing expiration is rejected for subscriptions", () => {
+  assertInputError(
+    () =>
+      validateVerifiedTransaction(
+        { ...validTransaction, expiresDate: undefined },
+        validTransaction.appAccountToken,
+        "Production",
+        Date.UTC(2026, 6, 14),
+      ),
+    "invalid_expiration_date",
+  );
 });
 
 Deno.test("legacy nil appAccountToken is deferred to the ownership-aware RPC", () => {

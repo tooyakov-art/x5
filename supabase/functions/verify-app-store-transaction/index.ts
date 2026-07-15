@@ -34,7 +34,11 @@ export interface HandlerDependencies {
     signedTransaction: string,
     environment: AppStoreEnvironment,
   ): Promise<VerifiedTransactionPayload>;
-  applyVerifiedTransaction(
+  applyVerifiedSubscription(
+    userId: string,
+    transaction: NormalizedTransaction,
+  ): Promise<EntitlementResult>;
+  applyVerifiedConsumable(
     userId: string,
     transaction: NormalizedTransaction,
   ): Promise<EntitlementResult>;
@@ -115,10 +119,9 @@ export function createHandler(
       if (transaction.environment !== "Production") {
         throw new InputError("sandbox_not_allowed", 403);
       }
-      const result = await _dependencies.applyVerifiedTransaction(
-        userId,
-        transaction,
-      );
+      const result = transaction.productKind === "consumable"
+        ? await _dependencies.applyVerifiedConsumable(userId, transaction)
+        : await _dependencies.applyVerifiedSubscription(userId, transaction);
       return jsonResponse(result, 200);
     } catch (error) {
       if (error instanceof InputError) {
@@ -258,9 +261,53 @@ async function authenticate(accessToken: string): Promise<string | null> {
   return data.user.id;
 }
 
-async function applyVerifiedTransaction(
+async function applyVerifiedSubscription(
   userId: string,
   transaction: NormalizedTransaction,
+): Promise<EntitlementResult> {
+  if (transaction.productKind !== "subscription" || !transaction.expiresDate) {
+    throw new Error("invalid_subscription_transaction");
+  }
+  return await applyVerifiedRpc("apply_verified_app_store_transaction", {
+    p_user_id: userId,
+    p_transaction_id: transaction.transactionId,
+    p_original_transaction_id: transaction.originalTransactionId,
+    p_product_id: transaction.productId,
+    p_environment: transaction.environment,
+    p_app_account_token: transaction.appAccountToken,
+    p_purchase_date: transaction.purchaseDate,
+    p_expires_date: transaction.expiresDate,
+    p_signed_date: transaction.signedDate,
+    p_revocation_date: transaction.revocationDate,
+  });
+}
+
+async function applyVerifiedConsumable(
+  userId: string,
+  transaction: NormalizedTransaction,
+): Promise<EntitlementResult> {
+  if (transaction.productKind !== "consumable" || transaction.quantity !== 1) {
+    throw new Error("invalid_consumable_transaction");
+  }
+  return await applyVerifiedRpc("apply_verified_app_store_consumable", {
+    p_user_id: userId,
+    p_transaction_id: transaction.transactionId,
+    p_original_transaction_id: transaction.originalTransactionId,
+    p_product_id: transaction.productId,
+    p_environment: transaction.environment,
+    p_app_account_token: transaction.appAccountToken,
+    p_purchase_date: transaction.purchaseDate,
+    p_signed_date: transaction.signedDate,
+    p_revocation_date: transaction.revocationDate,
+    p_quantity: transaction.quantity,
+  });
+}
+
+async function applyVerifiedRpc(
+  rpcName:
+    | "apply_verified_app_store_transaction"
+    | "apply_verified_app_store_consumable",
+  parameters: Record<string, unknown>,
 ): Promise<EntitlementResult> {
   const admin = createClient(
     requiredEnvironmentVariable("SUPABASE_URL"),
@@ -274,21 +321,7 @@ async function applyVerifiedTransaction(
     },
   );
 
-  const { data, error } = await admin.rpc(
-    "apply_verified_app_store_transaction",
-    {
-      p_user_id: userId,
-      p_transaction_id: transaction.transactionId,
-      p_original_transaction_id: transaction.originalTransactionId,
-      p_product_id: transaction.productId,
-      p_environment: transaction.environment,
-      p_app_account_token: transaction.appAccountToken,
-      p_purchase_date: transaction.purchaseDate,
-      p_expires_date: transaction.expiresDate,
-      p_signed_date: transaction.signedDate,
-      p_revocation_date: transaction.revocationDate,
-    },
-  );
+  const { data, error } = await admin.rpc(rpcName, parameters);
 
   if (error) {
     const safeToken = `${error.code ?? ""} ${error.message ?? ""} ${
@@ -305,8 +338,11 @@ async function applyVerifiedTransaction(
       safeToken.includes("invalid_user_id") ||
       safeToken.includes("profile_not_found") ||
       safeToken.includes("invalid_transaction_id") ||
+      safeToken.includes("invalid_original_transaction_id") ||
       safeToken.includes("invalid_environment") ||
+      safeToken.includes("sandbox_not_allowed") ||
       safeToken.includes("unknown_product") ||
+      safeToken.includes("invalid_quantity") ||
       safeToken.includes("transaction_revoked") ||
       safeToken.includes("missing_transaction_dates") ||
       safeToken.includes("invalid_expiration_date") ||
@@ -317,7 +353,7 @@ async function applyVerifiedTransaction(
     ) {
       throw new EntitlementApplyError("rejected", 400);
     }
-    throw new Error("apply_verified_app_store_transaction_failed");
+    throw new Error(`${rpcName}_failed`);
   }
 
   if (!isEntitlementResult(data)) {
@@ -350,7 +386,8 @@ const runtimeDependencies: HandlerDependencies = {
   now: () => Date.now(),
   authenticate,
   verifySignedTransaction,
-  applyVerifiedTransaction,
+  applyVerifiedSubscription,
+  applyVerifiedConsumable,
   logError: (error) => {
     const name = error instanceof Error ? error.name : typeof error;
     console.error("verify-app-store-transaction failed", { name });

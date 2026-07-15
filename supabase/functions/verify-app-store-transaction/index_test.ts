@@ -41,6 +41,16 @@ const verifiedPayload = {
   environment: "Production",
 };
 
+const verifiedConsumablePayload = {
+  ...verifiedPayload,
+  productId: "com.x5studio.app.credits.2000",
+  transactionId: "2000000123456790",
+  originalTransactionId: "2000000123456790",
+  type: "Consumable",
+  quantity: 1,
+  expiresDate: undefined,
+};
+
 function dependencies(
   overrides: Partial<HandlerDependencies> = {},
 ): HandlerDependencies {
@@ -48,11 +58,18 @@ function dependencies(
     now: () => Date.UTC(2026, 6, 14),
     authenticate: () => Promise.resolve(userId),
     verifySignedTransaction: () => Promise.resolve(verifiedPayload),
-    applyVerifiedTransaction: () =>
+    applyVerifiedSubscription: () =>
       Promise.resolve({
         status: "applied",
         credits_granted: 2000,
         subscription_end_date: "2026-08-01T00:00:00.000Z",
+        is_verified: false,
+      }),
+    applyVerifiedConsumable: () =>
+      Promise.resolve({
+        status: "applied",
+        credits_granted: 2000,
+        subscription_end_date: null,
         is_verified: false,
       }),
     logError: () => undefined,
@@ -108,10 +125,11 @@ Deno.test("handler ignores no client-declared product or transaction fields", as
   assertEquals(verified, false);
 });
 
-Deno.test("handler verifies, validates, and applies the Apple payload", async () => {
+Deno.test("handler routes subscription payloads to the subscription RPC", async () => {
   let applied: Record<string, unknown> | undefined;
+  let consumableApplied = false;
   const handler = createHandler(dependencies({
-    applyVerifiedTransaction: (authenticatedUserId, transaction) => {
+    applyVerifiedSubscription: (authenticatedUserId, transaction) => {
       applied = { authenticatedUserId, ...transaction };
       return Promise.resolve({
         status: "applied",
@@ -119,6 +137,10 @@ Deno.test("handler verifies, validates, and applies the Apple payload", async ()
         subscription_end_date: transaction.expiresDate,
         is_verified: false,
       });
+    },
+    applyVerifiedConsumable: () => {
+      consumableApplied = true;
+      throw new Error("wrong_rpc");
     },
   }));
 
@@ -132,7 +154,47 @@ Deno.test("handler verifies, validates, and applies the Apple payload", async ()
   assert(applied);
   assertEquals(applied.authenticatedUserId, userId);
   assertEquals(applied.productId, "com.x5studio.app.pro.monthly");
+  assertEquals(applied.productKind, "subscription");
   assertEquals(applied.environment, "Production");
+  assertEquals(consumableApplied, false);
+});
+
+Deno.test("handler routes consumable payloads to the credit-only RPC", async () => {
+  let subscriptionApplied = false;
+  let applied: Record<string, unknown> | undefined;
+  const handler = createHandler(dependencies({
+    verifySignedTransaction: () => Promise.resolve(verifiedConsumablePayload),
+    applyVerifiedSubscription: () => {
+      subscriptionApplied = true;
+      throw new Error("wrong_rpc");
+    },
+    applyVerifiedConsumable: (authenticatedUserId, transaction) => {
+      applied = { authenticatedUserId, ...transaction };
+      return Promise.resolve({
+        status: "applied",
+        credits_granted: 2000,
+        subscription_end_date: null,
+        is_verified: false,
+      });
+    },
+  }));
+
+  const response = await handler(
+    post({ signed_transaction: signedTransaction() }),
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.status, "applied");
+  assertEquals(body.credits_granted, 2000);
+  assertEquals(body.subscription_end_date, null);
+  assert(applied);
+  assertEquals(subscriptionApplied, false);
+  assertEquals(applied.authenticatedUserId, userId);
+  assertEquals(applied.productId, "com.x5studio.app.credits.2000");
+  assertEquals(applied.productKind, "consumable");
+  assertEquals(applied.quantity, 1);
+  assertEquals(applied.expiresDate, null);
 });
 
 Deno.test("handler verifies but never applies Sandbox transactions to production", async () => {
@@ -146,7 +208,7 @@ Deno.test("handler verifies but never applies Sandbox transactions to production
         environment: "Sandbox",
       });
     },
-    applyVerifiedTransaction: () => {
+    applyVerifiedSubscription: () => {
       applied = true;
       return Promise.resolve({
         status: "applied",
@@ -169,7 +231,7 @@ Deno.test("handler verifies but never applies Sandbox transactions to production
 
 Deno.test("handler returns exact already_applied and owned_by_other status contracts", async () => {
   const alreadyHandler = createHandler(dependencies({
-    applyVerifiedTransaction: () =>
+    applyVerifiedSubscription: () =>
       Promise.resolve({
         status: "already_applied",
         credits_granted: 0,
@@ -184,7 +246,7 @@ Deno.test("handler returns exact already_applied and owned_by_other status contr
   assertEquals((await already.json()).status, "already_applied");
 
   const ownedHandler = createHandler(dependencies({
-    applyVerifiedTransaction: () =>
+    applyVerifiedSubscription: () =>
       Promise.reject(new EntitlementApplyError("owned_by_other", 409)),
   }));
   const owned = await ownedHandler(
