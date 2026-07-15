@@ -1,0 +1,107 @@
+import XCTest
+@testable import X5
+
+final class IAPCreditStoreTests: XCTestCase {
+    func testVisibleStoreContainsExactlyThreeOrderedConsumablePacks() {
+        XCTAssertEqual(
+            IAPProductCatalog.visibleCreditPacks.map(\.productID),
+            [
+                "com.x5studio.app.credits.1000",
+                "com.x5studio.app.credits.2000",
+                "com.x5studio.app.credits.5000"
+            ]
+        )
+        XCTAssertEqual(IAPProductCatalog.visibleCreditPacks.map(\.credits), [1_000, 2_000, 5_000])
+
+        for pack in IAPProductCatalog.visibleCreditPacks {
+            XCTAssertEqual(IAPProductCatalog.kind(for: pack.productID), .creditPack(pack))
+        }
+    }
+
+    func testLegacySubscriptionsStayLoadedAndRestorableButAreHiddenFromStore() {
+        let legacyIDs = Set(IAPProductCatalog.legacySubscriptionProductIDs)
+        let loadedIDs = Set(IAPProductCatalog.allProductIDs)
+        let restorableIDs = Set(IAPProductCatalog.restorableProductIDs)
+        let visibleIDs = Set(IAPProductCatalog.visibleCreditPacks.map(\.productID))
+
+        XCTAssertTrue(legacyIDs.isSubset(of: loadedIDs))
+        XCTAssertTrue(legacyIDs.isSubset(of: restorableIDs))
+        XCTAssertTrue(legacyIDs.isDisjoint(with: visibleIDs))
+    }
+
+    func testVerificationRemainsASeparateSubscriptionWithOneThousandTengeFallback() {
+        XCTAssertEqual(
+            IAPProductCatalog.kind(for: IAPService.verifiedMonthlyProductID),
+            .verificationSubscription
+        )
+        XCTAssertEqual(IAPService.verifiedDisplayPrice, "1000 ₸")
+        XCTAssertFalse(
+            IAPProductCatalog.visibleCreditPacks
+                .map(\.productID)
+                .contains(IAPService.verifiedMonthlyProductID)
+        )
+    }
+
+    func testCreditPackRoutesToBalanceDeliveryWithoutProActivation() {
+        let kind = IAPProductCatalog.kind(for: "com.x5studio.app.credits.2000")
+
+        XCTAssertEqual(kind, .creditPack(IAPCreditPack(
+            productID: "com.x5studio.app.credits.2000",
+            credits: 2_000,
+            fallbackDisplayPrice: "2000 ₸"
+        )))
+        XCTAssertFalse(kind.activatesLegacyPro)
+        XCTAssertTrue(IAPProductCatalog.kind(for: IAPService.proMonthlyProductID).activatesLegacyPro)
+    }
+
+    func testOnlyConsumablesAreReplayedFromTransactionUnfinished() {
+        for pack in IAPProductCatalog.visibleCreditPacks {
+            XCTAssertTrue(IAPProductCatalog.shouldReplayUnfinishedTransaction(productID: pack.productID))
+        }
+
+        XCTAssertFalse(
+            IAPProductCatalog.shouldReplayUnfinishedTransaction(productID: IAPService.proMonthlyProductID)
+        )
+        XCTAssertFalse(
+            IAPProductCatalog.shouldReplayUnfinishedTransaction(productID: IAPService.verifiedMonthlyProductID)
+        )
+    }
+
+    func testBackendFailureLeavesUnfinishedConsumablePendingForRetry() {
+        XCTAssertFalse(IAPEntitlementDisposition.failed.shouldFinishTransaction)
+        XCTAssertTrue(IAPEntitlementDisposition.applied.shouldFinishTransaction)
+    }
+
+    @MainActor
+    func testCreditStoreAndVerificationStringsExistInEverySupportedLanguage() {
+        let requiredKeys = [
+            "credit_store_title",
+            "credit_store_description",
+            "credit_store_balance",
+            "credit_store_pack_credits",
+            "credit_store_one_time",
+            "credit_store_buy",
+            "credit_store_unavailable",
+            "credit_store_success_title",
+            "credit_store_success_message",
+            "profile_store_title",
+            "profile_store_subtitle",
+            "verified_price_period",
+            "verified_purchase_note",
+            "verified_buy_button",
+            "verified_cancel_note",
+            "verified_restore",
+            "verified_manage",
+            "verified_subscription_terms"
+        ]
+
+        for language in AppLanguage.allCases {
+            for key in requiredKeys {
+                XCTAssertNotNil(
+                    LocalizationService.dict[language]?[key],
+                    "Missing \(key) for \(language.rawValue)"
+                )
+            }
+        }
+    }
+}
