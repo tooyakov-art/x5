@@ -178,10 +178,12 @@ struct VerifiedBadgeView: View {
             Text(loc.t("verified_active") + " " + formatDate(currentUser.profile?.verifiedUntil))
                 .font(.system(size: 13))
                 .foregroundColor(.white.opacity(0.7))
-            Button(loc.t("verified_manage")) {
-                openSubscriptionManagement()
+            if iap.activeSubscriptionSnapshot.hasActiveVerifiedSubscription {
+                Button(loc.t("verified_manage")) {
+                    openSubscriptionManagement()
+                }
+                .buttonStyle(.bordered)
             }
-            .buttonStyle(.bordered)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 18)

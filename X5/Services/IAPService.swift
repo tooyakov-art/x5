@@ -117,10 +117,30 @@ enum IAPSettingsPurchaseVisibilityPolicy {
     static let shouldShowRestorePurchases = true
 
     static func shouldShowManageSubscription(
-        isLegacyPro: Bool,
-        hasActiveVerifiedBadge: Bool
+        hasActiveLegacyAppStoreSubscription: Bool,
+        hasActiveVerifiedAppStoreSubscription: Bool
     ) -> Bool {
-        isLegacyPro || hasActiveVerifiedBadge
+        hasActiveLegacyAppStoreSubscription || hasActiveVerifiedAppStoreSubscription
+    }
+}
+
+struct IAPActiveSubscriptionSnapshot: Equatable, Sendable {
+    let productIDs: Set<String>
+
+    init<S: Sequence>(productIDs: S) where S.Element == String {
+        self.productIDs = Set(productIDs)
+    }
+
+    var hasActiveLegacySubscription: Bool {
+        !productIDs.isDisjoint(with: IAPProductCatalog.legacySubscriptionProductIDs)
+    }
+
+    var hasActiveVerifiedSubscription: Bool {
+        productIDs.contains(IAPProductCatalog.verifiedMonthlyProductID)
+    }
+
+    var hasAnyActiveSubscription: Bool {
+        hasActiveLegacySubscription || hasActiveVerifiedSubscription
     }
 }
 
@@ -138,6 +158,9 @@ final class IAPService: ObservableObject {
     nonisolated static let verifiedDisplayPrice = "1000 ₸"
 
     @Published private(set) var products: [String: Product] = [:]
+    @Published private(set) var activeSubscriptionSnapshot = IAPActiveSubscriptionSnapshot(
+        productIDs: [String]()
+    )
     @Published private(set) var isPurchasing: Bool = false
     @Published var lastError: String?
 
@@ -274,8 +297,12 @@ final class IAPService: ObservableObject {
     }
 
     func syncCurrentEntitlements(source: String) async {
+        var activeSubscriptionProductIDs = Set<String>()
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else { continue }
+            if IAPProductCatalog.restorableProductIDs.contains(transaction.productID) {
+                activeSubscriptionProductIDs.insert(transaction.productID)
+            }
             let applyResult = await processVerifiedTransaction(
                 transaction: transaction,
                 signedTransaction: result.jwsRepresentation,
@@ -285,6 +312,9 @@ final class IAPService: ObservableObject {
                 await transaction.finish()
             }
         }
+        activeSubscriptionSnapshot = IAPActiveSubscriptionSnapshot(
+            productIDs: activeSubscriptionProductIDs
+        )
     }
 
     /// Consumables are not part of `Transaction.currentEntitlements`. StoreKit keeps

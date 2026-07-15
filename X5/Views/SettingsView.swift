@@ -68,8 +68,10 @@ struct SettingsView: View {
                     }
 
                     if IAPSettingsPurchaseVisibilityPolicy.shouldShowManageSubscription(
-                        isLegacyPro: currentUser.profile?.isPro == true,
-                        hasActiveVerifiedBadge: currentUser.profile?.hasActiveVerifiedBadge == true
+                        hasActiveLegacyAppStoreSubscription:
+                            iap.activeSubscriptionSnapshot.hasActiveLegacySubscription,
+                        hasActiveVerifiedAppStoreSubscription:
+                            iap.activeSubscriptionSnapshot.hasActiveVerifiedSubscription
                     ) {
                         Button {
                             if let url = URL(string: "itms-apps://apps.apple.com/account/subscriptions") {

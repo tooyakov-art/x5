@@ -76,21 +76,34 @@ final class IAPCreditStoreTests: XCTestCase {
         XCTAssertTrue(IAPSettingsPurchaseVisibilityPolicy.shouldShowRestorePurchases)
         XCTAssertFalse(
             IAPSettingsPurchaseVisibilityPolicy.shouldShowManageSubscription(
-                isLegacyPro: false,
-                hasActiveVerifiedBadge: false
+                hasActiveLegacyAppStoreSubscription: false,
+                hasActiveVerifiedAppStoreSubscription: false
             )
         )
         XCTAssertTrue(
             IAPSettingsPurchaseVisibilityPolicy.shouldShowManageSubscription(
-                isLegacyPro: true,
-                hasActiveVerifiedBadge: false
+                hasActiveLegacyAppStoreSubscription: true,
+                hasActiveVerifiedAppStoreSubscription: false
             )
         )
         XCTAssertTrue(
             IAPSettingsPurchaseVisibilityPolicy.shouldShowManageSubscription(
-                isLegacyPro: false,
-                hasActiveVerifiedBadge: true
+                hasActiveLegacyAppStoreSubscription: false,
+                hasActiveVerifiedAppStoreSubscription: true
             )
+        )
+    }
+
+    func testStoreKitEntitlementSnapshotSeparatesLegacyAndVerifiedOwnership() {
+        let snapshot = IAPActiveSubscriptionSnapshot(productIDs: [
+            IAPService.proMonthlyProductID,
+            IAPService.verifiedMonthlyProductID
+        ])
+
+        XCTAssertTrue(snapshot.hasActiveLegacySubscription)
+        XCTAssertTrue(snapshot.hasActiveVerifiedSubscription)
+        XCTAssertFalse(
+            IAPActiveSubscriptionSnapshot(productIDs: [String]()).hasAnyActiveSubscription
         )
     }
 
