@@ -16,7 +16,7 @@ jobs:
       ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
       ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
       BUNDLE_ID: com.x5studio.app
-      SCREENSHOT_PATH: fastlane/iap-screenshots/x5-pro-monthly.jpg
+      SCREENSHOT_PATH: fastlane/iap-screenshots/x5-credit-store-review.png
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -545,6 +545,34 @@ jobs:
               print(f"Review screenshot: {filename} size={size} md5={checksum} mime={mime}")
 
               for spec, sub_id in configured:
+                  existing_screenshots = list_all(
+                      f"/subscriptionAppStoreReviewScreenshots?filter[subscription]={sub_id}&limit=20"
+                  )
+                  current = next(
+                      (
+                          shot for shot in existing_screenshots
+                          if shot.get("attributes", {}).get("sourceFileChecksum") == checksum
+                      ),
+                      None,
+                  )
+                  if current:
+                      print(
+                          f"Keeping current review screenshot for {spec['product_id']} "
+                          f"-> {current['id']}"
+                      )
+                      continue
+
+                  for stale in existing_screenshots:
+                      api(
+                          "DELETE",
+                          f"/subscriptionAppStoreReviewScreenshots/{stale['id']}",
+                          expected=(204,),
+                      )
+                      print(
+                          f"Removed stale review screenshot for {spec['product_id']} "
+                          f"-> {stale['id']}"
+                      )
+
                   reservation_response = requests.post(
                       f"{BASE}/subscriptionAppStoreReviewScreenshots",
                       headers={**headers(), "Content-Type": "application/json"},
@@ -559,9 +587,6 @@ jobs:
                       },
                       timeout=60,
                   )
-                  if reservation_response.status_code == 409 and "Screenshot already exists" in reservation_response.text:
-                      print(f"Review screenshot already exists for {spec['product_id']}, keeping it")
-                      continue
                   if reservation_response.status_code != 201:
                       print(f"POST {BASE}/subscriptionAppStoreReviewScreenshots -> HTTP {reservation_response.status_code}")
                       print(reservation_response.text[:2000])
