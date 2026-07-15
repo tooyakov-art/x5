@@ -1,0 +1,29 @@
+name: ASC configure credit store
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, codex/x5-course-client-fixes-20260714]
+    paths:
+      - ".github/workflows/asc-configure-credit-store.yml"
+      - "scripts/asc_configure_credit_store.py"
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - name: Verify configuration contract
+        run: python -m unittest discover -s scripts/tests -p "test_asc_configure_credit_store.py"
+      - name: Configure consumable credit packs
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+        run: python scripts/asc_configure_credit_store.py
+

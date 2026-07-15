@@ -83,7 +83,7 @@ jobs:
                   "product_id": "com.x5studio.app.verified.monthly",
                   "display_name": "X5 Verified Badge",
                   "description": "Blue verified badge next to the creator name.",
-                  "price_kaz": Decimal("5000"),
+                  "price_kaz": Decimal("1000"),
                   "group_reference": "X5 Verified Badge",
                   "group_locale_name": "X5 verified badge",
                   "group_level": 1,
@@ -435,11 +435,37 @@ jobs:
               scheduled_prices = 0
               for global_price_point_id, global_point in price_points_to_set.items():
                   territory = territory_id(global_point)
-                  if territory and territory in current_territories:
-                      skipped_prices += 1
-                      continue
                   if global_price_point_id in current_price_point_ids:
                       skipped_prices += 1
+                      continue
+                  if territory and territory in current_territories:
+                      start_date = (date.today() + timedelta(days=1)).isoformat()
+                      price_payload = {
+                          "data": {
+                              "type": "subscriptionPrices",
+                              "attributes": {
+                                  "startDate": start_date,
+                                  "preserveCurrentPrice": False,
+                              },
+                              "relationships": {
+                                  "subscription": {"data": {"type": "subscriptions", "id": sub_id}},
+                                  "subscriptionPricePoint": {
+                                      "data": {"type": "subscriptionPricePoints", "id": global_price_point_id}
+                                  },
+                              },
+                          }
+                      }
+                      scheduled = requests.post(
+                          f"{BASE}/subscriptionPrices",
+                          headers={**headers(), "Content-Type": "application/json"},
+                          json=price_payload,
+                          timeout=60,
+                      )
+                      if scheduled.status_code != 201:
+                          print(f"POST {BASE}/subscriptionPrices -> HTTP {scheduled.status_code}")
+                          print(scheduled.text[:2000])
+                          raise SystemExit(1)
+                      scheduled_prices += 1
                       continue
                   price_payload = {
                       "data": {
