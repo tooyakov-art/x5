@@ -51,6 +51,10 @@ Deno.test("Apple consumable migration is private, exact-once, and server-priced"
     /pg_advisory_xact_lock/i,
     "transaction replay must be serialized",
   );
+  assert(
+    !/v_existing\.signed_date\s*<>\s*p_signed_date/i.test(source),
+    "a valid transaction replay must not conflict only because Apple re-signed its JWS",
+  );
   assertMatch(
     source,
     /'status',\s*'already_applied'[\s\S]+?'credits_granted',\s*0/i,

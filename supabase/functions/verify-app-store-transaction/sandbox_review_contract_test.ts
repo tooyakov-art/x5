@@ -76,6 +76,10 @@ Deno.test("Sandbox App Review is isolated behind a private exact allowlist", asy
     /app_account_token = user_id/i,
     "Sandbox transaction must be bound to the authenticated account",
   );
+  assert(
+    !/v_existing\.signed_date\s*<>\s*p_signed_date/i.test(source),
+    "a valid Sandbox transaction replay must tolerate a freshly signed JWS",
+  );
   assertMatch(
     source,
     /revoke execute on function public\.apply_verified_app_store_sandbox_review_transaction[\s\S]+?from public, anon, authenticated/i,

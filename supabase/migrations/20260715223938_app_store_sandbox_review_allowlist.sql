@@ -270,7 +270,6 @@ begin
        or v_existing.app_account_token <> p_app_account_token
        or v_existing.purchase_date <> p_purchase_date
        or v_existing.expires_date is distinct from p_expires_date
-       or v_existing.signed_date <> p_signed_date
        or v_existing.quantity is distinct from p_quantity then
       raise exception using errcode = '22023', message = 'transaction_id_conflict';
     end if;

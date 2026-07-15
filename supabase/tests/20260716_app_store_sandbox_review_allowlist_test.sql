@@ -145,7 +145,7 @@ begin
     v_uid,
     v_purchase_date,
     null,
-    v_signed_date,
+    v_signed_date + interval '1 second',
     null,
     1
   );

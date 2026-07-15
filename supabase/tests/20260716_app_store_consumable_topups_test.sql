@@ -124,7 +124,7 @@ begin
     'Production',
     v_uid,
     v_purchase_date,
-    v_signed_date,
+    v_signed_date + interval '1 second',
     null,
     1
   );
