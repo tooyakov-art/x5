@@ -82,6 +82,16 @@ Deno.test("Sandbox App Review is isolated behind a private exact allowlist", asy
   );
   assertMatch(
     source,
+    /revoke all privileges on table public\.app_store_sandbox_review_accounts\s+from service_role/i,
+    "default service-role grants must be removed from the review allowlist",
+  );
+  assertMatch(
+    source,
+    /revoke all privileges on table public\.app_store_sandbox_review_transactions\s+from service_role/i,
+    "default service-role grants must be removed from the Sandbox ledger",
+  );
+  assertMatch(
+    source,
     /revoke execute on function public\.apply_verified_app_store_sandbox_review_transaction[\s\S]+?from public, anon, authenticated/i,
     "Sandbox review RPC must not be client-callable",
   );

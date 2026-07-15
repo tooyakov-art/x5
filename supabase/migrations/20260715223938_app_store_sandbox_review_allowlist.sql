@@ -118,6 +118,10 @@ revoke all privileges on table public.app_store_sandbox_review_accounts
   from public, anon, authenticated;
 revoke all privileges on table public.app_store_sandbox_review_transactions
   from public, anon, authenticated;
+revoke all privileges on table public.app_store_sandbox_review_accounts
+  from service_role;
+revoke all privileges on table public.app_store_sandbox_review_transactions
+  from service_role;
 grant select on table public.app_store_sandbox_review_accounts to service_role;
 grant select, insert on table public.app_store_sandbox_review_transactions
   to service_role;

@@ -91,6 +91,11 @@ Deno.test("Apple consumable migration is private, exact-once, and server-priced"
   );
   assertMatch(
     source,
+    /revoke all privileges on table public\.app_store_consumable_transactions\s+from service_role/i,
+    "default Supabase grants must be removed before append-only service-role grants",
+  );
+  assertMatch(
+    source,
     /grant select,\s*insert\s+on table public\.app_store_consumable_transactions\s+to service_role/i,
     "service role needs append-only ledger access",
   );

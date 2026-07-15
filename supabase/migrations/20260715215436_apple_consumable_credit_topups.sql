@@ -51,6 +51,8 @@ alter table public.app_store_consumable_transactions force row level security;
 
 revoke all privileges on table public.app_store_consumable_transactions
   from public, anon, authenticated;
+revoke all privileges on table public.app_store_consumable_transactions
+  from service_role;
 grant select, insert
   on table public.app_store_consumable_transactions
   to service_role;
