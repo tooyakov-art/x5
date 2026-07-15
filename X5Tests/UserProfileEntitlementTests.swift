@@ -31,6 +31,39 @@ final class UserProfileEntitlementTests: XCTestCase {
         XCTAssertTrue(specialist.isPro)
     }
 
+    func testVerifiedBadgeRequiresFlagAndFutureExpirationEverywhere() {
+        let now = ISO8601DateFormatter().date(from: "2026-07-16T00:00:00Z")!
+
+        XCTAssertTrue(UserProfile.isVerifiedBadgeActive(
+            isVerified: true,
+            until: "2026-08-16T00:00:00Z",
+            now: now
+        ))
+        XCTAssertFalse(UserProfile.isVerifiedBadgeActive(
+            isVerified: true,
+            until: "2026-06-16T00:00:00Z",
+            now: now
+        ))
+        XCTAssertFalse(UserProfile.isVerifiedBadgeActive(
+            isVerified: false,
+            until: "2026-08-16T00:00:00Z",
+            now: now
+        ))
+
+        let active = makeSpecialist(
+            plan: "free",
+            isVerified: true,
+            verifiedUntil: "2026-08-16T00:00:00Z"
+        )
+        let expired = makeSpecialist(
+            plan: "free",
+            isVerified: true,
+            verifiedUntil: "2026-06-16T00:00:00Z"
+        )
+        XCTAssertTrue(active.hasActiveVerifiedBadge(at: now))
+        XCTAssertFalse(expired.hasActiveVerifiedBadge(at: now))
+    }
+
     private func makeProfile(plan: String, endDate: String?) -> UserProfile {
         UserProfile(
             id: "entitlement-test-user",
@@ -60,7 +93,11 @@ final class UserProfileEntitlementTests: XCTestCase {
         )
     }
 
-    private func makeSpecialist(plan: String) -> HubSpecialist {
+    private func makeSpecialist(
+        plan: String,
+        isVerified: Bool? = nil,
+        verifiedUntil: String? = nil
+    ) -> HubSpecialist {
         HubSpecialist(
             id: "hub-entitlement-test-user",
             name: nil,
@@ -71,8 +108,8 @@ final class UserProfileEntitlementTests: XCTestCase {
             plan: plan,
             services: nil,
             socialLinks: nil,
-            isVerified: nil,
-            verifiedUntil: nil
+            isVerified: isVerified,
+            verifiedUntil: verifiedUntil
         )
     }
 }

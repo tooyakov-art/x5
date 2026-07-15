@@ -104,13 +104,20 @@ struct UserProfile: Codable, Equatable, Identifiable {
 
     /// True only if is_verified is set AND the paid period hasn't expired.
     var hasActiveVerifiedBadge: Bool {
-        guard isVerified == true else { return false }
-        guard let untilStr = verifiedUntil else { return false }
+        Self.isVerifiedBadgeActive(isVerified: isVerified, until: verifiedUntil)
+    }
+
+    static func isVerifiedBadgeActive(
+        isVerified: Bool?,
+        until untilStr: String?,
+        now: Date = Date()
+    ) -> Bool {
+        guard isVerified == true, let untilStr else { return false }
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let until = f.date(from: untilStr) ?? ISO8601DateFormatter().date(from: untilStr)
         guard let until else { return false }
-        return until > Date()
+        return until > now
     }
 }
 

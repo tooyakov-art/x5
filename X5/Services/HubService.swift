@@ -20,6 +20,18 @@ struct HubSpecialist: Codable, Identifiable, Hashable {
         UserProfile.isPaidPlanActive(plan: plan, endDate: subscriptionEndDate)
     }
 
+    var hasActiveVerifiedBadge: Bool {
+        hasActiveVerifiedBadge(at: Date())
+    }
+
+    func hasActiveVerifiedBadge(at now: Date) -> Bool {
+        UserProfile.isVerifiedBadgeActive(
+            isVerified: isVerified,
+            until: verifiedUntil,
+            now: now
+        )
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, name, nickname, avatar, bio, plan, services
         case specialistCategory = "specialist_category"

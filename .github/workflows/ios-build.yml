@@ -10,7 +10,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 40
     env:
-      SCHEME: X5
+      SCHEME: X5-Course-CI
       BUNDLE_ID: com.x5studio.app
       ARCHIVE_PATH: ${{ github.workspace }}/build/X5.xcarchive
       EXPORT_PATH: ${{ github.workspace }}/build/export

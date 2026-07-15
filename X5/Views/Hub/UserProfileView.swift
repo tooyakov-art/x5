@@ -163,7 +163,7 @@ struct UserProfileView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.72)
                             .shadow(color: .black.opacity(0.5), radius: 10, x: 0, y: 4)
-                        if (profile?.hasActiveVerifiedBadge ?? (fallback?.isVerified == true)) {
+                        if (profile?.hasActiveVerifiedBadge ?? fallback?.hasActiveVerifiedBadge ?? false) {
                             VerifiedChip(size: 18)
                         }
                     }

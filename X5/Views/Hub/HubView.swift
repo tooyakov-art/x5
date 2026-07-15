@@ -785,7 +785,7 @@ private struct SpecialistRow: View {
                     Text(person.name ?? person.nickname ?? "Xfive marketing")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
-                    if person.isVerified == true {
+                    if person.hasActiveVerifiedBadge {
                         VerifiedChip(size: 12)
                     }
                     if person.isPro {
