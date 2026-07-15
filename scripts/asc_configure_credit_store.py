@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import os
 import time
 from dataclasses import dataclass
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 
@@ -58,9 +60,7 @@ def build_iap_create_payload(app_id: str, pack: CreditPack) -> dict[str, Any]:
     }
 
 
-def build_availability_payload(
-    iap_id: str, availability_id: str | None = None
-) -> dict[str, Any]:
+def build_availability_payload(iap_id: str) -> dict[str, Any]:
     relationships: dict[str, Any] = {
         "availableTerritories": {
             "data": [{"type": "territories", "id": BASE_TERRITORY}]
@@ -71,13 +71,26 @@ def build_availability_payload(
         "attributes": {"availableInNewTerritories": False},
         "relationships": relationships,
     }
-    if availability_id:
-        data["id"] = availability_id
-    else:
-        relationships["inAppPurchase"] = {
-            "data": {"type": "inAppPurchases", "id": iap_id}
-        }
+    relationships["inAppPurchase"] = {
+        "data": {"type": "inAppPurchases", "id": iap_id}
+    }
     return {"data": data}
+
+
+def review_screenshot_reservation_payload(
+    iap_id: str, filename: str, size: int
+) -> dict[str, Any]:
+    return {
+        "data": {
+            "type": "inAppPurchaseAppStoreReviewScreenshots",
+            "attributes": {"fileName": filename, "fileSize": size},
+            "relationships": {
+                "inAppPurchaseV2": {
+                    "data": {"type": "inAppPurchases", "id": iap_id}
+                }
+            },
+        }
+    }
 
 
 def build_price_schedule_payload(iap_id: str, price_point_id: str) -> dict[str, Any]:
@@ -254,25 +267,35 @@ def ensure_localization(
 
 def ensure_availability(api: AppStoreConnect, iap_id: str) -> None:
     try:
-        current = api.request(
+        response = api.request(
             "GET",
             f"/v2/inAppPurchases/{iap_id}/inAppPurchaseAvailability"
             "?include=availableTerritories&limit[availableTerritories]=50",
-        ).get("data")
+        )
     except RuntimeError as error:
         if "HTTP 404" not in str(error):
             raise
-        current = None
+        response = {}
+
+    current = response.get("data")
 
     if current:
-        availability_id = current["id"]
-        api.request(
-            "PATCH",
-            f"/v1/inAppPurchaseAvailabilities/{availability_id}",
-            payload=build_availability_payload(iap_id, availability_id),
+        territories = {
+            item.get("id")
+            for item in response.get("included", [])
+            if item.get("type") == "territories"
+        }
+        available_in_new = current.get("attributes", {}).get(
+            "availableInNewTerritories"
         )
-        print(f"Updated {BASE_TERRITORY} availability for {iap_id}")
-        return
+        if territories == {BASE_TERRITORY} and available_in_new is False:
+            print(f"Keeping existing {BASE_TERRITORY} availability for {iap_id}")
+            return
+        raise RuntimeError(
+            f"{iap_id} already has availability {sorted(territories)} "
+            f"(availableInNewTerritories={available_in_new}); App Store Connect "
+            "availability cannot be updated through the API, so correct it manually"
+        )
 
     api.request(
         "POST",
@@ -281,6 +304,83 @@ def ensure_availability(api: AppStoreConnect, iap_id: str) -> None:
         payload=build_availability_payload(iap_id),
     )
     print(f"Created {BASE_TERRITORY} availability for {iap_id}")
+
+
+def ensure_review_screenshot(
+    api: AppStoreConnect, iap_id: str, screenshot_path: Path
+) -> None:
+    try:
+        existing = api.request(
+            "GET", f"/v2/inAppPurchases/{iap_id}/appStoreReviewScreenshot"
+        ).get("data")
+    except RuntimeError as error:
+        if "HTTP 404" not in str(error):
+            raise
+        existing = None
+
+    if existing:
+        delivery = existing.get("attributes", {}).get("assetDeliveryState")
+        state = delivery.get("state") if isinstance(delivery, dict) else delivery
+        if state in {"COMPLETE", "UPLOADED"}:
+            print(f"Keeping uploaded review screenshot for {iap_id} ({state})")
+            return
+        api.request(
+            "DELETE",
+            f"/v1/inAppPurchaseAppStoreReviewScreenshots/{existing['id']}",
+            expected=(204,),
+        )
+        print(f"Removed incomplete review screenshot for {iap_id} ({state})")
+
+    if not screenshot_path.is_file():
+        raise RuntimeError(f"Review screenshot not found: {screenshot_path}")
+
+    screenshot = screenshot_path.read_bytes()
+    checksum = hashlib.md5(screenshot).hexdigest()
+    reservation = api.request(
+        "POST",
+        "/v1/inAppPurchaseAppStoreReviewScreenshots",
+        expected=(201,),
+        payload=review_screenshot_reservation_payload(
+            iap_id, screenshot_path.name, len(screenshot)
+        ),
+    )["data"]
+    asset_id = reservation["id"]
+    for operation in reservation.get("attributes", {}).get("uploadOperations", []):
+        offset = operation["offset"]
+        chunk = screenshot[offset : offset + operation["length"]]
+        upload_headers = {
+            header["name"]: header["value"]
+            for header in operation.get("requestHeaders", [])
+        }
+        upload = api.requests.request(
+            operation["method"],
+            operation["url"],
+            headers=upload_headers,
+            data=chunk,
+            timeout=60,
+        )
+        if upload.status_code >= 300:
+            raise RuntimeError(
+                f"Review screenshot upload failed -> HTTP {upload.status_code}: "
+                f"{upload.text[:1000]}"
+            )
+
+    api.request(
+        "PATCH",
+        f"/v1/inAppPurchaseAppStoreReviewScreenshots/{asset_id}",
+        payload={
+            "data": {
+                "type": "inAppPurchaseAppStoreReviewScreenshots",
+                "id": asset_id,
+                "attributes": {
+                    "uploaded": True,
+                    "sourceFileChecksum": checksum,
+                },
+            }
+        },
+    )
+    api.request("GET", f"/v1/inAppPurchaseAppStoreReviewScreenshots/{asset_id}")
+    print(f"Uploaded review screenshot for {iap_id} -> {asset_id}")
 
 
 def ensure_initial_price(
@@ -326,6 +426,7 @@ def ensure_initial_price(
 
 def configure() -> None:
     api = AppStoreConnect()
+    screenshot_path = Path(os.environ["SCREENSHOT_PATH"])
     apps = api.request("GET", f"/v1/apps?filter[bundleId]={BUNDLE_ID}").get("data", [])
     if not apps:
         raise RuntimeError(f"No App Store Connect app found for {BUNDLE_ID}")
@@ -387,6 +488,7 @@ def configure() -> None:
         )
         ensure_availability(api, iap_id)
         ensure_initial_price(api, iap_id, pack.price_kaz)
+        ensure_review_screenshot(api, iap_id, screenshot_path)
 
     print("Configured App Store credit packs:")
     for pack in CREDIT_PACKS:

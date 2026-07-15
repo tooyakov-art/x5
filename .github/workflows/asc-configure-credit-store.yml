@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/asc-configure-credit-store.yml"
       - "scripts/asc_configure_credit_store.py"
+      - "fastlane/iap-screenshots/x5-credit-store-review.png"
 
 jobs:
   configure:
@@ -25,5 +26,5 @@ jobs:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
           ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+          SCREENSHOT_PATH: fastlane/iap-screenshots/x5-credit-store-review.png
         run: python scripts/asc_configure_credit_store.py
-

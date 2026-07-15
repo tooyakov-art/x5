@@ -41,7 +41,7 @@ class CreditStoreConfigurationTests(unittest.TestCase):
         self.assertNotIn("availableInAllTerritories", data["attributes"])
         self.assertEqual(data["relationships"]["app"]["data"]["id"], "app-1")
 
-    def test_availability_payload_can_create_or_update_kaz_only(self):
+    def test_availability_payload_creates_kaz_only(self):
         create_payload = MODULE.build_availability_payload("iap-1")
         create_data = create_payload["data"]
         self.assertNotIn("id", create_data)
@@ -50,8 +50,55 @@ class CreditStoreConfigurationTests(unittest.TestCase):
             [{"type": "territories", "id": "KAZ"}],
         )
 
-        update_payload = MODULE.build_availability_payload("iap-1", "availability-1")
-        self.assertEqual(update_payload["data"]["id"], "availability-1")
+    def test_existing_kaz_only_availability_is_kept_without_update(self):
+        class FakeAPI:
+            def __init__(self):
+                self.calls = []
+
+            def request(self, method, path, **kwargs):
+                self.calls.append((method, path, kwargs))
+                return {
+                    "data": {
+                        "type": "inAppPurchaseAvailabilities",
+                        "id": "availability-1",
+                        "attributes": {"availableInNewTerritories": False},
+                    },
+                    "included": [{"type": "territories", "id": "KAZ"}],
+                }
+
+        api = FakeAPI()
+        MODULE.ensure_availability(api, "iap-1")
+        self.assertEqual([call[0] for call in api.calls], ["GET"])
+
+    def test_existing_wrong_availability_fails_instead_of_unsupported_patch(self):
+        class FakeAPI:
+            def request(self, method, path, **kwargs):
+                return {
+                    "data": {
+                        "type": "inAppPurchaseAvailabilities",
+                        "id": "availability-1",
+                        "attributes": {"availableInNewTerritories": True},
+                    },
+                    "included": [
+                        {"type": "territories", "id": "KAZ"},
+                        {"type": "territories", "id": "USA"},
+                    ],
+                }
+
+        with self.assertRaisesRegex(RuntimeError, "cannot be updated"):
+            MODULE.ensure_availability(FakeAPI(), "iap-1")
+
+    def test_review_screenshot_reservation_targets_v2_purchase(self):
+        payload = MODULE.review_screenshot_reservation_payload(
+            "iap-1", "store.png", 123
+        )
+        data = payload["data"]
+        self.assertEqual(data["type"], "inAppPurchaseAppStoreReviewScreenshots")
+        self.assertEqual(data["attributes"], {"fileName": "store.png", "fileSize": 123})
+        self.assertEqual(
+            data["relationships"]["inAppPurchaseV2"]["data"],
+            {"type": "inAppPurchases", "id": "iap-1"},
+        )
 
     def test_price_schedule_uses_kaz_base_and_selected_price_point(self):
         payload = MODULE.build_price_schedule_payload("iap-1", "point-1000")
