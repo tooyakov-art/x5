@@ -81,7 +81,7 @@ def build_availability_payload(
 
 
 def build_price_schedule_payload(iap_id: str, price_point_id: str) -> dict[str, Any]:
-    manual_price_id = f"manual-price-{iap_id}-0"
+    manual_price_id = f"${{manual-price-{iap_id}-0}}"
     return {
         "data": {
             "type": "inAppPurchasePriceSchedules",

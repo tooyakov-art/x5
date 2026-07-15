@@ -58,6 +58,11 @@ class CreditStoreConfigurationTests(unittest.TestCase):
         relationships = payload["data"]["relationships"]
         self.assertEqual(relationships["baseTerritory"]["data"]["id"], "KAZ")
         included = payload["included"][0]
+        self.assertTrue(included["id"].startswith("${"))
+        self.assertTrue(included["id"].endswith("}"))
+        self.assertEqual(
+            relationships["manualPrices"]["data"][0]["id"], included["id"]
+        )
         self.assertIsNone(included["attributes"]["startDate"])
         self.assertEqual(
             included["relationships"]["inAppPurchasePricePoint"]["data"]["id"],
