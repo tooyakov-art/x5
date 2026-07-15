@@ -52,6 +52,7 @@ jobs:
                   "group_locale_name": "X5 subscriptions",
                   "group_level": 3,
                   "review_note": "Lite monthly plan shown in the app paywall. User gets paid access and 1000 credits.",
+                  "legacy_read_only": True,
               },
               {
                   "key": "pro",
@@ -64,6 +65,7 @@ jobs:
                   "group_locale_name": "X5 subscriptions",
                   "group_level": 2,
                   "review_note": "Pro monthly plan shown in the app paywall. User gets full paid access and 2000 credits.",
+                  "legacy_read_only": True,
               },
               {
                   "key": "max",
@@ -76,6 +78,7 @@ jobs:
                   "group_locale_name": "X5 subscriptions",
                   "group_level": 1,
                   "review_note": "Max monthly plan shown in the app paywall. User gets full paid access and 5000 credits.",
+                  "legacy_read_only": True,
               },
               {
                   "key": "verified",
@@ -271,21 +274,26 @@ jobs:
                   )
                   print(f"Created existing group localization en-US for group {group_id}")
 
-          group_specs = sorted({(spec["group_reference"], spec["group_locale_name"]) for spec in PRODUCTS})
+          group_specs = sorted({
+              (spec["group_reference"], spec["group_locale_name"])
+              for spec in PRODUCTS
+              if not spec.get("legacy_read_only")
+          })
           group_ids = {
               group_spec: ensure_group(group_spec[0], group_spec[1])
               for group_spec in group_specs
           }
           existing_subs = []
           for group_ref in app_subscription_group_refs():
-              group = api("GET", f"/subscriptionGroups/{group_ref['id']}")["data"]
-              reference_name = group.get("attributes", {}).get("referenceName") or "X5 subscriptions"
-              ensure_existing_group_localization(group_ref["id"], reference_name)
               existing_subs.extend(list_all(f"/subscriptionGroups/{group_ref['id']}/subscriptions?limit=200"))
           by_product = {sub["attributes"].get("productId"): sub for sub in existing_subs}
           configured = []
 
           for spec in PRODUCTS:
+              if spec.get("legacy_read_only"):
+                  print(f"Keeping legacy subscription unchanged: {spec['product_id']}")
+                  continue
+
               sub = by_product.get(spec["product_id"])
               if sub:
                   sub_id = sub["id"]

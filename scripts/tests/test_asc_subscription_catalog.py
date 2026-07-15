@@ -32,6 +32,10 @@ class SubscriptionCatalogTests(unittest.TestCase):
     def test_verified_monthly_price_is_one_thousand_kzt(self):
         self.assertEqual(self.price_for("com.x5studio.app.verified.monthly"), 1_000)
 
+    def test_legacy_subscriptions_are_catalogued_but_not_mutated(self):
+        self.assertEqual(self.source.count('"legacy_read_only": True'), 3)
+        self.assertIn('if spec.get("legacy_read_only"):', self.source)
+
     def test_scheduled_price_changes_respect_apples_two_day_minimum(self):
         self.assertNotIn("timedelta(days=1)", self.source)
         self.assertGreaterEqual(self.source.count("timedelta(days=2)"), 2)
