@@ -15,6 +15,7 @@ struct HubView: View {
     @StateObject private var chats = ChatsService()
     @State private var segment: Segment = .specialists
     @State private var category: String? = nil
+    @State private var taskBrowseState = HubTaskBrowseState()
     @State private var showingPostTask = false
     @State private var showingEditProfile = false
     @State private var openingChatWith: String? = nil
@@ -22,10 +23,6 @@ struct HubView: View {
     @State private var chatError: String? = nil
     @State private var selectedCountry: HubCountry = .kazakhstan
     @State private var taskCategoriesExpanded = false
-    @State private var didApplyPreferredCategory = false
-    @State private var didAnimateCategoryRail = false
-
-    private let allTasksCategoryId = "__all_tasks"
 
     private var currentRole: String {
         (currentUser.profile?.userRole ?? "").lowercased()
@@ -37,16 +34,6 @@ struct HubView: View {
 
     private var visibleTaskCategories: [HubCategory] {
         taskCategoriesExpanded ? HubCategories.all : Array(HubCategories.all.prefix(7))
-    }
-
-    private var preferredHubCategory: String? {
-        currentUser.profile?.specialistCategory?
-            .map(normalizedHubCategory)
-            .first { id in HubCategories.all.contains { $0.id == id } }
-    }
-
-    private var hasPreferredHubCategory: Bool {
-        preferredHubCategory != nil
     }
 
     var body: some View {
@@ -69,13 +56,10 @@ struct HubView: View {
                         addPortfolioButton
                     }
                     countrySelector(messageKey: "hub_country_specialists")
-                    if category != nil {
-                        categoryRail
-                    }
                 } else if segment == .tasks {
                     createTaskButton
                     countrySelector(messageKey: "hub_country_orders")
-                    if category != nil {
+                    if taskBrowseState.isShowingResults {
                         categoryRail
                     }
                 }
@@ -97,15 +81,9 @@ struct HubView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .task {
-                applyPreferredCategoryIfNeeded()
                 await repairCurrentHubProfileIfNeeded()
                 await service.loadSpecialists()
                 await service.loadTasks(accessToken: auth.accessToken)
-            }
-            .onChange(of: currentUser.profile?.specialistCategory) { _ in
-                didApplyPreferredCategory = false
-                didAnimateCategoryRail = false
-                applyPreferredCategoryIfNeeded()
             }
             .sheet(isPresented: $showingPostTask) {
                 CreateTaskView(onCreated: {
@@ -223,81 +201,64 @@ struct HubView: View {
     }
 
     private var categoryRail: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 9) {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 9) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        taskBrowseState.showCategories()
+                        taskCategoriesExpanded = false
+                    }
+                } label: {
+                    CategoryChip(title: loc.t("hub_back_to_categories"),
+                                 systemImage: "chevron.left",
+                                 count: nil,
+                                 isSelected: false)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("hub-task-results-back")
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        taskBrowseState.showAllResults()
+                    }
+                } label: {
+                    CategoryChip(title: loc.t("hub_all"),
+                                 systemImage: "line.3.horizontal.decrease.circle",
+                                 count: totalVisibleCount,
+                                 isSelected: taskBrowseState.selectedCategoryId == nil)
+                }
+                .buttonStyle(.plain)
+                .id("cat-all")
+
+                ForEach(visibleTaskCategories) { cat in
                     Button {
                         withAnimation(.easeInOut(duration: 0.18)) {
-                            category = nil
-                            taskCategoriesExpanded = false
+                            taskBrowseState.showResults(for: cat.id)
                         }
                     } label: {
-                        CategoryChip(title: loc.t("hub_all"),
-                                     systemImage: "line.3.horizontal.decrease.circle",
-                                     count: totalVisibleCount,
-                                     isSelected: segment == .tasks && category == allTasksCategoryId)
+                        CategoryChip(title: HubCategories.label(for: cat.id, language: loc.current),
+                                     systemImage: hubCategorySymbol(for: cat.id),
+                                     count: countForCategory(cat.id),
+                                     isSelected: taskBrowseState.selectedCategoryId == cat.id)
                     }
                     .buttonStyle(.plain)
-                    .id("cat-all")
-
-                    ForEach(visibleTaskCategories) { cat in
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.18)) { category = cat.id }
-                        } label: {
-                            CategoryChip(title: HubCategories.label(for: cat.id, language: loc.current),
-                                         systemImage: hubCategorySymbol(for: cat.id),
-                                         count: countForCategory(cat.id),
-                                         isSelected: category == cat.id)
-                        }
-                        .buttonStyle(.plain)
-                        .id("cat-\(cat.id)")
-                    }
-
-                    if !taskCategoriesExpanded {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.18)) { taskCategoriesExpanded = true }
-                        } label: {
-                            CategoryChip(title: loc.t("common_more"),
-                                         systemImage: "ellipsis.circle",
-                                         count: nil,
-                                         isSelected: false)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    .id("cat-\(cat.id)")
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-            }
-            .onAppear {
-                animateCategoryRailIfNeeded(proxy)
-            }
-        }
-    }
 
-    private func applyPreferredCategoryIfNeeded() {
-        guard !didApplyPreferredCategory, let preferredHubCategory else { return }
-        didApplyPreferredCategory = true
-        segment = .tasks
-        taskCategoriesExpanded = true
-        category = preferredHubCategory
-    }
-
-    private func animateCategoryRailIfNeeded(_ proxy: ScrollViewProxy) {
-        guard segment == .tasks,
-              hasPreferredHubCategory,
-              !didAnimateCategoryRail,
-              let selected = category else { return }
-        didAnimateCategoryRail = true
-        taskCategoriesExpanded = true
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            withAnimation(.easeInOut(duration: 0.55)) {
-                proxy.scrollTo("cat-video", anchor: .center)
+                if !taskCategoriesExpanded {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) { taskCategoriesExpanded = true }
+                    } label: {
+                        CategoryChip(title: loc.t("common_more"),
+                                     systemImage: "ellipsis.circle",
+                                     count: nil,
+                                     isSelected: false)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            try? await Task.sleep(nanoseconds: 650_000_000)
-            withAnimation(.spring(response: 0.48, dampingFraction: 0.86)) {
-                proxy.scrollTo("cat-\(selected)", anchor: .center)
-            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
     }
 
@@ -566,7 +527,7 @@ struct HubView: View {
     private var tasksList: some View {
         ScrollView(.vertical, showsIndicators: true) {
             LazyVStack(spacing: 10) {
-                if category == nil {
+                if !taskBrowseState.isShowingResults {
                     taskCategoryGrid
                     if totalVisibleCount == 0 && !service.isLoading {
                         EmptyState(systemImage: "tray",
@@ -607,7 +568,7 @@ struct HubView: View {
         ) {
             Button {
                 withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
-                    category = allTasksCategoryId
+                    taskBrowseState.showAllResults()
                     taskCategoriesExpanded = true
                 }
             } label: {
@@ -615,7 +576,7 @@ struct HubView: View {
                     title: loc.t("hub_all"),
                     systemImage: "line.3.horizontal.decrease.circle",
                     count: totalVisibleCount,
-                    isSelected: category == allTasksCategoryId
+                    isSelected: false
                 )
             }
             .buttonStyle(.plain)
@@ -623,14 +584,14 @@ struct HubView: View {
             ForEach(HubCategories.all) { cat in
                 Button {
                     withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
-                        category = cat.id
+                        taskBrowseState.showResults(for: cat.id)
                     }
                 } label: {
                     CategoryTile(
                         title: HubCategories.label(for: cat.id, language: loc.current),
                         systemImage: hubCategorySymbol(for: cat.id),
                         count: countForCategory(cat.id),
-                        isSelected: category == cat.id
+                        isSelected: false
                     )
                 }
                 .buttonStyle(.plain)
@@ -655,12 +616,12 @@ struct HubView: View {
     }
 
     private var filteredTasks: [HubTask] {
-        tasks(matching: category)
+        tasks(matching: taskBrowseState.selectedCategoryId)
     }
 
     private func tasks(matching categoryId: String?) -> [HubTask] {
         let visible = service.tasks.filter { !BlockList.contains($0.authorId) }
-        guard let categoryId, categoryId != allTasksCategoryId else { return visible }
+        guard let categoryId else { return visible }
         return visible.filter { normalizedHubCategory($0.category) == categoryId }
     }
 
