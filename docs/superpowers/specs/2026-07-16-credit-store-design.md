@@ -10,6 +10,7 @@ Replace the public Pro-subscription card with a simple credit store on iOS and A
 - Verification is the only newly promoted recurring subscription and never grants credits.
 - Existing Lite, Pro, and Max subscriptions remain recognized and restorable until they expire, but are hidden from the new store. Existing entitlements are not revoked.
 - A top-up changes only the shared `profiles.credits` balance and its purchase ledger. It does not change `plan`, subscription dates, or verification.
+- Creator tools must not require a newly sold Lite/Pro/Max subscription after those plans are hidden. Usage continues to be controlled by authentication, the existing credit costs, and feature-specific rules; legacy plan state remains only for existing entitlements and management.
 
 ## User experience
 
@@ -45,4 +46,3 @@ Replace the public Pro-subscription card with a simple credit store on iOS and A
 - Both clients use the existing shared Supabase profile balance.
 - New store products must exist and be active in App Store Connect / Google Play Console before sandbox or internal-track purchases can succeed.
 - UI and server changes are covered by catalog, routing, idempotency, cross-user, and type/build checks before release.
-
