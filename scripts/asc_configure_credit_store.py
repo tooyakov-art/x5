@@ -50,13 +50,34 @@ def build_iap_create_payload(app_id: str, pack: CreditPack) -> dict[str, Any]:
                 "productId": pack.product_id,
                 "inAppPurchaseType": "CONSUMABLE",
                 "reviewNote": pack.review_note,
-                "availableInAllTerritories": False,
             },
             "relationships": {
                 "app": {"data": {"type": "apps", "id": app_id}},
             },
         }
     }
+
+
+def build_availability_payload(
+    iap_id: str, availability_id: str | None = None
+) -> dict[str, Any]:
+    relationships: dict[str, Any] = {
+        "availableTerritories": {
+            "data": [{"type": "territories", "id": BASE_TERRITORY}]
+        }
+    }
+    data: dict[str, Any] = {
+        "type": "inAppPurchaseAvailabilities",
+        "attributes": {"availableInNewTerritories": False},
+        "relationships": relationships,
+    }
+    if availability_id:
+        data["id"] = availability_id
+    else:
+        relationships["inAppPurchase"] = {
+            "data": {"type": "inAppPurchases", "id": iap_id}
+        }
+    return {"data": data}
 
 
 def build_price_schedule_payload(iap_id: str, price_point_id: str) -> dict[str, Any]:
@@ -232,27 +253,34 @@ def ensure_localization(
 
 
 def ensure_availability(api: AppStoreConnect, iap_id: str) -> None:
-    payload = {
-        "data": {
-            "type": "inAppPurchaseAvailabilities",
-            "attributes": {"availableInNewTerritories": False},
-            "relationships": {
-                "availableTerritories": {
-                    "data": [{"type": "territories", "id": BASE_TERRITORY}]
-                },
-                "inAppPurchase": {
-                    "data": {"type": "inAppPurchases", "id": iap_id}
-                },
-            },
-        }
-    }
+    try:
+        current = api.request(
+            "GET",
+            f"/v2/inAppPurchases/{iap_id}/inAppPurchaseAvailability"
+            "?include=availableTerritories&limit[availableTerritories]=50",
+        ).get("data")
+    except RuntimeError as error:
+        if "HTTP 404" not in str(error):
+            raise
+        current = None
+
+    if current:
+        availability_id = current["id"]
+        api.request(
+            "PATCH",
+            f"/v1/inAppPurchaseAvailabilities/{availability_id}",
+            payload=build_availability_payload(iap_id, availability_id),
+        )
+        print(f"Updated {BASE_TERRITORY} availability for {iap_id}")
+        return
+
     api.request(
         "POST",
         "/v1/inAppPurchaseAvailabilities",
         expected=(201,),
-        payload=payload,
+        payload=build_availability_payload(iap_id),
     )
-    print(f"Set {BASE_TERRITORY} availability for {iap_id}")
+    print(f"Created {BASE_TERRITORY} availability for {iap_id}")
 
 
 def ensure_initial_price(
@@ -323,7 +351,6 @@ def configure() -> None:
                         "attributes": {
                             "name": pack.internal_name,
                             "reviewNote": pack.review_note,
-                            "availableInAllTerritories": False,
                         },
                     }
                 },
@@ -368,4 +395,3 @@ def configure() -> None:
 
 if __name__ == "__main__":
     configure()
-

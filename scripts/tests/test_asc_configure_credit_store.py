@@ -37,8 +37,20 @@ class CreditStoreConfigurationTests(unittest.TestCase):
         data = payload["data"]
         self.assertEqual(data["type"], "inAppPurchases")
         self.assertEqual(data["attributes"]["inAppPurchaseType"], "CONSUMABLE")
-        self.assertFalse(data["attributes"]["availableInAllTerritories"])
+        self.assertNotIn("availableInAllTerritories", data["attributes"])
         self.assertEqual(data["relationships"]["app"]["data"]["id"], "app-1")
+
+    def test_availability_payload_can_create_or_update_kaz_only(self):
+        create_payload = MODULE.build_availability_payload("iap-1")
+        create_data = create_payload["data"]
+        self.assertNotIn("id", create_data)
+        self.assertEqual(
+            create_data["relationships"]["availableTerritories"]["data"],
+            [{"type": "territories", "id": "KAZ"}],
+        )
+
+        update_payload = MODULE.build_availability_payload("iap-1", "availability-1")
+        self.assertEqual(update_payload["data"]["id"], "availability-1")
 
     def test_price_schedule_uses_kaz_base_and_selected_price_point(self):
         payload = MODULE.build_price_schedule_payload("iap-1", "point-1000")

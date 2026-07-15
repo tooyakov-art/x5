@@ -439,7 +439,7 @@ jobs:
                       skipped_prices += 1
                       continue
                   if territory and territory in current_territories:
-                      start_date = (date.today() + timedelta(days=1)).isoformat()
+                      start_date = (date.today() + timedelta(days=2)).isoformat()
                       price_payload = {
                           "data": {
                               "type": "subscriptionPrices",
@@ -488,7 +488,7 @@ jobs:
                   if price_response.status_code == 201:
                       created_prices += 1
                   elif price_response.status_code == 409 and "Initial price cannot be created again" in price_response.text:
-                      start_date = (date.today() + timedelta(days=1)).isoformat()
+                      start_date = (date.today() + timedelta(days=2)).isoformat()
                       price_payload = {
                           "data": {
                               "type": "subscriptionPrices",
