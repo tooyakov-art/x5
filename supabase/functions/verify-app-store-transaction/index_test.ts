@@ -51,6 +51,12 @@ const verifiedConsumablePayload = {
   expiresDate: undefined,
 };
 
+const verifiedRevocationPayload = {
+  ...verifiedPayload,
+  productId: "com.x5studio.app.verified.monthly",
+  revocationDate: Date.UTC(2026, 6, 12),
+};
+
 function dependencies(
   overrides: Partial<HandlerDependencies> = {},
 ): HandlerDependencies {
@@ -74,6 +80,13 @@ function dependencies(
       }),
     applyVerifiedSandboxReview: () =>
       Promise.reject(new EntitlementApplyError("rejected", 403)),
+    applyVerifiedRevocation: () =>
+      Promise.resolve({
+        status: "applied",
+        credits_granted: 0,
+        subscription_end_date: null,
+        is_verified: false,
+      }),
     logError: () => undefined,
     ...overrides,
   };
@@ -251,6 +264,76 @@ Deno.test("handler routes Sandbox transactions only to the review RPC", async ()
   assert(sandboxApplied);
   assertEquals(sandboxApplied.authenticatedUserId, userId);
   assertEquals(sandboxApplied.environment, "Sandbox");
+});
+
+Deno.test("handler routes signed Production verified revocation only to the revocation RPC", async () => {
+  let normalApplied = false;
+  let revoked: Record<string, unknown> | undefined;
+  const handler = createHandler(dependencies({
+    verifySignedTransaction: () => Promise.resolve(verifiedRevocationPayload),
+    applyVerifiedSubscription: () => {
+      normalApplied = true;
+      throw new Error("normal_rpc_must_not_run");
+    },
+    applyVerifiedRevocation: (authenticatedUserId, transaction) => {
+      revoked = { authenticatedUserId, ...transaction };
+      return Promise.resolve({
+        status: "applied",
+        credits_granted: 0,
+        subscription_end_date: null,
+        is_verified: false,
+      });
+    },
+  }));
+
+  const response = await handler(
+    post({ signed_transaction: signedTransaction() }),
+  );
+  const body = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(body.credits_granted, 0);
+  assertEquals(body.is_verified, false);
+  assertEquals(normalApplied, false);
+  assert(revoked);
+  assertEquals(revoked.authenticatedUserId, userId);
+  assertEquals(revoked.environment, "Production");
+  assertEquals(revoked.productId, "com.x5studio.app.verified.monthly");
+  assertEquals(revoked.revocationDate, "2026-07-12T00:00:00.000Z");
+});
+
+Deno.test("handler routes signed Sandbox verified revocation only to the revocation RPC", async () => {
+  let sandboxPurchaseApplied = false;
+  let revoked: Record<string, unknown> | undefined;
+  const handler = createHandler(dependencies({
+    verifySignedTransaction: () =>
+      Promise.resolve({ ...verifiedRevocationPayload, environment: "Sandbox" }),
+    applyVerifiedSandboxReview: () => {
+      sandboxPurchaseApplied = true;
+      throw new Error("sandbox_purchase_rpc_must_not_run");
+    },
+    applyVerifiedRevocation: (authenticatedUserId, transaction) => {
+      revoked = { authenticatedUserId, ...transaction };
+      return Promise.resolve({
+        status: "already_applied",
+        credits_granted: 0,
+        subscription_end_date: null,
+        is_verified: false,
+      });
+    },
+  }));
+
+  const response = await handler(
+    post({ signed_transaction: signedTransaction("Sandbox") }),
+  );
+  const body = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(body.status, "already_applied");
+  assertEquals(body.credits_granted, 0);
+  assertEquals(sandboxPurchaseApplied, false);
+  assert(revoked);
+  assertEquals(revoked.environment, "Sandbox");
 });
 
 Deno.test("handler rejects Sandbox users outside the server allowlist", async () => {

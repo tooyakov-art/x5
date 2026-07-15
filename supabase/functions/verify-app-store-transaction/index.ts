@@ -17,6 +17,7 @@ import {
   parseUntrustedTransactionEnvironment,
   parseVerifyRequestBody,
   validateVerifiedTransaction,
+  VERIFIED_MONTHLY_PRODUCT_ID,
   type VerifiedTransactionPayload,
 } from "./validation.ts";
 
@@ -43,6 +44,10 @@ export interface HandlerDependencies {
     transaction: NormalizedTransaction,
   ): Promise<EntitlementResult>;
   applyVerifiedSandboxReview(
+    userId: string,
+    transaction: NormalizedTransaction,
+  ): Promise<EntitlementResult>;
+  applyVerifiedRevocation(
     userId: string,
     transaction: NormalizedTransaction,
   ): Promise<EntitlementResult>;
@@ -117,7 +122,12 @@ export function createHandler(
         _dependencies.now(),
       );
       let result: EntitlementResult;
-      if (transaction.environment === "Sandbox") {
+      if (transaction.revocationDate) {
+        result = await _dependencies.applyVerifiedRevocation(
+          userId,
+          transaction,
+        );
+      } else if (transaction.environment === "Sandbox") {
         // Apple signs both TestFlight and App Review purchases as Sandbox.
         // Unlike the legacy production restore path, the isolated review RPC
         // always requires StoreKit's appAccountToken to bind the purchase to
@@ -347,11 +357,43 @@ async function applyVerifiedSandboxReview(
   );
 }
 
+async function applyVerifiedRevocation(
+  userId: string,
+  transaction: NormalizedTransaction,
+): Promise<EntitlementResult> {
+  if (
+    transaction.productKind !== "subscription" ||
+    transaction.productId !== VERIFIED_MONTHLY_PRODUCT_ID ||
+    !transaction.expiresDate ||
+    !transaction.revocationDate ||
+    !transaction.appAccountToken ||
+    transaction.appAccountToken !== userId.toLowerCase()
+  ) {
+    throw new Error("invalid_verified_revocation");
+  }
+  return await applyVerifiedRpc(
+    "apply_verified_app_store_verified_revocation",
+    {
+      p_user_id: userId,
+      p_transaction_id: transaction.transactionId,
+      p_original_transaction_id: transaction.originalTransactionId,
+      p_product_id: transaction.productId,
+      p_environment: transaction.environment,
+      p_app_account_token: transaction.appAccountToken,
+      p_purchase_date: transaction.purchaseDate,
+      p_expires_date: transaction.expiresDate,
+      p_signed_date: transaction.signedDate,
+      p_revocation_date: transaction.revocationDate,
+    },
+  );
+}
+
 async function applyVerifiedRpc(
   rpcName:
     | "apply_verified_app_store_transaction"
     | "apply_verified_app_store_consumable"
-    | "apply_verified_app_store_sandbox_review_transaction",
+    | "apply_verified_app_store_sandbox_review_transaction"
+    | "apply_verified_app_store_verified_revocation",
   parameters: Record<string, unknown>,
 ): Promise<EntitlementResult> {
   const admin = createClient(
@@ -401,7 +443,11 @@ async function applyVerifiedRpc(
       safeToken.includes("transaction_expired") ||
       safeToken.includes("invalid_transaction_dates") ||
       safeToken.includes("account_token_mismatch") ||
-      safeToken.includes("missing_account_token")
+      safeToken.includes("missing_account_token") ||
+      safeToken.includes("revocation_source_not_found") ||
+      safeToken.includes("revocation_source_mismatch") ||
+      safeToken.includes("revocation_id_conflict") ||
+      safeToken.includes("invalid_revocation_date")
     ) {
       throw new EntitlementApplyError("rejected", 400);
     }
@@ -441,6 +487,7 @@ const runtimeDependencies: HandlerDependencies = {
   applyVerifiedSubscription,
   applyVerifiedConsumable,
   applyVerifiedSandboxReview,
+  applyVerifiedRevocation,
   logError: (error) => {
     const name = error instanceof Error ? error.name : typeof error;
     console.error("verify-app-store-transaction failed", { name });

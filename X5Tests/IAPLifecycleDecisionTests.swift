@@ -267,4 +267,73 @@ final class IAPLifecycleDecisionTests: XCTestCase {
             "credit_store_success_message"
         )
     }
+
+    func testOfflineRevocationReconciliationKeepsOnlyTwentyNewestTransactions() {
+        struct Candidate: Equatable {
+            let id: Int
+            let revocationDate: Date
+        }
+
+        var bounded: [Candidate] = []
+        for id in 0..<25 {
+            bounded = IAPRevocationReconciliationPolicy.insertingMostRecent(
+                Candidate(
+                    id: id,
+                    revocationDate: Date(timeIntervalSince1970: TimeInterval(id))
+                ),
+                into: bounded,
+                revocationDate: \Candidate.revocationDate
+            )
+        }
+
+        XCTAssertEqual(
+            IAPRevocationReconciliationPolicy.maximumTransactions,
+            20
+        )
+        XCTAssertEqual(bounded.count, 20)
+        XCTAssertEqual(bounded.map(\.id), Array((5..<25).reversed()))
+    }
+
+    @MainActor
+    func testRevocationReverifiesACompletedTransactionExactlyOnce() async {
+        let lifecycle = IAPTransactionLifecycleCoordinator()
+        let accountID = "11111111-1111-4111-8111-111111111111"
+        let revokedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        var verificationCalls = 0
+        var finishCalls = 0
+
+        _ = await lifecycle.deliver(
+            transactionID: 505,
+            authenticatedUserID: accountID,
+            revocationDate: nil,
+            verifyDelivery: {
+                verificationCalls += 1
+                return .applied
+            },
+            finish: { finishCalls += 1 }
+        )
+        _ = await lifecycle.deliver(
+            transactionID: 505,
+            authenticatedUserID: accountID,
+            revocationDate: revokedAt,
+            verifyDelivery: {
+                verificationCalls += 1
+                return .applied
+            },
+            finish: { finishCalls += 1 }
+        )
+        _ = await lifecycle.deliver(
+            transactionID: 505,
+            authenticatedUserID: accountID,
+            revocationDate: revokedAt,
+            verifyDelivery: {
+                verificationCalls += 1
+                return .applied
+            },
+            finish: { finishCalls += 1 }
+        )
+
+        XCTAssertEqual(verificationCalls, 2)
+        XCTAssertEqual(finishCalls, 2)
+    }
 }

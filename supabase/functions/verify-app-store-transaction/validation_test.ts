@@ -141,6 +141,79 @@ Deno.test("verified transaction is normalized for the service-only RPC", () => {
   assertEquals(normalized.revocationDate, null);
 });
 
+Deno.test("signed verified-monthly revocation is normalized even after expiry", () => {
+  const now = Date.UTC(2026, 6, 14);
+  const revocationDate = Date.UTC(2026, 6, 12);
+  const normalized = validateVerifiedTransaction(
+    {
+      ...validTransaction,
+      productId: "com.x5studio.app.verified.monthly",
+      expiresDate: Date.UTC(2026, 6, 10),
+      revocationDate,
+    },
+    validTransaction.appAccountToken,
+    "Production",
+    now,
+  );
+
+  assertEquals(normalized.productKind, "subscription");
+  assertEquals(normalized.expiresDate, "2026-07-10T00:00:00.000Z");
+  assertEquals(normalized.revocationDate, "2026-07-12T00:00:00.000Z");
+});
+
+Deno.test("verified-monthly revocation requires the authenticated account token", () => {
+  const now = Date.UTC(2026, 6, 14);
+  for (
+    const appAccountToken of [
+      undefined,
+      "ed0fe39b-a7cd-4e64-a443-0266125ff3ea",
+    ]
+  ) {
+    assertInputError(
+      () =>
+        validateVerifiedTransaction(
+          {
+            ...validTransaction,
+            productId: "com.x5studio.app.verified.monthly",
+            appAccountToken,
+            revocationDate: Date.UTC(2026, 6, 12),
+          },
+          validTransaction.appAccountToken,
+          "Production",
+          now,
+        ),
+      appAccountToken === undefined
+        ? "missing_account_token"
+        : "account_token_mismatch",
+    );
+  }
+});
+
+Deno.test("revocation date must be signed, chronological, and not in the future", () => {
+  const now = Date.UTC(2026, 6, 14);
+  for (
+    const revocationDate of [
+      Date.UTC(2026, 5, 30),
+      now + 6 * 60_000,
+    ]
+  ) {
+    assertInputError(
+      () =>
+        validateVerifiedTransaction(
+          {
+            ...validTransaction,
+            productId: "com.x5studio.app.verified.monthly",
+            revocationDate,
+          },
+          validTransaction.appAccountToken,
+          "Production",
+          now,
+        ),
+      "invalid_revocation_date",
+    );
+  }
+});
+
 Deno.test("all Apple credit packs accept only signed consumable quantity-one claims", () => {
   for (
     const productId of [

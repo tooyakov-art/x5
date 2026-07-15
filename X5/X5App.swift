@@ -63,6 +63,13 @@ struct X5App: App {
                     subscription.sync(from: currentUser.profile)
                     Task { await syncStoreKitAndProfile(source: "active") }
                 }
+                .onReceive(
+                    NotificationCenter.default.publisher(
+                        for: .x5DidChangeVerifiedEntitlement
+                    )
+                ) { _ in
+                    Task { await syncStoreKitAndProfile(source: "verified_change") }
+                }
         }
     }
 
@@ -80,6 +87,7 @@ struct X5App: App {
 
     private func syncStoreKitAndProfile(source: String) async {
         guard auth.isAuthenticated else { return }
+        await iap.syncRevokedVerifiedTransactions(source: "\(source)_revoked")
         await iap.retryUnfinishedConsumables(source: "\(source)_unfinished")
         await iap.syncCurrentEntitlements(source: source)
 

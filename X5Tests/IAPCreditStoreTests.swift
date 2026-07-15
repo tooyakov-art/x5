@@ -54,16 +54,33 @@ final class IAPCreditStoreTests: XCTestCase {
         XCTAssertTrue(IAPProductCatalog.kind(for: IAPService.proMonthlyProductID).activatesLegacyPro)
     }
 
-    func testOnlyConsumablesAreReplayedFromTransactionUnfinished() {
+    func testUnfinishedReplayIncludesConsumablesAndOnlyRevokedVerification() {
         for pack in IAPProductCatalog.visibleCreditPacks {
-            XCTAssertTrue(IAPProductCatalog.shouldReplayUnfinishedTransaction(productID: pack.productID))
+            XCTAssertTrue(
+                IAPProductCatalog.shouldReplayUnfinishedTransaction(
+                    productID: pack.productID,
+                    hasRevocation: false
+                )
+            )
         }
 
         XCTAssertFalse(
-            IAPProductCatalog.shouldReplayUnfinishedTransaction(productID: IAPService.proMonthlyProductID)
+            IAPProductCatalog.shouldReplayUnfinishedTransaction(
+                productID: IAPService.proMonthlyProductID,
+                hasRevocation: true
+            )
         )
         XCTAssertFalse(
-            IAPProductCatalog.shouldReplayUnfinishedTransaction(productID: IAPService.verifiedMonthlyProductID)
+            IAPProductCatalog.shouldReplayUnfinishedTransaction(
+                productID: IAPService.verifiedMonthlyProductID,
+                hasRevocation: false
+            )
+        )
+        XCTAssertTrue(
+            IAPProductCatalog.shouldReplayUnfinishedTransaction(
+                productID: IAPService.verifiedMonthlyProductID,
+                hasRevocation: true
+            )
         )
     }
 

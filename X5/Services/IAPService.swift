@@ -21,6 +21,7 @@ enum IAPEntitlementDisposition: Equatable {
 struct IAPTransactionDeliveryKey: Hashable {
     let transactionID: UInt64
     let authenticatedUserID: String?
+    let revocationDate: Date?
 }
 
 /// Coalesces every StoreKit delivery path for the lifetime of the service.
@@ -35,12 +36,14 @@ final class IAPTransactionLifecycleCoordinator {
     func deliver(
         transactionID: UInt64,
         authenticatedUserID: String?,
+        revocationDate: Date? = nil,
         verifyDelivery: @escaping @MainActor () async -> IAPEntitlementDisposition,
         finish: @escaping @MainActor () async -> Void
     ) async -> IAPEntitlementDisposition {
         let deliveryKey = IAPTransactionDeliveryKey(
             transactionID: transactionID,
-            authenticatedUserID: authenticatedUserID
+            authenticatedUserID: authenticatedUserID,
+            revocationDate: revocationDate
         )
 
         if let completedDisposition = completed[deliveryKey] {
@@ -88,6 +91,26 @@ enum IAPCreditPurchaseConfirmation {
 enum IAPVerificationRetryPolicy {
     static func shouldRetry(statusCode: Int, retryCount: Int) -> Bool {
         statusCode == 401 && retryCount == 0
+    }
+}
+
+enum IAPRevocationReconciliationPolicy {
+    static let maximumTransactions = 20
+
+    static func insertingMostRecent<Element>(
+        _ candidate: Element,
+        into current: [Element],
+        revocationDate: KeyPath<Element, Date>
+    ) -> [Element] {
+        var result = current
+        result.append(candidate)
+        result.sort {
+            $0[keyPath: revocationDate] > $1[keyPath: revocationDate]
+        }
+        if result.count > maximumTransactions {
+            result.removeLast(result.count - maximumTransactions)
+        }
+        return result
     }
 }
 
@@ -172,11 +195,14 @@ enum IAPProductCatalog {
         return .unknown
     }
 
-    static func shouldReplayUnfinishedTransaction(productID: String) -> Bool {
+    static func shouldReplayUnfinishedTransaction(
+        productID: String,
+        hasRevocation: Bool = false
+    ) -> Bool {
         if case .creditPack = kind(for: productID) {
             return true
         }
-        return false
+        return productID == verifiedMonthlyProductID && hasRevocation
     }
 }
 
@@ -264,6 +290,12 @@ final class IAPService: ObservableObject {
 
     private struct ServerVerificationResponse: Decodable {
         let status: String
+    }
+
+    private struct RevokedTransactionDelivery {
+        let transaction: StoreKit.Transaction
+        let signedTransaction: String
+        let revocationDate: Date
     }
 
     init(auth: Auth) {
@@ -356,7 +388,13 @@ final class IAPService: ObservableObject {
         lastError = nil
         do {
             try await AppStore.sync()
+            let didReconcileRevocation = await syncRevokedVerifiedTransactions(
+                source: "restore_revoked"
+            )
             await syncCurrentEntitlements(source: "restore")
+            if didReconcileRevocation {
+                notifyVerifiedEntitlementChanged()
+            }
         } catch {
             lastError = error.localizedDescription
         }
@@ -366,11 +404,15 @@ final class IAPService: ObservableObject {
         updatesTask = Task.detached { [weak self] in
             for await update in Transaction.updates {
                 if case .verified(let transaction) = update {
-                    _ = await self?.deliverVerifiedTransaction(
+                    let disposition = await self?.deliverVerifiedTransaction(
                         transaction: transaction,
                         signedTransaction: update.jwsRepresentation,
                         source: "update"
                     )
+                    if disposition == .applied,
+                       transaction.revocationDate != nil {
+                        await self?.notifyVerifiedEntitlementChanged()
+                    }
                 }
             }
         }
@@ -394,12 +436,52 @@ final class IAPService: ObservableObject {
         )
     }
 
-    /// Consumables are not part of `Transaction.currentEntitlements`. StoreKit keeps
-    /// an un-finished purchase available here until the server confirms delivery.
+    /// `Transaction.all` is finite and includes finished subscriptions that Apple
+    /// refunded while the app was offline. Keep only the newest bounded set in
+    /// memory and submit Apple's signed JWS through the idempotent server path.
+    @discardableResult
+    func syncRevokedVerifiedTransactions(source: String) async -> Bool {
+        var revocations: [RevokedTransactionDelivery] = []
+        for await result in Transaction.all {
+            guard case .verified(let transaction) = result,
+                  transaction.productID == Self.verifiedMonthlyProductID,
+                  let revocationDate = transaction.revocationDate else {
+                continue
+            }
+
+            revocations = IAPRevocationReconciliationPolicy.insertingMostRecent(
+                RevokedTransactionDelivery(
+                    transaction: transaction,
+                    signedTransaction: result.jwsRepresentation,
+                    revocationDate: revocationDate
+                ),
+                into: revocations,
+                revocationDate: \RevokedTransactionDelivery.revocationDate
+            )
+        }
+
+        var didReconcile = false
+        for revocation in revocations {
+            let disposition = await deliverVerifiedTransaction(
+                transaction: revocation.transaction,
+                signedTransaction: revocation.signedTransaction,
+                source: source
+            )
+            didReconcile = didReconcile || disposition == .applied
+        }
+        return didReconcile
+    }
+
+    /// Consumables are not part of `Transaction.currentEntitlements`, and revoked
+    /// subscriptions disappear from it. StoreKit keeps either transaction unfinished
+    /// until the server confirms delivery.
     func retryUnfinishedConsumables(source: String) async {
         for await result in Transaction.unfinished {
             guard case .verified(let transaction) = result,
-                  IAPProductCatalog.shouldReplayUnfinishedTransaction(productID: transaction.productID) else {
+                  IAPProductCatalog.shouldReplayUnfinishedTransaction(
+                    productID: transaction.productID,
+                    hasRevocation: transaction.revocationDate != nil
+                  ) else {
                 continue
             }
 
@@ -419,6 +501,7 @@ final class IAPService: ObservableObject {
         await transactionLifecycle.deliver(
             transactionID: transaction.id,
             authenticatedUserID: auth.userId,
+            revocationDate: transaction.revocationDate,
             verifyDelivery: { [self] in
                 await processVerifiedTransaction(
                     transaction: transaction,
@@ -717,8 +800,18 @@ final class IAPService: ObservableObject {
         LocalizationService.shared.t("iap_account_mismatch")
     }
 
+    private func notifyVerifiedEntitlementChanged() {
+        NotificationCenter.default.post(
+            name: .x5DidChangeVerifiedEntitlement,
+            object: nil
+        )
+    }
+
 }
 
 extension Notification.Name {
     static let x5DidActivatePro = Notification.Name("x5.iap.did_activate_pro")
+    static let x5DidChangeVerifiedEntitlement = Notification.Name(
+        "x5.iap.did_change_verified_entitlement"
+    )
 }

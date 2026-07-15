@@ -2,11 +2,12 @@ export type AppStoreEnvironment = "Production" | "Sandbox";
 export type AppStoreProductKind = "subscription" | "consumable";
 
 export const APP_BUNDLE_ID = "com.x5studio.app";
+export const VERIFIED_MONTHLY_PRODUCT_ID = "com.x5studio.app.verified.monthly";
 export const SUBSCRIPTION_PRODUCT_IDS = new Set([
   "com.x5studio.app.lite.monthly",
   "com.x5studio.app.pro.monthly",
   "com.x5studio.app.max.monthly",
-  "com.x5studio.app.verified.monthly",
+  VERIFIED_MONTHLY_PRODUCT_ID,
 ]);
 export const CONSUMABLE_PRODUCT_IDS = new Set([
   "com.x5studio.app.credits.1000",
@@ -58,7 +59,7 @@ export interface NormalizedTransaction {
   purchaseDate: string;
   expiresDate: string | null;
   signedDate: string;
-  revocationDate: null;
+  revocationDate: string | null;
   quantity: number | null;
 }
 
@@ -181,8 +182,18 @@ export function validateVerifiedTransaction(
     }
   }
 
-  if (payload.revocationDate !== undefined && payload.revocationDate !== null) {
-    throw new InputError("transaction_revoked", 402);
+  const isRevocation = payload.revocationDate !== undefined &&
+    payload.revocationDate !== null;
+  if (isRevocation) {
+    if (productId !== VERIFIED_MONTHLY_PRODUCT_ID) {
+      throw new InputError("transaction_revoked", 402);
+    }
+    if (appAccountToken === null) {
+      throw new InputError("missing_account_token");
+    }
+    if (appAccountToken !== userId.toLowerCase()) {
+      throw new InputError("account_token_mismatch");
+    }
   }
   if (payload.isUpgraded === true) {
     throw new InputError("transaction_superseded", 402);
@@ -203,13 +214,29 @@ export function validateVerifiedTransaction(
     throw new InputError("invalid_signed_date");
   }
 
+  let revocationDate: string | null = null;
+  if (isRevocation) {
+    const revocationDateMs = requiredTimestamp(
+      payload.revocationDate,
+      "invalid_revocation_date",
+    );
+    if (
+      revocationDateMs < purchaseDateMs ||
+      revocationDateMs > nowMs + MAX_CLOCK_SKEW_MS ||
+      revocationDateMs > signedDateMs + MAX_CLOCK_SKEW_MS
+    ) {
+      throw new InputError("invalid_revocation_date");
+    }
+    revocationDate = new Date(revocationDateMs).toISOString();
+  }
+
   let expiresDate: string | null = null;
   if (productKind === "subscription") {
     const expiresDateMs = requiredTimestamp(
       payload.expiresDate,
       "invalid_expiration_date",
     );
-    if (expiresDateMs <= nowMs) {
+    if (expiresDateMs <= nowMs && !isRevocation) {
       throw new InputError("transaction_expired", 402);
     }
     if (expiresDateMs <= purchaseDateMs) {
@@ -228,7 +255,7 @@ export function validateVerifiedTransaction(
     purchaseDate: new Date(purchaseDateMs).toISOString(),
     expiresDate,
     signedDate: new Date(signedDateMs).toISOString(),
-    revocationDate: null,
+    revocationDate,
     quantity: productKind === "consumable" ? 1 : null,
   };
 }
