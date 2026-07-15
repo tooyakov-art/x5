@@ -42,6 +42,10 @@ export interface HandlerDependencies {
     userId: string,
     transaction: NormalizedTransaction,
   ): Promise<EntitlementResult>;
+  applyVerifiedSandboxReview(
+    userId: string,
+    transaction: NormalizedTransaction,
+  ): Promise<EntitlementResult>;
   logError(error: unknown): void;
 }
 
@@ -112,16 +116,27 @@ export function createHandler(
         environment,
         _dependencies.now(),
       );
-      // This function is deployed against the production credit ledger.
-      // Sandbox/TestFlight purchases are free and must never mint spendable
-      // production credits. Use a separate staging Supabase project for IAP
-      // tests instead of adding a production allowlist here.
-      if (transaction.environment !== "Production") {
-        throw new InputError("sandbox_not_allowed", 403);
+      let result: EntitlementResult;
+      if (transaction.environment === "Sandbox") {
+        // Apple signs both TestFlight and App Review purchases as Sandbox.
+        // Unlike the legacy production restore path, the isolated review RPC
+        // always requires StoreKit's appAccountToken to bind the purchase to
+        // the authenticated dedicated review account.
+        if (!transaction.appAccountToken) {
+          throw new InputError("missing_account_token");
+        }
+        if (transaction.appAccountToken !== userId.toLowerCase()) {
+          throw new InputError("account_token_mismatch");
+        }
+        result = await _dependencies.applyVerifiedSandboxReview(
+          userId,
+          transaction,
+        );
+      } else {
+        result = transaction.productKind === "consumable"
+          ? await _dependencies.applyVerifiedConsumable(userId, transaction)
+          : await _dependencies.applyVerifiedSubscription(userId, transaction);
       }
-      const result = transaction.productKind === "consumable"
-        ? await _dependencies.applyVerifiedConsumable(userId, transaction)
-        : await _dependencies.applyVerifiedSubscription(userId, transaction);
       return jsonResponse(result, 200);
     } catch (error) {
       if (error instanceof InputError) {
@@ -303,10 +318,40 @@ async function applyVerifiedConsumable(
   });
 }
 
+async function applyVerifiedSandboxReview(
+  userId: string,
+  transaction: NormalizedTransaction,
+): Promise<EntitlementResult> {
+  if (
+    transaction.environment !== "Sandbox" ||
+    !transaction.appAccountToken ||
+    transaction.appAccountToken !== userId.toLowerCase()
+  ) {
+    throw new Error("invalid_sandbox_review_transaction");
+  }
+  return await applyVerifiedRpc(
+    "apply_verified_app_store_sandbox_review_transaction",
+    {
+      p_user_id: userId,
+      p_transaction_id: transaction.transactionId,
+      p_original_transaction_id: transaction.originalTransactionId,
+      p_product_id: transaction.productId,
+      p_environment: transaction.environment,
+      p_app_account_token: transaction.appAccountToken,
+      p_purchase_date: transaction.purchaseDate,
+      p_expires_date: transaction.expiresDate,
+      p_signed_date: transaction.signedDate,
+      p_revocation_date: transaction.revocationDate,
+      p_quantity: transaction.quantity,
+    },
+  );
+}
+
 async function applyVerifiedRpc(
   rpcName:
     | "apply_verified_app_store_transaction"
-    | "apply_verified_app_store_consumable",
+    | "apply_verified_app_store_consumable"
+    | "apply_verified_app_store_sandbox_review_transaction",
   parameters: Record<string, unknown>,
 ): Promise<EntitlementResult> {
   const admin = createClient(
@@ -335,12 +380,19 @@ async function applyVerifiedRpc(
       throw new EntitlementApplyError("owned_by_other", 409);
     }
     if (
+      safeToken.includes("sandbox_review_account_not_allowed") ||
+      safeToken.includes("sandbox_review_credit_cap_exceeded")
+    ) {
+      throw new EntitlementApplyError("rejected", 403);
+    }
+    if (
       safeToken.includes("invalid_user_id") ||
       safeToken.includes("profile_not_found") ||
       safeToken.includes("invalid_transaction_id") ||
       safeToken.includes("invalid_original_transaction_id") ||
       safeToken.includes("invalid_environment") ||
       safeToken.includes("sandbox_not_allowed") ||
+      safeToken.includes("sandbox_review_environment_required") ||
       safeToken.includes("unknown_product") ||
       safeToken.includes("invalid_quantity") ||
       safeToken.includes("transaction_revoked") ||
@@ -388,6 +440,7 @@ const runtimeDependencies: HandlerDependencies = {
   verifySignedTransaction,
   applyVerifiedSubscription,
   applyVerifiedConsumable,
+  applyVerifiedSandboxReview,
   logError: (error) => {
     const name = error instanceof Error ? error.name : typeof error;
     console.error("verify-app-store-transaction failed", { name });

@@ -72,6 +72,8 @@ function dependencies(
         subscription_end_date: null,
         is_verified: false,
       }),
+    applyVerifiedSandboxReview: () =>
+      Promise.reject(new EntitlementApplyError("rejected", 403)),
     logError: () => undefined,
     ...overrides,
   };
@@ -197,23 +199,42 @@ Deno.test("handler routes consumable payloads to the credit-only RPC", async () 
   assertEquals(applied.expiresDate, null);
 });
 
-Deno.test("handler verifies but never applies Sandbox transactions to production", async () => {
+Deno.test("handler routes Sandbox transactions only to the review RPC", async () => {
   let verified = false;
-  let applied = false;
+  let productionApplied = false;
+  let sandboxApplied: Record<string, unknown> | undefined;
   const handler = createHandler(dependencies({
     verifySignedTransaction: () => {
       verified = true;
       return Promise.resolve({
-        ...verifiedPayload,
+        ...verifiedConsumablePayload,
         environment: "Sandbox",
       });
     },
     applyVerifiedSubscription: () => {
-      applied = true;
+      productionApplied = true;
       return Promise.resolve({
         status: "applied",
         credits_granted: 2000,
         subscription_end_date: "2026-08-01T00:00:00.000Z",
+        is_verified: false,
+      });
+    },
+    applyVerifiedConsumable: () => {
+      productionApplied = true;
+      return Promise.resolve({
+        status: "applied",
+        credits_granted: 2000,
+        subscription_end_date: null,
+        is_verified: false,
+      });
+    },
+    applyVerifiedSandboxReview: (authenticatedUserId, transaction) => {
+      sandboxApplied = { authenticatedUserId, ...transaction };
+      return Promise.resolve({
+        status: "applied",
+        credits_granted: 2000,
+        subscription_end_date: null,
         is_verified: false,
       });
     },
@@ -224,9 +245,78 @@ Deno.test("handler verifies but never applies Sandbox transactions to production
   );
 
   assertEquals(verified, true);
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).credits_granted, 2000);
+  assertEquals(productionApplied, false);
+  assert(sandboxApplied);
+  assertEquals(sandboxApplied.authenticatedUserId, userId);
+  assertEquals(sandboxApplied.environment, "Sandbox");
+});
+
+Deno.test("handler rejects Sandbox users outside the server allowlist", async () => {
+  const handler = createHandler(dependencies({
+    verifySignedTransaction: () =>
+      Promise.resolve({ ...verifiedPayload, environment: "Sandbox" }),
+    applyVerifiedSandboxReview: () =>
+      Promise.reject(new EntitlementApplyError("rejected", 403)),
+  }));
+
+  const response = await handler(
+    post({ signed_transaction: signedTransaction("Sandbox") }),
+  );
+
   assertEquals(response.status, 403);
-  assertEquals((await response.json()).error, "sandbox_not_allowed");
-  assertEquals(applied, false);
+  assertEquals((await response.json()).status, "rejected");
+});
+
+Deno.test("handler requires the authenticated account token for Sandbox subscriptions", async () => {
+  let sandboxApplied = false;
+  const handler = createHandler(dependencies({
+    verifySignedTransaction: () =>
+      Promise.resolve({
+        ...verifiedPayload,
+        productId: "com.x5studio.app.verified.monthly",
+        environment: "Sandbox",
+        appAccountToken: undefined,
+      }),
+    applyVerifiedSandboxReview: () => {
+      sandboxApplied = true;
+      throw new Error("sandbox_rpc_must_not_run");
+    },
+  }));
+
+  const response = await handler(
+    post({ signed_transaction: signedTransaction("Sandbox") }),
+  );
+
+  assertEquals(response.status, 400);
+  assertEquals((await response.json()).error, "missing_account_token");
+  assertEquals(sandboxApplied, false);
+});
+
+Deno.test("handler rejects a mismatched account token for Sandbox subscriptions", async () => {
+  let sandboxApplied = false;
+  const handler = createHandler(dependencies({
+    verifySignedTransaction: () =>
+      Promise.resolve({
+        ...verifiedPayload,
+        productId: "com.x5studio.app.verified.monthly",
+        environment: "Sandbox",
+        appAccountToken: "f76bc6fd-481e-4a02-aebc-a7a771f00ca2",
+      }),
+    applyVerifiedSandboxReview: () => {
+      sandboxApplied = true;
+      throw new Error("sandbox_rpc_must_not_run");
+    },
+  }));
+
+  const response = await handler(
+    post({ signed_transaction: signedTransaction("Sandbox") }),
+  );
+
+  assertEquals(response.status, 400);
+  assertEquals((await response.json()).error, "account_token_mismatch");
+  assertEquals(sandboxApplied, false);
 });
 
 Deno.test("handler returns exact already_applied and owned_by_other status contracts", async () => {
