@@ -48,10 +48,7 @@ struct SettingsView: View {
                         }
                     }
 
-                    if IAPSettingsPurchaseVisibilityPolicy.shouldShowSubscriptionActions(
-                        isLegacyPro: currentUser.profile?.isPro == true,
-                        hasActiveVerifiedBadge: currentUser.profile?.hasActiveVerifiedBadge == true
-                    ) {
+                    if IAPSettingsPurchaseVisibilityPolicy.shouldShowRestorePurchases {
                         Button {
                             restoreSubscriptions()
                         } label: {
@@ -68,7 +65,12 @@ struct SettingsView: View {
                             }
                         }
                         .disabled(isRestoringSubscriptions || iap.isPurchasing)
+                    }
 
+                    if IAPSettingsPurchaseVisibilityPolicy.shouldShowManageSubscription(
+                        isLegacyPro: currentUser.profile?.isPro == true,
+                        hasActiveVerifiedBadge: currentUser.profile?.hasActiveVerifiedBadge == true
+                    ) {
                         Button {
                             if let url = URL(string: "itms-apps://apps.apple.com/account/subscriptions") {
                                 UIApplication.shared.open(url)

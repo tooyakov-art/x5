@@ -114,7 +114,9 @@ enum IAPProductCatalog {
 }
 
 enum IAPSettingsPurchaseVisibilityPolicy {
-    static func shouldShowSubscriptionActions(
+    static let shouldShowRestorePurchases = true
+
+    static func shouldShowManageSubscription(
         isLegacyPro: Bool,
         hasActiveVerifiedBadge: Bool
     ) -> Bool {

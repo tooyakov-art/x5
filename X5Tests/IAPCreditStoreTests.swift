@@ -72,21 +72,22 @@ final class IAPCreditStoreTests: XCTestCase {
         XCTAssertTrue(IAPEntitlementDisposition.applied.shouldFinishTransaction)
     }
 
-    func testSettingsShowsSubscriptionActionsOnlyForActiveSubscriptionEntitlements() {
+    func testSettingsKeepsRestoreAvailableButManagesOnlyActiveSubscriptions() {
+        XCTAssertTrue(IAPSettingsPurchaseVisibilityPolicy.shouldShowRestorePurchases)
         XCTAssertFalse(
-            IAPSettingsPurchaseVisibilityPolicy.shouldShowSubscriptionActions(
+            IAPSettingsPurchaseVisibilityPolicy.shouldShowManageSubscription(
                 isLegacyPro: false,
                 hasActiveVerifiedBadge: false
             )
         )
         XCTAssertTrue(
-            IAPSettingsPurchaseVisibilityPolicy.shouldShowSubscriptionActions(
+            IAPSettingsPurchaseVisibilityPolicy.shouldShowManageSubscription(
                 isLegacyPro: true,
                 hasActiveVerifiedBadge: false
             )
         )
         XCTAssertTrue(
-            IAPSettingsPurchaseVisibilityPolicy.shouldShowSubscriptionActions(
+            IAPSettingsPurchaseVisibilityPolicy.shouldShowManageSubscription(
                 isLegacyPro: false,
                 hasActiveVerifiedBadge: true
             )
