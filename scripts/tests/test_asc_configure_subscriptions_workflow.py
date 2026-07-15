@@ -22,11 +22,12 @@ class SubscriptionWorkflowTests(unittest.TestCase):
             source,
         )
         self.assertIn(
-            'f"/subscriptionAppStoreReviewScreenshots?filter[subscription]={sub_id}&limit=20"',
+            'f"{BASE}/subscriptions/{sub_id}/appStoreReviewScreenshot"',
             source,
         )
+        self.assertNotIn("filter[subscription]", source)
         self.assertIn(
-            '"DELETE",\n                          f"/subscriptionAppStoreReviewScreenshots/{stale[\'id\']}"',
+            '"DELETE",\n                          f"/subscriptionAppStoreReviewScreenshots/{current[\'id\']}"',
             source,
         )
 

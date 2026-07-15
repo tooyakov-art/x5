@@ -545,32 +545,39 @@ jobs:
               print(f"Review screenshot: {filename} size={size} md5={checksum} mime={mime}")
 
               for spec, sub_id in configured:
-                  existing_screenshots = list_all(
-                      f"/subscriptionAppStoreReviewScreenshots?filter[subscription]={sub_id}&limit=20"
+                  existing_response = requests.get(
+                      f"{BASE}/subscriptions/{sub_id}/appStoreReviewScreenshot",
+                      headers=headers(),
+                      timeout=60,
                   )
-                  current = next(
-                      (
-                          shot for shot in existing_screenshots
-                          if shot.get("attributes", {}).get("sourceFileChecksum") == checksum
-                      ),
-                      None,
-                  )
-                  if current:
+                  if existing_response.status_code == 200:
+                      current = existing_response.json().get("data")
+                  elif existing_response.status_code == 404:
+                      current = None
+                  else:
+                      print(
+                          f"GET {BASE}/subscriptions/{sub_id}/appStoreReviewScreenshot "
+                          f"-> HTTP {existing_response.status_code}"
+                      )
+                      print(existing_response.text[:2000])
+                      raise SystemExit(1)
+
+                  if current and current.get("attributes", {}).get("sourceFileChecksum") == checksum:
                       print(
                           f"Keeping current review screenshot for {spec['product_id']} "
                           f"-> {current['id']}"
                       )
                       continue
 
-                  for stale in existing_screenshots:
+                  if current:
                       api(
                           "DELETE",
-                          f"/subscriptionAppStoreReviewScreenshots/{stale['id']}",
+                          f"/subscriptionAppStoreReviewScreenshots/{current['id']}",
                           expected=(204,),
                       )
                       print(
                           f"Removed stale review screenshot for {spec['product_id']} "
-                          f"-> {stale['id']}"
+                          f"-> {current['id']}"
                       )
 
                   reservation_response = requests.post(
