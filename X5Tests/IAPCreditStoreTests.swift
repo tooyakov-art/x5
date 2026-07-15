@@ -119,6 +119,7 @@ final class IAPCreditStoreTests: XCTestCase {
             "credit_store_unavailable",
             "credit_store_success_title",
             "credit_store_success_message",
+            "credit_store_success_refresh_pending",
             "profile_store_title",
             "profile_store_subtitle",
             "settings_restore_subscriptions",

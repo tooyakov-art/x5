@@ -13,6 +13,7 @@ struct PaywallView: View {
     @State private var didLoadProducts = false
     @State private var purchasingProductID: String?
     @State private var purchasedCredits = 0
+    @State private var profileReloadSucceeded = true
     @State private var showSuccess = false
 
     var body: some View {
@@ -95,7 +96,14 @@ struct PaywallView: View {
         .alert(loc.t("credit_store_success_title"), isPresented: $showSuccess) {
             Button(loc.t("btn_done")) { dismiss() }
         } message: {
-            Text(String(format: loc.t("credit_store_success_message"), purchasedCredits))
+            let messageKey = IAPCreditPurchaseConfirmation.messageKey(
+                profileReloadSucceeded: profileReloadSucceeded
+            )
+            if profileReloadSucceeded {
+                Text(String(format: loc.t(messageKey), purchasedCredits))
+            } else {
+                Text(loc.t(messageKey))
+            }
         }
     }
 
@@ -187,13 +195,18 @@ struct PaywallView: View {
                 return
             }
 
-            if let userID = auth.userId,
-               let accessToken = await auth.freshAccessToken() {
-                await currentUser.load(userId: userID, accessToken: accessToken)
-            }
+            profileReloadSucceeded = await refreshProfile()
             purchasedCredits = pack.credits
             X5Feedback.success()
             showSuccess = true
         }
+    }
+
+    private func refreshProfile() async -> Bool {
+        guard let userID = auth.userId,
+              let accessToken = await auth.freshAccessToken() else {
+            return false
+        }
+        return await currentUser.load(userId: userID, accessToken: accessToken)
     }
 }

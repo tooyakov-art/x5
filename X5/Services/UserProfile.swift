@@ -224,7 +224,8 @@ final class CurrentUser: ObservableObject {
 
     /// Loads (or refreshes) the current user's profile row using the access token.
     /// If the row does not exist yet, creates it with default values.
-    func load(userId: String, accessToken: String) async {
+    @discardableResult
+    func load(userId: String, accessToken: String) async -> Bool {
         isLoading = true
         defer { isLoading = false }
         error = nil
@@ -247,17 +248,19 @@ final class CurrentUser: ObservableObject {
             let rows = try JSONDecoder().decode([UserProfile].self, from: data)
             if let row = rows.first {
                 self.profile = row
+                return true
             } else {
                 // Profile row missing — create one (covers users registered before the
                 // auth.users -> profiles Postgres trigger existed).
-                await ensureProfile(userId: userId, accessToken: accessToken)
+                return await ensureProfile(userId: userId, accessToken: accessToken)
             }
         } catch {
             self.error = error.localizedDescription
+            return false
         }
     }
 
-    private func ensureProfile(userId: String, accessToken: String) async {
+    private func ensureProfile(userId: String, accessToken: String) async -> Bool {
         var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/profiles"))
         request.httpMethod = "POST"
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -277,7 +280,10 @@ final class CurrentUser: ObservableObject {
            let rows = try? JSONDecoder().decode([UserProfile].self, from: data),
            let row = rows.first {
             self.profile = row
+            return true
         }
+        error = "Profile refresh returned no data"
+        return false
     }
 
     /// Uploads an avatar JPEG to Supabase Storage and patches profiles.avatar to the public URL.

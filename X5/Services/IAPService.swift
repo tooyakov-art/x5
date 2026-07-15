@@ -18,6 +18,60 @@ enum IAPEntitlementDisposition: Equatable {
     }
 }
 
+/// Coalesces every StoreKit delivery path for the lifetime of the service.
+/// A server failure remains retryable, while a delivered transaction is never
+/// verified or finished twice if `purchase`, `updates`, and `unfinished`
+/// surface the same transaction during one app session.
+@MainActor
+final class IAPTransactionLifecycleCoordinator {
+    private var inFlight: [UInt64: Task<IAPEntitlementDisposition, Never>] = [:]
+    private var completed: [UInt64: IAPEntitlementDisposition] = [:]
+
+    func deliver(
+        transactionID: UInt64,
+        verifyDelivery: @escaping @MainActor () async -> IAPEntitlementDisposition,
+        finish: @escaping @MainActor () async -> Void
+    ) async -> IAPEntitlementDisposition {
+        if let completedDisposition = completed[transactionID] {
+            return completedDisposition
+        }
+
+        if let existingDelivery = inFlight[transactionID] {
+            return await existingDelivery.value
+        }
+
+        let delivery = Task { @MainActor in
+            await verifyDelivery()
+        }
+        inFlight[transactionID] = delivery
+        let disposition = await delivery.value
+        inFlight[transactionID] = nil
+
+        guard disposition.shouldFinishTransaction else {
+            return disposition
+        }
+
+        // Only a successfully delivered entitlement is safe to cache across
+        // calls. `.skipped` may mean a different X5 account owns a restorable
+        // subscription, so it must remain eligible for a later account retry.
+        if disposition == .applied {
+            // Store completion before the suspension point so a duplicate
+            // listener event cannot enter a second finish while this one awaits.
+            completed[transactionID] = disposition
+        }
+        await finish()
+        return disposition
+    }
+}
+
+enum IAPCreditPurchaseConfirmation {
+    static func messageKey(profileReloadSucceeded: Bool) -> String {
+        profileReloadSucceeded
+            ? "credit_store_success_message"
+            : "credit_store_success_refresh_pending"
+    }
+}
+
 enum IAPVerificationRetryPolicy {
     static func shouldRetry(statusCode: Int, retryCount: Int) -> Bool {
         statusCode == 401 && retryCount == 0
@@ -142,6 +196,13 @@ struct IAPActiveSubscriptionSnapshot: Equatable, Sendable {
     var hasAnyActiveSubscription: Bool {
         hasActiveLegacySubscription || hasActiveVerifiedSubscription
     }
+
+    func recordingActivePurchase(productID: String) -> IAPActiveSubscriptionSnapshot {
+        guard IAPProductCatalog.restorableProductIDs.contains(productID) else {
+            return self
+        }
+        return IAPActiveSubscriptionSnapshot(productIDs: productIDs.union([productID]))
+    }
 }
 
 @MainActor
@@ -168,6 +229,7 @@ final class IAPService: ObservableObject {
 
     private var updatesTask: Task<Void, Never>?
     private let auth: Auth
+    private let transactionLifecycle = IAPTransactionLifecycleCoordinator()
 
     private var baseURL: URL { X5Config.supabaseBaseURL }
     private var anonKey: String { X5Config.supabaseAnonKey }
@@ -242,13 +304,21 @@ final class IAPService: ObservableObject {
             switch result {
             case .success(let verification):
                 if case .verified(let transaction) = verification {
-                    let applyResult = await processVerifiedTransaction(
+                    let applyResult = await deliverVerifiedTransaction(
                         transaction: transaction,
                         signedTransaction: verification.jwsRepresentation,
                         source: "purchase"
                     )
-                    if applyResult.shouldFinishTransaction {
-                        await transaction.finish()
+
+                    if applyResult.isPurchaseSuccess,
+                       IAPProductCatalog.kind(for: transaction.productID) == .verificationSubscription {
+                        activeSubscriptionSnapshot = activeSubscriptionSnapshot.recordingActivePurchase(
+                            productID: transaction.productID
+                        )
+                        await syncCurrentEntitlements(source: "purchase")
+                        activeSubscriptionSnapshot = activeSubscriptionSnapshot.recordingActivePurchase(
+                            productID: transaction.productID
+                        )
                     }
                     return applyResult.isPurchaseSuccess
                 } else {
@@ -283,14 +353,11 @@ final class IAPService: ObservableObject {
         updatesTask = Task.detached { [weak self] in
             for await update in Transaction.updates {
                 if case .verified(let transaction) = update {
-                    let applyResult = await self?.processVerifiedTransaction(
+                    _ = await self?.deliverVerifiedTransaction(
                         transaction: transaction,
                         signedTransaction: update.jwsRepresentation,
                         source: "update"
-                    ) ?? .failed
-                    if applyResult.shouldFinishTransaction {
-                        await transaction.finish()
-                    }
+                    )
                 }
             }
         }
@@ -303,14 +370,11 @@ final class IAPService: ObservableObject {
             if IAPProductCatalog.restorableProductIDs.contains(transaction.productID) {
                 activeSubscriptionProductIDs.insert(transaction.productID)
             }
-            let applyResult = await processVerifiedTransaction(
+            _ = await deliverVerifiedTransaction(
                 transaction: transaction,
                 signedTransaction: result.jwsRepresentation,
                 source: source
             )
-            if applyResult.shouldFinishTransaction {
-                await transaction.finish()
-            }
         }
         activeSubscriptionSnapshot = IAPActiveSubscriptionSnapshot(
             productIDs: activeSubscriptionProductIDs
@@ -326,15 +390,32 @@ final class IAPService: ObservableObject {
                 continue
             }
 
-            let applyResult = await processVerifiedTransaction(
+            _ = await deliverVerifiedTransaction(
                 transaction: transaction,
                 signedTransaction: result.jwsRepresentation,
                 source: source
             )
-            if applyResult.shouldFinishTransaction {
+        }
+    }
+
+    private func deliverVerifiedTransaction(
+        transaction: StoreKit.Transaction,
+        signedTransaction: String,
+        source: String
+    ) async -> IAPEntitlementDisposition {
+        await transactionLifecycle.deliver(
+            transactionID: transaction.id,
+            verifyDelivery: { [self] in
+                await processVerifiedTransaction(
+                    transaction: transaction,
+                    signedTransaction: signedTransaction,
+                    source: source
+                )
+            },
+            finish: {
                 await transaction.finish()
             }
-        }
+        )
     }
 
     private func processVerifiedTransaction(
