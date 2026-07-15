@@ -9,6 +9,9 @@ on:
       - "X5/**"
       - "X5Tests/**"
       - "project.yml"
+      - "supabase/functions/verify-app-store-transaction/**"
+      - "supabase/migrations/**apple*store*.sql"
+      - "scripts/tests/**"
       - ".github/workflows/ios-course-ci.yml"
   workflow_dispatch:
 
@@ -26,6 +29,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Verify App Store backend
+        working-directory: supabase/functions/verify-app-store-transaction
+        run: |
+          deno fmt --check
+          deno lint
+          deno check index.ts
+          deno test --allow-read
+
+      - name: Verify release automation contracts
+        run: python3 -m unittest discover -s scripts/tests -p "test_*.py"
 
       - name: Select Xcode
         run: |
