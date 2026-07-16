@@ -41,6 +41,7 @@ export interface RefundNotificationEvent {
 export type SubscriptionLifecycleNotificationType =
   | "SUBSCRIBED"
   | "DID_RENEW"
+  | "DID_FAIL_TO_RENEW"
   | "EXPIRED"
   | "GRACE_PERIOD_EXPIRED"
   | "REVOKE";
@@ -48,6 +49,7 @@ export type SubscriptionLifecycleNotificationType =
 export interface SubscriptionLifecycleNotificationEvent {
   eventId: string;
   notificationType: SubscriptionLifecycleNotificationType;
+  notificationSubtype: string | null;
   userId: string;
   productId: typeof VERIFIED_MONTHLY_PRODUCT_ID;
   environment: AppStoreEnvironment;
@@ -67,6 +69,7 @@ export interface SubscriptionLifecycleNotificationEvent {
 const SUBSCRIPTION_LIFECYCLE_TYPES = new Set<string>([
   "SUBSCRIBED",
   "DID_RENEW",
+  "DID_FAIL_TO_RENEW",
   "EXPIRED",
   "GRACE_PERIOD_EXPIRED",
   "REVOKE",
@@ -160,7 +163,6 @@ export function validateVerifiedRefundNotification(
   if (!version.startsWith("2.")) {
     throw new InputError("invalid_notification_version");
   }
-
   if (
     _notification.data.bundleId !== APP_BUNDLE_ID ||
     _transaction.bundleId !== APP_BUNDLE_ID
@@ -353,6 +355,20 @@ export function validateVerifiedSubscriptionLifecycleNotification(
   if (!version.startsWith("2.")) {
     throw new InputError("invalid_notification_version");
   }
+  let notificationSubtype: string | null = null;
+  if (_notification.subtype !== undefined && _notification.subtype !== null) {
+    notificationSubtype = requiredString(
+      _notification.subtype,
+      "invalid_notification_subtype",
+      64,
+    );
+  }
+  if (
+    notificationType === "DID_FAIL_TO_RENEW" &&
+    notificationSubtype !== "GRACE_PERIOD"
+  ) {
+    throw new InputError("unsupported_notification_type", 200);
+  }
 
   if (
     _notification.data.bundleId !== APP_BUNDLE_ID ||
@@ -510,9 +526,12 @@ export function validateVerifiedSubscriptionLifecycleNotification(
       "invalid_grace_period_expiration_date",
     );
     if (
-      graceMs > _nowMs + MAX_CLOCK_SKEW_MS ||
+      ((notificationType === "DID_FAIL_TO_RENEW" ||
+        notificationType === "GRACE_PERIOD_EXPIRED") &&
+        graceMs < expiresDateMs) ||
+      (notificationType === "DID_FAIL_TO_RENEW" && graceMs <= _nowMs) ||
       (notificationType === "GRACE_PERIOD_EXPIRED" &&
-        graceMs < expiresDateMs)
+        graceMs > notificationSignedDateMs + MAX_CLOCK_SKEW_MS)
     ) {
       throw new InputError("invalid_grace_period_expiration_date");
     }
@@ -548,7 +567,8 @@ export function validateVerifiedSubscriptionLifecycleNotification(
     throw new InputError("invalid_expiration_date");
   }
   if (
-    notificationType === "GRACE_PERIOD_EXPIRED" &&
+    (notificationType === "GRACE_PERIOD_EXPIRED" ||
+      notificationType === "DID_FAIL_TO_RENEW") &&
     gracePeriodExpiresDate === null
   ) {
     throw new InputError("invalid_grace_period_expiration_date");
@@ -557,6 +577,7 @@ export function validateVerifiedSubscriptionLifecycleNotification(
   return {
     eventId,
     notificationType,
+    notificationSubtype,
     userId: appAccountToken,
     productId: VERIFIED_MONTHLY_PRODUCT_ID,
     environment: _expectedEnvironment,

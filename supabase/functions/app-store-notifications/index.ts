@@ -42,6 +42,9 @@ export interface NotificationHandlerDependencies {
     signedRenewalInfo: string,
     environment: AppStoreEnvironment,
   ): Promise<unknown>;
+  resolveNotificationUser(
+    event: RefundNotificationEvent | SubscriptionLifecycleNotificationEvent,
+  ): Promise<string>;
   applyNotification(
     event: RefundNotificationEvent,
   ): Promise<NotificationApplyResult>;
@@ -125,11 +128,15 @@ export function createHandler(
       );
       let result: NotificationApplyResult;
       if (isRefund) {
-        const event = validateVerifiedRefundNotification(
+        const unresolvedEvent = validateVerifiedRefundNotification(
           notification,
           transaction,
           environment,
           _dependencies.now(),
+        );
+        const event = await withResolvedNotificationUser(
+          unresolvedEvent,
+          _dependencies,
         );
         result = await _dependencies.applyNotification(event);
       } else {
@@ -145,12 +152,17 @@ export function createHandler(
           signedRenewalInfo,
           environment,
         );
-        const event = validateVerifiedSubscriptionLifecycleNotification(
-          notification,
-          transaction,
-          renewal,
-          environment,
-          _dependencies.now(),
+        const unresolvedEvent =
+          validateVerifiedSubscriptionLifecycleNotification(
+            notification,
+            transaction,
+            renewal,
+            environment,
+            _dependencies.now(),
+          );
+        const event = await withResolvedNotificationUser(
+          unresolvedEvent,
+          _dependencies,
         );
         result = await _dependencies.applyLifecycleNotification(event);
       }
@@ -189,6 +201,20 @@ export function createHandler(
       return jsonResponse({ status: "rejected", error: "server_error" }, 500);
     }
   };
+}
+
+async function withResolvedNotificationUser<
+  T extends RefundNotificationEvent | SubscriptionLifecycleNotificationEvent,
+>(event: T, dependencies: NotificationHandlerDependencies): Promise<T> {
+  const resolvedUserId = await dependencies.resolveNotificationUser(event);
+  if (
+    typeof resolvedUserId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      .test(resolvedUserId)
+  ) {
+    throw new Error("invalid_notification_user_resolution");
+  }
+  return { ...event, userId: resolvedUserId.toLowerCase() };
 }
 
 const MAX_BODY_BYTES = 132 * 1024;
@@ -387,6 +413,49 @@ async function applyNotification(
   return data;
 }
 
+async function resolveNotificationUser(
+  event: RefundNotificationEvent | SubscriptionLifecycleNotificationEvent,
+): Promise<string> {
+  const admin = createClient(
+    requiredEnvironmentVariable("SUPABASE_URL"),
+    requiredEnvironmentVariable("SUPABASE_SERVICE_ROLE_KEY"),
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    },
+  );
+  const { data, error } = await admin.rpc(
+    "resolve_verified_app_store_notification_user",
+    {
+      p_environment: event.environment,
+      p_original_transaction_id: event.originalTransactionId,
+      p_product_id: event.productId,
+      p_app_account_token: event.appAccountToken,
+    },
+  );
+  if (error) {
+    const token = `${error.code ?? ""} ${error.message ?? ""} ${
+      error.details ?? ""
+    } ${error.hint ?? ""}`.toLowerCase();
+    if (
+      token.includes("account_token_mismatch") ||
+      token.includes("legacy_binding_mismatch") ||
+      token.includes("profile_not_found") || token.includes("invalid_") ||
+      token.includes("unknown_product")
+    ) {
+      throw new NotificationApplyError("invalid_notification", 400);
+    }
+    throw new Error("resolve_app_store_notification_user_failed");
+  }
+  if (typeof data !== "string") {
+    throw new Error("invalid_notification_user_resolution");
+  }
+  return data;
+}
+
 async function applyLifecycleNotification(
   event: SubscriptionLifecycleNotificationEvent,
 ): Promise<NotificationApplyResult> {
@@ -406,6 +475,7 @@ async function applyLifecycleNotification(
     {
       p_event_id: event.eventId,
       p_notification_type: event.notificationType,
+      p_notification_subtype: event.notificationSubtype,
       p_notification_signed_date: event.notificationSignedDate,
       p_user_id: event.userId,
       p_transaction_id: event.transactionId,
@@ -467,6 +537,7 @@ const runtimeDependencies: NotificationHandlerDependencies = {
   verifyNotification,
   verifyTransaction,
   verifyRenewalInfo,
+  resolveNotificationUser,
   applyNotification,
   applyLifecycleNotification,
   logError: (error) => {

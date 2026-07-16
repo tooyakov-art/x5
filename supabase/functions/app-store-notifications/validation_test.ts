@@ -367,6 +367,64 @@ Deno.test("billing recovery renewal accepts a completed grace period before the 
   );
 });
 
+Deno.test("billing recovery renewal accepts a still-future grace date carried by Apple", () => {
+  const event = validateVerifiedSubscriptionLifecycleNotification(
+    lifecycleNotification,
+    subscriptionTransaction,
+    {
+      ...renewalInfo,
+      gracePeriodExpiresDate: Date.UTC(2026, 6, 18),
+    },
+    "Production",
+    now,
+  );
+  assertEquals(event.notificationType, "DID_RENEW");
+  assertEquals(
+    event.gracePeriodExpiresDate,
+    "2026-07-18T00:00:00.000Z",
+  );
+});
+
+Deno.test("billing failure grace period preserves the signed future service deadline", () => {
+  const gracePeriodExpiresDate = Date.UTC(2026, 6, 20);
+  const event = validateVerifiedSubscriptionLifecycleNotification(
+    {
+      ...lifecycleNotification,
+      notificationType: "DID_FAIL_TO_RENEW",
+      subtype: "GRACE_PERIOD",
+    },
+    {
+      ...subscriptionTransaction,
+      expiresDate: Date.UTC(2026, 6, 16, 11),
+    },
+    {
+      ...renewalInfo,
+      gracePeriodExpiresDate,
+    },
+    "Production",
+    now,
+  );
+  assertEquals(event.notificationType, "DID_FAIL_TO_RENEW");
+  assertEquals(event.notificationSubtype, "GRACE_PERIOD");
+  assertEquals(
+    event.gracePeriodExpiresDate,
+    "2026-07-20T00:00:00.000Z",
+  );
+
+  assertInputError(
+    () =>
+      validateVerifiedSubscriptionLifecycleNotification(
+        { ...lifecycleNotification, notificationType: "DID_FAIL_TO_RENEW" },
+        subscriptionTransaction,
+        renewalInfo,
+        "Production",
+        now,
+      ),
+    "unsupported_notification_type",
+    200,
+  );
+});
+
 Deno.test("expiry, grace-period expiry and revoke lifecycle events have strict signed shapes", () => {
   const expiredTransaction = {
     ...subscriptionTransaction,

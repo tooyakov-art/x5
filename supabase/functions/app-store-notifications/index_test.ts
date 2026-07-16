@@ -74,6 +74,7 @@ function dependencies(
     verifyNotification: () => Promise.resolve(outer),
     verifyTransaction: () => Promise.resolve(inner),
     verifyRenewalInfo: () => Promise.resolve(renewal),
+    resolveNotificationUser: (event) => Promise.resolve(event.userId),
     applyNotification: () => Promise.resolve({ status: "applied" }),
     applyLifecycleNotification: () => Promise.resolve({ status: "applied" }),
     logError: () => undefined,
@@ -207,6 +208,171 @@ Deno.test("subscription lifecycle verifies outer, transaction and renewal JWS be
     calls.join("|"),
     `outer:Production|transaction:Production|renewal:Production|apply:DID_RENEW:${userId}`,
   );
+});
+
+Deno.test("legacy subscription renewal and expiry resolve the exact bound owner before apply", async () => {
+  const legacyOwner = "9ae99a45-91ac-486a-b7ec-e6614b7bc257";
+  const legacyToken = "b6580000-0000-4000-8000-000000000001";
+  for (const notificationType of ["DID_RENEW", "EXPIRED"] as const) {
+    const calls: string[] = [];
+    const lifecycleOuter = {
+      ...outer,
+      notificationType,
+      data: {
+        ...outer.data,
+        signedRenewalInfo: "renewal.header.signature",
+      },
+    };
+    const lifecycleTransaction = {
+      ...inner,
+      productId: "com.x5studio.app.verified.monthly",
+      transactionId: `legacy-${notificationType.toLowerCase()}`,
+      originalTransactionId: "2000001190576148",
+      appAccountToken: legacyToken,
+      type: "Auto-Renewable Subscription",
+      quantity: undefined,
+      expiresDate: notificationType === "EXPIRED"
+        ? Date.UTC(2026, 6, 15)
+        : Date.UTC(2026, 7, 1),
+      revocationDate: undefined,
+      revocationType: undefined,
+      revocationPercentage: undefined,
+    };
+    const legacyRenewal = {
+      ...renewal,
+      originalTransactionId: "2000001190576148",
+      appAccountToken: legacyToken,
+    };
+    const handler = createHandler(dependencies({
+      verifyNotification: () => Promise.resolve(lifecycleOuter),
+      verifyTransaction: () => Promise.resolve(lifecycleTransaction),
+      verifyRenewalInfo: () => Promise.resolve(legacyRenewal),
+      resolveNotificationUser: (event) => {
+        calls.push(
+          `resolve:${event.environment}:${event.originalTransactionId}:${event.appAccountToken}`,
+        );
+        return Promise.resolve(legacyOwner);
+      },
+      applyLifecycleNotification: (event) => {
+        calls.push(
+          `apply:${event.notificationType}:${event.userId}:${event.appAccountToken}`,
+        );
+        return Promise.resolve({ status: "applied" });
+      },
+    }));
+
+    const response = await handler(
+      post({ signedPayload: unsignedNotification() }),
+    );
+    assertEquals(response.status, 200);
+    assertEquals(
+      calls.join("|"),
+      `resolve:Production:2000001190576148:${legacyToken}|apply:${notificationType}:${legacyOwner}:${legacyToken}`,
+    );
+  }
+});
+
+Deno.test("legacy verified refund and reversal resolve owner while preserving the signed token", async () => {
+  const legacyOwner = "9ae99a45-91ac-486a-b7ec-e6614b7bc257";
+  const legacyToken = "b6580000-0000-4000-8000-000000000001";
+  for (const notificationType of ["REFUND", "REFUND_REVERSED"] as const) {
+    const refundOuter = {
+      ...outer,
+      notificationType,
+    };
+    const refundTransaction = {
+      ...inner,
+      productId: "com.x5studio.app.verified.monthly",
+      transactionId: "legacy-refund-transaction",
+      originalTransactionId: "2000001190576148",
+      appAccountToken: legacyToken,
+      type: "Auto-Renewable Subscription",
+      quantity: undefined,
+      expiresDate: Date.UTC(2026, 7, 1),
+      revocationDate: notificationType === "REFUND"
+        ? Date.UTC(2026, 6, 15)
+        : undefined,
+      revocationType: notificationType === "REFUND" ? "REFUND_FULL" : undefined,
+      revocationPercentage: notificationType === "REFUND" ? 100000 : undefined,
+    };
+    let applied = false;
+    const handler = createHandler(dependencies({
+      verifyNotification: () => Promise.resolve(refundOuter),
+      verifyTransaction: () => Promise.resolve(refundTransaction),
+      resolveNotificationUser: (event) => {
+        assertEquals(event.appAccountToken, legacyToken);
+        return Promise.resolve(legacyOwner);
+      },
+      applyNotification: (event) => {
+        assertEquals(event.userId, legacyOwner);
+        assertEquals(event.appAccountToken, legacyToken);
+        assertEquals(event.notificationType, notificationType);
+        applied = true;
+        return Promise.resolve({ status: "applied" });
+      },
+    }));
+
+    const response = await handler(
+      post({ signedPayload: unsignedNotification() }),
+    );
+    assertEquals(response.status, 200);
+    assertEquals(applied, true);
+  }
+});
+
+Deno.test("DID_FAIL_TO_RENEW grace period is verified, resolved and applied", async () => {
+  let applied = false;
+  const gracePeriodExpiresDate = Date.UTC(2026, 6, 20);
+  const handler = createHandler(dependencies({
+    verifyNotification: () =>
+      Promise.resolve({
+        ...outer,
+        notificationType: "DID_FAIL_TO_RENEW",
+        subtype: "GRACE_PERIOD",
+        data: {
+          ...outer.data,
+          signedRenewalInfo: "renewal.header.signature",
+        },
+      }),
+    verifyTransaction: () =>
+      Promise.resolve({
+        ...inner,
+        productId: "com.x5studio.app.verified.monthly",
+        transactionId: "grace-period-transaction",
+        originalTransactionId: "grace-period-chain",
+        type: "Auto-Renewable Subscription",
+        quantity: undefined,
+        expiresDate: Date.UTC(2026, 6, 16, 11),
+        revocationDate: undefined,
+        revocationType: undefined,
+        revocationPercentage: undefined,
+      }),
+    verifyRenewalInfo: () =>
+      Promise.resolve({
+        ...renewal,
+        originalTransactionId: "grace-period-chain",
+        gracePeriodExpiresDate,
+      }),
+    resolveNotificationUser: (event) => {
+      return Promise.resolve(event.appAccountToken);
+    },
+    applyLifecycleNotification: (event) => {
+      assertEquals(event.notificationType, "DID_FAIL_TO_RENEW");
+      assertEquals(event.notificationSubtype, "GRACE_PERIOD");
+      assertEquals(
+        event.gracePeriodExpiresDate,
+        "2026-07-20T00:00:00.000Z",
+      );
+      applied = true;
+      return Promise.resolve({ status: "applied" });
+    },
+  }));
+
+  const response = await handler(
+    post({ signedPayload: unsignedNotification() }),
+  );
+  assertEquals(response.status, 200);
+  assertEquals(applied, true);
 });
 
 Deno.test("lifecycle notification without signed renewal info is rejected before database apply", async () => {

@@ -235,8 +235,8 @@ begin
       new.permanent_credit_debt := old_permanent_debt +
         (-credit_delta - permanent_reduction);
     elsif permanent_grant or permanent_adjustment then
-      -- A new/reinstated pack first repays permanent-pack debt created when a
-      -- refunded pack had already been partially spent.
+      -- Refunded permanent credits already spent are fungible user debt. A
+      -- future pack or reversal repays that debt before growing the floor.
       debt_reduction := least(old_permanent_debt, credit_delta);
       new.permanent_credits := greatest(
         0,
@@ -302,6 +302,130 @@ $function$;
 revoke execute on function public.x5_expire_old_credits()
   from public, anon, authenticated, service_role;
 
+-- Install the exact legacy notification identity before the first profile
+-- reconciliation below. The rebuilt projection reads legacy_binding_used, so
+-- these columns and constraints must exist before that function is executed.
+alter table public.app_store_server_notification_events
+  add column legacy_binding_used boolean not null default false;
+alter table public.app_store_server_notification_events
+  add column legacy_binding_original_transaction_id text
+    generated always as (
+      case when legacy_binding_used then original_transaction_id end
+    ) stored,
+  add column legacy_binding_user_id uuid
+    generated always as (case when legacy_binding_used then user_id end) stored,
+  add column legacy_binding_app_account_token uuid
+    generated always as (
+      case when legacy_binding_used then app_account_token end
+    ) stored,
+  add column legacy_binding_product_id text
+    generated always as (case when legacy_binding_used then product_id end) stored;
+alter table public.app_store_server_notification_events
+  drop constraint app_store_server_notification_events_account_matches_user;
+alter table public.app_store_server_notification_events
+  add constraint app_store_server_notification_events_account_scope
+    check (
+      (
+        not legacy_binding_used
+        and app_account_token = user_id
+      ) or (
+        legacy_binding_used
+        and environment = 'Production'
+        and product_id = 'com.x5studio.app.verified.monthly'
+        and app_account_token <> user_id
+      )
+    );
+alter table public.app_store_server_notification_events
+  add constraint app_store_server_notification_events_legacy_binding_fk
+    foreign key (
+      legacy_binding_original_transaction_id,
+      legacy_binding_user_id,
+      legacy_binding_app_account_token,
+      legacy_binding_product_id
+    ) references public.app_store_legacy_bindings (
+      original_transaction_id, user_id, app_account_token, product_id
+    );
+
+alter table public.app_store_server_notification_state
+  add column legacy_binding_used boolean not null default false;
+alter table public.app_store_server_notification_state
+  add column legacy_binding_original_transaction_id text
+    generated always as (
+      case when legacy_binding_used then original_transaction_id end
+    ) stored,
+  add column legacy_binding_user_id uuid
+    generated always as (case when legacy_binding_used then user_id end) stored,
+  add column legacy_binding_app_account_token uuid
+    generated always as (
+      case when legacy_binding_used then app_account_token end
+    ) stored,
+  add column legacy_binding_product_id text
+    generated always as (case when legacy_binding_used then product_id end) stored;
+alter table public.app_store_server_notification_state
+  drop constraint app_store_server_notification_state_identity;
+alter table public.app_store_server_notification_state
+  add constraint app_store_server_notification_state_identity
+    check (
+      btrim(transaction_id) <> ''
+      and btrim(original_transaction_id) <> ''
+      and (
+        (
+          not legacy_binding_used
+          and app_account_token = user_id
+        ) or (
+          legacy_binding_used
+          and environment = 'Production'
+          and product_id = 'com.x5studio.app.verified.monthly'
+          and app_account_token <> user_id
+        )
+      )
+    );
+alter table public.app_store_server_notification_state
+  add constraint app_store_server_notification_state_legacy_binding_fk
+    foreign key (
+      legacy_binding_original_transaction_id,
+      legacy_binding_user_id,
+      legacy_binding_app_account_token,
+      legacy_binding_product_id
+    ) references public.app_store_legacy_bindings (
+      original_transaction_id, user_id, app_account_token, product_id
+    );
+
+-- The lifecycle ledger is created later. This stable placeholder is replaced
+-- with exact transaction-period expiry semantics after the table exists.
+create or replace function
+  public.x5_app_store_lifecycle_transaction_allows_entitlement(
+    p_environment text,
+    p_transaction_id text
+  )
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  select true;
+$function$;
+
+revoke execute on function
+  public.x5_app_store_lifecycle_transaction_allows_entitlement(text, text)
+  from public, anon, authenticated, service_role;
+
+create or replace function public.x5_active_app_store_grace_period(
+  p_user_id uuid
+)
+returns timestamptz
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  select null::timestamptz;
+$function$;
+
+revoke execute on function public.x5_active_app_store_grace_period(uuid)
+  from public, anon, authenticated, service_role;
+
 -- Rebuild the badge projection from current, server-proven sources. The old
 -- iOS table is trusted only when its complete historical tuple is present in
 -- the immutable grandfather allowlist.
@@ -316,6 +440,7 @@ as $function$
 declare
   v_now timestamptz := clock_timestamp();
   v_verified_until timestamptz;
+  v_grace_until timestamptz;
 begin
   select max(active_entitlement.expires_date)
     into v_verified_until
@@ -325,8 +450,11 @@ begin
        where production.user_id = p_user_id
          and production.product_id = 'com.x5studio.app.verified.monthly'
          and production.is_verified_product
-         and production.credits_granted = 0
-         and production.expires_date > v_now
+          and production.credits_granted = 0
+          and production.expires_date > v_now
+          and public.x5_app_store_lifecycle_transaction_allows_entitlement(
+            'Production', production.transaction_id
+          )
          and not public.x5_app_store_notification_refund_active(
            'Production', production.transaction_id
          )
@@ -336,8 +464,11 @@ begin
        where sandbox.user_id = p_user_id
          and sandbox.product_id = 'com.x5studio.app.verified.monthly'
          and sandbox.is_verified_product
-         and sandbox.credits_granted = 0
-         and sandbox.expires_date > v_now
+          and sandbox.credits_granted = 0
+          and sandbox.expires_date > v_now
+          and public.x5_app_store_lifecycle_transaction_allows_entitlement(
+            'Sandbox', sandbox.transaction_id
+          )
          and not public.x5_app_store_notification_refund_active(
            'Sandbox', sandbox.transaction_id
          )
@@ -379,18 +510,20 @@ begin
          and lower(coalesce(legacy_ios.platform, '')) = 'ios'
          and legacy_ios.product_id = 'com.x5studio.app.verified.monthly'
          and legacy_ios.subscription_end_date > v_now
-         and not exists (
+          and not exists (
            select 1
              from public.app_store_server_notification_state as refund_state
             where refund_state.environment = 'Production'
               and refund_state.user_id = legacy_ios.user_id
               and refund_state.product_id =
                   'com.x5studio.app.verified.monthly'
-              and refund_state.original_transaction_id =
-                  legacy_ios.original_transaction_id
-              and refund_state.transaction_id =
-                  legacy_ios.last_transaction_id
-              and refund_state.active
+               and refund_state.original_transaction_id =
+                   legacy_ios.original_transaction_id
+               and refund_state.active
+               and (
+                 refund_state.transaction_id = legacy_ios.last_transaction_id
+                 or refund_state.legacy_binding_used
+               )
          )
          and not exists (
            select 1
@@ -402,6 +535,14 @@ begin
                   'com.x5studio.app.verified.monthly'
          )
     ) as active_entitlement;
+
+  v_grace_until := public.x5_active_app_store_grace_period(p_user_id);
+  if v_grace_until is not null then
+    v_verified_until := greatest(
+      coalesce(v_verified_until, '-infinity'::timestamptz),
+      v_grace_until
+    );
+  end if;
 
   update public.profiles
      set is_verified = v_verified_until is not null,
@@ -813,6 +954,559 @@ grant execute on function
 
 -- Permanent-pack refunds/reversals change the permanent floor by the exact
 -- credit delta already computed by the established immutable refund engine.
+create or replace function public.resolve_verified_app_store_notification_user(
+  p_environment text,
+  p_original_transaction_id text,
+  p_product_id text,
+  p_app_account_token uuid
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_environment text := case lower(btrim(coalesce(p_environment, '')))
+    when 'production' then 'Production'
+    when 'sandbox' then 'Sandbox'
+    else null
+  end;
+  v_original_transaction_id text :=
+    nullif(btrim(p_original_transaction_id), '');
+  v_product_id text := nullif(btrim(p_product_id), '');
+  v_binding public.app_store_legacy_bindings%rowtype;
+begin
+  if v_environment is null then
+    raise exception using errcode = '22023', message = 'invalid_environment';
+  end if;
+  if v_original_transaction_id is null
+     or length(v_original_transaction_id) > 255 then
+    raise exception using errcode = '22023',
+      message = 'invalid_original_transaction_id';
+  end if;
+  if v_product_id not in (
+    'com.x5studio.app.credits.1000',
+    'com.x5studio.app.credits.2000',
+    'com.x5studio.app.credits.5000',
+    'com.x5studio.app.lite.monthly',
+    'com.x5studio.app.pro.monthly',
+    'com.x5studio.app.max.monthly',
+    'com.x5studio.app.verified.monthly'
+  ) then
+    raise exception using errcode = '22023', message = 'unknown_product';
+  end if;
+  if p_app_account_token is null then
+    raise exception using errcode = '22023', message = 'missing_account_token';
+  end if;
+
+  if v_environment = 'Production' then
+    select binding.*
+      into v_binding
+     from public.app_store_legacy_bindings as binding
+     where binding.original_transaction_id = v_original_transaction_id
+     for update;
+
+    if found then
+      if v_binding.product_id <> v_product_id
+         or v_binding.app_account_token <> p_app_account_token then
+        raise exception using errcode = '22023',
+          message = 'account_token_mismatch';
+      end if;
+
+      if v_binding.bound_at is null then
+        -- Before the first verified event, every immutable grandfather
+        -- snapshot field must still match the retired iOS row exactly.
+        perform 1
+          from public.iap_entitlements as legacy
+         where legacy.original_transaction_id =
+               v_binding.original_transaction_id
+           and legacy.user_id = v_binding.user_id
+           and legacy.product_id = v_binding.product_id
+           and lower(coalesce(legacy.platform, '')) = 'ios'
+           and legacy.credited_at is not distinct from
+               v_binding.legacy_credited_at
+           and legacy.subscription_end_date is not distinct from
+               v_binding.legacy_subscription_end_date
+           and legacy.created_at is not distinct from
+               v_binding.legacy_created_at
+           and coalesce(
+             legacy.legacy_app_account_token,
+             legacy.app_account_token,
+             legacy.user_id
+           ) = v_binding.app_account_token
+         for share;
+      else
+        -- The first genuine Apple JWS moves the random legacy token to the
+        -- audit column and future renewals may advance mutable expiry fields.
+        -- Continue only for that exact already-bound chain and owner.
+        perform 1
+          from public.iap_entitlements as legacy
+         where legacy.original_transaction_id =
+               v_binding.original_transaction_id
+           and legacy.user_id = v_binding.user_id
+           and legacy.product_id = v_binding.product_id
+           and lower(coalesce(legacy.platform, '')) = 'ios'
+           and legacy.legacy_app_account_token =
+               v_binding.app_account_token
+           and legacy.app_account_token is null
+         for share;
+      end if;
+
+      if not found then
+        raise exception using errcode = '22023',
+          message = 'legacy_binding_mismatch';
+      end if;
+      return v_binding.user_id;
+    end if;
+  end if;
+
+  perform 1 from public.profiles where id = p_app_account_token;
+  if not found then
+    raise exception using errcode = '22023', message = 'profile_not_found';
+  end if;
+  return p_app_account_token;
+end;
+$function$;
+
+alter function public.resolve_verified_app_store_notification_user(
+  text, text, text, uuid
+) owner to postgres;
+revoke execute on function
+  public.resolve_verified_app_store_notification_user(text, text, text, uuid)
+  from public, anon, authenticated, service_role;
+grant execute on function
+  public.resolve_verified_app_store_notification_user(text, text, text, uuid)
+  to service_role;
+
+-- Keep the original full-snapshot binder for the first mismatch-token JWS.
+-- After it records bound_at and moves the token to the audit column, future
+-- renewals use the same private grant engine without requiring mutable expiry
+-- fields to equal the historical snapshot forever.
+alter function public.apply_verified_app_store_transaction(
+  uuid, text, text, text, text, uuid,
+  timestamptz, timestamptz, timestamptz, timestamptz
+) rename to x5_app_store_transaction_legacy_resolver_wrapper;
+
+revoke execute on function
+  public.x5_app_store_transaction_legacy_resolver_wrapper(
+    uuid, text, text, text, text, uuid,
+    timestamptz, timestamptz, timestamptz, timestamptz
+  ) from public, anon, authenticated, service_role;
+
+create or replace function public.apply_verified_app_store_transaction(
+  p_user_id uuid,
+  p_transaction_id text,
+  p_original_transaction_id text,
+  p_product_id text,
+  p_environment text,
+  p_app_account_token uuid,
+  p_purchase_date timestamptz,
+  p_expires_date timestamptz,
+  p_signed_date timestamptz,
+  p_revocation_date timestamptz default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_resolved_user_id uuid;
+  v_binding public.app_store_legacy_bindings%rowtype;
+begin
+  if p_app_account_token is null or p_app_account_token = p_user_id then
+    return public.x5_app_store_transaction_legacy_resolver_wrapper(
+      p_user_id, p_transaction_id, p_original_transaction_id,
+      p_product_id, p_environment, p_app_account_token, p_purchase_date,
+      p_expires_date, p_signed_date, p_revocation_date
+    );
+  end if;
+
+  v_resolved_user_id :=
+    public.resolve_verified_app_store_notification_user(
+      p_environment, p_original_transaction_id, p_product_id,
+      p_app_account_token
+    );
+  if v_resolved_user_id <> p_user_id then
+    raise exception using errcode = '22023', message = 'owned_by_other';
+  end if;
+
+  select binding.*
+    into v_binding
+    from public.app_store_legacy_bindings as binding
+   where binding.original_transaction_id =
+         nullif(btrim(p_original_transaction_id), '')
+   for update;
+
+  if v_binding.bound_at is null then
+    return public.x5_app_store_transaction_legacy_resolver_wrapper(
+      p_user_id, p_transaction_id, p_original_transaction_id,
+      p_product_id, p_environment, p_app_account_token, p_purchase_date,
+      p_expires_date, p_signed_date, p_revocation_date
+    );
+  end if;
+
+  return public.x5_apply_verified_app_store_transaction_production_internal(
+    p_user_id, p_transaction_id, p_original_transaction_id,
+    p_product_id, p_environment, null, p_purchase_date,
+    p_expires_date, p_signed_date, p_revocation_date
+  );
+end;
+$function$;
+
+alter function public.apply_verified_app_store_transaction(
+  uuid, text, text, text, text, uuid,
+  timestamptz, timestamptz, timestamptz, timestamptz
+) owner to postgres;
+revoke execute on function public.apply_verified_app_store_transaction(
+  uuid, text, text, text, text, uuid,
+  timestamptz, timestamptz, timestamptz, timestamptz
+) from public, anon, authenticated, service_role;
+grant execute on function public.apply_verified_app_store_transaction(
+  uuid, text, text, text, text, uuid,
+  timestamptz, timestamptz, timestamptz, timestamptz
+) to service_role;
+
+create or replace function
+  public.x5_apply_verified_legacy_subscription_notification(
+    p_event_id uuid,
+    p_notification_type text,
+    p_notification_signed_date timestamptz,
+    p_user_id uuid,
+    p_transaction_id text,
+    p_original_transaction_id text,
+    p_product_id text,
+    p_environment text,
+    p_app_account_token uuid,
+    p_purchase_date timestamptz,
+    p_expires_date timestamptz,
+    p_transaction_signed_date timestamptz,
+    p_revocation_date timestamptz,
+    p_revocation_percentage integer,
+    p_quantity integer
+  )
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_notification_type text := upper(btrim(coalesce(p_notification_type, '')));
+  v_transaction_id text := nullif(btrim(p_transaction_id), '');
+  v_original_transaction_id text :=
+    nullif(btrim(p_original_transaction_id), '');
+  v_product_id text := nullif(btrim(p_product_id), '');
+  v_environment text := case lower(btrim(coalesce(p_environment, '')))
+    when 'production' then 'Production'
+    when 'sandbox' then 'Sandbox'
+    else null
+  end;
+  v_resolved_user_id uuid;
+  existing_event public.app_store_server_notification_events%rowtype;
+  projection public.app_store_server_notification_state%rowtype;
+  source public.app_store_transactions%rowtype;
+  v_projection_found boolean := false;
+  v_prior_active boolean := false;
+  v_prior_percentage integer := 0;
+  v_prior_transaction_signed_date timestamptz;
+  v_prior_revocation_date timestamptz;
+  v_verified_until timestamptz;
+begin
+  if p_event_id is null then
+    raise exception using errcode = '22023',
+      message = 'invalid_notification_uuid';
+  end if;
+  if v_notification_type not in ('REFUND', 'REFUND_REVERSED') then
+    raise exception using errcode = '22023',
+      message = 'invalid_notification_type';
+  end if;
+  if v_environment <> 'Production'
+     or v_product_id <> 'com.x5studio.app.verified.monthly'
+     or p_app_account_token is null
+     or p_app_account_token = p_user_id then
+    raise exception using errcode = '22023',
+      message = 'invalid_legacy_notification_scope';
+  end if;
+  if v_transaction_id is null or length(v_transaction_id) > 255
+     or v_original_transaction_id is null
+     or length(v_original_transaction_id) > 255 then
+    raise exception using errcode = '22023',
+      message = 'invalid_transaction_id';
+  end if;
+
+  -- Exact legacy binding is locked before the profile. This matches the
+  -- on-device renewal binder and prevents binding/profile lock inversion.
+  v_resolved_user_id :=
+    public.resolve_verified_app_store_notification_user(
+      v_environment, v_original_transaction_id, v_product_id,
+      p_app_account_token
+    );
+  if v_resolved_user_id <> p_user_id then
+    raise exception using errcode = '22023', message = 'owned_by_other';
+  end if;
+
+  if p_purchase_date is null or p_expires_date is null
+     or p_transaction_signed_date is null
+     or p_notification_signed_date is null
+     or p_expires_date <= p_purchase_date
+     or p_quantity is not null
+     or p_purchase_date > clock_timestamp() + interval '10 minutes'
+     or p_transaction_signed_date > clock_timestamp() + interval '10 minutes'
+     or p_notification_signed_date > clock_timestamp() + interval '10 minutes'
+     or p_transaction_signed_date < p_purchase_date - interval '5 minutes'
+     or p_notification_signed_date <
+        p_transaction_signed_date - interval '5 minutes' then
+    raise exception using errcode = '22023', message = 'invalid_signed_date';
+  end if;
+  if v_notification_type = 'REFUND' then
+    if p_revocation_date is null
+       or p_revocation_percentage is null
+       or p_revocation_percentage not between 1 and 100000
+       or p_revocation_date < p_purchase_date
+       or p_revocation_date > clock_timestamp() + interval '10 minutes'
+       or p_transaction_signed_date <
+          p_revocation_date - interval '5 minutes' then
+      raise exception using errcode = '22023',
+        message = 'invalid_revocation_date';
+    end if;
+  elsif p_revocation_date is not null
+        or p_revocation_percentage is not null then
+    raise exception using errcode = '22023',
+      message = 'invalid_refund_reversal';
+  end if;
+
+  perform 1 from public.profiles where id = p_user_id for update;
+  if not found then
+    raise exception using errcode = '22023', message = 'profile_not_found';
+  end if;
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(
+      'app-store-transaction:' || v_transaction_id, 0
+    )
+  );
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(
+      'app-store-notification:' || p_event_id::text, 0
+    )
+  );
+
+  select event.*
+    into existing_event
+    from public.app_store_server_notification_events as event
+   where event.event_id = p_event_id;
+  if found then
+    if existing_event.notification_type <> v_notification_type
+       or existing_event.notification_signed_date <>
+          p_notification_signed_date
+       or existing_event.transaction_signed_date <>
+          p_transaction_signed_date
+       or existing_event.environment <> v_environment
+       or existing_event.transaction_id <> v_transaction_id
+       or existing_event.original_transaction_id <>
+          v_original_transaction_id
+       or existing_event.user_id <> p_user_id
+       or existing_event.product_id <> v_product_id
+       or existing_event.app_account_token <> p_app_account_token
+       or existing_event.purchase_date <> p_purchase_date
+       or existing_event.expires_date <> p_expires_date
+       or existing_event.revocation_date is distinct from p_revocation_date
+       or existing_event.revocation_percentage is distinct from
+          p_revocation_percentage
+       or existing_event.quantity is not null
+       or not existing_event.legacy_binding_used then
+      raise exception using errcode = '22023',
+        message = 'notification_event_id_conflict';
+    end if;
+    v_verified_until :=
+      public.x5_rebuild_app_store_verified_profile(p_user_id);
+    return jsonb_build_object(
+      'status', 'already_applied',
+      'credits_affected', 0,
+      'credits_delta', 0,
+      'subscription_end_date', v_verified_until,
+      'is_verified', v_verified_until is not null
+    );
+  end if;
+
+  select state.*
+    into projection
+    from public.app_store_server_notification_state as state
+   where state.environment = v_environment
+     and state.transaction_id = v_transaction_id
+   for update;
+  v_projection_found := found;
+  if v_projection_found then
+    if projection.user_id <> p_user_id
+       or projection.original_transaction_id <>
+          v_original_transaction_id
+       or projection.product_id <> v_product_id
+       or projection.app_account_token <> p_app_account_token
+       or projection.purchase_date <> p_purchase_date
+       or projection.expires_date <> p_expires_date
+       or projection.quantity is not null
+       or not projection.legacy_binding_used then
+      raise exception using errcode = '22023',
+        message = 'notification_source_mismatch';
+    end if;
+    v_prior_active := projection.active;
+    v_prior_percentage := projection.revocation_percentage;
+    v_prior_transaction_signed_date :=
+      projection.last_transaction_signed_date;
+    select event.revocation_date
+      into v_prior_revocation_date
+      from public.app_store_server_notification_events as event
+     where event.event_id = projection.last_event_id;
+  end if;
+
+  select purchase.*
+    into source
+    from public.app_store_transactions as purchase
+   where purchase.transaction_id = v_transaction_id
+   for update;
+  if found and (
+    source.user_id <> p_user_id
+    or source.original_transaction_id <> v_original_transaction_id
+    or source.product_id <> v_product_id
+    or source.environment <> v_environment
+    or source.app_account_token is not null
+    or source.purchase_date <> p_purchase_date
+    or source.expires_date <> p_expires_date
+    or source.signed_date > p_transaction_signed_date + interval '5 minutes'
+    or not source.is_verified_product
+    or source.credits_granted <> 0
+  ) then
+    raise exception using errcode = '22023',
+      message = 'notification_source_mismatch';
+  end if;
+
+  if v_prior_transaction_signed_date is not null
+     and p_transaction_signed_date < v_prior_transaction_signed_date then
+    insert into public.app_store_server_notification_events (
+      event_id, notification_type, notification_signed_date,
+      transaction_signed_date, environment, transaction_id,
+      original_transaction_id, user_id, product_id, app_account_token,
+      purchase_date, expires_date, revocation_date, revocation_percentage,
+      quantity, applied, resulting_revocation_percentage,
+      credits_affected, pending_credits_affected, credits_delta,
+      legacy_binding_used
+    ) values (
+      p_event_id, v_notification_type, p_notification_signed_date,
+      p_transaction_signed_date, v_environment, v_transaction_id,
+      v_original_transaction_id, p_user_id, v_product_id,
+      p_app_account_token, p_purchase_date, p_expires_date,
+      p_revocation_date, p_revocation_percentage, null, false,
+      case when v_prior_active then v_prior_percentage else 0 end,
+      0, 0, 0, true
+    );
+    return jsonb_build_object(
+      'status', 'ignored_stale', 'credits_affected', 0,
+      'credits_delta', 0
+    );
+  end if;
+
+  if v_prior_transaction_signed_date is not null
+     and p_transaction_signed_date = v_prior_transaction_signed_date then
+    if (
+      v_prior_active
+      and v_notification_type = 'REFUND'
+      and p_revocation_percentage = v_prior_percentage
+      and p_revocation_date is not distinct from v_prior_revocation_date
+    ) or (
+      not v_prior_active
+      and v_notification_type = 'REFUND_REVERSED'
+    ) then
+      insert into public.app_store_server_notification_events (
+        event_id, notification_type, notification_signed_date,
+        transaction_signed_date, environment, transaction_id,
+        original_transaction_id, user_id, product_id, app_account_token,
+        purchase_date, expires_date, revocation_date,
+        revocation_percentage, quantity, applied,
+        resulting_revocation_percentage, credits_affected,
+        pending_credits_affected, credits_delta, legacy_binding_used
+      ) values (
+        p_event_id, v_notification_type, p_notification_signed_date,
+        p_transaction_signed_date, v_environment, v_transaction_id,
+        v_original_transaction_id, p_user_id, v_product_id,
+        p_app_account_token, p_purchase_date, p_expires_date,
+        p_revocation_date, p_revocation_percentage, null, false,
+        case when v_prior_active then v_prior_percentage else 0 end,
+        0, 0, 0, true
+      );
+      return jsonb_build_object(
+        'status', 'already_applied', 'credits_affected', 0,
+        'credits_delta', 0
+      );
+    end if;
+    raise exception using errcode = '22023',
+      message = 'notification_source_mismatch';
+  end if;
+
+  insert into public.app_store_server_notification_events (
+    event_id, notification_type, notification_signed_date,
+    transaction_signed_date, environment, transaction_id,
+    original_transaction_id, user_id, product_id, app_account_token,
+    purchase_date, expires_date, revocation_date, revocation_percentage,
+    quantity, applied, resulting_revocation_percentage,
+    credits_affected, pending_credits_affected, credits_delta,
+    legacy_binding_used
+  ) values (
+    p_event_id, v_notification_type, p_notification_signed_date,
+    p_transaction_signed_date, v_environment, v_transaction_id,
+    v_original_transaction_id, p_user_id, v_product_id,
+    p_app_account_token, p_purchase_date, p_expires_date,
+    p_revocation_date, p_revocation_percentage, null, true,
+    case when v_notification_type = 'REFUND'
+      then p_revocation_percentage else 0 end,
+    0, 0, 0, true
+  );
+
+  insert into public.app_store_server_notification_state (
+    environment, transaction_id, original_transaction_id, user_id,
+    product_id, app_account_token, purchase_date, expires_date, quantity,
+    last_event_id, last_notification_type,
+    last_notification_signed_date, last_transaction_signed_date,
+    active, revocation_percentage, credits_withheld,
+    pending_credits_withheld, updated_at, legacy_binding_used
+  ) values (
+    v_environment, v_transaction_id, v_original_transaction_id, p_user_id,
+    v_product_id, p_app_account_token, p_purchase_date, p_expires_date,
+    null, p_event_id, v_notification_type, p_notification_signed_date,
+    p_transaction_signed_date, v_notification_type = 'REFUND',
+    case when v_notification_type = 'REFUND'
+      then p_revocation_percentage else 0 end,
+    0, 0, now(), true
+  )
+  on conflict (environment, transaction_id) do update
+    set last_event_id = excluded.last_event_id,
+        last_notification_type = excluded.last_notification_type,
+        last_notification_signed_date = excluded.last_notification_signed_date,
+        last_transaction_signed_date = excluded.last_transaction_signed_date,
+        active = excluded.active,
+        revocation_percentage = excluded.revocation_percentage,
+        credits_withheld = 0,
+        pending_credits_withheld = 0,
+        updated_at = excluded.updated_at;
+
+  v_verified_until :=
+    public.x5_rebuild_app_store_verified_profile(p_user_id);
+  return jsonb_build_object(
+    'status', 'applied', 'credits_affected', 0, 'credits_delta', 0,
+    'subscription_end_date', v_verified_until,
+    'is_verified', v_verified_until is not null
+  );
+end;
+$function$;
+
+alter function public.x5_apply_verified_legacy_subscription_notification(
+  uuid, text, timestamptz, uuid, text, text, text, text, uuid,
+  timestamptz, timestamptz, timestamptz, timestamptz, integer, integer
+) owner to postgres;
+revoke execute on function
+  public.x5_apply_verified_legacy_subscription_notification(
+    uuid, text, timestamptz, uuid, text, text, text, text, uuid,
+    timestamptz, timestamptz, timestamptz, timestamptz, integer, integer
+  ) from public, anon, authenticated, service_role;
+
 alter function public.apply_verified_app_store_server_notification(
   uuid, text, timestamptz, uuid, text, text, text, text, uuid,
   timestamptz, timestamptz, timestamptz, timestamptz, integer, integer
@@ -848,6 +1542,7 @@ set search_path = ''
 as $function$
 declare
   v_result jsonb;
+  v_resolved_user_id uuid;
   v_is_permanent_pack boolean := nullif(btrim(p_product_id), '') in (
     'com.x5studio.app.credits.1000',
     'com.x5studio.app.credits.2000',
@@ -855,6 +1550,24 @@ declare
   );
   v_type text := upper(btrim(coalesce(p_notification_type, '')));
 begin
+  v_resolved_user_id :=
+    public.resolve_verified_app_store_notification_user(
+      p_environment, p_original_transaction_id, p_product_id,
+      p_app_account_token
+    );
+  if v_resolved_user_id <> p_user_id then
+    raise exception using errcode = '22023', message = 'owned_by_other';
+  end if;
+  if p_app_account_token <> p_user_id then
+    return public.x5_apply_verified_legacy_subscription_notification(
+      p_event_id, p_notification_type, p_notification_signed_date,
+      p_user_id, p_transaction_id, p_original_transaction_id, p_product_id,
+      p_environment, p_app_account_token, p_purchase_date, p_expires_date,
+      p_transaction_signed_date, p_revocation_date,
+      p_revocation_percentage, p_quantity
+    );
+  end if;
+
   if v_is_permanent_pack and v_type in ('REFUND', 'REFUND_REVERSED') then
     perform pg_catalog.set_config(
       'x5.permanent_credit_adjustment_user',
@@ -876,6 +1589,97 @@ begin
   return v_result;
 end;
 $function$;
+
+-- StoreKit can surface a signed revocation directly on device before the V2
+-- server notification arrives. Preserve the exact legacy Apple token through
+-- the same projection instead of inserting it into the old token=user ledger.
+alter function public.apply_verified_app_store_verified_revocation(
+  uuid, text, text, text, text, uuid,
+  timestamptz, timestamptz, timestamptz, timestamptz
+) rename to x5_app_store_verified_revocation_legacy_wrapper;
+
+revoke execute on function
+  public.x5_app_store_verified_revocation_legacy_wrapper(
+    uuid, text, text, text, text, uuid,
+    timestamptz, timestamptz, timestamptz, timestamptz
+  ) from public, anon, authenticated, service_role;
+
+create or replace function public.apply_verified_app_store_verified_revocation(
+  p_user_id uuid,
+  p_transaction_id text,
+  p_original_transaction_id text,
+  p_product_id text,
+  p_environment text,
+  p_app_account_token uuid,
+  p_purchase_date timestamptz,
+  p_expires_date timestamptz,
+  p_signed_date timestamptz,
+  p_revocation_date timestamptz
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_environment text := case lower(btrim(coalesce(p_environment, '')))
+    when 'production' then 'Production'
+    when 'sandbox' then 'Sandbox'
+    else null
+  end;
+  v_transaction_id text := nullif(btrim(p_transaction_id), '');
+  v_resolved_user_id uuid;
+  v_result jsonb;
+  v_verified_until timestamptz;
+begin
+  v_resolved_user_id :=
+    public.resolve_verified_app_store_notification_user(
+      p_environment, p_original_transaction_id, p_product_id,
+      p_app_account_token
+    );
+  if v_resolved_user_id <> p_user_id then
+    raise exception using errcode = '22023', message = 'owned_by_other';
+  end if;
+
+  if p_app_account_token <> p_user_id then
+    v_result := public.x5_apply_verified_legacy_subscription_notification(
+      md5(
+        'storekit-verified-refund|' || coalesce(v_environment, '') || '|' ||
+        coalesce(v_transaction_id, '') || '|' ||
+        coalesce(p_signed_date::text, '')
+      )::uuid,
+      'REFUND', p_signed_date, p_user_id, v_transaction_id,
+      p_original_transaction_id, p_product_id, v_environment,
+      p_app_account_token, p_purchase_date, p_expires_date, p_signed_date,
+      p_revocation_date, 100000, null
+    );
+    v_verified_until :=
+      public.x5_rebuild_app_store_verified_profile(p_user_id);
+    return jsonb_build_object(
+      'status', case when v_result ->> 'status' = 'ignored_stale'
+        then 'already_applied' else v_result ->> 'status' end,
+      'credits_granted', 0,
+      'subscription_end_date', v_verified_until,
+      'is_verified', v_verified_until is not null
+    );
+  end if;
+
+  return public.x5_app_store_verified_revocation_legacy_wrapper(
+    p_user_id, p_transaction_id, p_original_transaction_id,
+    p_product_id, p_environment, p_app_account_token, p_purchase_date,
+    p_expires_date, p_signed_date, p_revocation_date
+  );
+end;
+$function$;
+
+revoke execute on function public.apply_verified_app_store_verified_revocation(
+  uuid, text, text, text, text, uuid,
+  timestamptz, timestamptz, timestamptz, timestamptz
+) from public, anon, authenticated, service_role;
+grant execute on function public.apply_verified_app_store_verified_revocation(
+  uuid, text, text, text, text, uuid,
+  timestamptz, timestamptz, timestamptz, timestamptz
+) to service_role;
 
 alter function public.apply_verified_app_store_consumable_refund(
   uuid, text, text, text, text, uuid,
@@ -1486,6 +2290,7 @@ $function$;
 create table public.app_store_verified_lifecycle_events (
   event_id uuid primary key,
   notification_type text not null,
+  notification_subtype text,
   notification_signed_date timestamptz not null,
   transaction_signed_date timestamptz not null,
   renewal_signed_date timestamptz not null,
@@ -1502,11 +2307,23 @@ create table public.app_store_verified_lifecycle_events (
   auto_renew_status integer,
   applied boolean not null,
   result_status text not null,
-  verified_until timestamptz,
+  legacy_binding_used boolean not null default false,
+  legacy_binding_original_transaction_id text
+    generated always as (
+      case when legacy_binding_used then original_transaction_id end
+    ) stored,
+  legacy_binding_user_id uuid
+    generated always as (case when legacy_binding_used then user_id end) stored,
+  legacy_binding_app_account_token uuid
+    generated always as (
+      case when legacy_binding_used then app_account_token end
+    ) stored,
+  legacy_binding_product_id text
+    generated always as (case when legacy_binding_used then product_id end) stored,
   created_at timestamptz not null default now(),
   constraint app_store_verified_lifecycle_events_type
     check (notification_type in (
-      'SUBSCRIBED', 'DID_RENEW', 'EXPIRED',
+      'SUBSCRIBED', 'DID_RENEW', 'DID_FAIL_TO_RENEW', 'EXPIRED',
       'GRACE_PERIOD_EXPIRED', 'REVOKE'
     )),
   constraint app_store_verified_lifecycle_events_identity
@@ -1515,7 +2332,16 @@ create table public.app_store_verified_lifecycle_events (
       and btrim(transaction_id) <> ''
       and btrim(original_transaction_id) <> ''
       and product_id = 'com.x5studio.app.verified.monthly'
-      and app_account_token = user_id
+      and (
+        (
+          not legacy_binding_used
+          and app_account_token = user_id
+        ) or (
+          legacy_binding_used
+          and environment = 'Production'
+          and app_account_token <> user_id
+        )
+      )
     ),
   constraint app_store_verified_lifecycle_events_dates
     check (
@@ -1536,9 +2362,19 @@ create table public.app_store_verified_lifecycle_events (
         and revocation_date is null
       )
     ),
+  constraint app_store_verified_lifecycle_events_subtype_shape
+    check (
+      (notification_subtype is null or btrim(notification_subtype) <> '')
+      and (
+        notification_type <> 'DID_FAIL_TO_RENEW'
+        or notification_subtype = 'GRACE_PERIOD'
+      )
+    ),
   constraint app_store_verified_lifecycle_events_grace_shape
     check (
-      notification_type <> 'GRACE_PERIOD_EXPIRED'
+      notification_type not in (
+        'DID_FAIL_TO_RENEW', 'GRACE_PERIOD_EXPIRED'
+      )
       or grace_period_expires_date is not null
     ),
   constraint app_store_verified_lifecycle_events_auto_renew
@@ -1546,6 +2382,82 @@ create table public.app_store_verified_lifecycle_events (
   constraint app_store_verified_lifecycle_events_result
     check (result_status in ('applied', 'already_applied', 'ignored_stale'))
 );
+
+alter table public.app_store_verified_lifecycle_events
+  add constraint app_store_verified_lifecycle_events_legacy_binding_fk
+    foreign key (
+      legacy_binding_original_transaction_id,
+      legacy_binding_user_id,
+      legacy_binding_app_account_token,
+      legacy_binding_product_id
+    ) references public.app_store_legacy_bindings (
+      original_transaction_id, user_id, app_account_token, product_id
+    );
+
+create or replace function
+  public.x5_app_store_lifecycle_transaction_allows_entitlement(
+    p_environment text,
+    p_transaction_id text
+  )
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  select coalesce(
+    (
+      select latest.notification_type not in (
+        'EXPIRED', 'GRACE_PERIOD_EXPIRED'
+      )
+        from public.app_store_verified_lifecycle_events as latest
+       where latest.environment = p_environment
+         and latest.transaction_id = p_transaction_id
+       order by latest.notification_signed_date desc,
+                latest.renewal_signed_date desc,
+                latest.transaction_signed_date desc,
+                latest.event_id desc
+       limit 1
+    ),
+    true
+  );
+$function$;
+
+create or replace function public.x5_active_app_store_grace_period(
+  p_user_id uuid
+)
+returns timestamptz
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  select max(latest.grace_period_expires_date)
+    from (
+      select distinct on (
+        event.environment, event.original_transaction_id
+      )
+        event.notification_type,
+        event.notification_subtype,
+        event.grace_period_expires_date,
+        event.environment,
+        event.original_transaction_id,
+        event.transaction_id
+      from public.app_store_verified_lifecycle_events as event
+      where event.user_id = p_user_id
+      order by event.environment, event.original_transaction_id,
+               event.notification_signed_date desc,
+               event.renewal_signed_date desc,
+               event.transaction_signed_date desc,
+               event.event_id desc
+    ) as latest
+   where latest.notification_type = 'DID_FAIL_TO_RENEW'
+     and latest.notification_subtype = 'GRACE_PERIOD'
+     and latest.grace_period_expires_date > now()
+     and not public.x5_app_store_notification_refund_active(
+       latest.environment, latest.transaction_id
+     );
+$function$;
 
 create index app_store_verified_lifecycle_events_user_idx
   on public.app_store_verified_lifecycle_events (user_id, created_at desc);
@@ -1568,6 +2480,7 @@ for each row execute function
 create or replace function public.apply_verified_app_store_subscription_lifecycle(
   p_event_id uuid,
   p_notification_type text,
+  p_notification_subtype text,
   p_notification_signed_date timestamptz,
   p_user_id uuid,
   p_transaction_id text,
@@ -1590,6 +2503,8 @@ set search_path = ''
 as $function$
 declare
   v_notification_type text := upper(btrim(coalesce(p_notification_type, '')));
+  v_notification_subtype text :=
+    nullif(upper(btrim(coalesce(p_notification_subtype, ''))), '');
   v_environment text := case lower(btrim(coalesce(p_environment, '')))
     when 'production' then 'Production'
     when 'sandbox' then 'Sandbox'
@@ -1603,12 +2518,14 @@ declare
   v_result jsonb;
   v_status text;
   v_verified_until timestamptz;
+  v_resolved_user_id uuid;
+  v_legacy_binding_used boolean;
 begin
   if p_event_id is null then
     raise exception using errcode = '22023', message = 'invalid_event_id';
   end if;
   if v_notification_type not in (
-    'SUBSCRIBED', 'DID_RENEW', 'EXPIRED',
+    'SUBSCRIBED', 'DID_RENEW', 'DID_FAIL_TO_RENEW', 'EXPIRED',
     'GRACE_PERIOD_EXPIRED', 'REVOKE'
   ) then
     raise exception using errcode = '22023',
@@ -1626,12 +2543,31 @@ begin
     raise exception using errcode = '22023',
       message = 'invalid_transaction_id';
   end if;
+  if p_notification_subtype is not null
+     and (v_notification_subtype is null
+          or length(v_notification_subtype) > 64) then
+    raise exception using errcode = '22023',
+      message = 'invalid_notification_subtype';
+  end if;
+  if v_notification_type = 'DID_FAIL_TO_RENEW'
+     and v_notification_subtype is distinct from 'GRACE_PERIOD' then
+    raise exception using errcode = '22023',
+      message = 'invalid_notification_subtype';
+  end if;
   if p_user_id is null or p_app_account_token is null then
     raise exception using errcode = '22023', message = 'missing_account_token';
   end if;
-  if p_app_account_token <> p_user_id then
-    raise exception using errcode = '22023', message = 'account_token_mismatch';
+  -- Resolve and lock an exact legacy binding before taking the profile lock.
+  -- The on-device renewal binder uses the same binding -> profile order.
+  v_resolved_user_id :=
+    public.resolve_verified_app_store_notification_user(
+      v_environment, v_original_transaction_id, v_product_id,
+      p_app_account_token
+    );
+  if v_resolved_user_id <> p_user_id then
+    raise exception using errcode = '22023', message = 'owned_by_other';
   end if;
+  v_legacy_binding_used := p_app_account_token <> p_user_id;
   if p_purchase_date is null or p_expires_date is null
      or p_transaction_signed_date is null
      or p_renewal_signed_date is null
@@ -1674,17 +2610,121 @@ begin
     raise exception using errcode = '22023',
       message = 'invalid_expiration_date';
   end if;
-  if v_notification_type = 'GRACE_PERIOD_EXPIRED' and (
+  if v_notification_type in (
+    'DID_FAIL_TO_RENEW', 'GRACE_PERIOD_EXPIRED'
+  ) and (
     p_grace_period_expires_date is null
     or p_grace_period_expires_date < p_expires_date
-    or p_grace_period_expires_date >
-       p_notification_signed_date + interval '5 minutes'
+    or (
+      v_notification_type = 'DID_FAIL_TO_RENEW'
+      and p_grace_period_expires_date <= clock_timestamp()
+    )
+    or (
+      v_notification_type = 'GRACE_PERIOD_EXPIRED'
+      and p_grace_period_expires_date >
+          p_notification_signed_date + interval '5 minutes'
+    )
   ) then
     raise exception using errcode = '22023',
       message = 'invalid_grace_period_expiration_date';
   end if;
 
-  -- Match the established grant/revocation lock order: profile first.
+  -- Billing grace can extend access, so it must preserve an entitlement that
+  -- this backend already proved. A signed notification for an unknown chain
+  -- is recorded only after its StoreKit transaction has passed the normal
+  -- grant path (or the exact grandfather binding for the two legacy chains).
+  if v_notification_type = 'DID_FAIL_TO_RENEW' then
+    if v_environment = 'Sandbox' then
+      perform 1
+        from public.app_store_sandbox_review_transactions as source
+       where source.transaction_id = v_transaction_id
+         and source.original_transaction_id = v_original_transaction_id
+         and source.user_id = p_user_id
+         and source.product_id = v_product_id
+         and source.environment = v_environment
+         and source.app_account_token = p_app_account_token
+         and source.purchase_date = p_purchase_date
+         and source.expires_date = p_expires_date
+         and source.is_verified_product
+         and source.credits_granted = 0;
+      if not found then
+        raise exception using errcode = '22023',
+          message = 'sandbox_review_account_not_allowed';
+      end if;
+    elsif not v_legacy_binding_used then
+      perform 1
+        from public.app_store_transactions as source
+       where source.transaction_id = v_transaction_id
+         and source.original_transaction_id = v_original_transaction_id
+         and source.user_id = p_user_id
+         and source.product_id = v_product_id
+         and source.environment = v_environment
+         and source.app_account_token = p_app_account_token
+         and source.purchase_date = p_purchase_date
+         and source.expires_date = p_expires_date
+         and source.is_verified_product
+         and source.credits_granted = 0;
+      if not found then
+        raise exception using errcode = '22023',
+          message = 'lifecycle_grace_source_not_found';
+      end if;
+    else
+      perform 1
+        from public.app_store_legacy_bindings as binding
+        join public.app_store_transactions as source
+          on source.original_transaction_id = binding.original_transaction_id
+         and source.user_id = binding.user_id
+         and source.product_id = binding.product_id
+       where binding.original_transaction_id = v_original_transaction_id
+         and binding.user_id = p_user_id
+         and binding.product_id = v_product_id
+         and binding.app_account_token = p_app_account_token
+         and binding.bound_at is not null
+         and source.transaction_id = v_transaction_id
+         and source.environment = v_environment
+         and source.app_account_token is null
+         and source.purchase_date = p_purchase_date
+         and source.expires_date = p_expires_date
+         and source.is_verified_product
+         and source.credits_granted = 0;
+      if not found then
+        perform 1
+          from public.app_store_legacy_bindings as binding
+          join public.iap_entitlements as source
+            on source.original_transaction_id = binding.original_transaction_id
+           and source.user_id = binding.user_id
+           and source.product_id = binding.product_id
+           and lower(coalesce(source.platform, '')) = 'ios'
+         where binding.original_transaction_id = v_original_transaction_id
+           and binding.user_id = p_user_id
+           and binding.product_id = v_product_id
+           and binding.app_account_token = p_app_account_token
+           and source.subscription_end_date = p_expires_date
+           and (
+             source.last_transaction_id = v_transaction_id
+             or (
+               binding.bound_at is null
+               and source.credited_at is not distinct from
+                   binding.legacy_credited_at
+               and source.subscription_end_date is not distinct from
+                   binding.legacy_subscription_end_date
+               and source.created_at is not distinct from
+                   binding.legacy_created_at
+               and coalesce(
+                 source.legacy_app_account_token,
+                 source.app_account_token
+               ) = binding.app_account_token
+             )
+           );
+      end if;
+      if not found then
+        raise exception using errcode = '22023',
+          message = 'lifecycle_grace_source_not_found';
+      end if;
+    end if;
+  end if;
+
+  -- Exact legacy bindings were already locked above; profile comes next.
   perform 1
     from public.profiles
    where id = p_user_id
@@ -1704,6 +2744,8 @@ begin
    where event.event_id = p_event_id;
   if found then
     if existing.notification_type <> v_notification_type
+       or existing.notification_subtype is distinct from
+          v_notification_subtype
        or existing.notification_signed_date <> p_notification_signed_date
        or existing.transaction_signed_date <> p_transaction_signed_date
        or existing.renewal_signed_date <> p_renewal_signed_date
@@ -1718,14 +2760,18 @@ begin
        or existing.revocation_date is distinct from p_revocation_date
        or existing.grace_period_expires_date is distinct from
           p_grace_period_expires_date
-       or existing.auto_renew_status is distinct from p_auto_renew_status then
+       or existing.auto_renew_status is distinct from p_auto_renew_status
+       or existing.legacy_binding_used is distinct from
+          v_legacy_binding_used then
       raise exception using errcode = '22023',
         message = 'lifecycle_event_id_conflict';
     end if;
+    v_verified_until :=
+      public.x5_rebuild_app_store_verified_profile(p_user_id);
     return jsonb_build_object(
       'status', 'already_applied',
-      'subscription_end_date', existing.verified_until,
-      'is_verified', existing.verified_until is not null
+      'subscription_end_date', v_verified_until,
+      'is_verified', v_verified_until is not null
     );
   end if;
 
@@ -1755,13 +2801,27 @@ begin
         public.x5_rebuild_app_store_verified_profile(p_user_id);
     end if;
   elsif v_notification_type = 'REVOKE' then
-    v_result := public.apply_verified_app_store_verified_revocation(
-      p_user_id, v_transaction_id, v_original_transaction_id,
-      v_product_id, v_environment, p_app_account_token,
-      p_purchase_date, p_expires_date, p_transaction_signed_date,
-      p_revocation_date
-    );
-    v_status := coalesce(v_result ->> 'status', 'applied');
+    if v_legacy_binding_used then
+      -- Preserve the real legacy token in the exact refund projection. Scope
+      -- revocation to this StoreKit period so an older period cannot suppress a
+      -- newer renewal, and let a later REFUND_REVERSED restore unexpired access.
+      v_result := public.x5_apply_verified_legacy_subscription_notification(
+        md5('lifecycle-legacy-revoke|' || p_event_id::text)::uuid,
+        'REFUND', p_notification_signed_date, p_user_id,
+        v_transaction_id, v_original_transaction_id, v_product_id,
+        v_environment, p_app_account_token, p_purchase_date, p_expires_date,
+        p_transaction_signed_date, p_revocation_date, 100000, null
+      );
+      v_status := coalesce(v_result ->> 'status', 'applied');
+    else
+      v_result := public.apply_verified_app_store_verified_revocation(
+        p_user_id, v_transaction_id, v_original_transaction_id,
+        v_product_id, v_environment, p_app_account_token,
+        p_purchase_date, p_expires_date, p_transaction_signed_date,
+        p_revocation_date
+      );
+      v_status := coalesce(v_result ->> 'status', 'applied');
+    end if;
     v_verified_until :=
       public.x5_rebuild_app_store_verified_profile(p_user_id);
   else
@@ -1776,20 +2836,28 @@ begin
   end if;
 
   insert into public.app_store_verified_lifecycle_events (
-    event_id, notification_type, notification_signed_date,
+    event_id, notification_type, notification_subtype,
+    notification_signed_date,
     transaction_signed_date, renewal_signed_date, environment,
     transaction_id, original_transaction_id, user_id, product_id,
     app_account_token, purchase_date, expires_date, revocation_date,
     grace_period_expires_date, auto_renew_status, applied,
-    result_status, verified_until
+    result_status, legacy_binding_used
   ) values (
-    p_event_id, v_notification_type, p_notification_signed_date,
+    p_event_id, v_notification_type, v_notification_subtype,
+    p_notification_signed_date,
     p_transaction_signed_date, p_renewal_signed_date, v_environment,
     v_transaction_id, v_original_transaction_id, p_user_id, v_product_id,
     p_app_account_token, p_purchase_date, p_expires_date,
     p_revocation_date, p_grace_period_expires_date, p_auto_renew_status,
-    v_status = 'applied', v_status, v_verified_until
+    v_status = 'applied', v_status, v_legacy_binding_used
   );
+
+  -- The newly inserted immutable event must be visible to the projection in
+  -- this same request. This preserves grace immediately and lets a later
+  -- terminal event supersede it before the next reconciliation cron.
+  v_verified_until :=
+    public.x5_rebuild_app_store_verified_profile(p_user_id);
 
   return jsonb_build_object(
     'status', v_status,
@@ -1800,17 +2868,17 @@ end;
 $function$;
 
 alter function public.apply_verified_app_store_subscription_lifecycle(
-  uuid, text, timestamptz, uuid, text, text, text, text, uuid,
+  uuid, text, text, timestamptz, uuid, text, text, text, text, uuid,
   timestamptz, timestamptz, timestamptz, timestamptz,
   timestamptz, timestamptz, integer
 ) owner to postgres;
 revoke execute on function public.apply_verified_app_store_subscription_lifecycle(
-    uuid, text, timestamptz, uuid, text, text, text, text, uuid,
+    uuid, text, text, timestamptz, uuid, text, text, text, text, uuid,
     timestamptz, timestamptz, timestamptz, timestamptz,
     timestamptz, timestamptz, integer
   ) from public, anon, authenticated, service_role;
 grant execute on function public.apply_verified_app_store_subscription_lifecycle(
-    uuid, text, timestamptz, uuid, text, text, text, text, uuid,
+    uuid, text, text, timestamptz, uuid, text, text, text, text, uuid,
     timestamptz, timestamptz, timestamptz, timestamptz,
     timestamptz, timestamptz, integer
   ) to service_role;
@@ -1818,11 +2886,11 @@ grant execute on function public.apply_verified_app_store_subscription_lifecycle
 comment on table public.app_store_verified_lifecycle_events is
   'Private append-only ledger of fully verified Apple subscription lifecycle JWS payloads.';
 comment on function public.apply_verified_app_store_subscription_lifecycle(
-  uuid, text, timestamptz, uuid, text, text, text, text, uuid,
+  uuid, text, text, timestamptz, uuid, text, text, text, text, uuid,
   timestamptz, timestamptz, timestamptz, timestamptz,
   timestamptz, timestamptz, integer
 ) is
-  'Applies verified Apple subscription renewal, expiry, grace-expiry and revoke events exactly once. Service role only.';
+  'Applies verified Apple subscription renewal, billing grace, expiry and revoke events exactly once. Service role only.';
 
 comment on table public.app_store_sandbox_review_accounts is
   'Private Sandbox allowlist: canonical App Review plus exactly two immutable developer UUIDs, all under a 10,000-credit cap.';
