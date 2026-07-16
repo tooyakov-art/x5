@@ -46,6 +46,18 @@ select set_config(
   (select id::text from public.profiles order by id offset 1 limit 1),
   true
 );
+select set_config(
+  'x5.consumable_refund_sandbox_user_id',
+  (
+    select review.user_id::text
+      from public.app_store_sandbox_review_accounts as review
+      join auth.users as account on account.id = review.user_id
+     where review.enabled
+       and lower(account.email) = 'appreview@x5studio.app'
+     limit 1
+  ),
+  true
+);
 
 do $fixture_tests$
 declare
@@ -61,6 +73,11 @@ begin
     current_setting('x5.consumable_refund_other_user_id', true), ''
   ) is null then
     raise exception 'consumable_refund_other_user_not_found';
+  end if;
+  if nullif(
+    current_setting('x5.consumable_refund_sandbox_user_id', true), ''
+  ) is null then
+    raise exception 'consumable_refund_sandbox_user_not_found';
   end if;
 
   update public.profiles set credits = 100 where id = v_uid;
@@ -112,10 +129,13 @@ do $service_tests$
 declare
   v_uid uuid := current_setting('x5.consumable_refund_user_id')::uuid;
   v_other_uid uuid := current_setting('x5.consumable_refund_other_user_id')::uuid;
+  v_sandbox_uid uuid :=
+    current_setting('x5.consumable_refund_sandbox_user_id')::uuid;
   v_purchase_date timestamptz;
   v_revocation_date timestamptz := now() - interval '1 minute';
   v_response jsonb;
   v_credits integer;
+  v_credits_before integer;
   v_rejected boolean;
 begin
   select purchase_date
@@ -184,6 +204,136 @@ begin
   if v_response ->> 'status' <> 'applied' or v_credits <> -2900 then
     raise exception 'sandbox_consumable_refund_failed:%:%',
       v_response, v_credits;
+  end if;
+
+  -- Apple can deliver the refund JWS before StoreKit replays the purchase JWS.
+  -- The zero-value row must suppress that later grant in both environments.
+  select credits into v_credits_before
+    from public.profiles where id = v_uid;
+  v_response := public.apply_verified_app_store_consumable_refund(
+    v_uid,
+    'codex-production-refund-before-grant',
+    'codex-production-refund-before-grant',
+    'com.x5studio.app.credits.1000',
+    'Production',
+    v_uid,
+    v_purchase_date,
+    now(),
+    v_revocation_date,
+    1
+  );
+  if v_response ->> 'status' <> 'applied' then
+    raise exception 'production_refund_before_grant_tombstone_failed:%',
+      v_response;
+  end if;
+  v_response := public.apply_verified_app_store_consumable(
+    v_uid,
+    'codex-production-refund-before-grant',
+    'codex-production-refund-before-grant',
+    'com.x5studio.app.credits.1000',
+    'Production',
+    v_uid,
+    v_purchase_date,
+    v_purchase_date + interval '1 minute',
+    null,
+    1
+  );
+  select credits into v_credits from public.profiles where id = v_uid;
+  if v_response ->> 'status' <> 'already_applied'
+     or v_response ->> 'credits_granted' <> '0'
+     or v_credits <> v_credits_before
+     or exists (
+       select 1 from public.app_store_consumable_transactions
+        where transaction_id = 'codex-production-refund-before-grant'
+     ) then
+    raise exception 'production_refund_before_grant_was_credited:%:%:%',
+      v_response, v_credits_before, v_credits;
+  end if;
+
+  select credits into v_credits_before
+    from public.profiles where id = v_sandbox_uid;
+  v_response := public.apply_verified_app_store_consumable_refund(
+    v_sandbox_uid,
+    'codex-sandbox-refund-before-grant',
+    'codex-sandbox-refund-before-grant',
+    'com.x5studio.app.credits.2000',
+    'Sandbox',
+    v_sandbox_uid,
+    v_purchase_date,
+    now(),
+    v_revocation_date,
+    1
+  );
+  if v_response ->> 'status' <> 'applied' then
+    raise exception 'sandbox_refund_before_grant_tombstone_failed:%',
+      v_response;
+  end if;
+  v_response := public.apply_verified_app_store_sandbox_review_transaction(
+    v_sandbox_uid,
+    'codex-sandbox-refund-before-grant',
+    'codex-sandbox-refund-before-grant',
+    'com.x5studio.app.credits.2000',
+    'Sandbox',
+    v_sandbox_uid,
+    v_purchase_date,
+    null,
+    v_purchase_date + interval '1 minute',
+    null,
+    1
+  );
+  select credits into v_credits
+    from public.profiles where id = v_sandbox_uid;
+  if v_response ->> 'status' <> 'already_applied'
+     or v_response ->> 'credits_granted' <> '0'
+     or v_credits <> v_credits_before
+     or exists (
+       select 1 from public.app_store_sandbox_review_transactions
+        where transaction_id = 'codex-sandbox-refund-before-grant'
+     ) then
+    raise exception 'sandbox_refund_before_grant_was_credited:%:%:%',
+      v_response, v_credits_before, v_credits;
+  end if;
+
+  v_rejected := false;
+  begin
+    perform public.apply_verified_app_store_consumable(
+      v_uid,
+      'codex-production-refund-before-grant',
+      'codex-production-refund-before-grant',
+      'com.x5studio.app.credits.2000',
+      'Production',
+      v_uid,
+      v_purchase_date,
+      v_purchase_date + interval '1 minute',
+      null,
+      1
+    );
+  exception when sqlstate '22023' then
+    v_rejected := true;
+  end;
+  if not v_rejected then
+    raise exception 'refund_before_grant_identity_conflict_was_accepted';
+  end if;
+
+  v_rejected := false;
+  begin
+    perform public.apply_verified_app_store_consumable(
+      v_other_uid,
+      'codex-production-refund-before-grant',
+      'codex-production-refund-before-grant',
+      'com.x5studio.app.credits.1000',
+      'Production',
+      v_other_uid,
+      v_purchase_date,
+      v_purchase_date + interval '1 minute',
+      null,
+      1
+    );
+  exception when sqlstate '22023' then
+    v_rejected := true;
+  end;
+  if not v_rejected then
+    raise exception 'refund_before_grant_cross_account_was_accepted';
   end if;
 
   v_rejected := false;

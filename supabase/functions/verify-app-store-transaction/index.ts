@@ -452,7 +452,8 @@ async function applyVerifiedRpc(
       .toLowerCase();
     if (
       safeToken.includes("owned_by_other") ||
-      safeToken.includes("transaction_id_conflict")
+      safeToken.includes("transaction_id_conflict") ||
+      safeToken.includes("consumable_refund_id_conflict")
     ) {
       throw new EntitlementApplyError("owned_by_other", 409);
     }
@@ -484,7 +485,6 @@ async function applyVerifiedRpc(
       safeToken.includes("revocation_id_conflict") ||
       safeToken.includes("consumable_refund_source_not_found") ||
       safeToken.includes("consumable_refund_source_mismatch") ||
-      safeToken.includes("consumable_refund_id_conflict") ||
       safeToken.includes("invalid_revocation_date")
     ) {
       throw new EntitlementApplyError("rejected", 400);
