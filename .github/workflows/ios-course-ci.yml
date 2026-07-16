@@ -12,6 +12,7 @@ on:
       - "supabase/functions/verify-app-store-transaction/**"
       - "supabase/functions/app-store-notifications/**"
       - "supabase/functions/verify-play-purchase/**"
+      - "supabase/functions/google-play-notifications/**"
       - "supabase/migrations/**apple*store*.sql"
       - "supabase/migrations/**/*store*.sql"
       - "scripts/tests/**"
@@ -56,6 +57,14 @@ jobs:
 
       - name: Verify Google Play backend
         working-directory: supabase/functions/verify-play-purchase
+        run: |
+          deno fmt --check
+          deno lint
+          deno check index.ts
+          deno test --allow-read
+
+      - name: Verify Google Play notification backend
+        working-directory: supabase/functions/google-play-notifications
         run: |
           deno fmt --check
           deno lint

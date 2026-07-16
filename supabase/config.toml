@@ -1,0 +1,2 @@
+[functions.google-play-notifications]
+verify_jwt = false

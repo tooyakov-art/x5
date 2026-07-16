@@ -25,7 +25,7 @@ test("production Google Play verification mints through the exact-once owner led
     ].filter((index) => index >= 0),
   );
   const ledgerMutation = source.indexOf(
-    '.rpc("apply_android_purchase_entitlement"',
+    '.rpc("apply_android_purchase_entitlement_v2"',
   );
 
   assert.ok(googleVerification >= 0, "missing Google Play API verification");
@@ -35,13 +35,11 @@ test("production Google Play verification mints through the exact-once owner led
   );
   assert.doesNotMatch(
     source,
-    /\.from\(["\']profiles["\']\)/,
+    /\.from\(["\']profiles["\']\)[\s\S]{0,160}\.update\(/,
     "the verifier must not mutate profile balances directly",
   );
-  assert.match(
-    source,
-    /const claimKey = `\$\{productId\}:\$\{tokenHash\}:\$\{expiry \|\| "one-time"\}`/,
-  );
+  assert.match(source, /buildGooglePlayClaimKey/);
+  assert.match(source, /p_successful_order_id: verified\.orderId/);
 });
 
 test("deployed package and every current store product stay represented", () => {
@@ -63,4 +61,42 @@ test("deployed package and every current store product stay represented", () => 
   ) {
     assert.match(entitlements, new RegExp(`\\b${productId}\\b`));
   }
+});
+
+test("verifier binds Google orders to the authenticated account and successful order ledger", () => {
+  assert.match(source, /createGooglePlayAccountBinding/);
+  assert.match(source, /validateGooglePlayAccountBinding/);
+  assert.match(source, /buildGooglePlayClaimKey/);
+  assert.match(source, /GOOGLE_PLAY_ACCOUNT_BINDING_SECRET/);
+  assert.match(source, /account_binding: expectedAccountBinding/);
+  assert.match(source, /getGooglePlayPredecessorPurchaseTokens/);
+  assert.match(source, /loadGooglePlayOwnershipLedgers/);
+  assert.match(source, /\.in\("purchase_token_hash", uniqueHashes\)/);
+  assert.match(source, /\.rpc\("apply_android_purchase_entitlement_v2"/);
+  assert.match(source, /\.rpc\("close_android_linked_subscription"/);
+  assert.doesNotMatch(source, /typedPurchase\.latestOrderId/);
+  assert.doesNotMatch(source, /expiry \|\| "one-time"/);
+});
+
+test("verifier finalizes Google Play only after the exact-once ledger", () => {
+  const ledger = source.indexOf('.rpc("apply_android_purchase_entitlement_v2"');
+  const linkedClosure = source.indexOf(
+    "await closeLinkedGoogleSubscription(",
+  );
+  const finalization = source.indexOf("finalizeGooglePlayPurchase({");
+  assert.ok(ledger >= 0, "missing V2 exact-once ledger");
+  assert.ok(
+    linkedClosure > ledger,
+    "linked predecessor closes after the grant",
+  );
+  assert.ok(
+    finalization > linkedClosure,
+    "Google finalization must follow grant and linked-token reconciliation",
+  );
+  assert.match(source, /play_finalization_pending/);
+  assert.match(source, /retryable: true/);
+  assert.match(source, /entitlement_applied: true/);
+  assert.match(source, /recoverKnownConsumedPurchase/);
+  assert.match(source, /isGooglePlayFinalizationRace/);
+  assert.match(source, /isGooglePlayPurchaseGone/);
 });
