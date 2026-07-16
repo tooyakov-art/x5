@@ -268,32 +268,6 @@ final class IAPLifecycleDecisionTests: XCTestCase {
         )
     }
 
-    func testOfflineRevocationReconciliationKeepsOnlyTwentyNewestTransactions() {
-        struct Candidate: Equatable {
-            let id: Int
-            let revocationDate: Date
-        }
-
-        var bounded: [Candidate] = []
-        for id in 0..<25 {
-            bounded = IAPRevocationReconciliationPolicy.insertingMostRecent(
-                Candidate(
-                    id: id,
-                    revocationDate: Date(timeIntervalSince1970: TimeInterval(id))
-                ),
-                into: bounded,
-                revocationDate: \Candidate.revocationDate
-            )
-        }
-
-        XCTAssertEqual(
-            IAPRevocationReconciliationPolicy.maximumTransactions,
-            20
-        )
-        XCTAssertEqual(bounded.count, 20)
-        XCTAssertEqual(bounded.map(\.id), Array((5..<25).reversed()))
-    }
-
     @MainActor
     func testRevocationReverifiesACompletedTransactionExactlyOnce() async {
         let lifecycle = IAPTransactionLifecycleCoordinator()

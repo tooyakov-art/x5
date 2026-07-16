@@ -94,26 +94,6 @@ enum IAPVerificationRetryPolicy {
     }
 }
 
-enum IAPRevocationReconciliationPolicy {
-    static let maximumTransactions = 20
-
-    static func insertingMostRecent<Element>(
-        _ candidate: Element,
-        into current: [Element],
-        revocationDate: KeyPath<Element, Date>
-    ) -> [Element] {
-        var result = current
-        result.append(candidate)
-        result.sort {
-            $0[keyPath: revocationDate] > $1[keyPath: revocationDate]
-        }
-        if result.count > maximumTransactions {
-            result.removeLast(result.count - maximumTransactions)
-        }
-        return result
-    }
-}
-
 enum IAPOwnershipRoutingPolicy {
     /// Apple JWS ownership is decided only by the server. A non-nil token that
     /// differs from the current user can be either another account or one of
@@ -299,12 +279,6 @@ final class IAPService: ObservableObject {
         let status: String
     }
 
-    private struct RevokedTransactionDelivery {
-        let transaction: StoreKit.Transaction
-        let signedTransaction: String
-        let revocationDate: Date
-    }
-
     init(auth: Auth) {
         self.auth = auth
         startTransactionListener()
@@ -444,36 +418,24 @@ final class IAPService: ObservableObject {
     }
 
     /// `Transaction.all` is finite and includes finished purchases that Apple
-    /// refunded while the app was offline. Keep only the newest bounded set in
-    /// memory and submit Apple's signed JWS through the idempotent server path.
+    /// refunded while the app was offline. Stream every supported revocation
+    /// through the idempotent server path so memory stays bounded without
+    /// permanently dropping older refunds.
     @discardableResult
     func syncRevokedStoreTransactions(source: String) async -> Bool {
-        var revocations: [RevokedTransactionDelivery] = []
+        var didReconcile = false
         for await result in Transaction.all {
             guard case .verified(let transaction) = result,
                   IAPProductCatalog.shouldReconcileRevocation(
                     productID: transaction.productID
                   ),
-                  let revocationDate = transaction.revocationDate else {
+                  transaction.revocationDate != nil else {
                 continue
             }
 
-            revocations = IAPRevocationReconciliationPolicy.insertingMostRecent(
-                RevokedTransactionDelivery(
-                    transaction: transaction,
-                    signedTransaction: result.jwsRepresentation,
-                    revocationDate: revocationDate
-                ),
-                into: revocations,
-                revocationDate: \RevokedTransactionDelivery.revocationDate
-            )
-        }
-
-        var didReconcile = false
-        for revocation in revocations {
             let disposition = await deliverVerifiedTransaction(
-                transaction: revocation.transaction,
-                signedTransaction: revocation.signedTransaction,
+                transaction: transaction,
+                signedTransaction: result.jwsRepresentation,
                 source: source
             )
             didReconcile = didReconcile || disposition == .applied
