@@ -324,7 +324,7 @@ final class HubService: ObservableObject {
         accessToken: String
     ) async -> HubTask? {
         let expectedStatus = isActive ? "cancelled" : "open"
-        await mutateOwnedTask(
+        return await mutateOwnedTask(
             method: "PATCH",
             taskId: taskId,
             authorId: authorId,
