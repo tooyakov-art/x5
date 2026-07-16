@@ -28,3 +28,15 @@ jobs:
           ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
           SCREENSHOT_PATH: fastlane/iap-screenshots/x5-credit-store-review.png
         run: python scripts/asc_configure_credit_store.py
+      - name: Verify server notification contract
+        run: >-
+          python -m unittest discover -s scripts/tests
+          -p "test_asc_configure_server_notifications.py"
+      - name: Configure App Store server notifications
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+          APP_STORE_NOTIFICATIONS_URL: >-
+            https://afwznqjpshybmqhlewmy.supabase.co/functions/v1/app-store-notifications
+        run: python scripts/asc_configure_server_notifications.py
