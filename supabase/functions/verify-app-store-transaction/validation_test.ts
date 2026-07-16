@@ -267,7 +267,33 @@ Deno.test("all Apple credit packs accept only signed consumable quantity-one cla
   );
 });
 
-Deno.test("Apple consumables preserve account, bundle, and revocation checks", () => {
+Deno.test("signed Apple credit-pack refunds preserve exact consumable identity", () => {
+  const now = Date.UTC(2026, 6, 14);
+  const revocationDate = Date.UTC(2026, 6, 12);
+
+  for (
+    const productId of [
+      "com.x5studio.app.credits.1000",
+      "com.x5studio.app.credits.2000",
+      "com.x5studio.app.credits.5000",
+    ]
+  ) {
+    const normalized = validateVerifiedTransaction(
+      { ...validConsumable, productId, revocationDate },
+      validConsumable.appAccountToken,
+      "Production",
+      now,
+    );
+
+    assertEquals(normalized.productKind, "consumable");
+    assertEquals(normalized.productId, productId);
+    assertEquals(normalized.quantity, 1);
+    assertEquals(normalized.expiresDate, null);
+    assertEquals(normalized.revocationDate, "2026-07-12T00:00:00.000Z");
+  }
+});
+
+Deno.test("Apple consumables preserve account, bundle, and refund date checks", () => {
   const now = Date.UTC(2026, 6, 14);
   assertInputError(
     () =>
@@ -305,13 +331,15 @@ Deno.test("Apple consumables preserve account, bundle, and revocation checks", (
   assertInputError(
     () =>
       validateVerifiedTransaction(
-        { ...validConsumable, revocationDate: now - 1 },
+        {
+          ...validConsumable,
+          revocationDate: validConsumable.purchaseDate - 1,
+        },
         validConsumable.appAccountToken,
         "Production",
         now,
       ),
-    "transaction_revoked",
-    402,
+    "invalid_revocation_date",
   );
 });
 

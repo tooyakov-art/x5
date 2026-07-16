@@ -39,7 +39,7 @@ class IOSPurchaseLifecycleSourceTests(unittest.TestCase):
         self.assertIn("recordingActivePurchase", source)
         self.assertIn('await syncCurrentEntitlements(source: "purchase")', source)
 
-    def test_verified_revocation_is_retryable_and_refreshes_server_profile(self):
+    def test_store_refunds_are_retryable_and_refresh_the_server_profile(self):
         service = IAP_SERVICE.read_text(encoding="utf-8")
         app = X5_APP.read_text(encoding="utf-8")
 
@@ -47,10 +47,11 @@ class IOSPurchaseLifecycleSourceTests(unittest.TestCase):
         self.assertIn("transaction.revocationDate != nil", service)
         self.assertIn("Transaction.all", service)
         self.assertIn("maximumTransactions", service)
-        self.assertIn("syncRevokedVerifiedTransactions", service)
-        self.assertIn(".x5DidChangeVerifiedEntitlement", service)
-        self.assertIn(".x5DidChangeVerifiedEntitlement", app)
-        self.assertIn("iap.syncRevokedVerifiedTransactions", app)
+        self.assertIn("shouldReconcileRevocation", service)
+        self.assertIn("syncRevokedStoreTransactions", service)
+        self.assertIn(".x5DidReconcileStoreRefund", service)
+        self.assertIn(".x5DidReconcileStoreRefund", app)
+        self.assertIn("iap.syncRevokedStoreTransactions", app)
         self.assertIn("syncStoreKitAndProfile", app)
 
     def test_failed_profile_reload_has_truthful_confirmation_copy(self):

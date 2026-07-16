@@ -204,6 +204,13 @@ enum IAPProductCatalog {
         }
         return productID == verifiedMonthlyProductID && hasRevocation
     }
+
+    static func shouldReconcileRevocation(productID: String) -> Bool {
+        if case .creditPack = kind(for: productID) {
+            return true
+        }
+        return productID == verifiedMonthlyProductID
+    }
 }
 
 enum IAPSettingsPurchaseVisibilityPolicy {
@@ -388,12 +395,12 @@ final class IAPService: ObservableObject {
         lastError = nil
         do {
             try await AppStore.sync()
-            let didReconcileRevocation = await syncRevokedVerifiedTransactions(
+            let didReconcileRevocation = await syncRevokedStoreTransactions(
                 source: "restore_revoked"
             )
             await syncCurrentEntitlements(source: "restore")
             if didReconcileRevocation {
-                notifyVerifiedEntitlementChanged()
+                notifyStoreRefundReconciled()
             }
         } catch {
             lastError = error.localizedDescription
@@ -411,7 +418,7 @@ final class IAPService: ObservableObject {
                     )
                     if disposition == .applied,
                        transaction.revocationDate != nil {
-                        await self?.notifyVerifiedEntitlementChanged()
+                        await self?.notifyStoreRefundReconciled()
                     }
                 }
             }
@@ -436,15 +443,17 @@ final class IAPService: ObservableObject {
         )
     }
 
-    /// `Transaction.all` is finite and includes finished subscriptions that Apple
+    /// `Transaction.all` is finite and includes finished purchases that Apple
     /// refunded while the app was offline. Keep only the newest bounded set in
     /// memory and submit Apple's signed JWS through the idempotent server path.
     @discardableResult
-    func syncRevokedVerifiedTransactions(source: String) async -> Bool {
+    func syncRevokedStoreTransactions(source: String) async -> Bool {
         var revocations: [RevokedTransactionDelivery] = []
         for await result in Transaction.all {
             guard case .verified(let transaction) = result,
-                  transaction.productID == Self.verifiedMonthlyProductID,
+                  IAPProductCatalog.shouldReconcileRevocation(
+                    productID: transaction.productID
+                  ),
                   let revocationDate = transaction.revocationDate else {
                 continue
             }
@@ -580,11 +589,16 @@ final class IAPService: ObservableObject {
         )
         switch verificationResult {
         case .applied, .alreadyApplied:
-            DiagnosticLogger.log(event: "iap_credit_pack_applied", extra: [
-                "source": source,
-                "product": transaction.productID,
-                "server_verification": verificationResult == .applied ? "applied" : "already_applied"
-            ])
+            DiagnosticLogger.log(
+                event: transaction.revocationDate == nil
+                    ? "iap_credit_pack_applied"
+                    : "iap_credit_pack_refund_applied",
+                extra: [
+                    "source": source,
+                    "product": transaction.productID,
+                    "server_verification": verificationResult == .applied ? "applied" : "already_applied"
+                ]
+            )
             return .applied
         case .ownedByOther:
             // A consumable cannot be restored from current entitlements. Leave it
@@ -800,9 +814,9 @@ final class IAPService: ObservableObject {
         LocalizationService.shared.t("iap_account_mismatch")
     }
 
-    private func notifyVerifiedEntitlementChanged() {
+    private func notifyStoreRefundReconciled() {
         NotificationCenter.default.post(
-            name: .x5DidChangeVerifiedEntitlement,
+            name: .x5DidReconcileStoreRefund,
             object: nil
         )
     }
@@ -811,7 +825,7 @@ final class IAPService: ObservableObject {
 
 extension Notification.Name {
     static let x5DidActivatePro = Notification.Name("x5.iap.did_activate_pro")
-    static let x5DidChangeVerifiedEntitlement = Notification.Name(
-        "x5.iap.did_change_verified_entitlement"
+    static let x5DidReconcileStoreRefund = Notification.Name(
+        "x5.iap.did_reconcile_store_refund"
     )
 }

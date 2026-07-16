@@ -185,7 +185,10 @@ export function validateVerifiedTransaction(
   const isRevocation = payload.revocationDate !== undefined &&
     payload.revocationDate !== null;
   if (isRevocation) {
-    if (productId !== VERIFIED_MONTHLY_PRODUCT_ID) {
+    if (
+      productKind === "subscription" &&
+      productId !== VERIFIED_MONTHLY_PRODUCT_ID
+    ) {
       throw new InputError("transaction_revoked", 402);
     }
     if (appAccountToken === null) {

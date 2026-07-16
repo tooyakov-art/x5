@@ -84,6 +84,27 @@ final class IAPCreditStoreTests: XCTestCase {
         )
     }
 
+    func testOfflineRevocationReconciliationIncludesCreditPacksAndVerificationOnly() {
+        for pack in IAPProductCatalog.visibleCreditPacks {
+            XCTAssertTrue(
+                IAPProductCatalog.shouldReconcileRevocation(productID: pack.productID)
+            )
+        }
+        XCTAssertTrue(
+            IAPProductCatalog.shouldReconcileRevocation(
+                productID: IAPService.verifiedMonthlyProductID
+            )
+        )
+        for productID in IAPProductCatalog.legacySubscriptionProductIDs {
+            XCTAssertFalse(
+                IAPProductCatalog.shouldReconcileRevocation(productID: productID)
+            )
+        }
+        XCTAssertFalse(
+            IAPProductCatalog.shouldReconcileRevocation(productID: "unknown.product")
+        )
+    }
+
     func testBackendFailureLeavesUnfinishedConsumablePendingForRetry() {
         XCTAssertFalse(IAPEntitlementDisposition.failed.shouldFinishTransaction)
         XCTAssertTrue(IAPEntitlementDisposition.applied.shouldFinishTransaction)

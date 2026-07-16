@@ -57,6 +57,11 @@ const verifiedRevocationPayload = {
   revocationDate: Date.UTC(2026, 6, 12),
 };
 
+const verifiedConsumableRefundPayload = {
+  ...verifiedConsumablePayload,
+  revocationDate: Date.UTC(2026, 6, 12),
+};
+
 function dependencies(
   overrides: Partial<HandlerDependencies> = {},
 ): HandlerDependencies {
@@ -75,6 +80,13 @@ function dependencies(
       Promise.resolve({
         status: "applied",
         credits_granted: 2000,
+        subscription_end_date: null,
+        is_verified: false,
+      }),
+    applyVerifiedConsumableRefund: () =>
+      Promise.resolve({
+        status: "applied",
+        credits_granted: 0,
         subscription_end_date: null,
         is_verified: false,
       }),
@@ -334,6 +346,60 @@ Deno.test("handler routes signed Sandbox verified revocation only to the revocat
   assertEquals(sandboxPurchaseApplied, false);
   assert(revoked);
   assertEquals(revoked.environment, "Sandbox");
+});
+
+Deno.test("handler routes Production and Sandbox credit refunds only to the refund RPC", async () => {
+  for (const environment of ["Production", "Sandbox"] as const) {
+    let purchaseApplied = false;
+    let verificationRevocationApplied = false;
+    let refunded: Record<string, unknown> | undefined;
+    const handler = createHandler(dependencies({
+      verifySignedTransaction: () =>
+        Promise.resolve({
+          ...verifiedConsumableRefundPayload,
+          environment,
+        }),
+      applyVerifiedConsumable: () => {
+        purchaseApplied = true;
+        throw new Error("consumable_grant_must_not_run");
+      },
+      applyVerifiedSandboxReview: () => {
+        purchaseApplied = true;
+        throw new Error("sandbox_grant_must_not_run");
+      },
+      applyVerifiedRevocation: () => {
+        verificationRevocationApplied = true;
+        throw new Error("verified_revocation_must_not_run");
+      },
+      applyVerifiedConsumableRefund: (authenticatedUserId, transaction) => {
+        refunded = { authenticatedUserId, ...transaction };
+        return Promise.resolve({
+          status: "applied",
+          credits_granted: 0,
+          subscription_end_date: null,
+          is_verified: false,
+        });
+      },
+    }));
+
+    const response = await handler(
+      post({ signed_transaction: signedTransaction(environment) }),
+    );
+    const body = await response.json();
+
+    assertEquals(response.status, 200);
+    assertEquals(body.status, "applied");
+    assertEquals(body.credits_granted, 0);
+    assertEquals(purchaseApplied, false);
+    assertEquals(verificationRevocationApplied, false);
+    assert(refunded);
+    assertEquals(refunded.authenticatedUserId, userId);
+    assertEquals(refunded.environment, environment);
+    assertEquals(refunded.productKind, "consumable");
+    assertEquals(refunded.productId, "com.x5studio.app.credits.2000");
+    assertEquals(refunded.quantity, 1);
+    assertEquals(refunded.revocationDate, "2026-07-12T00:00:00.000Z");
+  }
 });
 
 Deno.test("handler rejects Sandbox users outside the server allowlist", async () => {
