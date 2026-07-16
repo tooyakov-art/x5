@@ -207,7 +207,9 @@ begin
   end if;
 
   -- Apple can deliver the refund JWS before StoreKit replays the purchase JWS.
-  -- The zero-value row must suppress that later grant in both environments.
+  -- The legacy migration suppresses the grant entirely. The later canonical
+  -- notification migration may instead record the immutable purchase and
+  -- apply an equal pending hold; both paths must grant zero net credits.
   select credits into v_credits_before
     from public.profiles where id = v_uid;
   v_response := public.apply_verified_app_store_consumable_refund(
@@ -239,12 +241,14 @@ begin
     1
   );
   select credits into v_credits from public.profiles where id = v_uid;
-  if v_response ->> 'status' <> 'already_applied'
+  if v_response ->> 'status' not in ('already_applied', 'applied')
      or v_response ->> 'credits_granted' <> '0'
      or v_credits <> v_credits_before
-     or exists (
-       select 1 from public.app_store_consumable_transactions
-        where transaction_id = 'codex-production-refund-before-grant'
+     or (
+       (v_response ->> 'status' = 'already_applied') = exists (
+         select 1 from public.app_store_consumable_transactions
+          where transaction_id = 'codex-production-refund-before-grant'
+       )
      ) then
     raise exception 'production_refund_before_grant_was_credited:%:%:%',
       v_response, v_credits_before, v_credits;
@@ -283,12 +287,14 @@ begin
   );
   select credits into v_credits
     from public.profiles where id = v_sandbox_uid;
-  if v_response ->> 'status' <> 'already_applied'
+  if v_response ->> 'status' not in ('already_applied', 'applied')
      or v_response ->> 'credits_granted' <> '0'
      or v_credits <> v_credits_before
-     or exists (
-       select 1 from public.app_store_sandbox_review_transactions
-        where transaction_id = 'codex-sandbox-refund-before-grant'
+     or (
+       (v_response ->> 'status' = 'already_applied') = exists (
+         select 1 from public.app_store_sandbox_review_transactions
+          where transaction_id = 'codex-sandbox-refund-before-grant'
+       )
      ) then
     raise exception 'sandbox_refund_before_grant_was_credited:%:%:%',
       v_response, v_credits_before, v_credits;
