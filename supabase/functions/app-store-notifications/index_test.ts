@@ -55,6 +55,16 @@ const inner = {
   revocationType: "REFUND_FULL",
   revocationPercentage: 100000,
 };
+const renewal = {
+  environment: "Production",
+  originalTransactionId: "2000000123456000",
+  productId: "com.x5studio.app.verified.monthly",
+  autoRenewProductId: "com.x5studio.app.verified.monthly",
+  appAccountToken: userId,
+  autoRenewStatus: 1,
+  renewalDate: Date.UTC(2026, 7, 1),
+  signedDate: Date.UTC(2026, 6, 16, 11, 58),
+};
 
 function dependencies(
   overrides: Partial<NotificationHandlerDependencies> = {},
@@ -63,7 +73,9 @@ function dependencies(
     now: () => Date.UTC(2026, 6, 16, 12),
     verifyNotification: () => Promise.resolve(outer),
     verifyTransaction: () => Promise.resolve(inner),
+    verifyRenewalInfo: () => Promise.resolve(renewal),
     applyNotification: () => Promise.resolve({ status: "applied" }),
+    applyLifecycleNotification: () => Promise.resolve({ status: "applied" }),
     logError: () => undefined,
     ...overrides,
   };
@@ -140,6 +152,80 @@ Deno.test("outer JWS is verified before inner JWS and database apply", async () 
     calls.join("|"),
     `outer:Production|inner:Production|apply:${userId}:100000`,
   );
+});
+
+Deno.test("subscription lifecycle verifies outer, transaction and renewal JWS before one database apply", async () => {
+  const calls: string[] = [];
+  const lifecycleOuter = {
+    ...outer,
+    notificationType: "DID_RENEW",
+    data: {
+      ...outer.data,
+      signedRenewalInfo: "renewal.header.signature",
+    },
+  };
+  const lifecycleTransaction = {
+    ...inner,
+    productId: "com.x5studio.app.verified.monthly",
+    transactionId: "2000000123456791",
+    originalTransactionId: "2000000123456000",
+    type: "Auto-Renewable Subscription",
+    quantity: undefined,
+    expiresDate: Date.UTC(2026, 7, 1),
+    revocationDate: undefined,
+    revocationType: undefined,
+    revocationPercentage: undefined,
+  };
+  const handler = createHandler(dependencies({
+    verifyNotification: (_signed, environment) => {
+      calls.push(`outer:${environment}`);
+      return Promise.resolve(lifecycleOuter);
+    },
+    verifyTransaction: (_signed, environment) => {
+      calls.push(`transaction:${environment}`);
+      return Promise.resolve(lifecycleTransaction);
+    },
+    verifyRenewalInfo: (_signed, environment) => {
+      calls.push(`renewal:${environment}`);
+      return Promise.resolve(renewal);
+    },
+    applyNotification: () => {
+      throw new Error("refund apply must not be used");
+    },
+    applyLifecycleNotification: (event) => {
+      calls.push(`apply:${event.notificationType}:${event.userId}`);
+      return Promise.resolve({ status: "applied" });
+    },
+  }));
+
+  const response = await handler(
+    post({ signedPayload: unsignedNotification() }),
+  );
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).status, "applied");
+  assertEquals(
+    calls.join("|"),
+    `outer:Production|transaction:Production|renewal:Production|apply:DID_RENEW:${userId}`,
+  );
+});
+
+Deno.test("lifecycle notification without signed renewal info is rejected before database apply", async () => {
+  let applied = false;
+  const handler = createHandler(dependencies({
+    verifyNotification: () =>
+      Promise.resolve({ ...outer, notificationType: "EXPIRED" }),
+    applyLifecycleNotification: () => {
+      applied = true;
+      return Promise.resolve({ status: "applied" });
+    },
+  }));
+
+  const response = await handler(
+    post({ signedPayload: unsignedNotification() }),
+  );
+  assertEquals(response.status, 400);
+  assertEquals((await response.json()).error, "missing_signed_renewal_info");
+  assertEquals(applied, false);
 });
 
 Deno.test("signed but irrelevant notification types are acknowledged without inner verification", async () => {

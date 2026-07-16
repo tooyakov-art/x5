@@ -38,6 +38,46 @@ export interface RefundNotificationEvent {
   quantity: number | null;
 }
 
+export type SubscriptionLifecycleNotificationType =
+  | "SUBSCRIBED"
+  | "DID_RENEW"
+  | "EXPIRED"
+  | "GRACE_PERIOD_EXPIRED"
+  | "REVOKE";
+
+export interface SubscriptionLifecycleNotificationEvent {
+  eventId: string;
+  notificationType: SubscriptionLifecycleNotificationType;
+  userId: string;
+  productId: typeof VERIFIED_MONTHLY_PRODUCT_ID;
+  environment: AppStoreEnvironment;
+  transactionId: string;
+  originalTransactionId: string;
+  appAccountToken: string;
+  purchaseDate: string;
+  expiresDate: string;
+  transactionSignedDate: string;
+  renewalSignedDate: string;
+  notificationSignedDate: string;
+  revocationDate: string | null;
+  gracePeriodExpiresDate: string | null;
+  autoRenewStatus: number | null;
+}
+
+const SUBSCRIPTION_LIFECYCLE_TYPES = new Set<string>([
+  "SUBSCRIBED",
+  "DID_RENEW",
+  "EXPIRED",
+  "GRACE_PERIOD_EXPIRED",
+  "REVOKE",
+]);
+
+export function isSubscriptionLifecycleNotificationType(
+  value: unknown,
+): value is SubscriptionLifecycleNotificationType {
+  return typeof value === "string" && SUBSCRIPTION_LIFECYCLE_TYPES.has(value);
+}
+
 export function parseNotificationRequestBody(_body: unknown): string {
   if (!isRecord(_body) || Array.isArray(_body)) {
     throw new InputError("invalid_request_body");
@@ -277,6 +317,260 @@ export function validateVerifiedRefundNotification(
     revocationDate: normalizedRevocationDate,
     revocationPercentage: normalizedRevocationPercentage,
     quantity: productKind === "consumable" ? 1 : null,
+  };
+}
+
+export function validateVerifiedSubscriptionLifecycleNotification(
+  _notification: unknown,
+  _transaction: unknown,
+  _renewal: unknown,
+  _expectedEnvironment: AppStoreEnvironment,
+  _nowMs: number,
+): SubscriptionLifecycleNotificationEvent {
+  if (!isRecord(_notification) || !isRecord(_notification.data)) {
+    throw new InputError("invalid_notification_payload");
+  }
+  if (!isRecord(_transaction)) {
+    throw new InputError("invalid_transaction_payload");
+  }
+  if (!isRecord(_renewal)) {
+    throw new InputError("invalid_renewal_payload");
+  }
+
+  const notificationType = _notification.notificationType;
+  if (!isSubscriptionLifecycleNotificationType(notificationType)) {
+    throw new InputError("unsupported_notification_type", 200);
+  }
+  const eventId = requiredUUID(
+    _notification.notificationUUID,
+    "invalid_notification_uuid",
+  );
+  const version = requiredString(
+    _notification.version,
+    "invalid_notification_version",
+    16,
+  );
+  if (!version.startsWith("2.")) {
+    throw new InputError("invalid_notification_version");
+  }
+
+  if (
+    _notification.data.bundleId !== APP_BUNDLE_ID ||
+    _transaction.bundleId !== APP_BUNDLE_ID
+  ) {
+    throw new InputError("invalid_bundle");
+  }
+  if (
+    _notification.data.environment !== _expectedEnvironment ||
+    _transaction.environment !== _expectedEnvironment ||
+    _renewal.environment !== _expectedEnvironment
+  ) {
+    throw new InputError("invalid_environment");
+  }
+  requiredString(
+    _notification.data.signedTransactionInfo,
+    "missing_signed_transaction_info",
+    MAX_SIGNED_PAYLOAD_LENGTH,
+  );
+  requiredString(
+    _notification.data.signedRenewalInfo,
+    "missing_signed_renewal_info",
+    MAX_SIGNED_PAYLOAD_LENGTH,
+  );
+
+  const productId = requiredString(
+    _transaction.productId,
+    "unsupported_product",
+  );
+  if (productId !== VERIFIED_MONTHLY_PRODUCT_ID) {
+    throw new InputError("unsupported_product", 200);
+  }
+  const renewalProducts = [_renewal.productId, _renewal.autoRenewProductId]
+    .filter((value) => value !== undefined && value !== null);
+  if (
+    renewalProducts.length === 0 ||
+    renewalProducts.some((value) => value !== VERIFIED_MONTHLY_PRODUCT_ID)
+  ) {
+    throw new InputError("unsupported_product", 200);
+  }
+  if (_transaction.type !== "Auto-Renewable Subscription") {
+    throw new InputError("invalid_product_type");
+  }
+  if (_transaction.quantity !== undefined && _transaction.quantity !== null) {
+    throw new InputError("invalid_quantity");
+  }
+
+  const transactionId = requiredString(
+    _transaction.transactionId,
+    "invalid_transaction_id",
+    255,
+  );
+  const originalTransactionId = requiredString(
+    _transaction.originalTransactionId,
+    "invalid_original_transaction_id",
+    255,
+  );
+  if (
+    requiredString(
+      _renewal.originalTransactionId,
+      "invalid_original_transaction_id",
+      255,
+    ) !== originalTransactionId
+  ) {
+    throw new InputError("invalid_original_transaction_id");
+  }
+
+  const appAccountToken = requiredUUID(
+    _transaction.appAccountToken,
+    _transaction.appAccountToken === undefined ||
+      _transaction.appAccountToken === null
+      ? "missing_account_token"
+      : "invalid_app_account_token",
+  ).toLowerCase();
+  const renewalAccountToken = requiredUUID(
+    _renewal.appAccountToken,
+    _renewal.appAccountToken === undefined || _renewal.appAccountToken === null
+      ? "missing_account_token"
+      : "invalid_app_account_token",
+  ).toLowerCase();
+  if (renewalAccountToken !== appAccountToken) {
+    throw new InputError("account_token_mismatch");
+  }
+
+  const purchaseDateMs = requiredTimestamp(
+    _transaction.purchaseDate,
+    "invalid_purchase_date",
+  );
+  const expiresDateMs = requiredTimestamp(
+    _transaction.expiresDate,
+    "invalid_expiration_date",
+  );
+  const transactionSignedDateMs = requiredTimestamp(
+    _transaction.signedDate,
+    "invalid_signed_date",
+  );
+  const renewalSignedDateMs = requiredTimestamp(
+    _renewal.signedDate,
+    "invalid_renewal_signed_date",
+  );
+  const notificationSignedDateMs = requiredTimestamp(
+    _notification.signedDate,
+    "invalid_notification_signed_date",
+  );
+
+  if (expiresDateMs <= purchaseDateMs) {
+    throw new InputError("invalid_expiration_date");
+  }
+  for (
+    const [value, code] of [
+      [purchaseDateMs, "invalid_purchase_date"],
+      [transactionSignedDateMs, "invalid_signed_date"],
+      [renewalSignedDateMs, "invalid_renewal_signed_date"],
+      [notificationSignedDateMs, "invalid_notification_signed_date"],
+    ] as const
+  ) {
+    if (value > _nowMs + MAX_CLOCK_SKEW_MS) throw new InputError(code);
+  }
+  if (
+    transactionSignedDateMs < purchaseDateMs - MAX_CLOCK_SKEW_MS ||
+    renewalSignedDateMs < purchaseDateMs - MAX_CLOCK_SKEW_MS ||
+    notificationSignedDateMs < transactionSignedDateMs - MAX_CLOCK_SKEW_MS ||
+    notificationSignedDateMs < renewalSignedDateMs - MAX_CLOCK_SKEW_MS
+  ) {
+    throw new InputError("invalid_signed_date");
+  }
+
+  if (_renewal.renewalDate !== undefined && _renewal.renewalDate !== null) {
+    const renewalDateMs = requiredTimestamp(
+      _renewal.renewalDate,
+      "invalid_renewal_date",
+    );
+    if (renewalDateMs < purchaseDateMs) {
+      throw new InputError("invalid_renewal_date");
+    }
+  }
+
+  let autoRenewStatus: number | null = null;
+  if (
+    _renewal.autoRenewStatus !== undefined && _renewal.autoRenewStatus !== null
+  ) {
+    if (_renewal.autoRenewStatus !== 0 && _renewal.autoRenewStatus !== 1) {
+      throw new InputError("invalid_auto_renew_status");
+    }
+    autoRenewStatus = _renewal.autoRenewStatus;
+  }
+
+  let gracePeriodExpiresDate: string | null = null;
+  if (
+    _renewal.gracePeriodExpiresDate !== undefined &&
+    _renewal.gracePeriodExpiresDate !== null
+  ) {
+    const graceMs = requiredTimestamp(
+      _renewal.gracePeriodExpiresDate,
+      "invalid_grace_period_expiration_date",
+    );
+    if (
+      graceMs > _nowMs + MAX_CLOCK_SKEW_MS ||
+      (notificationType === "GRACE_PERIOD_EXPIRED" &&
+        graceMs < expiresDateMs)
+    ) {
+      throw new InputError("invalid_grace_period_expiration_date");
+    }
+    gracePeriodExpiresDate = new Date(graceMs).toISOString();
+  }
+
+  let normalizedRevocationDate: string | null = null;
+  if (notificationType === "REVOKE") {
+    const revocationDateMs = requiredTimestamp(
+      _transaction.revocationDate,
+      "invalid_revocation_date",
+    );
+    if (
+      revocationDateMs < purchaseDateMs ||
+      revocationDateMs > _nowMs + MAX_CLOCK_SKEW_MS ||
+      transactionSignedDateMs < revocationDateMs - MAX_CLOCK_SKEW_MS
+    ) {
+      throw new InputError("invalid_revocation_date");
+    }
+    normalizedRevocationDate = new Date(revocationDateMs).toISOString();
+  } else if (
+    _transaction.revocationDate !== undefined ||
+    _transaction.revocationReason !== undefined
+  ) {
+    throw new InputError("invalid_revocation_date");
+  }
+
+  if (
+    (notificationType === "EXPIRED" ||
+      notificationType === "GRACE_PERIOD_EXPIRED") &&
+    expiresDateMs > notificationSignedDateMs + MAX_CLOCK_SKEW_MS
+  ) {
+    throw new InputError("invalid_expiration_date");
+  }
+  if (
+    notificationType === "GRACE_PERIOD_EXPIRED" &&
+    gracePeriodExpiresDate === null
+  ) {
+    throw new InputError("invalid_grace_period_expiration_date");
+  }
+
+  return {
+    eventId,
+    notificationType,
+    userId: appAccountToken,
+    productId: VERIFIED_MONTHLY_PRODUCT_ID,
+    environment: _expectedEnvironment,
+    transactionId,
+    originalTransactionId,
+    appAccountToken,
+    purchaseDate: new Date(purchaseDateMs).toISOString(),
+    expiresDate: new Date(expiresDateMs).toISOString(),
+    transactionSignedDate: new Date(transactionSignedDateMs).toISOString(),
+    renewalSignedDate: new Date(renewalSignedDateMs).toISOString(),
+    notificationSignedDate: new Date(notificationSignedDateMs).toISOString(),
+    revocationDate: normalizedRevocationDate,
+    gracePeriodExpiresDate,
+    autoRenewStatus,
   };
 }
 

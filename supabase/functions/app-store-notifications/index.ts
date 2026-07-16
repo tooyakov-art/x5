@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import {
   Environment,
+  type JWSRenewalInfoDecodedPayload,
   type JWSTransactionDecodedPayload,
   type ResponseBodyV2DecodedPayload,
   SignedDataVerifier,
@@ -12,12 +13,15 @@ import {
   APP_BUNDLE_ID,
   AppStoreEnvironment,
   InputError,
+  isSubscriptionLifecycleNotificationType,
   parseAppAppleId,
   parseAppleRootCertificates,
   parseNotificationRequestBody,
   parseUntrustedNotificationEnvironment,
   RefundNotificationEvent,
+  SubscriptionLifecycleNotificationEvent,
   validateVerifiedRefundNotification,
+  validateVerifiedSubscriptionLifecycleNotification,
 } from "./validation.ts";
 
 export interface NotificationApplyResult {
@@ -34,8 +38,15 @@ export interface NotificationHandlerDependencies {
     signedTransaction: string,
     environment: AppStoreEnvironment,
   ): Promise<unknown>;
+  verifyRenewalInfo(
+    signedRenewalInfo: string,
+    environment: AppStoreEnvironment,
+  ): Promise<unknown>;
   applyNotification(
     event: RefundNotificationEvent,
+  ): Promise<NotificationApplyResult>;
+  applyLifecycleNotification(
+    event: SubscriptionLifecycleNotificationEvent,
   ): Promise<NotificationApplyResult>;
   logError(error: unknown): void;
 }
@@ -88,10 +99,12 @@ export function createHandler(
       if (!isRecord(notification)) {
         throw new InputError("invalid_notification_payload");
       }
-      if (
-        notification.notificationType !== "REFUND" &&
-        notification.notificationType !== "REFUND_REVERSED"
-      ) {
+      const isRefund = notification.notificationType === "REFUND" ||
+        notification.notificationType === "REFUND_REVERSED";
+      const isLifecycle = isSubscriptionLifecycleNotificationType(
+        notification.notificationType,
+      );
+      if (!isRefund && !isLifecycle) {
         return jsonResponse({ status: "ignored" }, 200);
       }
       if (!isRecord(notification.data)) {
@@ -110,13 +123,37 @@ export function createHandler(
         signedTransaction,
         environment,
       );
-      const event = validateVerifiedRefundNotification(
-        notification,
-        transaction,
-        environment,
-        _dependencies.now(),
-      );
-      const result = await _dependencies.applyNotification(event);
+      let result: NotificationApplyResult;
+      if (isRefund) {
+        const event = validateVerifiedRefundNotification(
+          notification,
+          transaction,
+          environment,
+          _dependencies.now(),
+        );
+        result = await _dependencies.applyNotification(event);
+      } else {
+        const signedRenewalInfo = notification.data.signedRenewalInfo;
+        if (
+          typeof signedRenewalInfo !== "string" ||
+          !signedRenewalInfo.trim() ||
+          signedRenewalInfo.length > 128 * 1024
+        ) {
+          throw new InputError("missing_signed_renewal_info");
+        }
+        const renewal = await _dependencies.verifyRenewalInfo(
+          signedRenewalInfo,
+          environment,
+        );
+        const event = validateVerifiedSubscriptionLifecycleNotification(
+          notification,
+          transaction,
+          renewal,
+          environment,
+          _dependencies.now(),
+        );
+        result = await _dependencies.applyLifecycleNotification(event);
+      }
       return jsonResponse({ status: result.status }, 200);
     } catch (error) {
       if (error instanceof InputError) {
@@ -278,6 +315,19 @@ async function verifyTransaction(
   }
 }
 
+async function verifyRenewalInfo(
+  signedRenewalInfo: string,
+  environment: AppStoreEnvironment,
+): Promise<JWSRenewalInfoDecodedPayload> {
+  try {
+    return await getAppleVerifier(environment).verifyAndDecodeRenewalInfo(
+      signedRenewalInfo,
+    );
+  } catch (error) {
+    throw appleVerificationError(error);
+  }
+}
+
 async function applyNotification(
   event: RefundNotificationEvent,
 ): Promise<NotificationApplyResult> {
@@ -337,6 +387,67 @@ async function applyNotification(
   return data;
 }
 
+async function applyLifecycleNotification(
+  event: SubscriptionLifecycleNotificationEvent,
+): Promise<NotificationApplyResult> {
+  const admin = createClient(
+    requiredEnvironmentVariable("SUPABASE_URL"),
+    requiredEnvironmentVariable("SUPABASE_SERVICE_ROLE_KEY"),
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    },
+  );
+  const { data, error } = await admin.rpc(
+    "apply_verified_app_store_subscription_lifecycle",
+    {
+      p_event_id: event.eventId,
+      p_notification_type: event.notificationType,
+      p_notification_signed_date: event.notificationSignedDate,
+      p_user_id: event.userId,
+      p_transaction_id: event.transactionId,
+      p_original_transaction_id: event.originalTransactionId,
+      p_product_id: event.productId,
+      p_environment: event.environment,
+      p_app_account_token: event.appAccountToken,
+      p_purchase_date: event.purchaseDate,
+      p_expires_date: event.expiresDate,
+      p_transaction_signed_date: event.transactionSignedDate,
+      p_renewal_signed_date: event.renewalSignedDate,
+      p_revocation_date: event.revocationDate,
+      p_grace_period_expires_date: event.gracePeriodExpiresDate,
+      p_auto_renew_status: event.autoRenewStatus,
+    },
+  );
+  if (error) {
+    const token = `${error.code ?? ""} ${error.message ?? ""} ${
+      error.details ?? ""
+    } ${error.hint ?? ""}`.toLowerCase();
+    if (
+      token.includes("owned_by_other") ||
+      token.includes("lifecycle_event_id_conflict") ||
+      token.includes("lifecycle_source_mismatch")
+    ) {
+      throw new NotificationApplyError("conflict", 409);
+    }
+    if (
+      token.includes("invalid_") || token.includes("unknown_product") ||
+      token.includes("missing_") || token.includes("profile_not_found") ||
+      token.includes("sandbox_review_account_not_allowed")
+    ) {
+      throw new NotificationApplyError("invalid_notification", 400);
+    }
+    throw new Error("apply_app_store_lifecycle_failed");
+  }
+  if (!isNotificationApplyResult(data)) {
+    throw new Error("invalid_lifecycle_rpc_response");
+  }
+  return data;
+}
+
 function isNotificationApplyResult(
   value: unknown,
 ): value is NotificationApplyResult {
@@ -355,7 +466,9 @@ const runtimeDependencies: NotificationHandlerDependencies = {
   now: () => Date.now(),
   verifyNotification,
   verifyTransaction,
+  verifyRenewalInfo,
   applyNotification,
+  applyLifecycleNotification,
   logError: (error) => {
     const name = error instanceof Error ? error.name : typeof error;
     console.error("app-store-notifications failed", { name });

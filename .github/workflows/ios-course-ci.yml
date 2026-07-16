@@ -10,7 +10,9 @@ on:
       - "X5Tests/**"
       - "project.yml"
       - "supabase/functions/verify-app-store-transaction/**"
+      - "supabase/functions/app-store-notifications/**"
       - "supabase/migrations/**apple*store*.sql"
+      - "supabase/migrations/**/*store*.sql"
       - "scripts/tests/**"
       - ".github/workflows/ios-course-ci.yml"
   workflow_dispatch:
@@ -37,6 +39,14 @@ jobs:
 
       - name: Verify App Store backend
         working-directory: supabase/functions/verify-app-store-transaction
+        run: |
+          deno fmt --check
+          deno lint
+          deno check index.ts
+          deno test --allow-read
+
+      - name: Verify App Store notification backend
+        working-directory: supabase/functions/app-store-notifications
         run: |
           deno fmt --check
           deno lint

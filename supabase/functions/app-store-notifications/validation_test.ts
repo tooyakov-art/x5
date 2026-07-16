@@ -5,6 +5,7 @@ import {
   parseNotificationRequestBody,
   parseUntrustedNotificationEnvironment,
   validateVerifiedRefundNotification,
+  validateVerifiedSubscriptionLifecycleNotification,
 } from "./validation.ts";
 
 function assert(
@@ -82,6 +83,43 @@ const creditTransaction = {
   revocationDate,
   revocationType: "REFUND_FULL",
   revocationPercentage: 100000,
+};
+
+const lifecycleNotification = {
+  notificationType: "DID_RENEW",
+  notificationUUID: "f7de2cdc-d47d-46e7-8c67-6f68b3792bc2",
+  version: "2.0",
+  signedDate: outerSignedDate,
+  data: {
+    bundleId: "com.x5studio.app",
+    environment: "Production",
+    signedTransactionInfo: "inner.transaction.signature",
+    signedRenewalInfo: "inner.renewal.signature",
+  },
+};
+
+const subscriptionTransaction = {
+  bundleId: "com.x5studio.app",
+  environment: "Production",
+  productId: "com.x5studio.app.verified.monthly",
+  transactionId: "2000000123456791",
+  originalTransactionId: "2000000123456000",
+  appAccountToken: userId,
+  type: "Auto-Renewable Subscription",
+  purchaseDate,
+  expiresDate: Date.UTC(2026, 7, 1),
+  signedDate: transactionSignedDate,
+};
+
+const renewalInfo = {
+  environment: "Production",
+  originalTransactionId: "2000000123456000",
+  productId: "com.x5studio.app.verified.monthly",
+  autoRenewProductId: "com.x5studio.app.verified.monthly",
+  appAccountToken: userId,
+  autoRenewStatus: 1,
+  renewalDate: Date.UTC(2026, 7, 1),
+  signedDate: transactionSignedDate,
 };
 
 Deno.test("request body accepts exactly one camel-case signedPayload", () => {
@@ -256,6 +294,122 @@ Deno.test("verified subscription refund remains atomic even when price refund is
   assertEquals(event.quantity, null);
   assertEquals(event.revocationPercentage, 50000);
   assertEquals(event.expiresDate, "2026-08-01T00:00:00.000Z");
+});
+
+Deno.test("verified subscription renewal is normalized only after all three Apple JWS payloads agree", () => {
+  const event = validateVerifiedSubscriptionLifecycleNotification(
+    lifecycleNotification,
+    subscriptionTransaction,
+    renewalInfo,
+    "Production",
+    now,
+  );
+
+  assertEquals(event.eventId, lifecycleNotification.notificationUUID);
+  assertEquals(event.notificationType, "DID_RENEW");
+  assertEquals(event.userId, userId);
+  assertEquals(event.productId, "com.x5studio.app.verified.monthly");
+  assertEquals(event.originalTransactionId, "2000000123456000");
+  assertEquals(event.expiresDate, "2026-08-01T00:00:00.000Z");
+  assertEquals(event.renewalSignedDate, "2026-07-16T11:58:00.000Z");
+  assertEquals(event.gracePeriodExpiresDate, null);
+  assertEquals(event.revocationDate, null);
+});
+
+Deno.test("renewal identity, product, environment and account token must match the transaction", () => {
+  for (
+    const [renewal, code] of [
+      [
+        { ...renewalInfo, originalTransactionId: "different" },
+        "invalid_original_transaction_id",
+      ],
+      [
+        { ...renewalInfo, productId: "com.x5studio.app.pro.monthly" },
+        "unsupported_product",
+      ],
+      [{ ...renewalInfo, environment: "Sandbox" }, "invalid_environment"],
+      [{
+        ...renewalInfo,
+        appAccountToken: "56ea681b-f6c2-4a48-8d53-ea8e678ec5e5",
+      }, "account_token_mismatch"],
+    ] as const
+  ) {
+    assertInputError(
+      () =>
+        validateVerifiedSubscriptionLifecycleNotification(
+          lifecycleNotification,
+          subscriptionTransaction,
+          renewal,
+          "Production",
+          now,
+        ),
+      code,
+      code === "unsupported_product" ? 200 : 400,
+    );
+  }
+});
+
+Deno.test("billing recovery renewal accepts a completed grace period before the new paid expiry", () => {
+  const event = validateVerifiedSubscriptionLifecycleNotification(
+    lifecycleNotification,
+    subscriptionTransaction,
+    {
+      ...renewalInfo,
+      gracePeriodExpiresDate: Date.UTC(2026, 6, 15),
+    },
+    "Production",
+    now,
+  );
+  assertEquals(event.notificationType, "DID_RENEW");
+  assertEquals(
+    event.gracePeriodExpiresDate,
+    "2026-07-15T00:00:00.000Z",
+  );
+});
+
+Deno.test("expiry, grace-period expiry and revoke lifecycle events have strict signed shapes", () => {
+  const expiredTransaction = {
+    ...subscriptionTransaction,
+    expiresDate: Date.UTC(2026, 6, 15),
+  };
+
+  for (const notificationType of ["EXPIRED", "GRACE_PERIOD_EXPIRED"] as const) {
+    const event = validateVerifiedSubscriptionLifecycleNotification(
+      { ...lifecycleNotification, notificationType },
+      expiredTransaction,
+      notificationType === "GRACE_PERIOD_EXPIRED"
+        ? { ...renewalInfo, gracePeriodExpiresDate: Date.UTC(2026, 6, 15) }
+        : renewalInfo,
+      "Production",
+      now,
+    );
+    assertEquals(event.notificationType, notificationType);
+  }
+
+  const revoked = validateVerifiedSubscriptionLifecycleNotification(
+    { ...lifecycleNotification, notificationType: "REVOKE" },
+    {
+      ...subscriptionTransaction,
+      revocationDate,
+      revocationReason: 1,
+    },
+    renewalInfo,
+    "Production",
+    now,
+  );
+  assertEquals(revoked.revocationDate, "2026-07-15T00:00:00.000Z");
+
+  assertInputError(
+    () =>
+      validateVerifiedSubscriptionLifecycleNotification(
+        { ...lifecycleNotification, notificationType: "REVOKE" },
+        subscriptionTransaction,
+        renewalInfo,
+        "Production",
+        now,
+      ),
+    "invalid_revocation_date",
+  );
 });
 
 Deno.test("refund reversal requires Apple to omit every revocation field", () => {
