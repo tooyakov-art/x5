@@ -9,6 +9,10 @@
 
 import {
   buildFinalPrompt,
+  buildGenerationIdentity,
+  buildGenerationResponse,
+  buildGenerationResultManifest,
+  detectGeneratedImageFormat,
   extractGoogleErrorMessage,
   extractGoogleImageData,
   GenerationRequestError,
@@ -26,11 +30,50 @@ const OPENAI_EDIT_URL = "https://api.openai.com/v1/images/edits";
 const GOOGLE_INTERACTIONS_URL =
   "https://generativelanguage.googleapis.com/v1beta/interactions";
 const GOOGLE_MODEL = "gemini-3.1-flash-image";
+const RESULT_BUCKET = "image-generation-results";
+const SIGNED_URL_TTL_SECONDS = 15 * 60;
+
+type NormalizedGenerationRequest = ReturnType<
+  typeof normalizeGenerationRequest
+>;
+type ReferenceImage = NormalizedGenerationRequest["images"][number];
+type GenerationSize = NormalizedGenerationRequest["size"];
+type GenerationResultObject = {
+  path: string;
+  mimeType: string;
+  sha256: string;
+};
+type GenerationResultManifest = {
+  version: number;
+  provider: string;
+  model: string;
+  fallbackFrom?: string;
+  objects: GenerationResultObject[];
+};
+type LedgerResponse = {
+  status?: string;
+  attempt?: number | string;
+  credits_remaining?: number | string;
+  result_manifest?: GenerationResultManifest;
+  previous_result_manifest?: GenerationResultManifest;
+};
+type ProviderPayload = {
+  error?: { message?: string };
+  data?: Array<{ b64_json?: string }>;
+  [key: string]: unknown;
+};
+
+class GenerationCompletionUncertainError extends Error {
+  constructor() {
+    super("generation_completion_uncertain");
+    this.name = "GenerationCompletionUncertainError";
+  }
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, idempotency-key, x-idempotency-key",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -52,9 +95,26 @@ Deno.serve(async (req) => {
     return json({ error: "not_authenticated" }, 401);
   }
 
-  let normalized;
+  let body: Record<string, unknown>;
+  let normalized: ReturnType<typeof normalizeGenerationRequest>;
+  let identity: Awaited<ReturnType<typeof buildGenerationIdentity>>;
   try {
-    normalized = normalizeGenerationRequest(await req.json());
+    const parsedBody: unknown = await req.json();
+    if (
+      !parsedBody || typeof parsedBody !== "object" ||
+      Array.isArray(parsedBody)
+    ) {
+      throw new GenerationRequestError("invalid_request", 400);
+    }
+    body = parsedBody as Record<string, unknown>;
+    normalized = normalizeGenerationRequest(body);
+    identity = await buildGenerationIdentity(
+      normalized,
+      body,
+      req.headers.get("Idempotency-Key") ||
+        req.headers.get("X-Idempotency-Key") ||
+        "",
+    );
   } catch (error) {
     if (error instanceof GenerationRequestError) {
       return json({ error: error.code }, error.status);
@@ -82,17 +142,110 @@ Deno.serve(async (req) => {
     }, 503);
   }
 
-  const spent = await spendCredits(user.id, normalized.costCredits);
-  if (!spent.ok) {
+  const claimToken = createClaimToken();
+  const claimParameters = {
+    p_user_id: user.id,
+    p_request_key: identity.requestKey,
+    p_request_fingerprint: identity.fingerprint,
+    p_is_legacy: identity.isLegacy,
+    p_cost_credits: normalized.costCredits,
+    p_claim_token: claimToken,
+  };
+  let claim = await callServiceRpc(
+    "claim_image_generation_request",
+    claimParameters,
+  );
+  if (!claim) {
+    return json({ error: "credit_service_unavailable" }, 503);
+  }
+  if (claim.status === "in_progress") {
+    claim = await waitForClaimResolution(claimParameters, claim);
+    if (!claim) {
+      return json({ error: "credit_service_unavailable" }, 503);
+    }
+  }
+  if (claim.status === "insufficient_credits") {
+    return json({
+      error: "insufficient_credits",
+      creditsRequired: normalized.costCredits,
+      creditsRemaining: Number(claim.credits_remaining || 0),
+    }, 402);
+  }
+  if (claim.status === "idempotency_conflict") {
+    return json({ error: "idempotency_conflict" }, 409);
+  }
+  if (claim.status === "invalid_request") {
+    return json({ error: "invalid_request" }, 400);
+  }
+  if (claim.status === "profile_not_found") {
+    return json({ error: "profile_not_found" }, 404);
+  }
+  if (claim.status === "in_progress") {
     return json(
       {
-        error: spent.error,
-        creditsRequired: normalized.costCredits,
-        creditsRemaining: spent.credits ?? 0,
+        error: "generation_in_progress",
+        retryAfterSeconds: 2,
       },
-      spent.status,
+      425,
+      { "Retry-After": "2" },
     );
   }
+  if (claim.status === "replay") {
+    try {
+      if (!claim.result_manifest) {
+        throw new Error("generation_result_manifest_missing");
+      }
+      const replay = await readGenerationResult(claim.result_manifest);
+      return json(buildGenerationResponse({
+        normalized,
+        imageBase64s: replay.imageBase64s,
+        imageUrls: replay.imageUrls,
+        provider: claim.result_manifest.provider,
+        model: claim.result_manifest.model,
+        fallbackFrom: claim.result_manifest.fallbackFrom,
+        creditsRemaining: Number(claim.credits_remaining || 0),
+      }));
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "image_generation_replay_failed",
+        request_key: identity.requestKey,
+        reason: error instanceof Error ? error.message : "unknown",
+      }));
+      return json({ error: "generation_replay_unavailable" }, 503);
+    }
+  }
+  if (claim.status !== "claimed") {
+    return json({ error: "credit_service_unavailable" }, 503);
+  }
+  const claimAttempt = Number(claim.attempt || 0);
+  if (!Number.isInteger(claimAttempt) || claimAttempt <= 0) {
+    return json({ error: "credit_service_unavailable" }, 503);
+  }
+
+  const oldResultObjects = [
+    ...(claim.previous_result_manifest?.objects || []),
+    ...buildPriorAttemptCleanupCandidates(
+      user.id,
+      identity.requestKey,
+      claimAttempt,
+    ),
+  ];
+  if (oldResultObjects.length) {
+    await deleteGenerationObjects(oldResultObjects).catch((error) => {
+      console.error(JSON.stringify({
+        event: "image_generation_old_result_cleanup_failed",
+        request_key: identity.requestKey,
+        reason: error instanceof Error ? error.message : "unknown",
+      }));
+    });
+  }
+
+  let responseProvider = normalized.provider;
+  let responseModel = normalized.model;
+  let fallbackFrom: string | undefined;
+  let imageBase64s: string[] = [];
+  const uploadedObjects: GenerationResultObject[] = [];
+  let resultManifest: GenerationResultManifest | null = null;
 
   try {
     const finalPrompt = buildFinalPrompt(
@@ -100,11 +253,6 @@ Deno.serve(async (req) => {
       normalized.category,
       normalized.images.length > 0,
     );
-    let responseProvider = normalized.provider;
-    let responseModel = normalized.model;
-    let fallbackFrom: string | undefined;
-    let imageBase64s: string[];
-
     if (normalized.provider === "google" && providerKeys.length === 0) {
       if (!fallbackOpenAIKey) {
         throw new Error("No image provider is configured");
@@ -176,21 +324,81 @@ Deno.serve(async (req) => {
       );
     }
 
-    return json({
-      imageBase64: imageBase64s[0],
+    await storeGenerationResults(
+      user.id,
+      identity.requestKey,
+      claimAttempt,
       imageBase64s,
-      prompt: normalized.prompt,
+      uploadedObjects,
+    );
+    resultManifest = buildGenerationResultManifest({
       provider: responseProvider,
       model: responseModel,
       fallbackFrom,
-      category: normalized.category.id,
-      size: normalized.size.id,
-      quantity: imageBase64s.length,
-      costCredits: normalized.costCredits,
-      creditsRemaining: spent.credits,
-    }, 200);
+      objects: uploadedObjects,
+    });
+
+    await completeGenerationDurably(
+      user.id,
+      identity.requestKey,
+      identity.fingerprint,
+      claimAttempt,
+      claimToken,
+      resultManifest,
+    );
   } catch (error) {
-    await refundCredits(user.id, normalized.costCredits);
+    if (error instanceof GenerationCompletionUncertainError) {
+      console.error(JSON.stringify({
+        event: "image_generation_completion_uncertain",
+        request_key: identity.requestKey,
+      }));
+      return json(
+        { error: "generation_status_pending", retryAfterSeconds: 2 },
+        425,
+        { "Retry-After": "2" },
+      );
+    }
+    const refund = await callServiceRpc("fail_image_generation_request", {
+      p_user_id: user.id,
+      p_request_key: identity.requestKey,
+      p_request_fingerprint: identity.fingerprint,
+      p_attempt: claimAttempt,
+      p_claim_token: claimToken,
+      p_error_code: "provider_or_storage_error",
+    });
+    if (refund?.status === "already_completed") {
+      return json(
+        { error: "generation_status_pending", retryAfterSeconds: 2 },
+        425,
+        { "Retry-After": "2" },
+      );
+    }
+    if (!refund) {
+      const recoveryState = await callServiceRpc(
+        "get_image_generation_request",
+        {
+          p_user_id: user.id,
+          p_request_key: identity.requestKey,
+          p_request_fingerprint: identity.fingerprint,
+          p_attempt: claimAttempt,
+          p_claim_token: claimToken,
+        },
+      );
+      console.error(JSON.stringify({
+        event: "image_generation_refund_deferred",
+        request_key: identity.requestKey,
+        durable_status: recoveryState?.status || "unknown",
+      }));
+    }
+    await deleteGenerationObjects(uploadedObjects).catch((cleanupError) => {
+      console.error(JSON.stringify({
+        event: "image_generation_failed_result_cleanup_failed",
+        request_key: identity.requestKey,
+        reason: cleanupError instanceof Error
+          ? cleanupError.message
+          : "unknown",
+      }));
+    });
     return json({
       error: "provider_error",
       provider: normalized.provider,
@@ -200,6 +408,28 @@ Deno.serve(async (req) => {
       ),
     }, 502);
   }
+
+  let imageUrls: string[] = [];
+  try {
+    if (!resultManifest) throw new Error("generation_result_manifest_missing");
+    imageUrls = await createSignedGenerationUrls(resultManifest.objects);
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "image_generation_signing_failed",
+      request_key: identity.requestKey,
+      reason: error instanceof Error ? error.message : "unknown",
+    }));
+  }
+
+  return json(buildGenerationResponse({
+    normalized,
+    imageBase64s,
+    imageUrls,
+    provider: responseProvider,
+    model: responseModel,
+    fallbackFrom,
+    creditsRemaining: Number(claim.credits_remaining || 0),
+  }));
 });
 
 function getProviderKeys(provider: string): string[] {
@@ -216,9 +446,9 @@ async function generateWithGPT(
   apiKey: string,
   finalPrompt: string,
   model: string,
-  images: any[] = [],
-  quantity = 1,
-  size: any = {},
+  images: ReferenceImage[],
+  quantity: number,
+  size: GenerationSize,
 ): Promise<string[]> {
   if (images.length > 0) {
     const results = [];
@@ -243,15 +473,15 @@ async function generateWithGPT(
     }),
   });
 
-  const payload = await response.json().catch(() => ({}));
+  const payload = await response.json().catch(() => ({})) as ProviderPayload;
   if (!response.ok) {
     throw new Error(
       payload?.error?.message || `OpenAI error ${response.status}`,
     );
   }
 
-  const imageBase64s = (payload?.data || []).map((item: any) => item?.b64_json)
-    .filter(Boolean);
+  const imageBase64s = (payload.data || []).map((item) => item.b64_json)
+    .filter((value): value is string => Boolean(value));
   if (imageBase64s.length === 0) {
     throw new Error("OpenAI returned no image");
   }
@@ -262,8 +492,8 @@ async function editWithGPT(
   apiKey: string,
   finalPrompt: string,
   model: string,
-  images: any[],
-  size: any,
+  images: ReferenceImage[],
+  size: GenerationSize,
 ): Promise<string> {
   const form = new FormData();
   form.append(
@@ -297,7 +527,7 @@ async function editWithGPT(
     body: form,
   });
 
-  const payload = await response.json().catch(() => ({}));
+  const payload = await response.json().catch(() => ({})) as ProviderPayload;
   if (!response.ok) {
     throw new Error(
       payload?.error?.message || `OpenAI edit error ${response.status}`,
@@ -315,9 +545,9 @@ async function generateWithGoogle(
   apiKeys: string[],
   finalPrompt: string,
   requestedModel: string,
-  images: any[] = [],
-  quantity = 1,
-  size: any = {},
+  images: ReferenceImage[],
+  quantity: number,
+  size: GenerationSize,
 ): Promise<string[]> {
   const results = [];
   for (let index = 0; index < quantity; index += 1) {
@@ -338,8 +568,8 @@ async function generateOneWithGoogle(
   apiKeys: string[],
   finalPrompt: string,
   requestedModel: string,
-  images: any[] = [],
-  size: any = {},
+  images: ReferenceImage[],
+  size: GenerationSize,
 ): Promise<string> {
   const model = requestedModel || Deno.env.get("GOOGLE_IMAGE_MODEL") ||
     GOOGLE_MODEL;
@@ -354,22 +584,24 @@ async function generateOneWithGoogle(
   const bodyWithSize = {
     model,
     input,
+    store: false,
     response_format: googleResponseFormat(size, model),
   };
   const bodyWithoutSize = {
     model,
     input,
+    store: false,
     response_format: { type: "image", mime_type: "image/jpeg" },
   };
   let response: Response | undefined;
-  let payload: any = {};
+  let payload: ProviderPayload = {};
   for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex += 1) {
     const apiKey = apiKeys[keyIndex];
     response = await postGoogleImageRequest(apiKey, bodyWithSize);
-    payload = await response.json().catch(() => ({}));
+    payload = await response.json().catch(() => ({})) as ProviderPayload;
     if (!response.ok && shouldRetryGoogleWithoutImageConfig(payload)) {
       response = await postGoogleImageRequest(apiKey, bodyWithoutSize);
-      payload = await response.json().catch(() => ({}));
+      payload = await response.json().catch(() => ({})) as ProviderPayload;
     }
     if (response.ok) break;
     if (
@@ -417,7 +649,9 @@ function postGoogleImageRequest(
   });
 }
 
-function shouldRetryGoogleWithoutImageConfig(payload: any): boolean {
+function shouldRetryGoogleWithoutImageConfig(
+  payload: ProviderPayload,
+): boolean {
   const message = String(payload?.error?.message || "").toLowerCase();
   return message.includes("imageconfig") ||
     message.includes("image_config") ||
@@ -453,42 +687,10 @@ async function verifyUser(
   return await res.json().catch(() => null);
 }
 
-async function spendCredits(
-  userId: string,
-  amount: number,
-): Promise<
-  { ok: true; credits: number } | {
-    ok: false;
-    status: number;
-    error: string;
-    credits?: number;
-  }
-> {
-  const rows = await callCreditRpc("spend_generation_credits", userId, amount);
-  if (rows === null) {
-    return { ok: false, status: 500, error: "credit_service_unavailable" };
-  }
-  if (!rows[0]) {
-    const credits = await readCredits(userId);
-    return {
-      ok: false,
-      status: 402,
-      error: "insufficient_credits",
-      credits: credits ?? 0,
-    };
-  }
-  return { ok: true, credits: Number(rows[0].credits ?? 0) };
-}
-
-async function refundCredits(userId: string, amount: number): Promise<void> {
-  await callCreditRpc("refund_generation_credits", userId, amount);
-}
-
-async function callCreditRpc(
+async function callServiceRpc(
   name: string,
-  userId: string,
-  amount: number,
-): Promise<any[] | null> {
+  parameters: Record<string, unknown>,
+): Promise<LedgerResponse | null> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceKey) return null;
@@ -500,40 +702,328 @@ async function callCreditRpc(
       "Authorization": `Bearer ${serviceKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      p_user_id: userId,
-      p_amount: amount,
-    }),
+    body: JSON.stringify(parameters),
   });
   if (!response.ok) return null;
-  return await response.json().catch(() => null);
+  const payload: unknown = await response.json().catch(() => null);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  return payload as LedgerResponse;
 }
 
-async function readCredits(userId: string): Promise<number | null> {
+function createClaimToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function waitForClaimResolution(
+  parameters: Record<string, unknown>,
+  initial: LedgerResponse,
+  timeoutMs = 18_000,
+): Promise<LedgerResponse | null> {
+  const deadline = Date.now() + timeoutMs;
+  let latest: LedgerResponse | null = initial;
+  while (latest?.status === "in_progress" && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    const polled = await callServiceRpc(
+      "claim_image_generation_request",
+      parameters,
+    );
+    if (polled) latest = polled;
+  }
+  return latest;
+}
+
+async function completeGenerationDurably(
+  userId: string,
+  requestKey: string,
+  requestFingerprint: string,
+  claimAttempt: number,
+  claimToken: string,
+  resultManifest: GenerationResultManifest,
+): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const completion = await callServiceRpc(
+      "complete_image_generation_request",
+      {
+        p_user_id: userId,
+        p_request_key: requestKey,
+        p_request_fingerprint: requestFingerprint,
+        p_attempt: claimAttempt,
+        p_claim_token: claimToken,
+        p_result_manifest: resultManifest,
+      },
+    );
+    if (
+      completion &&
+      ["completed", "already_completed", "succeeded"].includes(
+        completion.status || "",
+      )
+    ) {
+      return;
+    }
+
+    const recovered = await callServiceRpc("get_image_generation_request", {
+      p_user_id: userId,
+      p_request_key: requestKey,
+      p_request_fingerprint: requestFingerprint,
+      p_attempt: claimAttempt,
+      p_claim_token: claimToken,
+    });
+    if (recovered?.status === "succeeded") return;
+    if (
+      completion ||
+      ["refunded", "stale_attempt", "idempotency_conflict"].includes(
+        recovered?.status || "",
+      )
+    ) {
+      throw new Error(
+        `generation_completion_rejected_${
+          completion?.status || recovered?.status || "unknown"
+        }`,
+      );
+    }
+    if (attempt < 2) {
+      await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+    }
+  }
+  throw new GenerationCompletionUncertainError();
+}
+
+async function storeGenerationResults(
+  userId: string,
+  requestKey: string,
+  attempt: number,
+  imageBase64s: string[],
+  uploadedObjects: GenerationResultObject[],
+): Promise<void> {
+  const [, requestDigest = "invalid"] = requestKey.split(":", 2);
+  const requestKind = requestKey.startsWith("legacy:") ? "legacy" : "explicit";
+  for (let index = 0; index < imageBase64s.length; index += 1) {
+    const imageBase64 = imageBase64s[index];
+    const format = detectGeneratedImageFormat(imageBase64);
+    const bytes = decodeBase64(imageBase64);
+    if (bytes.byteLength === 0 || bytes.byteLength > 33554432) {
+      throw new Error("generated_image_size_invalid");
+    }
+    const path = [
+      userId,
+      requestKind,
+      requestDigest,
+      String(attempt),
+      `${index}.${format.extension}`,
+    ].join("/");
+    const object = {
+      path,
+      mimeType: format.mimeType,
+      sha256: await sha256Bytes(bytes),
+    };
+    await uploadGenerationObject(object, bytes);
+    uploadedObjects.push(object);
+  }
+}
+
+async function uploadGenerationObject(
+  object: { path: string; mimeType: string },
+  bytes: Uint8Array,
+): Promise<void> {
+  const config = getStorageConfig();
+  const response = await fetch(
+    `${config.url}/storage/v1/object/${RESULT_BUCKET}/${
+      encodeStoragePath(object.path)
+    }`,
+    {
+      method: "POST",
+      headers: {
+        "apikey": config.serviceKey,
+        "Authorization": `Bearer ${config.serviceKey}`,
+        "Content-Type": object.mimeType,
+        "cache-control": "3600",
+        "x-upsert": "false",
+      },
+      body: Uint8Array.from(bytes).buffer,
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`generation_result_upload_failed_${response.status}`);
+  }
+}
+
+async function deleteGenerationObjects(
+  objects: Array<{ path: string }>,
+): Promise<void> {
+  const prefixes = [
+    ...new Set(
+      (Array.isArray(objects) ? objects : [])
+        .map((object) => String(object?.path || ""))
+        .filter(Boolean),
+    ),
+  ];
+  if (prefixes.length === 0) return;
+  const config = getStorageConfig();
+  const response = await fetch(
+    `${config.url}/storage/v1/object/${RESULT_BUCKET}`,
+    {
+      method: "DELETE",
+      headers: {
+        "apikey": config.serviceKey,
+        "Authorization": `Bearer ${config.serviceKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ prefixes }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`generation_result_cleanup_failed_${response.status}`);
+  }
+}
+
+function buildPriorAttemptCleanupCandidates(
+  userId: string,
+  requestKey: string,
+  currentAttempt: number,
+): Array<{ path: string }> {
+  if (!Number.isInteger(currentAttempt) || currentAttempt <= 1) return [];
+  const [, requestDigest = "invalid"] = requestKey.split(":", 2);
+  const requestKind = requestKey.startsWith("legacy:") ? "legacy" : "explicit";
+  const candidates: Array<{ path: string }> = [];
+  const firstAttempt = Math.max(1, currentAttempt - 3);
+  for (let attempt = firstAttempt; attempt < currentAttempt; attempt += 1) {
+    for (let index = 0; index < 4; index += 1) {
+      for (const extension of ["png", "jpg", "webp"]) {
+        candidates.push({
+          path: [
+            userId,
+            requestKind,
+            requestDigest,
+            String(attempt),
+            `${index}.${extension}`,
+          ].join("/"),
+        });
+      }
+    }
+  }
+  return candidates;
+}
+
+async function createSignedGenerationUrls(
+  objects: GenerationResultObject[],
+): Promise<string[]> {
+  return await Promise.all(objects.map(async (object) => {
+    const config = getStorageConfig();
+    const response = await fetch(
+      `${config.url}/storage/v1/object/sign/${RESULT_BUCKET}/${
+        encodeStoragePath(object.path)
+      }`,
+      {
+        method: "POST",
+        headers: {
+          "apikey": config.serviceKey,
+          "Authorization": `Bearer ${config.serviceKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ expiresIn: SIGNED_URL_TTL_SECONDS }),
+      },
+    );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(`generation_result_sign_failed_${response.status}`);
+    }
+    const signedPath = String(payload?.signedURL || payload?.signedUrl || "");
+    if (!signedPath) throw new Error("generation_result_sign_missing_url");
+    if (/^https?:\/\//i.test(signedPath)) return signedPath;
+    const normalizedPath = signedPath.startsWith("/storage/v1/")
+      ? signedPath
+      : `/storage/v1${signedPath.startsWith("/") ? "" : "/"}${signedPath}`;
+    return new URL(normalizedPath, config.url).toString();
+  }));
+}
+
+async function readGenerationResult(
+  manifest: GenerationResultManifest,
+): Promise<{
+  imageBase64s: string[];
+  imageUrls: string[];
+}> {
+  const objects = Array.isArray(manifest?.objects) ? manifest.objects : [];
+  if (objects.length === 0 || objects.length > 4) {
+    throw new Error("generation_result_manifest_invalid");
+  }
+  const imageUrls = await createSignedGenerationUrls(objects);
+  const imageBase64s = await Promise.all(
+    imageUrls.map(async (imageUrl, index) => {
+      const response = await fetch(imageUrl, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`generation_result_download_failed_${response.status}`);
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const object = objects[index];
+      if (await sha256Bytes(bytes) !== object.sha256) {
+        throw new Error("generation_result_hash_mismatch");
+      }
+      const imageBase64 = bytesToBase64(bytes);
+      if (
+        detectGeneratedImageFormat(imageBase64).mimeType !== object.mimeType
+      ) {
+        throw new Error("generation_result_mime_mismatch");
+      }
+      return imageBase64;
+    }),
+  );
+  return { imageBase64s, imageUrls };
+}
+
+function getStorageConfig(): { url: string; serviceKey: string } {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceKey) return null;
-
-  const url = new URL(`${supabaseUrl}/rest/v1/profiles`);
-  url.searchParams.set("id", `eq.${userId}`);
-  url.searchParams.set("select", "credits");
-  const response = await fetch(url, {
-    headers: {
-      "apikey": serviceKey,
-      "Authorization": `Bearer ${serviceKey}`,
-    },
-  });
-  if (!response.ok) return null;
-  const rows = await response.json().catch(() => []);
-  return Number(rows?.[0]?.credits ?? 0);
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error("generation_storage_not_configured");
+  }
+  return { url: supabaseUrl, serviceKey };
 }
 
-function json(body: unknown, status = 200) {
+function encodeStoragePath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+async function sha256Bytes(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    Uint8Array.from(bytes).buffer,
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunkSize = 24576;
+  let result = "";
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, offset + chunkSize);
+    let binary = "";
+    for (const byte of chunk) binary += String.fromCharCode(byte);
+    result += btoa(binary);
+  }
+  return result;
+}
+
+function json(
+  body: unknown,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       ...corsHeaders,
       "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+      ...extraHeaders,
     },
   });
 }

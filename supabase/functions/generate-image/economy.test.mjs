@@ -255,14 +255,171 @@ test("rotates Google keys for authentication, quota, and transient failures", ()
 });
 
 test("falls back from Google to GPT only for provider availability failures", () => {
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(400), true);
   assert.equal(economyModule.shouldFallbackGoogleToGPT?.(401), true);
   assert.equal(economyModule.shouldFallbackGoogleToGPT?.(403), true);
   assert.equal(economyModule.shouldFallbackGoogleToGPT?.(404), true);
   assert.equal(economyModule.shouldFallbackGoogleToGPT?.(408), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(409), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(422), true);
   assert.equal(economyModule.shouldFallbackGoogleToGPT?.(429), true);
   assert.equal(economyModule.shouldFallbackGoogleToGPT?.(500), true);
-  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(400), false);
-  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(422), false);
+});
+
+test("derives a stable legacy identity from every semantic generation input", async () => {
+  const request = normalizeGenerationRequest({
+    model: "gemini-3.1-flash-image",
+    category: "post",
+    prompt: "A premium coffee ad",
+    quantity: 2,
+    size: "portrait",
+    images: [{ mimeType: "image/png", data: "reference-image-one" }],
+  });
+  const sameRequest = normalizeGenerationRequest({
+    model: "gemini-3.1-flash-image",
+    category: "post",
+    prompt: "A premium coffee ad",
+    quantity: 2,
+    size: "portrait",
+    images: [{ mimeType: "image/png", data: "reference-image-one" }],
+  });
+  const changedReference = normalizeGenerationRequest({
+    model: "gemini-3.1-flash-image",
+    category: "post",
+    prompt: "A premium coffee ad",
+    quantity: 2,
+    size: "portrait",
+    images: [{ mimeType: "image/png", data: "reference-image-two" }],
+  });
+
+  const identity = await economyModule.buildGenerationIdentity?.(request, {});
+  const repeated = await economyModule.buildGenerationIdentity?.(
+    sameRequest,
+    {},
+  );
+  const changed = await economyModule.buildGenerationIdentity?.(
+    changedReference,
+    {},
+  );
+
+  assert.equal(identity.isLegacy, true);
+  assert.equal(identity.requestKey, repeated.requestKey);
+  assert.equal(identity.fingerprint, repeated.fingerprint);
+  assert.notEqual(identity.fingerprint, changed.fingerprint);
+  assert.match(identity.requestKey, /^legacy:[a-f0-9]{64}$/);
+  assert.doesNotMatch(
+    JSON.stringify(identity),
+    /premium coffee|reference-image/i,
+  );
+});
+
+test("hashes explicit idempotency keys without storing the raw key", async () => {
+  const request = normalizeGenerationRequest({
+    model: "gpt-image-2",
+    prompt: "A clean launch poster",
+  });
+  const identity = await economyModule.buildGenerationIdentity?.(request, {
+    requestId: "client-request-018f9f2c",
+  });
+
+  assert.equal(identity.isLegacy, false);
+  assert.match(identity.requestKey, /^explicit:[a-f0-9]{64}$/);
+  assert.doesNotMatch(identity.requestKey, /client-request/);
+});
+
+test("rejects malformed explicit idempotency keys before provider work", async () => {
+  const request = normalizeGenerationRequest({
+    model: "gpt-image-2",
+    prompt: "A clean launch poster",
+  });
+
+  await assert.rejects(
+    economyModule.buildGenerationIdentity?.(request, {
+      idempotencyKey: "x",
+    }),
+    /invalid_idempotency_key/,
+  );
+});
+
+test("keeps replay manifests free of prompts and raw image bytes", () => {
+  const manifest = economyModule.buildGenerationResultManifest?.({
+    provider: "gpt",
+    model: "gpt-image-2",
+    fallbackFrom: "google",
+    objects: [{
+      path: "user/request/1/0.png",
+      mimeType: "image/png",
+      sha256: "a".repeat(64),
+    }],
+  });
+
+  assert.deepEqual(manifest, {
+    version: 1,
+    provider: "gpt",
+    model: "gpt-image-2",
+    fallbackFrom: "google",
+    objects: [{
+      path: "user/request/1/0.png",
+      mimeType: "image/png",
+      sha256: "a".repeat(64),
+    }],
+  });
+  assert.doesNotMatch(JSON.stringify(manifest), /prompt|base64|imageBase64/i);
+});
+
+test("detects only supported generated image formats before private storage", () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]).toString(
+    "base64",
+  );
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0]).toString("base64");
+  const webp = Buffer.from("RIFF0000WEBP", "ascii").toString("base64");
+  const unknown = Buffer.from("not-an-image", "ascii").toString("base64");
+
+  assert.deepEqual(economyModule.detectGeneratedImageFormat?.(png), {
+    mimeType: "image/png",
+    extension: "png",
+  });
+  assert.deepEqual(economyModule.detectGeneratedImageFormat?.(jpeg), {
+    mimeType: "image/jpeg",
+    extension: "jpg",
+  });
+  assert.deepEqual(economyModule.detectGeneratedImageFormat?.(webp), {
+    mimeType: "image/webp",
+    extension: "webp",
+  });
+  assert.throws(
+    () => economyModule.detectGeneratedImageFormat?.(unknown),
+    /unsupported_generated_image_format/,
+  );
+});
+
+test("keeps the legacy response shape while adding fresh private URLs", () => {
+  const request = normalizeGenerationRequest({
+    model: "gemini-3.1-flash-image",
+    category: "post",
+    prompt: "Coffee launch",
+    quantity: 1,
+    size: "square",
+  });
+  const response = economyModule.buildGenerationResponse?.({
+    normalized: request,
+    imageBase64s: ["encoded-image"],
+    imageUrls: ["https://example.test/fresh-signed-url"],
+    provider: "gpt",
+    model: "gpt-image-2",
+    fallbackFrom: "google",
+    creditsRemaining: 940,
+  });
+
+  assert.equal(response.imageBase64, "encoded-image");
+  assert.deepEqual(response.imageBase64s, ["encoded-image"]);
+  assert.equal(response.imageUrl, "https://example.test/fresh-signed-url");
+  assert.deepEqual(response.imageUrls, [
+    "https://example.test/fresh-signed-url",
+  ]);
+  assert.equal(response.prompt, "Coffee launch");
+  assert.equal(response.fallbackFrom, "google");
+  assert.equal(response.creditsRemaining, 940);
 });
 
 test("keeps Google requests available when only the GPT fallback key exists", () => {

@@ -278,16 +278,167 @@ export function normalizeProviderKeys(rawKeys) {
 }
 
 export function shouldRetryGoogleWithNextKey(_payload, status) {
-  return shouldFallbackGoogleToGPT(status);
-}
-
-export function shouldFallbackGoogleToGPT(status) {
   return status === 401 ||
     status === 403 ||
     status === 404 ||
     status === 408 ||
     status === 429 ||
     status >= 500;
+}
+
+export function shouldFallbackGoogleToGPT(status) {
+  return status === 400 ||
+    status === 401 ||
+    status === 403 ||
+    status === 404 ||
+    status === 408 ||
+    status === 409 ||
+    status === 422 ||
+    status === 429 ||
+    status >= 500;
+}
+
+export async function buildGenerationIdentity(
+  normalized,
+  body = {},
+  headerIdempotencyKey = "",
+) {
+  const imageIdentities = await Promise.all(
+    normalized.images.map(async (image) => ({
+      mimeType: image.mimeType,
+      sha256: await sha256Hex(image.data),
+    })),
+  );
+  const fingerprint = await sha256Hex(JSON.stringify({
+    prompt: normalized.prompt,
+    provider: normalized.provider,
+    model: normalized.model,
+    category: normalized.category.id,
+    quantity: normalized.quantity,
+    size: normalized.size.id,
+    images: imageIdentities,
+  }));
+  const explicitKey = String(
+    headerIdempotencyKey ||
+      body?.requestId ||
+      body?.request_id ||
+      body?.idempotencyKey ||
+      body?.idempotency_key ||
+      "",
+  ).trim();
+
+  if (!explicitKey) {
+    return {
+      requestKey: `legacy:${fingerprint}`,
+      fingerprint,
+      isLegacy: true,
+    };
+  }
+  if (
+    explicitKey.length < 8 ||
+    explicitKey.length > 200 ||
+    !/^[A-Za-z0-9._:-]+$/.test(explicitKey)
+  ) {
+    throw new GenerationRequestError("invalid_idempotency_key", 400);
+  }
+
+  return {
+    requestKey: `explicit:${await sha256Hex(explicitKey)}`,
+    fingerprint,
+    isLegacy: false,
+  };
+}
+
+export function buildGenerationResultManifest({
+  provider,
+  model,
+  fallbackFrom,
+  objects,
+}) {
+  return {
+    version: 1,
+    provider,
+    model,
+    ...(fallbackFrom ? { fallbackFrom } : {}),
+    objects: objects.map((object) => ({
+      path: object.path,
+      mimeType: object.mimeType,
+      sha256: object.sha256,
+    })),
+  };
+}
+
+export function detectGeneratedImageFormat(base64) {
+  let binary;
+  try {
+    binary = atob(String(base64 || ""));
+  } catch {
+    throw new Error("unsupported_generated_image_format");
+  }
+  const bytes = Array.from(
+    binary.slice(0, 12),
+    (character) => character.charCodeAt(0),
+  );
+  if (
+    bytes[0] === 0x89 && bytes[1] === 0x50 &&
+    bytes[2] === 0x4e && bytes[3] === 0x47
+  ) {
+    return { mimeType: "image/png", extension: "png" };
+  }
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return { mimeType: "image/jpeg", extension: "jpg" };
+  }
+  if (
+    String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
+    String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
+  ) {
+    return { mimeType: "image/webp", extension: "webp" };
+  }
+  throw new Error("unsupported_generated_image_format");
+}
+
+/**
+ * @param {{
+ *   normalized: ReturnType<typeof normalizeGenerationRequest>,
+ *   imageBase64s: string[],
+ *   imageUrls?: string[],
+ *   provider: string,
+ *   model: string,
+ *   fallbackFrom?: string,
+ *   creditsRemaining: number,
+ * }} input
+ */
+export function buildGenerationResponse({
+  normalized,
+  imageBase64s,
+  imageUrls = [],
+  provider,
+  model,
+  fallbackFrom,
+  creditsRemaining,
+}) {
+  return {
+    imageBase64: imageBase64s[0],
+    imageBase64s,
+    ...(imageUrls[0] ? { imageUrl: imageUrls[0], imageUrls } : {}),
+    prompt: normalized.prompt,
+    provider,
+    model,
+    ...(fallbackFrom ? { fallbackFrom } : {}),
+    category: normalized.category.id,
+    size: normalized.size.id,
+    quantity: imageBase64s.length,
+    costCredits: normalized.costCredits,
+    creditsRemaining,
+  };
+}
+
+export async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(String(value));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export function hasUsableGenerationProvider(
