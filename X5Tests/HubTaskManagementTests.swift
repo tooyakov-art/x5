@@ -104,10 +104,12 @@ final class HubTaskManagementTests: XCTestCase {
     @MainActor
     func testSetTaskActiveOnlyTransitionsBetweenOpenAndCancelled() async throws {
         var capturedRequests: [URLRequest] = []
+        var capturedStatuses: [String] = []
         HubTaskURLProtocol.handler = { request in
             capturedRequests.append(request)
             let body = try self.requestJSON(request)
             let status = try XCTUnwrap(body["status"] as? String)
+            capturedStatuses.append(status)
             return Self.response(
                 for: request,
                 body: """
@@ -137,8 +139,7 @@ final class HubTaskManagementTests: XCTestCase {
         }
         XCTAssertEqual(queryValue("status", in: capturedRequests[0]), "eq.open")
         XCTAssertEqual(queryValue("status", in: capturedRequests[1]), "eq.cancelled")
-        XCTAssertEqual(try requestJSON(capturedRequests[0])["status"] as? String, "cancelled")
-        XCTAssertEqual(try requestJSON(capturedRequests[1])["status"] as? String, "open")
+        XCTAssertEqual(capturedStatuses, ["cancelled", "open"])
         XCTAssertEqual(cancelled?.status, "cancelled")
         XCTAssertEqual(reopened?.status, "open")
 
