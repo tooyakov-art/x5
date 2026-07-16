@@ -234,6 +234,7 @@ struct ProfileView: View {
     private var overviewSection: some View {
         VStack(spacing: 16) {
             storeCard
+            myTasksCard
             if let bio = currentUser.profile?.bio, !bio.isEmpty {
                 BioCard(text: bio)
             }
@@ -403,6 +404,36 @@ struct ProfileView: View {
     }
 
     // MARK: - Credit store
+
+    private var myTasksCard: some View {
+        NavigationLink {
+            MyTasksView()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "checklist")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.black)
+                    .frame(width: 40, height: 40)
+                    .background(Color.accentColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(loc.t("my_tasks_title"))
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                    Text(loc.t("my_tasks_profile_subtitle"))
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.4))
+            }
+            .padding(14)
+            .x5ClearGlass(cornerRadius: 16, highlight: 0.12)
+        }
+        .buttonStyle(.plain)
+    }
 
     private var storeCard: some View {
         Button {
