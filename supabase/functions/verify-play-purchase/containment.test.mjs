@@ -6,17 +6,61 @@ const source = readFileSync(
   new URL("./index.ts", import.meta.url),
   "utf8",
 );
+const entitlements = readFileSync(
+  new URL("./entitlements.mjs", import.meta.url),
+  "utf8",
+);
 
-test("production Google Play credit minting stays fail-closed until an exact-once owner ledger exists", () => {
-  assert.match(source, /const PLAY_PURCHASES_ENABLED = false;/);
-  const guard = source.indexOf("if (!PLAY_PURCHASES_ENABLED)");
-  const googleVerification = source.indexOf("googlePlayAccessToken()");
-  const profileMutation = source.indexOf('.from("profiles")');
-
-  assert.ok(guard >= 0, "missing production containment guard");
-  assert.ok(
-    guard < googleVerification,
-    "guard must run before Google purchase verification",
+test("production Google Play verification mints through the exact-once owner ledger", () => {
+  assert.doesNotMatch(
+    source,
+    /PLAY_PURCHASES_ENABLED\s*=\s*false/,
+    "the deployed Google Play verifier must not be replaced by the old disabled stub",
   );
-  assert.ok(guard < profileMutation, "guard must run before profile mutation");
+
+  const googleVerification = Math.min(
+    ...[
+      source.indexOf("loadGoogleSubscription("),
+      source.indexOf("loadGoogleProduct("),
+    ].filter((index) => index >= 0),
+  );
+  const ledgerMutation = source.indexOf(
+    '.rpc("apply_android_purchase_entitlement"',
+  );
+
+  assert.ok(googleVerification >= 0, "missing Google Play API verification");
+  assert.ok(
+    ledgerMutation > googleVerification,
+    "ledger must run after Google verification",
+  );
+  assert.doesNotMatch(
+    source,
+    /\.from\(["\']profiles["\']\)/,
+    "the verifier must not mutate profile balances directly",
+  );
+  assert.match(
+    source,
+    /const claimKey = `\$\{productId\}:\$\{tokenHash\}:\$\{expiry \|\| "one-time"\}`/,
+  );
+});
+
+test("deployed package and every current store product stay represented", () => {
+  assert.match(
+    entitlements,
+    /ANDROID_PACKAGE_NAME = "com\.x5marketing\.mobile"/,
+  );
+
+  for (
+    const productId of [
+      "x5_lite_monthly_v2",
+      "x5_pro_monthly_v2",
+      "x5_max_monthly_v2",
+      "x5_verified_monthly_v2",
+      "x5_credits_1000_v2",
+      "x5_credits_2000_v2",
+      "x5_credits_5000_v2",
+    ]
+  ) {
+    assert.match(entitlements, new RegExp(`\\b${productId}\\b`));
+  }
 });
