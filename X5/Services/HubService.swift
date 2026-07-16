@@ -323,12 +323,14 @@ final class HubService: ObservableObject {
         isActive: Bool,
         accessToken: String
     ) async -> HubTask? {
+        let expectedStatus = isActive ? "cancelled" : "open"
         await mutateOwnedTask(
             method: "PATCH",
             taskId: taskId,
             authorId: authorId,
             body: ["status": isActive ? "open" : "cancelled"],
-            accessToken: accessToken
+            accessToken: accessToken,
+            expectedStatus: expectedStatus
         )
     }
 
@@ -480,7 +482,8 @@ final class HubService: ObservableObject {
         taskId: String,
         authorId: String,
         body: [String: Any],
-        accessToken: String
+        accessToken: String,
+        expectedStatus: String? = nil
     ) async -> HubTask? {
         error = nil
         do {
@@ -489,6 +492,9 @@ final class HubService: ObservableObject {
                 authorId: authorId,
                 taskId: taskId,
                 accessToken: accessToken,
+                extraQueryItems: expectedStatus.map {
+                    [URLQueryItem(name: "status", value: "eq.\($0)")]
+                } ?? [],
                 body: body,
                 returnRepresentation: true
             )

@@ -135,10 +135,25 @@ final class HubTaskManagementTests: XCTestCase {
             XCTAssertEqual(request.httpMethod, "PATCH")
             assertOwnedRowScope(request)
         }
+        XCTAssertEqual(queryValue("status", in: capturedRequests[0]), "eq.open")
+        XCTAssertEqual(queryValue("status", in: capturedRequests[1]), "eq.cancelled")
         XCTAssertEqual(try requestJSON(capturedRequests[0])["status"] as? String, "cancelled")
         XCTAssertEqual(try requestJSON(capturedRequests[1])["status"] as? String, "open")
         XCTAssertEqual(cancelled?.status, "cancelled")
         XCTAssertEqual(reopened?.status, "open")
+
+        HubTaskURLProtocol.handler = { request in
+            capturedRequests.append(request)
+            return Self.response(for: request, body: "[]")
+        }
+        let staleTransition = await service.setTaskActive(
+            taskId: taskID,
+            authorId: ownerID,
+            isActive: false,
+            accessToken: "owner-token"
+        )
+        XCTAssertNil(staleTransition)
+        XCTAssertEqual(queryValue("status", in: capturedRequests[2]), "eq.open")
     }
 
     @MainActor
@@ -236,7 +251,25 @@ final class HubTaskManagementTests: XCTestCase {
     }
 
     private func requestJSON(_ request: URLRequest) throws -> [String: Any] {
-        let data = try XCTUnwrap(request.httpBody)
+        let data: Data
+        if let body = request.httpBody {
+            data = body
+        } else {
+            let stream = try XCTUnwrap(request.httpBodyStream)
+            stream.open()
+            defer { stream.close() }
+            var bytes = [UInt8](repeating: 0, count: 1_024)
+            var collected = Data()
+            while true {
+                let count = stream.read(&bytes, maxLength: bytes.count)
+                if count < 0 {
+                    throw try XCTUnwrap(stream.streamError)
+                }
+                if count == 0 { break }
+                collected.append(bytes, count: count)
+            }
+            data = collected
+        }
         return try XCTUnwrap(
             JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
