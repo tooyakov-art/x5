@@ -1,5 +1,5 @@
 Xfive marketing is a creator workspace and marketplace for creators, marketers,
-specialists and clients. Version 1.1.5 build 181 includes Home creator tools,
+specialists and clients. Version 1.1.5 build 182 includes Home creator tools,
 image generation, Generated Gallery, Hub, Chats, Portfolio, CourseUP, Profile,
 one-time credit packs, verified badge, report/block controls and account deletion.
 
