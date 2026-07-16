@@ -1,0 +1,223 @@
+import {
+  AppleVerificationError,
+  createHandler,
+  NotificationApplyError,
+  type NotificationHandlerDependencies,
+} from "./index.ts";
+
+function assert(
+  condition: unknown,
+  message = "assertion failed",
+): asserts condition {
+  if (!condition) throw new Error(message);
+}
+
+function assertEquals<T>(actual: T, expected: T): void {
+  if (actual !== expected) {
+    throw new Error(
+      `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+    );
+  }
+}
+
+function unsignedNotification(environment = "Production"): string {
+  const encoded = btoa(JSON.stringify({ data: { environment } }))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/g, "");
+  return `header.${encoded}.signature`;
+}
+
+const userId = "7b5a5cb8-239a-4cd1-b5d8-968cc1d437f4";
+const outer = {
+  notificationType: "REFUND",
+  notificationUUID: "8ea875c0-2a6a-4d15-8c98-ab8b28cf8aad",
+  version: "2.0",
+  signedDate: Date.UTC(2026, 6, 16, 11, 59),
+  data: {
+    bundleId: "com.x5studio.app",
+    environment: "Production",
+    signedTransactionInfo: "inner.header.signature",
+  },
+};
+const inner = {
+  bundleId: "com.x5studio.app",
+  environment: "Production",
+  productId: "com.x5studio.app.credits.1000",
+  transactionId: "2000000123456790",
+  originalTransactionId: "2000000123456790",
+  appAccountToken: userId,
+  type: "Consumable",
+  quantity: 1,
+  purchaseDate: Date.UTC(2026, 6, 1),
+  signedDate: Date.UTC(2026, 6, 16, 11, 58),
+  revocationDate: Date.UTC(2026, 6, 15),
+  revocationType: "REFUND_FULL",
+  revocationPercentage: 100000,
+};
+
+function dependencies(
+  overrides: Partial<NotificationHandlerDependencies> = {},
+): NotificationHandlerDependencies {
+  return {
+    now: () => Date.UTC(2026, 6, 16, 12),
+    verifyNotification: () => Promise.resolve(outer),
+    verifyTransaction: () => Promise.resolve(inner),
+    applyNotification: () => Promise.resolve({ status: "applied" }),
+    logError: () => undefined,
+    ...overrides,
+  };
+}
+
+function post(body: unknown, contentType = "application/json"): Request {
+  return new Request(
+    "https://example.test/functions/v1/app-store-notifications",
+    {
+      method: "POST",
+      headers: { "Content-Type": contentType },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+Deno.test("public webhook requires strict POST JSON", async () => {
+  const handler = createHandler(dependencies());
+  const get = await handler(
+    new Request("https://example.test", { method: "GET" }),
+  );
+  assertEquals(get.status, 405);
+  assertEquals(get.headers.get("Allow"), "POST");
+
+  const wrongContent = await handler(
+    post({ signedPayload: "a.b.c" }, "text/plain"),
+  );
+  assertEquals(wrongContent.status, 415);
+
+  const wrongShape = await handler(
+    post({ signedPayload: "a.b.c", forged: true }),
+  );
+  assertEquals(wrongShape.status, 400);
+});
+
+Deno.test("body limit is enforced before JSON and JWS verification", async () => {
+  let verified = false;
+  const handler = createHandler(dependencies({
+    verifyNotification: () => {
+      verified = true;
+      return Promise.resolve(outer);
+    },
+  }));
+  const response = await handler(
+    post({ signedPayload: "x".repeat(140 * 1024) }),
+  );
+  assertEquals(response.status, 413);
+  assertEquals(verified, false);
+});
+
+Deno.test("outer JWS is verified before inner JWS and database apply", async () => {
+  const calls: string[] = [];
+  const handler = createHandler(dependencies({
+    verifyNotification: (_signed, environment) => {
+      calls.push(`outer:${environment}`);
+      return Promise.resolve(outer);
+    },
+    verifyTransaction: (_signed, environment) => {
+      calls.push(`inner:${environment}`);
+      return Promise.resolve(inner);
+    },
+    applyNotification: (event) => {
+      calls.push(`apply:${event.userId}:${event.revocationPercentage}`);
+      return Promise.resolve({ status: "applied" });
+    },
+  }));
+
+  const response = await handler(
+    post({ signedPayload: unsignedNotification() }),
+  );
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).status, "applied");
+  assertEquals(
+    calls.join("|"),
+    `outer:Production|inner:Production|apply:${userId}:100000`,
+  );
+});
+
+Deno.test("signed but irrelevant notification types are acknowledged without inner verification", async () => {
+  let innerVerified = false;
+  let applied = false;
+  const handler = createHandler(dependencies({
+    verifyNotification: () =>
+      Promise.resolve({ ...outer, notificationType: "TEST", data: undefined }),
+    verifyTransaction: () => {
+      innerVerified = true;
+      return Promise.resolve(inner);
+    },
+    applyNotification: () => {
+      applied = true;
+      return Promise.resolve({ status: "applied" });
+    },
+  }));
+  const response = await handler(
+    post({ signedPayload: unsignedNotification() }),
+  );
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).status, "ignored");
+  assertEquals(innerVerified, false);
+  assertEquals(applied, false);
+});
+
+Deno.test("signed unsupported X5 products are acknowledged without state changes", async () => {
+  let applied = false;
+  const handler = createHandler(dependencies({
+    verifyTransaction: () =>
+      Promise.resolve({ ...inner, productId: "com.x5studio.app.pro.monthly" }),
+    applyNotification: () => {
+      applied = true;
+      return Promise.resolve({ status: "applied" });
+    },
+  }));
+  const response = await handler(
+    post({ signedPayload: unsignedNotification() }),
+  );
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).reason, "unsupported_product");
+  assertEquals(applied, false);
+});
+
+Deno.test("invalid Apple signatures are rejected and retryable OCSP failures get 503", async () => {
+  for (
+    const [retryable, expectedStatus] of [[false, 400], [true, 503]] as const
+  ) {
+    const handler = createHandler(dependencies({
+      verifyNotification: () =>
+        Promise.reject(new AppleVerificationError(retryable)),
+    }));
+    const response = await handler(
+      post({ signedPayload: unsignedNotification() }),
+    );
+    assertEquals(response.status, expectedStatus);
+  }
+});
+
+Deno.test("database conflicts are not acknowledged as successful Apple delivery", async () => {
+  const handler = createHandler(dependencies({
+    applyNotification: () =>
+      Promise.reject(new NotificationApplyError("conflict", 409)),
+  }));
+  const response = await handler(
+    post({ signedPayload: unsignedNotification() }),
+  );
+  assertEquals(response.status, 409);
+  assertEquals((await response.json()).status, "rejected");
+});
+
+Deno.test("responses are never cached and errors do not leak signed payloads", async () => {
+  const secret = unsignedNotification();
+  const handler = createHandler(dependencies({
+    verifyNotification: () => Promise.reject(new Error(secret)),
+  }));
+  const response = await handler(post({ signedPayload: secret }));
+  assertEquals(response.status, 500);
+  assertEquals(response.headers.get("Cache-Control"), "no-store");
+  assert(!(await response.text()).includes(secret));
+});

@@ -1,5 +1,50 @@
 begin;
 
+-- A refunded pack may already have been spent. Preserve the resulting
+-- negative credit debt instead of letting the older retention trigger clamp
+-- every non-positive balance back to zero.
+create or replace function public.x5_prepare_credit_retention()
+returns trigger
+language plpgsql
+set search_path = ''
+as $function$
+declare
+  retention_months integer;
+  active_verified boolean;
+  credits_changed boolean;
+  verified_changed boolean;
+begin
+  active_verified := public.x5_profile_has_active_verified_badge(
+    new.is_verified,
+    new.verified_until
+  );
+  retention_months := case when active_verified then 3 else 1 end;
+  new.credits_retention_months := retention_months;
+
+  if tg_op = 'INSERT' then
+    credits_changed := true;
+    verified_changed := false;
+  else
+    credits_changed := coalesce(new.credits, 0) <>
+      coalesce(old.credits, 0);
+    verified_changed :=
+      coalesce(new.is_verified, false) <> coalesce(old.is_verified, false)
+      or coalesce(new.verified_until, '-infinity'::timestamptz) <>
+         coalesce(old.verified_until, '-infinity'::timestamptz);
+  end if;
+
+  if coalesce(new.credits, 0) <= 0 then
+    new.credits_expires_at := null;
+  elsif credits_changed or verified_changed
+        or new.credits_expires_at is null then
+    new.credits_expires_at :=
+      now() + make_interval(months => retention_months);
+  end if;
+
+  return new;
+end;
+$function$;
+
 -- Apple can refund a finished consumable after its credits have already been
 -- spent. Keep refund events separate from the immutable purchase ledgers. A
 -- negative profile balance is intentional debt: every spending path requires
