@@ -6,4 +6,3 @@
 4. Update Android web catalog, Store/Profile UI, verified screen, native Play product classification, and server entitlement mapping while preserving legacy subscription restore.
 5. Configure App Store Connect consumables and verification pricing; prepare the exact Google Play product configuration when console credentials are unavailable.
 6. Run focused tests, type checks, production web build, Edge tests, iOS CI, and review only the files changed for this feature.
-
