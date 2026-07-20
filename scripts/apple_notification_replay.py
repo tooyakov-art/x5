@@ -154,6 +154,60 @@ def matching_notifications(
     return matches
 
 
+def safe_notification_summary(
+    signed_payload: str,
+    *,
+    target_user_id: str,
+    bundle_id: str,
+) -> str:
+    """Return non-secret routing facts for a notification that did not match."""
+
+    try:
+        outer = decode_jws_payload(signed_payload)
+        data = outer.get("data")
+        if not isinstance(data, dict):
+            return (
+                f"type={outer.get('notificationType') or '-'} "
+                f"subtype={outer.get('subtype') or '-'} data=missing"
+            )
+        signed_transaction = data.get("signedTransactionInfo")
+        if not isinstance(signed_transaction, str):
+            return (
+                f"type={outer.get('notificationType') or '-'} "
+                f"subtype={outer.get('subtype') or '-'} "
+                f"bundle_match={data.get('bundleId') == bundle_id} "
+                f"environment={data.get('environment') or '-'} transaction=missing"
+            )
+        transaction = decode_jws_payload(signed_transaction)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return "decode=failed"
+
+    purchase_date = transaction.get("purchaseDate")
+    purchase_in_window = (
+        isinstance(purchase_date, int)
+        and EXPECTED_PURCHASE_START_MS <= purchase_date <= EXPECTED_PURCHASE_END_MS
+    )
+    transaction_id = transaction.get("transactionId")
+    original_transaction_id = transaction.get("originalTransactionId")
+    initial_transaction = (
+        isinstance(transaction_id, str)
+        and bool(transaction_id)
+        and transaction_id == original_transaction_id
+    )
+    return (
+        f"type={outer.get('notificationType') or '-'} "
+        f"subtype={outer.get('subtype') or '-'} "
+        f"bundle_match={data.get('bundleId') == bundle_id} "
+        f"environment={data.get('environment') or '-'} "
+        f"product={transaction.get('productId') or '-'} "
+        f"account_match={str(transaction.get('appAccountToken', '')).lower() == target_user_id.lower()} "
+        f"purchase_in_window={purchase_in_window} "
+        f"initial_transaction={initial_transaction} "
+        f"ownership={transaction.get('inAppOwnershipType') or '-'} "
+        f"quantity={transaction.get('quantity') if transaction.get('quantity') is not None else '-'}"
+    )
+
+
 def _required(name: str) -> str:
     value = os.environ.get(name, "").strip()
     if not value:
@@ -281,6 +335,18 @@ def main() -> None:
         bundle_id=bundle_id,
     )
     print(f"history_records={len(history)} exact_matches={len(matches)}")
+    if len(matches) != 1:
+        for index, item in enumerate(history, start=1):
+            signed_payload = item.get("signedPayload")
+            if isinstance(signed_payload, str):
+                print(
+                    f"history_record={index} "
+                    + safe_notification_summary(
+                        signed_payload,
+                        target_user_id=target_user_id,
+                        bundle_id=bundle_id,
+                    )
+                )
     try:
         match = select_single_notification(matches)
     except RuntimeError as error:

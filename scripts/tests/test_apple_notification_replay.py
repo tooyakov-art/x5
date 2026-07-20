@@ -9,6 +9,7 @@ from scripts.apple_notification_replay import (
     delivery_applied,
     match_notification,
     matching_notifications,
+    safe_notification_summary,
     select_single_notification,
 )
 
@@ -134,6 +135,20 @@ class AppleNotificationReplayTests(unittest.TestCase):
         self.assertFalse(delivery_applied(200, "ignored"))
         self.assertFalse(delivery_applied(200, "ignored_stale"))
         self.assertFalse(delivery_applied(500, "applied"))
+
+    def test_safe_summary_exposes_matches_but_not_ids_or_token(self):
+        signed_payload = notification()
+        summary = safe_notification_summary(
+            signed_payload,
+            target_user_id=USER_ID,
+            bundle_id=BUNDLE_ID,
+        )
+        self.assertIn("type=SUBSCRIBED", summary)
+        self.assertIn("account_match=True", summary)
+        self.assertIn("purchase_in_window=True", summary)
+        self.assertNotIn(USER_ID, summary)
+        self.assertNotIn("2000000999999999", summary)
+        self.assertNotIn(signed_payload, summary)
 
 
 if __name__ == "__main__":
