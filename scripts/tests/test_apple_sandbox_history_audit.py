@@ -75,7 +75,7 @@ class AppleSandboxHistoryAuditTests(unittest.TestCase):
         labels = [window.label for window in AUDIT_WINDOWS]
         self.assertEqual(
             labels,
-            ["adilkhan_credits_1000", "adilkhan_credits_2000", "dossymkhan_lite"],
+            ["adilkhan_credits_2000", "dossymkhan_lite"],
         )
         self.assertTrue(all(window.end_ms > window.start_ms for window in AUDIT_WINDOWS))
         self.assertTrue(
@@ -127,7 +127,10 @@ class AppleSandboxHistoryAuditTests(unittest.TestCase):
 
         self.assertEqual(report["schema_version"], 1)
         self.assertEqual(report["environment"], "Sandbox")
-        self.assertEqual([item["exact_matches"] for item in report["windows"]], [1, 1, 1])
+        self.assertEqual(
+            [item["exact_matches"] for item in report["windows"]],
+            [1] * len(AUDIT_WINDOWS),
+        )
         serialized = json.dumps(report, sort_keys=True)
         for window in AUDIT_WINDOWS:
             self.assertNotIn(window.app_account_token, serialized)

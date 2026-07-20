@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Recover two exact Apple Sandbox consumables through the verified X5 webhook.
+"""Recover one exact Apple Sandbox consumable through the verified X5 webhook.
 
 The only mutable action in this program is replaying Apple's original signed
 notification payload to the fixed X5 App Store Server Notifications endpoint.
@@ -32,24 +32,14 @@ FIXED_WEBHOOK_URL = (
 # contract makes any later widening of the read-only auditor fail closed here.
 _EXPECTED_TARGET_CONTRACT = (
     (
-        "adilkhan_credits_1000",
-        "eee55a08-18d1-46e3-a303-1411d1bb9333",
-        ("com.x5studio.app.credits.1000",),
-        "ONE_TIME_CHARGE",
-        None,
-        "Consumable",
-        1784533500000,
-        1784535000000,
-    ),
-    (
         "adilkhan_credits_2000",
         "eee55a08-18d1-46e3-a303-1411d1bb9333",
         ("com.x5studio.app.credits.2000",),
         "ONE_TIME_CHARGE",
         None,
         "Consumable",
-        1784540700000,
-        1784541600000,
+        1784533500000,
+        1784535000000,
     ),
 )
 

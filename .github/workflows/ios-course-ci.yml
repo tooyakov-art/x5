@@ -168,5 +168,5 @@ jobs:
           'requests==2.32.5'
       - name: Verify the fixed recovery contract
         run: python -m unittest scripts.tests.test_apple_sandbox_consumable_recovery
-      - name: Recover the two fixed Sandbox consumables
+      - name: Recover the fixed Sandbox consumable
         run: python -m scripts.apple_sandbox_consumable_recovery

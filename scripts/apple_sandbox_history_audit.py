@@ -45,24 +45,14 @@ class AuditWindow:
 # them requires an explicit code review rather than a workflow input.
 AUDIT_WINDOWS = (
     AuditWindow(
-        label="adilkhan_credits_1000",
-        app_account_token="eee55a08-18d1-46e3-a303-1411d1bb9333",
-        product_ids=("com.x5studio.app.credits.1000",),
-        notification_type="ONE_TIME_CHARGE",
-        subtype=None,
-        transaction_type="Consumable",
-        start_ms=1784533500000,  # 2026-07-20 07:45:00 UTC
-        end_ms=1784535000000,  # 2026-07-20 08:10:00 UTC
-    ),
-    AuditWindow(
         label="adilkhan_credits_2000",
         app_account_token="eee55a08-18d1-46e3-a303-1411d1bb9333",
         product_ids=("com.x5studio.app.credits.2000",),
         notification_type="ONE_TIME_CHARGE",
         subtype=None,
         transaction_type="Consumable",
-        start_ms=1784540700000,  # 2026-07-20 09:45:00 UTC
-        end_ms=1784541600000,  # 2026-07-20 10:00:00 UTC
+        start_ms=1784533500000,  # 2026-07-20 07:45:00 UTC
+        end_ms=1784535000000,  # 2026-07-20 08:10:00 UTC
     ),
     AuditWindow(
         label="dossymkhan_lite",

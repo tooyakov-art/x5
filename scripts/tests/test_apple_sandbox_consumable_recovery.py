@@ -82,17 +82,18 @@ class FakeResponse:
 
 
 class AppleSandboxConsumableRecoveryTests(unittest.TestCase):
-    def test_targets_are_only_the_two_fixed_adilkhan_consumables(self):
+    def test_target_is_only_the_one_apple_confirmed_adilkhan_consumable(self):
         self.assertEqual(
             [target.label for target in RECOVERY_TARGETS],
-            ["adilkhan_credits_1000", "adilkhan_credits_2000"],
+            ["adilkhan_credits_2000"],
         )
         self.assertEqual(
             [target.product_ids for target in RECOVERY_TARGETS],
-            [
-                ("com.x5studio.app.credits.1000",),
-                ("com.x5studio.app.credits.2000",),
-            ],
+            [("com.x5studio.app.credits.2000",)],
+        )
+        self.assertEqual(
+            [(target.start_ms, target.end_ms) for target in RECOVERY_TARGETS],
+            [(1784533500000, 1784535000000)],
         )
         self.assertEqual(
             {target.app_account_token for target in RECOVERY_TARGETS},
@@ -127,6 +128,7 @@ class AppleSandboxConsumableRecoveryTests(unittest.TestCase):
         target = RECOVERY_TARGETS[0]
         rejected = [
             notification(target, app_account_token="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+            notification(target, product_id="com.x5studio.app.credits.1000"),
             notification(target, product_id="com.x5studio.app.credits.5000"),
             notification(target, bundle_id="com.example.other"),
             notification(target, data_environment="Production"),
@@ -163,7 +165,7 @@ class AppleSandboxConsumableRecoveryTests(unittest.TestCase):
                 [{"signedPayload": exact}, {"signedPayload": second}], target
             )
 
-    def test_builds_the_complete_plan_from_only_the_two_fixed_windows(self):
+    def test_builds_the_complete_plan_from_only_the_fixed_window(self):
         calls = []
 
         def fetcher(start_ms, end_ms):
@@ -181,23 +183,16 @@ class AppleSandboxConsumableRecoveryTests(unittest.TestCase):
             calls,
             [(item.start_ms, item.end_ms) for item in RECOVERY_TARGETS],
         )
-        self.assertEqual([item.target.label for item in plan], [
-            "adilkhan_credits_1000",
-            "adilkhan_credits_2000",
-        ])
+        self.assertEqual(
+            [item.target.label for item in plan],
+            ["adilkhan_credits_2000"],
+        )
 
-    def test_never_posts_if_either_target_is_missing_or_ambiguous(self):
+    def test_never_posts_if_target_is_missing_or_ambiguous(self):
         posted = []
 
         def fetcher(start_ms, end_ms):
-            target = next(
-                item
-                for item in RECOVERY_TARGETS
-                if (item.start_ms, item.end_ms) == (start_ms, end_ms)
-            )
-            if target.label == "adilkhan_credits_2000":
-                return []
-            return [{"signedPayload": notification(target)}]
+            return []
 
         with self.assertRaisesRegex(RuntimeError, "expected_one_unique_match"):
             recover_purchases(fetcher=fetcher, post=lambda *args, **kwargs: posted.append(args))
@@ -231,22 +226,14 @@ class AppleSandboxConsumableRecoveryTests(unittest.TestCase):
         def fetcher(start_ms, end_ms):
             return histories[(start_ms, end_ms)]
 
-        responses = iter(
-            [
-                FakeResponse(payload={"status": "applied"}),
-                FakeResponse(payload={"status": "already_applied"}),
-            ]
-        )
+        responses = iter([FakeResponse(payload={"status": "applied"})])
         outcomes = recover_purchases(
             fetcher=fetcher,
             post=lambda *args, **kwargs: next(responses),
         )
         self.assertEqual(
             outcomes,
-            [
-                ("adilkhan_credits_1000", 200, "applied"),
-                ("adilkhan_credits_2000", 200, "already_applied"),
-            ],
+            [("adilkhan_credits_2000", 200, "applied")],
         )
 
         for response in (
@@ -287,7 +274,6 @@ class AppleSandboxConsumableRecoveryTests(unittest.TestCase):
             self.assertNotIn(target.app_account_token, rendered)
         for secret in payloads + transaction_ids:
             self.assertNotIn(secret, rendered)
-        self.assertIn("target=adilkhan_credits_1000", rendered)
         self.assertIn("target=adilkhan_credits_2000", rendered)
 
 
