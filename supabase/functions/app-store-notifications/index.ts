@@ -9,6 +9,7 @@ import {
   VerificationStatus,
 } from "@apple/app-store-server-library";
 import { createClient } from "@supabase/supabase-js";
+import { EdgeCompatibleSignedDataVerifier } from "./edge_jws_verifier.ts";
 import {
   APP_APPLE_ID,
   APP_BUNDLE_ID,
@@ -324,7 +325,7 @@ function getAppleVerifier(
   // The Apple library keeps certificate-chain, Apple OID, JWS signature,
   // bundle, environment, and signed-date checks when online checks are false.
   // Its live OCSP responder validation is incompatible with Supabase Deno.
-  const verifier = new SignedDataVerifier(
+  const verifier = new EdgeCompatibleSignedDataVerifier(
     getAppleRootCertificates(),
     false,
     environment === "Production" ? Environment.PRODUCTION : Environment.SANDBOX,

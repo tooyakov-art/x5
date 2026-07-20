@@ -1,10 +1,10 @@
 import { Buffer } from "node:buffer";
 import {
   Environment,
-  SignedDataVerifier,
   VerificationException,
   VerificationStatus,
 } from "@apple/app-store-server-library";
+import { EdgeCompatibleSignedDataVerifier } from "../supabase/functions/app-store-notifications/edge_jws_verifier.ts";
 import {
   APP_APPLE_ID,
   pinnedAppleRootCertificates,
@@ -62,7 +62,7 @@ const signedPayload = (await Deno.readTextFile(required("SIGNED_PAYLOAD_PATH")))
 const roots = pinnedAppleRootCertificates().map((certificate) =>
   Buffer.from(certificate)
 );
-const verifier = new SignedDataVerifier(
+const verifier = new EdgeCompatibleSignedDataVerifier(
   roots,
   false,
   Environment.PRODUCTION,

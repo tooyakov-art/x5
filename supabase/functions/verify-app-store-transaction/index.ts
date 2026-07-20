@@ -7,6 +7,7 @@ import {
   VerificationStatus,
 } from "@apple/app-store-server-library";
 import { createClient } from "@supabase/supabase-js";
+import { EdgeCompatibleSignedDataVerifier } from "./edge_jws_verifier.ts";
 import {
   APP_APPLE_ID,
   APP_BUNDLE_ID,
@@ -259,7 +260,7 @@ function getAppleVerifier(
 
   let verifier: SignedDataVerifier;
   try {
-    verifier = new SignedDataVerifier(
+    verifier = new EdgeCompatibleSignedDataVerifier(
       getAppleRootCertificates(),
       appleOnlineChecksEnabled(environment),
       verifierEnvironment,
