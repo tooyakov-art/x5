@@ -23,6 +23,19 @@ Deno.test("runtime uses source-pinned official Apple trust roots", () => {
   );
 });
 
+Deno.test("production verifier uses the source-pinned App Store app id", () => {
+  assertMatch(
+    source,
+    /APP_APPLE_ID/,
+    "the notification runtime is not using the pinned App Store app id",
+  );
+  assertNotMatch(
+    source,
+    /Deno\.env\.get\("APPLE_APP_ID"\)/,
+    "the notification runtime still depends on a mutable App Store app-id secret",
+  );
+});
+
 Deno.test("runtime verifies both Apple JWS layers with the pinned Apple library", () => {
   assertMatch(
     source,

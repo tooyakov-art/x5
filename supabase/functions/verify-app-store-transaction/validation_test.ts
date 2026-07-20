@@ -1,4 +1,5 @@
 import {
+  APP_APPLE_ID,
   InputError,
   parseAppAppleId,
   parseAppleRootCertificates,
@@ -35,6 +36,10 @@ async function sha256Hex(value: Uint8Array): Promise<string> {
     byte.toString(16).padStart(2, "0")
   ).join("");
 }
+
+Deno.test("runtime pins the X5 App Store application id", () => {
+  assertEquals(APP_APPLE_ID, 6764340680);
+});
 
 Deno.test("runtime pins the official Apple root certificates", async () => {
   const fingerprints = await Promise.all(

@@ -10,11 +10,11 @@ import {
 } from "@apple/app-store-server-library";
 import { createClient } from "@supabase/supabase-js";
 import {
+  APP_APPLE_ID,
   APP_BUNDLE_ID,
   AppStoreEnvironment,
   InputError,
   isSubscriptionLifecycleNotificationType,
-  parseAppAppleId,
   parseNotificationRequestBody,
   parseUntrustedNotificationEnvironment,
   pinnedAppleRootCertificates,
@@ -302,9 +302,7 @@ function getAppleVerifier(
     false,
     environment === "Production" ? Environment.PRODUCTION : Environment.SANDBOX,
     APP_BUNDLE_ID,
-    environment === "Production"
-      ? parseAppAppleId(Deno.env.get("APPLE_APP_ID"))
-      : undefined,
+    environment === "Production" ? APP_APPLE_ID : undefined,
   );
   appleVerifiers.set(environment, verifier);
   return verifier;

@@ -1,6 +1,7 @@
 export type AppStoreEnvironment = "Production" | "Sandbox";
 
 export const APP_BUNDLE_ID = "com.x5studio.app";
+export const APP_APPLE_ID = 6764340680;
 
 // Public DER roots downloaded from Apple's PKI directory. Keep the SHA-256
 // fingerprints locked by validation_test.ts so deployment secrets cannot

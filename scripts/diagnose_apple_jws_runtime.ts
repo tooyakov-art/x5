@@ -5,10 +5,12 @@ import {
   VerificationException,
   VerificationStatus,
 } from "@apple/app-store-server-library";
-import { pinnedAppleRootCertificates } from "../supabase/functions/app-store-notifications/validation.ts";
+import {
+  APP_APPLE_ID,
+  pinnedAppleRootCertificates,
+} from "../supabase/functions/app-store-notifications/validation.ts";
 
 const BUNDLE_ID = "com.x5studio.app";
-const APP_APPLE_ID = 6764340680;
 
 function required(name: string): string {
   const value = Deno.env.get(name)?.trim();

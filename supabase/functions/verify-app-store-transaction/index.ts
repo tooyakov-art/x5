@@ -8,11 +8,11 @@ import {
 } from "@apple/app-store-server-library";
 import { createClient } from "@supabase/supabase-js";
 import {
+  APP_APPLE_ID,
   APP_BUNDLE_ID,
   type AppStoreEnvironment,
   InputError,
   type NormalizedTransaction,
-  parseAppAppleId,
   parseUntrustedTransactionEnvironment,
   parseVerifyRequestBody,
   pinnedAppleRootCertificates,
@@ -235,9 +235,8 @@ function jsonResponse(
 let appleRootCertificates: Buffer[] | undefined;
 const appleVerifiers = new Map<AppStoreEnvironment, SignedDataVerifier>();
 
-// APPLE_APP_ID is the numeric App Store app id required for Production JWS.
-// The public Apple trust anchors are source-pinned and fingerprint-tested so a
-// stale or malformed deployment secret cannot break every valid purchase.
+// The public App Store id and Apple trust anchors are source-pinned and tested
+// so stale or malformed deployment secrets cannot break every valid purchase.
 function getAppleRootCertificates(): Buffer[] {
   if (appleRootCertificates) return appleRootCertificates;
   const certificates = pinnedAppleRootCertificates();
@@ -256,9 +255,7 @@ function getAppleVerifier(
   const verifierEnvironment = environment === "Production"
     ? Environment.PRODUCTION
     : Environment.SANDBOX;
-  const appAppleId = environment === "Production"
-    ? parseAppAppleId(Deno.env.get("APPLE_APP_ID"))
-    : undefined;
+  const appAppleId = environment === "Production" ? APP_APPLE_ID : undefined;
 
   let verifier: SignedDataVerifier;
   try {

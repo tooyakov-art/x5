@@ -2,6 +2,7 @@ export type AppStoreEnvironment = "Production" | "Sandbox";
 export type AppStoreProductKind = "subscription" | "consumable";
 
 export const APP_BUNDLE_ID = "com.x5studio.app";
+export const APP_APPLE_ID = 6764340680;
 export const VERIFIED_MONTHLY_PRODUCT_ID = "com.x5studio.app.verified.monthly";
 export const SUBSCRIPTION_PRODUCT_IDS = new Set([
   "com.x5studio.app.lite.monthly",

@@ -22,3 +22,16 @@ Deno.test("runtime uses source-pinned official Apple trust roots", () => {
     "the verified purchase runtime still depends on mutable root secrets",
   );
 });
+
+Deno.test("production verifier uses the source-pinned App Store app id", () => {
+  assertMatch(
+    source,
+    /APP_APPLE_ID/,
+    "the verified purchase runtime is not using the pinned App Store app id",
+  );
+  assertNotMatch(
+    source,
+    /Deno\.env\.get\("APPLE_APP_ID"\)/,
+    "the verified purchase runtime still depends on a mutable App Store app-id secret",
+  );
+});
