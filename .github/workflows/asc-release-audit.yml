@@ -2,6 +2,15 @@ name: ASC release audit
 
 on:
   workflow_dispatch:
+    inputs:
+      action:
+        description: "Read only, or set 1.1.5/build184 to AFTER_APPROVAL"
+        required: true
+        type: choice
+        default: "audit"
+        options:
+          - audit
+          - set_after_approval
   push:
     branches: [codex/x5-cleanup-from-restore-clean]
     paths:
@@ -27,6 +36,9 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install pyjwt[crypto] requests
+      - name: Set automatic release after approval
+        if: ${{ inputs.action == 'set_after_approval' }}
+        run: python scripts/asc_set_after_approval.py
       - name: Audit App Store Connect release state
         run: |
           python <<'PY'
