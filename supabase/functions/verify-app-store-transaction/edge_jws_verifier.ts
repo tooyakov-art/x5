@@ -63,7 +63,7 @@ function parseJSONSegment(value: string): unknown {
 
 function parseCertificate(certificate: X509Certificate): X509 {
   const parsed = new X509();
-  parsed.readCertHex(certificate.raw.toString("hex"));
+  parsed.readCertHex(Buffer.from(certificate.raw).toString("hex"));
   return parsed;
 }
 

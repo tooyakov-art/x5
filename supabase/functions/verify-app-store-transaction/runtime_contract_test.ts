@@ -67,6 +67,11 @@ Deno.test("runtime verifies ES256 directly without Edge-incompatible key export"
   );
   assertMatch(
     edgeVerifierSource,
+    /Buffer\.from\(certificate\.raw\)\.toString\("hex"\)/,
+    "the verified purchase runtime assumes Edge X.509 raw bytes are a Node Buffer",
+  );
+  assertMatch(
+    edgeVerifierSource,
     /verifiesCertificateSignature\(\s*intermediateCertificate,/,
     "the intermediate certificate signature is not verified",
   );
