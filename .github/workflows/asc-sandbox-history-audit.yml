@@ -11,9 +11,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
-      IAP_API_KEY_ID: ${{ secrets.IAP_API_KEY_ID }}
-      IAP_API_ISSUER_ID: ${{ secrets.IAP_API_ISSUER_ID }}
-      IAP_API_KEY_BASE64: ${{ secrets.IAP_API_KEY_BASE64 }}
+      IAP_API_KEY_ID: ${{ secrets.IAP_API_KEY_ID || secrets.ASC_API_KEY_ID }}
+      IAP_API_ISSUER_ID: ${{ secrets.IAP_API_ISSUER_ID || secrets.ASC_API_ISSUER_ID }}
+      IAP_API_KEY_BASE64: ${{ secrets.IAP_API_KEY_BASE64 || secrets.ASC_API_KEY_BASE64 }}
 
     steps:
       - name: Check out the audited revision
