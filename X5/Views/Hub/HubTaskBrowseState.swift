@@ -1,7 +1,7 @@
 struct HubTaskBrowseState: Equatable {
     enum Page: Equatable {
         case categories
-        case results(categoryId: String?)
+        case results(categoryIds: Set<String>)
     }
 
     private(set) var page: Page = .categories
@@ -11,17 +11,31 @@ struct HubTaskBrowseState: Equatable {
         return false
     }
 
-    var selectedCategoryId: String? {
-        guard case let .results(categoryId) = page else { return nil }
-        return categoryId
+    var selectedCategoryIds: Set<String> {
+        guard case let .results(categoryIds) = page else { return [] }
+        return categoryIds
     }
 
     mutating func showAllResults() {
-        page = .results(categoryId: nil)
+        page = .results(categoryIds: [])
     }
 
     mutating func showResults(for categoryId: String) {
-        page = .results(categoryId: categoryId)
+        page = .results(categoryIds: [categoryId])
+    }
+
+    mutating func toggleResults(for categoryId: String) {
+        var categoryIds = selectedCategoryIds
+        if categoryIds.contains(categoryId) {
+            categoryIds.remove(categoryId)
+        } else {
+            categoryIds.insert(categoryId)
+        }
+        page = .results(categoryIds: categoryIds)
+    }
+
+    func includes(categoryId: String) -> Bool {
+        selectedCategoryIds.isEmpty || selectedCategoryIds.contains(categoryId)
     }
 
     mutating func showCategories() {

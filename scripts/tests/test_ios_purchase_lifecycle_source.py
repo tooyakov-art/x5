@@ -65,6 +65,12 @@ class IOSPurchaseLifecycleSourceTests(unittest.TestCase):
         self.assertIn("-> Bool", profile)
         self.assertEqual(localization.count('"credit_store_success_refresh_pending"'), 3)
 
+    def test_server_rejection_code_is_kept_in_safe_diagnostics(self):
+        source = IAP_SERVICE.read_text(encoding="utf-8")
+
+        self.assertIn("let error: String?", source)
+        self.assertIn('"server_error": String((serverError ?? "unknown").prefix(80))', source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -255,16 +255,13 @@ Deno.test("all Apple credit packs accept only signed consumable quantity-one cla
       ),
     "invalid_quantity",
   );
-  assertInputError(
-    () =>
-      validateVerifiedTransaction(
-        { ...validConsumable, quantity: undefined },
-        validConsumable.appAccountToken,
-        "Production",
-        Date.UTC(2026, 6, 14),
-      ),
-    "invalid_quantity",
+  const implicitSingleQuantity = validateVerifiedTransaction(
+    { ...validConsumable, quantity: undefined },
+    validConsumable.appAccountToken,
+    "Production",
+    Date.UTC(2026, 6, 14),
   );
+  assertEquals(implicitSingleQuantity.quantity, 1);
 });
 
 Deno.test("signed Apple credit-pack refunds preserve exact consumable identity", () => {

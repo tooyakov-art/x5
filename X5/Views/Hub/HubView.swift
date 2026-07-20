@@ -33,7 +33,9 @@ struct HubView: View {
     }
 
     private var visibleTaskCategories: [HubCategory] {
-        taskCategoriesExpanded ? HubCategories.all : Array(HubCategories.all.prefix(7))
+        taskCategoriesExpanded
+            ? HubCategories.hubDisplayOrder
+            : Array(HubCategories.hubDisplayOrder.prefix(7))
     }
 
     var body: some View {
@@ -226,7 +228,7 @@ struct HubView: View {
                         CategoryChip(title: loc.t("hub_all"),
                                      systemImage: "line.3.horizontal.decrease.circle",
                                      count: totalVisibleCount,
-                                     isSelected: taskBrowseState.selectedCategoryId == nil)
+                                     isSelected: taskBrowseState.selectedCategoryIds.isEmpty)
                     }
                     .buttonStyle(.plain)
                     .id("cat-all")
@@ -234,13 +236,13 @@ struct HubView: View {
                     ForEach(visibleTaskCategories) { cat in
                         Button {
                             withAnimation(.easeInOut(duration: 0.18)) {
-                                taskBrowseState.showResults(for: cat.id)
+                                taskBrowseState.toggleResults(for: cat.id)
                             }
                         } label: {
                             CategoryChip(title: HubCategories.label(for: cat.id, language: loc.current),
                                          systemImage: hubCategorySymbol(for: cat.id),
                                          count: countForCategory(cat.id),
-                                         isSelected: taskBrowseState.selectedCategoryId == cat.id)
+                                         isSelected: taskBrowseState.selectedCategoryIds.contains(cat.id))
                         }
                         .buttonStyle(.plain)
                         .id("cat-\(cat.id)")
@@ -365,7 +367,7 @@ struct HubView: View {
             }
             .buttonStyle(.plain)
 
-            ForEach(HubCategories.all) { cat in
+            ForEach(HubCategories.hubDisplayOrder) { cat in
                 NavigationLink {
                     specialistCategoryPage(
                         categoryId: cat.id,
@@ -584,10 +586,11 @@ struct HubView: View {
             }
             .buttonStyle(.plain)
 
-            ForEach(HubCategories.all) { cat in
+            ForEach(HubCategories.hubDisplayOrder) { cat in
                 Button {
                     withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
                         taskBrowseState.showResults(for: cat.id)
+                        taskCategoriesExpanded = true
                     }
                 } label: {
                     CategoryTile(
@@ -619,13 +622,10 @@ struct HubView: View {
     }
 
     private var filteredTasks: [HubTask] {
-        tasks(matching: taskBrowseState.selectedCategoryId)
-    }
-
-    private func tasks(matching categoryId: String?) -> [HubTask] {
         let visible = service.tasks.filter { !BlockList.contains($0.authorId) }
-        guard let categoryId else { return visible }
-        return visible.filter { normalizedHubCategory($0.category) == categoryId }
+        return visible.filter {
+            taskBrowseState.includes(categoryId: normalizedHubCategory($0.category))
+        }
     }
 
     private func refreshCurrentHubSegment() async {

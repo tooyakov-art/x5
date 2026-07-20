@@ -277,6 +277,7 @@ final class IAPService: ObservableObject {
 
     private struct ServerVerificationResponse: Decodable {
         let status: String
+        let error: String?
     }
 
     init(auth: Auth) {
@@ -714,7 +715,9 @@ final class IAPService: ObservableObject {
 
             do {
                 let (data, response) = try await URLSession.shared.data(for: request)
-                let status = try? JSONDecoder().decode(ServerVerificationResponse.self, from: data).status
+                let serverResponse = try? JSONDecoder().decode(ServerVerificationResponse.self, from: data)
+                let status = serverResponse?.status
+                let serverError = serverResponse?.error
                 let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? -1
 
                 if IAPVerificationRetryPolicy.shouldRetry(statusCode: httpStatus, retryCount: retryCount) {
@@ -740,7 +743,8 @@ final class IAPService: ObservableObject {
                     DiagnosticLogger.log(event: "iap_verification_failed", extra: [
                         "source": source,
                         "product": productID,
-                        "status": "\(httpStatus)"
+                        "status": "\(httpStatus)",
+                        "server_error": String((serverError ?? "unknown").prefix(80))
                     ])
                     lastError = LocalizationService.shared.t("iap_delivery_pending")
                     return .failed

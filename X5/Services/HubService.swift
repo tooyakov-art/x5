@@ -134,6 +134,15 @@ enum HubCategories {
         .init(id: "other", emoji: "🔧", labelEn: "Other", labelRu: "Другое", labelKk: "Басқа")
     ]
 
+    static var hubDisplayOrder: [HubCategory] {
+        var categories = all
+        guard let seoIndex = categories.firstIndex(where: { $0.id == "seo" }),
+              let ugcIndex = categories.firstIndex(where: { $0.id == "ugc" })
+        else { return categories }
+        categories.swapAt(seoIndex, ugcIndex)
+        return categories
+    }
+
     static func label(for id: String?) -> String {
         guard let id else { return "Other" }
         return all.first(where: { $0.id == id })?.labelEn ?? id.capitalized

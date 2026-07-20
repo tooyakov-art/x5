@@ -155,7 +155,7 @@ struct PaywallView: View {
             } label: {
                 Group {
                     if isCurrentPurchase {
-                        ProgressView()
+                        ProgressView().tint(.black)
                     } else {
                         Text(loc.t("credit_store_buy"))
                             .font(.system(size: 16, weight: .bold))
@@ -166,6 +166,7 @@ struct PaywallView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.accentColor)
+            .foregroundStyle(.black)
             .disabled(product == nil || iap.isPurchasing)
 
             if didLoadProducts && product == nil {

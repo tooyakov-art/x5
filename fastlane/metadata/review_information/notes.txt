@@ -1,5 +1,5 @@
 Xfive marketing is a creator workspace and marketplace for creators, marketers,
-specialists and clients. Version 1.1.5 build 183 includes Home creator tools,
+specialists and clients. Version 1.1.5 build 184 includes Home creator tools,
 image generation, Generated Gallery, Hub, Chats, Portfolio, CourseUP, Profile,
 one-time credit packs, verified badge, report/block controls and account deletion.
 
@@ -18,8 +18,9 @@ Quick test flow:
    model/size/quantity and tap Generate.
 4. Generated result - preview, save to in-app gallery, save to Photos, share,
    markup or regenerate from edits.
-5. Hub - switch between Specialists and Tasks, open a specialist/task, start a
-   chat or send a proposal.
+5. Hub - switch between Specialists and Tasks. In Tasks, open any category,
+   select several category chips to combine filters, then open a task. Open a
+   specialist/task, start a chat or send a proposal.
 6. Chats - send text, attach a photo, record voice, search, reply, pin, mute,
    archive, report or block.
 7. Portfolio/Profile - add photos or videos, edit public visibility and social
@@ -46,7 +47,9 @@ Credit purchases and verification:
 Verified Badge Monthly: com.x5studio.app.verified.monthly (auto-renewable).
 The Store is available from every Profile and shows the current server balance.
 A credit purchase changes only that balance; it does not activate Pro or change
-subscription dates. Consumables are not shown as restorable. The verified badge
+subscription dates. The server applies each signed consumable exactly once and
+retries unfinished delivery after a temporary failure. Consumables are not shown
+as restorable. The verified badge
 is a separate 1,000 KZT/month subscription from Profile -> Get verified.
 
 Existing Lite, Pro and Max subscriptions remain recognized and restorable for

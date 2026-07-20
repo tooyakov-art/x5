@@ -59,7 +59,10 @@ export interface HandlerDependencies {
 }
 
 export class AppleVerificationError extends Error {
-  constructor(readonly retryable: boolean) {
+  constructor(
+    readonly retryable: boolean,
+    readonly diagnosticCode = "apple_verification_failed",
+  ) {
     super("apple_verification_failed");
   }
 }
@@ -156,6 +159,7 @@ export function createHandler(
       return jsonResponse(result, 200);
     } catch (error) {
       if (error instanceof InputError) {
+        _dependencies.logError(error);
         if (error.code === "transaction_owned_by_other") {
           return jsonResponse({ status: "owned_by_other" }, 409);
         }
@@ -165,6 +169,7 @@ export function createHandler(
         );
       }
       if (error instanceof AppleVerificationError) {
+        _dependencies.logError(error);
         return error.retryable
           ? jsonResponse({
             status: "rejected",
@@ -176,6 +181,7 @@ export function createHandler(
           }, 400);
       }
       if (error instanceof EntitlementApplyError) {
+        _dependencies.logError(error);
         return jsonResponse({ status: error.statusValue }, error.httpStatus);
       }
       _dependencies.logError(error);
@@ -264,7 +270,10 @@ async function verifySignedTransaction(
   } catch (error) {
     const retryable = error instanceof VerificationException &&
       error.status === VerificationStatus.RETRYABLE_VERIFICATION_FAILURE;
-    throw new AppleVerificationError(retryable);
+    const diagnosticCode = error instanceof VerificationException
+      ? VerificationStatus[error.status] ?? "UNKNOWN_VERIFICATION_STATUS"
+      : "UNKNOWN_VERIFICATION_ERROR";
+    throw new AppleVerificationError(retryable, diagnosticCode);
   }
 }
 
@@ -529,7 +538,14 @@ const runtimeDependencies: HandlerDependencies = {
   applyVerifiedRevocation,
   logError: (error) => {
     const name = error instanceof Error ? error.name : typeof error;
-    console.error("verify-app-store-transaction failed", { name });
+    const code = error instanceof InputError
+      ? error.code
+      : error instanceof EntitlementApplyError
+      ? error.statusValue
+      : error instanceof AppleVerificationError
+      ? error.diagnosticCode
+      : "server_error";
+    console.error("verify-app-store-transaction failed", { name, code });
   },
 };
 

@@ -142,7 +142,10 @@ export function validateVerifiedTransaction(
     if (payload.type !== "Consumable") {
       throw new InputError("invalid_product_type");
     }
-    if (payload.quantity !== 1) {
+    // Apple's decoded transaction model marks quantity as optional. StoreKit
+    // may omit the implicit single unit, but any explicit value other than one
+    // must still be rejected so a signed claim can never multiply credits.
+    if (payload.quantity !== undefined && payload.quantity !== 1) {
       throw new InputError("invalid_quantity");
     }
   }

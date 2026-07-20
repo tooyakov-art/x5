@@ -519,3 +519,48 @@ Deno.test("handler distinguishes retryable Apple verification failures", async (
   assertEquals(invalid.status, 400);
   assertEquals((await invalid.json()).error, "invalid_apple_transaction");
 });
+
+Deno.test("Apple verification failures retain only the safe status code", async () => {
+  const logged: unknown[] = [];
+  const handler = createHandler(dependencies({
+    verifySignedTransaction: () =>
+      Promise.reject(
+        new AppleVerificationError(false, "INVALID_APP_IDENTIFIER"),
+      ),
+    logError: (error) => logged.push(error),
+  }));
+
+  const response = await handler(
+    post({ signed_transaction: signedTransaction() }),
+  );
+
+  assertEquals(response.status, 400);
+  assertEquals(logged.length, 1);
+  assert(logged[0] instanceof AppleVerificationError);
+  assertEquals(
+    (logged[0] as AppleVerificationError).diagnosticCode,
+    "INVALID_APP_IDENTIFIER",
+  );
+});
+
+Deno.test("handler reports the safe rejection code for production diagnostics", async () => {
+  const logged: unknown[] = [];
+  const handler = createHandler(dependencies({
+    verifySignedTransaction: () =>
+      Promise.resolve({
+        ...verifiedConsumablePayload,
+        quantity: 2,
+      }),
+    logError: (error) => logged.push(error),
+  }));
+
+  const response = await handler(
+    post({ signed_transaction: signedTransaction() }),
+  );
+
+  assertEquals(response.status, 400);
+  assertEquals((await response.json()).error, "invalid_quantity");
+  assertEquals(logged.length, 1);
+  assert(logged[0] instanceof Error);
+  assertEquals((logged[0] as Error).message, "invalid_quantity");
+});
