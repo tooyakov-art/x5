@@ -1,5 +1,5 @@
 Xfive marketing is a creator workspace and marketplace for creators, marketers,
-specialists and clients. Version 1.1.5 build 182 includes Home creator tools,
+specialists and clients. Version 1.1.5 build 183 includes Home creator tools,
 image generation, Generated Gallery, Hub, Chats, Portfolio, CourseUP, Profile,
 one-time credit packs, verified badge, report/block controls and account deletion.
 
@@ -24,7 +24,8 @@ Quick test flow:
    archive, report or block.
 7. Portfolio/Profile - add photos or videos, edit public visibility and social
    links.
-8. CourseUP - open a course, preview a lesson and buy a paid course with credits.
+8. CourseUP - open a course, tap its author to open the author's public profile,
+   preview a lesson and buy a paid course with credits.
 9. Profile -> Store - review and purchase a one-time 1,000, 2,000 or 5,000
    credit pack. Profile -> Get verified opens the separate monthly verified
    badge subscription with restore and management controls.
