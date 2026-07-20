@@ -2,11 +2,18 @@ import {
   InputError,
   parseAppAppleId,
   parseAppleRootCertificates,
+  pinnedAppleRootCertificates,
   parseNotificationRequestBody,
   parseUntrustedNotificationEnvironment,
   validateVerifiedRefundNotification,
   validateVerifiedSubscriptionLifecycleNotification,
 } from "./validation.ts";
+
+const OFFICIAL_APPLE_ROOT_SHA256 = [
+  "b0b1730ecbc7ff4505142c49f1295e6eda6bcaed7e2c68c5be91b5a11001f024",
+  "c2b9b042dd57830e7d117dac55ac8ae19407d38e41d88f3215bc3a890444a050",
+  "63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179",
+];
 
 function assert(
   condition: unknown,
@@ -22,6 +29,23 @@ function assertEquals<T>(actual: T, expected: T): void {
     );
   }
 }
+
+async function sha256Hex(value: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", value);
+  return [...new Uint8Array(digest)].map((byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
+}
+
+Deno.test("runtime pins the official Apple root certificates", async () => {
+  const fingerprints = await Promise.all(
+    pinnedAppleRootCertificates().map(sha256Hex),
+  );
+  assertEquals(
+    JSON.stringify(fingerprints),
+    JSON.stringify(OFFICIAL_APPLE_ROOT_SHA256),
+  );
+});
 
 function assertInputError(
   action: () => unknown,
