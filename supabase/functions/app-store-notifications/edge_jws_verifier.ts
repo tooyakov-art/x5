@@ -155,13 +155,17 @@ export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
       );
     }
 
+    let runtimeStage = "leaf_parse";
     try {
       const leafCertificate = parseCertificate(leaf);
+      runtimeStage = "intermediate_parse";
       const intermediateCertificate = parseCertificate(intermediate);
       let trustedRootCertificate: X509 | undefined;
 
       for (const trustedRoot of trustedRoots) {
+        runtimeStage = "root_parse";
         const rootCertificate = parseCertificate(trustedRoot);
+        runtimeStage = "root_signature";
         if (
           intermediateCertificate.getIssuerHex() ===
             rootCertificate.getSubjectHex() &&
@@ -175,8 +179,10 @@ export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
         }
       }
 
+      runtimeStage = "intermediate_constraints";
       const intermediateConstraints = intermediateCertificate
         .getExtBasicConstraints();
+      runtimeStage = "chain_validation";
       const validChain = trustedRootCertificate !== undefined &&
         leafCertificate.getIssuerHex() ===
           intermediateCertificate.getSubjectHex() &&
@@ -195,15 +201,17 @@ export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
         );
       }
 
+      runtimeStage = "certificate_dates";
       checkCertificateDates(leafCertificate, effectiveDate);
       checkCertificateDates(intermediateCertificate, effectiveDate);
       checkCertificateDates(trustedRootCertificate, effectiveDate);
+      runtimeStage = "leaf_public_key";
       return Promise.resolve(leaf.publicKey);
     } catch (error) {
       if (error instanceof VerificationException) throw error;
       throw new VerificationException(
-        VerificationStatus.INVALID_CERTIFICATE,
-        error instanceof Error ? error : undefined,
+        VerificationStatus.VERIFICATION_FAILURE,
+        new Error(`edge_x509_${runtimeStage}_runtime`),
       );
     }
   }

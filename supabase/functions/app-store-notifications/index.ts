@@ -380,6 +380,16 @@ export function appleVerificationDiagnosticCode(error: unknown): string {
     edge_jws_key_constraints_runtime: "EDGE_KEY_CONSTRAINTS_RUNTIME",
     edge_jws_signature_decode_runtime: "EDGE_SIGNATURE_DECODE_RUNTIME",
     edge_jws_signature_verify_runtime: "EDGE_SIGNATURE_VERIFY_RUNTIME",
+    edge_x509_leaf_parse_runtime: "EDGE_X509_LEAF_PARSE_RUNTIME",
+    edge_x509_intermediate_parse_runtime:
+      "EDGE_X509_INTERMEDIATE_PARSE_RUNTIME",
+    edge_x509_root_parse_runtime: "EDGE_X509_ROOT_PARSE_RUNTIME",
+    edge_x509_root_signature_runtime: "EDGE_X509_ROOT_SIGNATURE_RUNTIME",
+    edge_x509_intermediate_constraints_runtime:
+      "EDGE_X509_INTERMEDIATE_CONSTRAINTS_RUNTIME",
+    edge_x509_chain_validation_runtime: "EDGE_X509_CHAIN_VALIDATION_RUNTIME",
+    edge_x509_certificate_dates_runtime: "EDGE_X509_CERTIFICATE_DATES_RUNTIME",
+    edge_x509_leaf_public_key_runtime: "EDGE_X509_LEAF_PUBLIC_KEY_RUNTIME",
   };
   const safeEdgeRuntimeStage = edgeRuntimeStage[message];
   if (safeEdgeRuntimeStage) return `${status}_${safeEdgeRuntimeStage}`;

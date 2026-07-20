@@ -586,6 +586,15 @@ Deno.test("Apple verification diagnostics distinguish trust-chain failures", () 
     ),
     "VERIFICATION_FAILURE_EDGE_CERTIFICATE_CHAIN_RUNTIME",
   );
+  assertEquals(
+    appleVerificationDiagnosticCode(
+      new VerificationException(
+        VerificationStatus.VERIFICATION_FAILURE,
+        new Error("edge_x509_leaf_public_key_runtime"),
+      ),
+    ),
+    "VERIFICATION_FAILURE_EDGE_X509_LEAF_PUBLIC_KEY_RUNTIME",
+  );
 });
 
 Deno.test("handler reports the safe rejection code for production diagnostics", async () => {
