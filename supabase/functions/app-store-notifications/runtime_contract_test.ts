@@ -29,6 +29,14 @@ Deno.test("runtime verifies both Apple JWS layers with the pinned Apple library"
   );
 });
 
+Deno.test("runtime avoids live Apple OCSP that is incompatible with the Deno edge runtime", () => {
+  assertMatch(
+    source,
+    /new SignedDataVerifier\([\s\S]*?getAppleRootCertificates\(\),\s*false,\s*environment === "Production"/,
+    "Apple verifier must retain signed JWS validation without live OCSP",
+  );
+});
+
 Deno.test("runtime applies only the dedicated service-role notification RPC", () => {
   assertMatch(
     source,

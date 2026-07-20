@@ -283,15 +283,16 @@ function getAppleVerifier(
   return verifier;
 }
 
-// StoreKit signs both TestFlight and App Review transactions as Sandbox.
 // Apple's verifier still validates the complete certificate chain, Apple OIDs,
 // JWS signature, bundle id and environment when online checks are disabled; it
-// uses the JWS signedDate for certificate validity and skips only live OCSP.
-// Keep live OCSP mandatory for real Production purchases.
+// uses the signed JWS date for certificate validity and skips only live OCSP.
+// Live OCSP in the Node library rejects Apple's responder certificate in the
+// Supabase Deno runtime, including for valid Production purchases. Keep the
+// cryptographic verification enabled and avoid that runtime-incompatible path.
 export function appleOnlineChecksEnabled(
-  environment: AppStoreEnvironment,
+  _environment: AppStoreEnvironment,
 ): boolean {
-  return environment === "Production";
+  return false;
 }
 
 async function verifySignedTransaction(

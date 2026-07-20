@@ -11,8 +11,8 @@ import {
   VerificationStatus,
 } from "@apple/app-store-server-library";
 
-Deno.test("Apple online certificate checks stay enabled only for Production", () => {
-  assertEquals(appleOnlineChecksEnabled("Production"), true);
+Deno.test("Apple JWS verification skips runtime-incompatible live OCSP in every environment", () => {
+  assertEquals(appleOnlineChecksEnabled("Production"), false);
   assertEquals(appleOnlineChecksEnabled("Sandbox"), false);
 });
 

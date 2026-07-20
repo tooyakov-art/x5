@@ -295,9 +295,12 @@ function getAppleVerifier(
 ): SignedDataVerifier {
   const cached = appleVerifiers.get(environment);
   if (cached) return cached;
+  // The Apple library keeps certificate-chain, Apple OID, JWS signature,
+  // bundle, environment, and signed-date checks when online checks are false.
+  // Its live OCSP responder validation is incompatible with Supabase Deno.
   const verifier = new SignedDataVerifier(
     getAppleRootCertificates(),
-    true,
+    false,
     environment === "Production" ? Environment.PRODUCTION : Environment.SANDBOX,
     APP_BUNDLE_ID,
     environment === "Production"
