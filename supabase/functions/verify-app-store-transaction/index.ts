@@ -316,7 +316,12 @@ export function appleVerificationDiagnosticCode(error: unknown): string {
   }
 
   const cause = error.cause;
-  const message = cause instanceof Error ? cause.message.toLowerCase() : "";
+  const causeRecord = typeof cause === "object" && cause !== null
+    ? cause as unknown as Record<string, unknown>
+    : undefined;
+  const message = typeof causeRecord?.message === "string"
+    ? causeRecord.message.toLowerCase()
+    : "";
   const edgeRuntimeStage: Record<string, string> = {
     edge_jws_segments_runtime: "EDGE_SEGMENTS_RUNTIME",
     edge_jws_payload_decode_runtime: "EDGE_PAYLOAD_DECODE_RUNTIME",
@@ -346,7 +351,7 @@ export function appleVerificationDiagnosticCode(error: unknown): string {
   const status = VerificationStatus[error.status] ??
     "UNKNOWN_VERIFICATION_STATUS";
   if (error.status !== VerificationStatus.VERIFICATION_FAILURE) return status;
-  if (!(cause instanceof Error)) return `${status}_NO_CAUSE`;
+  if (!message) return `${status}_NO_CAUSE`;
 
   if (message.includes("invalid signature")) {
     return `${status}_INVALID_SIGNATURE`;
@@ -358,7 +363,7 @@ export function appleVerificationDiagnosticCode(error: unknown): string {
   ) {
     return `${status}_INVALID_JWT`;
   }
-  if (cause.name === "TypeError") return `${status}_TYPE_ERROR`;
+  if (causeRecord?.name === "TypeError") return `${status}_TYPE_ERROR`;
   return `${status}_OTHER_CAUSE`;
 }
 
