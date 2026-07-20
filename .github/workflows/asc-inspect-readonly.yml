@@ -66,31 +66,40 @@ jobs:
           (temp / "apple-transaction.jws").write_text(transaction, encoding="utf-8")
           print("signed_payloads_prepared=2")
           PY
-      - name: Download Apple trust roots
-        shell: bash
-        run: |
-          curl --fail --silent --show-error \
-            https://www.apple.com/appleca/AppleIncRootCertificate.cer \
-            --output "$RUNNER_TEMP/AppleIncRootCertificate.cer"
-          curl --fail --silent --show-error \
-            https://www.apple.com/certificateauthority/AppleRootCA-G2.cer \
-            --output "$RUNNER_TEMP/AppleRootCA-G2.cer"
-          curl --fail --silent --show-error \
-            https://www.apple.com/certificateauthority/AppleRootCA-G3.cer \
-            --output "$RUNNER_TEMP/AppleRootCA-G3.cer"
       - name: Diagnose notification verifier under Deno
-        continue-on-error: true
         env:
           SIGNED_PAYLOAD_PATH: ${{ runner.temp }}/apple-notification.jws
-          APPLE_ROOT_CA_PATHS: ${{ runner.temp }}/AppleIncRootCertificate.cer,${{ runner.temp }}/AppleRootCA-G2.cer,${{ runner.temp }}/AppleRootCA-G3.cer
           PAYLOAD_KIND: notification
         run: deno run --allow-env --allow-read --config supabase/functions/app-store-notifications/deno.json scripts/diagnose_apple_jws_runtime.ts
       - name: Diagnose transaction verifier under Deno
-        continue-on-error: true
         env:
           SIGNED_PAYLOAD_PATH: ${{ runner.temp }}/apple-transaction.jws
-          APPLE_ROOT_CA_PATHS: ${{ runner.temp }}/AppleIncRootCertificate.cer,${{ runner.temp }}/AppleRootCA-G2.cer,${{ runner.temp }}/AppleRootCA-G3.cer
           PAYLOAD_KIND: transaction
         run: deno run --allow-env --allow-read --config supabase/functions/verify-app-store-transaction/deno.json scripts/diagnose_apple_jws_runtime.ts
+      - name: Verify deployed webhook with the signed Apple sample
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import requests
+
+          signed_payload = (
+              Path(os.environ["RUNNER_TEMP"]) / "apple-notification.jws"
+          ).read_text(encoding="utf-8").strip()
+          response = requests.post(
+              os.environ["APP_STORE_NOTIFICATIONS_URL"],
+              json={"signedPayload": signed_payload},
+              timeout=60,
+          )
+          try:
+              body = response.json()
+          except ValueError:
+              body = {}
+          print(f"deployed_webhook_http_status={response.status_code}")
+          print(f"deployed_webhook_status={body.get('status', '-')}")
+          if response.status_code != 200:
+              raise SystemExit("Deployed webhook rejected a genuine Apple notification")
+          PY
       - name: Replay exact signed Apple notification
         run: python scripts/apple_notification_replay.py

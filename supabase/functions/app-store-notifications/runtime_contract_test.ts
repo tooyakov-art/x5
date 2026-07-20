@@ -6,6 +6,23 @@ function assertMatch(value: string, pattern: RegExp, message: string): void {
   if (!pattern.test(value)) throw new Error(message);
 }
 
+function assertNotMatch(value: string, pattern: RegExp, message: string): void {
+  if (pattern.test(value)) throw new Error(message);
+}
+
+Deno.test("runtime uses source-pinned official Apple trust roots", () => {
+  assertMatch(
+    source,
+    /pinnedAppleRootCertificates\(\)/,
+    "the notification runtime is not using the pinned Apple roots",
+  );
+  assertNotMatch(
+    source,
+    /APPLE_ROOT_CA_CERTS_(?:PEM|BASE64)/,
+    "the notification runtime still depends on mutable root secrets",
+  );
+});
+
 Deno.test("runtime verifies both Apple JWS layers with the pinned Apple library", () => {
   assertMatch(
     source,

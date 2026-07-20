@@ -13,9 +13,9 @@ import {
   InputError,
   type NormalizedTransaction,
   parseAppAppleId,
-  parseAppleRootCertificates,
   parseUntrustedTransactionEnvironment,
   parseVerifyRequestBody,
+  pinnedAppleRootCertificates,
   validateVerifiedTransaction,
   VERIFIED_MONTHLY_PRODUCT_ID,
   type VerifiedTransactionPayload,
@@ -235,19 +235,12 @@ function jsonResponse(
 let appleRootCertificates: Buffer[] | undefined;
 const appleVerifiers = new Map<AppStoreEnvironment, SignedDataVerifier>();
 
-// Deployment configuration:
-// - APPLE_APP_ID: numeric App Store app id (required for Production JWS).
-// - APPLE_ROOT_CA_CERTS_PEM: preferred PEM bundle of the current roots from
-//   https://www.apple.com/certificateauthority/.
-// - APPLE_ROOT_CA_CERTS_BASE64: fallback JSON array of base64 DER roots.
-// Root certificates are public material, but Supabase secrets keep deployment
-// configuration out of the app binary and allow rotation without a release.
+// APPLE_APP_ID is the numeric App Store app id required for Production JWS.
+// The public Apple trust anchors are source-pinned and fingerprint-tested so a
+// stale or malformed deployment secret cannot break every valid purchase.
 function getAppleRootCertificates(): Buffer[] {
   if (appleRootCertificates) return appleRootCertificates;
-  const certificates = parseAppleRootCertificates(
-    Deno.env.get("APPLE_ROOT_CA_CERTS_PEM"),
-    Deno.env.get("APPLE_ROOT_CA_CERTS_BASE64"),
-  );
+  const certificates = pinnedAppleRootCertificates();
   appleRootCertificates = certificates.map((certificate) =>
     Buffer.from(certificate)
   );

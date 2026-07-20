@@ -2,9 +2,9 @@ import {
   InputError,
   parseAppAppleId,
   parseAppleRootCertificates,
-  pinnedAppleRootCertificates,
   parseNotificationRequestBody,
   parseUntrustedNotificationEnvironment,
+  pinnedAppleRootCertificates,
   validateVerifiedRefundNotification,
   validateVerifiedSubscriptionLifecycleNotification,
 } from "./validation.ts";
@@ -31,7 +31,7 @@ function assertEquals<T>(actual: T, expected: T): void {
 }
 
 async function sha256Hex(value: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", value);
+  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(value));
   return [...new Uint8Array(digest)].map((byte) =>
     byte.toString(16).padStart(2, "0")
   ).join("");

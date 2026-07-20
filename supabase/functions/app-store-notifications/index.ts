@@ -15,9 +15,9 @@ import {
   InputError,
   isSubscriptionLifecycleNotificationType,
   parseAppAppleId,
-  parseAppleRootCertificates,
   parseNotificationRequestBody,
   parseUntrustedNotificationEnvironment,
+  pinnedAppleRootCertificates,
   RefundNotificationEvent,
   SubscriptionLifecycleNotificationEvent,
   validateVerifiedRefundNotification,
@@ -283,10 +283,9 @@ const appleVerifiers = new Map<AppStoreEnvironment, SignedDataVerifier>();
 
 function getAppleRootCertificates(): Buffer[] {
   if (appleRootCertificates) return appleRootCertificates;
-  appleRootCertificates = parseAppleRootCertificates(
-    Deno.env.get("APPLE_ROOT_CA_CERTS_PEM"),
-    Deno.env.get("APPLE_ROOT_CA_CERTS_BASE64"),
-  ).map((certificate) => Buffer.from(certificate));
+  appleRootCertificates = pinnedAppleRootCertificates().map((certificate) =>
+    Buffer.from(certificate)
+  );
   return appleRootCertificates;
 }
 
