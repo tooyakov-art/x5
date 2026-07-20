@@ -277,25 +277,51 @@ struct CoursesView: View {
 
 private struct CourseAuthorLine: View {
     let authorName: String?
+    let authorId: String?
     var compact = false
+
+    init(authorName: String?, authorId: String? = nil, compact: Bool = false) {
+        self.authorName = authorName
+        self.authorId = authorId
+        self.compact = compact
+    }
 
     private var cleanName: String? {
         let value = (authorName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value
     }
 
+    private var cleanAuthorId: String? {
+        let value = (authorId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
     @ViewBuilder
     var body: some View {
         if let cleanName {
-            HStack(spacing: compact ? 4 : 6) {
-                Image(systemName: "person.crop.circle.fill")
-                Text("Автор: \(cleanName)")
-                    .lineLimit(1)
+            if let authorId = cleanAuthorId {
+                NavigationLink {
+                    UserProfileView(userId: authorId, fallback: nil)
+                } label: {
+                    content(cleanName)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Открыть профиль автора")
+            } else {
+                content(cleanName)
             }
-            .font(.system(size: compact ? 10 : 12, weight: .semibold))
-            .foregroundColor(.white.opacity(compact ? 0.46 : 0.58))
-            .accessibilityElement(children: .combine)
         }
+    }
+
+    private func content(_ name: String) -> some View {
+        HStack(spacing: compact ? 4 : 6) {
+            Image(systemName: "person.crop.circle.fill")
+            Text("Автор: \(name)")
+                .lineLimit(1)
+        }
+        .font(.system(size: compact ? 10 : 12, weight: .semibold))
+        .foregroundColor(.white.opacity(compact ? 0.46 : 0.58))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -861,7 +887,7 @@ struct CourseDetailView: View {
                     .font(.system(size: 26, weight: .heavy))
                     .foregroundColor(.white)
 
-                CourseAuthorLine(authorName: course.authorName)
+                CourseAuthorLine(authorName: course.authorName, authorId: course.authorId)
 
                 if let hook = course.marketingHook, !hook.isEmpty {
                     Text(hook)
