@@ -56,6 +56,21 @@ class IOSPurchaseLifecycleSourceTests(unittest.TestCase):
         self.assertIn("iap.syncRevokedStoreTransactions", app)
         self.assertIn("syncStoreKitAndProfile", app)
 
+    def test_restore_retries_unfinished_credit_packs_before_entitlement_sync(self):
+        source = IAP_SERVICE.read_text(encoding="utf-8")
+        restore_start = source.index("    func restore() async {")
+        restore_end = source.index("    private func startTransactionListener()", restore_start)
+        restore = source[restore_start:restore_end]
+
+        retry = 'await retryUnfinishedConsumables(source: "restore_unfinished")'
+        store_sync = "try await AppStore.sync()"
+        entitlements = 'await syncCurrentEntitlements(source: "restore")'
+        self.assertIn(retry, restore)
+        self.assertIn(store_sync, restore)
+        self.assertIn(entitlements, restore)
+        self.assertLess(restore.index(retry), restore.index(store_sync))
+        self.assertLess(restore.index(retry), restore.index(entitlements))
+
     def test_failed_profile_reload_has_truthful_confirmation_copy(self):
         paywall = PAYWALL.read_text(encoding="utf-8")
         profile = PROFILE.read_text(encoding="utf-8")

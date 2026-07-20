@@ -16,11 +16,13 @@ import {
   AppStoreEnvironment,
   InputError,
   isSubscriptionLifecycleNotificationType,
+  OneTimeChargeNotificationEvent,
   parseNotificationRequestBody,
   parseUntrustedNotificationEnvironment,
   pinnedAppleRootCertificates,
   RefundNotificationEvent,
   SubscriptionLifecycleNotificationEvent,
+  validateVerifiedOneTimeChargeNotification,
   validateVerifiedRefundNotification,
   validateVerifiedSubscriptionLifecycleNotification,
 } from "./validation.ts";
@@ -48,6 +50,9 @@ export interface NotificationHandlerDependencies {
   ): Promise<string>;
   applyNotification(
     event: RefundNotificationEvent,
+  ): Promise<NotificationApplyResult>;
+  applyOneTimeCharge(
+    event: OneTimeChargeNotificationEvent,
   ): Promise<NotificationApplyResult>;
   applyLifecycleNotification(
     event: SubscriptionLifecycleNotificationEvent,
@@ -109,10 +114,12 @@ export function createHandler(
       }
       const isRefund = notification.notificationType === "REFUND" ||
         notification.notificationType === "REFUND_REVERSED";
+      const isOneTimeCharge = notification.notificationType ===
+        "ONE_TIME_CHARGE";
       const isLifecycle = isSubscriptionLifecycleNotificationType(
         notification.notificationType,
       );
-      if (!isRefund && !isLifecycle) {
+      if (!isRefund && !isOneTimeCharge && !isLifecycle) {
         return jsonResponse({ status: "ignored" }, 200);
       }
       if (!isRecord(notification.data)) {
@@ -132,7 +139,15 @@ export function createHandler(
         environment,
       );
       let result: NotificationApplyResult;
-      if (isRefund) {
+      if (isOneTimeCharge) {
+        const event = validateVerifiedOneTimeChargeNotification(
+          notification,
+          transaction,
+          environment,
+          _dependencies.now(),
+        );
+        result = await _dependencies.applyOneTimeCharge(event);
+      } else if (isRefund) {
         const unresolvedEvent = validateVerifiedRefundNotification(
           notification,
           transaction,
@@ -251,7 +266,12 @@ async function withResolvedNotificationUser<
   ) {
     throw new Error("invalid_notification_user_resolution");
   }
-  return { ...event, userId: resolvedUserId.toLowerCase() };
+  const canonicalUserId = resolvedUserId.toLowerCase();
+  return {
+    ...event,
+    userId: canonicalUserId,
+    appAccountToken: event.appAccountToken ?? canonicalUserId,
+  };
 }
 
 const MAX_BODY_BYTES = 132 * 1024;
@@ -512,6 +532,91 @@ async function applyNotification(
   return data;
 }
 
+async function applyOneTimeCharge(
+  event: OneTimeChargeNotificationEvent,
+): Promise<NotificationApplyResult> {
+  const admin = createClient(
+    requiredEnvironmentVariable("SUPABASE_URL"),
+    requiredEnvironmentVariable("SUPABASE_SERVICE_ROLE_KEY"),
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    },
+  );
+  const rpcName = oneTimeChargeRPCName(event.environment);
+  const isProduction = rpcName === "apply_verified_app_store_consumable";
+  const { data, error } = await admin.rpc(
+    rpcName,
+    isProduction
+      ? {
+        p_user_id: event.userId,
+        p_transaction_id: event.transactionId,
+        p_original_transaction_id: event.originalTransactionId,
+        p_product_id: event.productId,
+        p_environment: event.environment,
+        p_app_account_token: event.appAccountToken,
+        p_purchase_date: event.purchaseDate,
+        p_signed_date: event.transactionSignedDate,
+        p_revocation_date: null,
+        p_quantity: event.quantity,
+      }
+      : {
+        p_user_id: event.userId,
+        p_transaction_id: event.transactionId,
+        p_original_transaction_id: event.originalTransactionId,
+        p_product_id: event.productId,
+        p_environment: event.environment,
+        p_app_account_token: event.appAccountToken,
+        p_purchase_date: event.purchaseDate,
+        p_expires_date: null,
+        p_signed_date: event.transactionSignedDate,
+        p_revocation_date: null,
+        p_quantity: event.quantity,
+      },
+  );
+  if (error) {
+    const token = `${error.code ?? ""} ${error.message ?? ""} ${
+      error.details ?? ""
+    } ${error.hint ?? ""}`.toLowerCase();
+    if (
+      token.includes("owned_by_other") ||
+      token.includes("transaction_id_conflict")
+    ) {
+      throw new NotificationApplyError("conflict", 409);
+    }
+    if (
+      token.includes("invalid_") || token.includes("unknown_product") ||
+      token.includes("missing_") || token.includes("profile_not_found") ||
+      token.includes("sandbox_review_account_not_allowed") ||
+      token.includes("sandbox_review_credit_cap_exceeded")
+    ) {
+      throw new NotificationApplyError("invalid_notification", 400);
+    }
+    throw new Error("apply_app_store_one_time_charge_failed");
+  }
+  if (!isNotificationApplyResult(data)) {
+    throw new Error("invalid_one_time_charge_rpc_response");
+  }
+  return data;
+}
+
+export function oneTimeChargeRPCName(
+  environment: unknown,
+):
+  | "apply_verified_app_store_consumable"
+  | "apply_verified_app_store_sandbox_review_transaction" {
+  if (environment === "Production") {
+    return "apply_verified_app_store_consumable";
+  }
+  if (environment === "Sandbox") {
+    return "apply_verified_app_store_sandbox_review_transaction";
+  }
+  throw new InputError("invalid_environment");
+}
+
 async function resolveNotificationUser(
   event: RefundNotificationEvent | SubscriptionLifecycleNotificationEvent,
 ): Promise<string> {
@@ -637,6 +742,7 @@ const runtimeDependencies: NotificationHandlerDependencies = {
   verifyTransaction,
   verifyRenewalInfo,
   resolveNotificationUser,
+  applyOneTimeCharge,
   applyNotification,
   applyLifecycleNotification,
   logError: (error) => {

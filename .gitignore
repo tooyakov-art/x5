@@ -33,6 +33,10 @@ _signing/
 ## Node (icon generator)
 node_modules/
 
+## Python test cache
+__pycache__/
+*.py[cod]
+
 ## Local secrets
 .env
 secrets.local

@@ -8,6 +8,7 @@ import {
   createHandler,
   NotificationApplyError,
   type NotificationHandlerDependencies,
+  oneTimeChargeRPCName,
 } from "./index.ts";
 
 function assert(
@@ -80,6 +81,7 @@ function dependencies(
     verifyTransaction: () => Promise.resolve(inner),
     verifyRenewalInfo: () => Promise.resolve(renewal),
     resolveNotificationUser: (event) => Promise.resolve(event.userId),
+    applyOneTimeCharge: () => Promise.resolve({ status: "applied" }),
     applyNotification: () => Promise.resolve({ status: "applied" }),
     applyLifecycleNotification: () => Promise.resolve({ status: "applied" }),
     logError: () => undefined,
@@ -158,6 +160,84 @@ Deno.test("outer JWS is verified before inner JWS and database apply", async () 
     calls.join("|"),
     `outer:Production|inner:Production|apply:${userId}:100000`,
   );
+});
+
+Deno.test("ONE_TIME_CHARGE verifies both Apple JWS layers and applies the exact signed account token", async () => {
+  for (const environment of ["Production", "Sandbox"] as const) {
+    const calls: string[] = [];
+    const chargeOuter = {
+      ...outer,
+      notificationType: "ONE_TIME_CHARGE",
+      notificationUUID: environment === "Production"
+        ? "f55c8bb4-e093-4f1e-a7fe-a247d31f79a4"
+        : "90e85492-e8f1-4cc3-b2d1-867e7020e448",
+      data: { ...outer.data, environment },
+    };
+    const chargeTransaction = {
+      ...inner,
+      environment,
+      revocationDate: undefined,
+      revocationType: undefined,
+      revocationPercentage: undefined,
+    };
+    const handler = createHandler(dependencies({
+      verifyNotification: (_signed, routedEnvironment) => {
+        calls.push(`outer:${routedEnvironment}`);
+        return Promise.resolve(chargeOuter);
+      },
+      verifyTransaction: (_signed, routedEnvironment) => {
+        calls.push(`inner:${routedEnvironment}`);
+        return Promise.resolve(chargeTransaction);
+      },
+      resolveNotificationUser: () => {
+        throw new Error("ONE_TIME_CHARGE must use its exact appAccountToken");
+      },
+      applyOneTimeCharge: (event) => {
+        calls.push(
+          `apply:${event.environment}:${event.userId}:${event.productId}:${event.transactionId}`,
+        );
+        assertEquals(event.userId, event.appAccountToken);
+        return Promise.resolve({ status: "applied" });
+      },
+      applyNotification: () => {
+        throw new Error("refund apply must not be used");
+      },
+      applyLifecycleNotification: () => {
+        throw new Error("lifecycle apply must not be used");
+      },
+    }));
+
+    const response = await handler(
+      post({ signedPayload: unsignedNotification(environment) }),
+    );
+    assertEquals(response.status, 200);
+    assertEquals((await response.json()).status, "applied");
+    assertEquals(
+      calls.join("|"),
+      `outer:${environment}|inner:${environment}|apply:${environment}:${userId}:com.x5studio.app.credits.1000:2000000123456790`,
+    );
+  }
+});
+
+Deno.test("ONE_TIME_CHARGE selects only the production ledger or existing Sandbox allowlist RPC", () => {
+  assertEquals(
+    oneTimeChargeRPCName("Production"),
+    "apply_verified_app_store_consumable",
+  );
+  assertEquals(
+    oneTimeChargeRPCName("Sandbox"),
+    "apply_verified_app_store_sandbox_review_transaction",
+  );
+  for (const value of ["Xcode", "LocalTesting", "", null]) {
+    try {
+      oneTimeChargeRPCName(value);
+    } catch (error) {
+      assert(error instanceof Error);
+      assertEquals(error.message, "invalid_environment");
+      continue;
+    }
+    throw new Error(`unexpected ONE_TIME_CHARGE environment: ${String(value)}`);
+  }
 });
 
 Deno.test("subscription lifecycle verifies outer, transaction and renewal JWS before one database apply", async () => {
@@ -359,7 +439,8 @@ Deno.test("DID_FAIL_TO_RENEW grace period is verified, resolved and applied", as
         gracePeriodExpiresDate,
       }),
     resolveNotificationUser: (event) => {
-      return Promise.resolve(event.appAccountToken);
+      assertEquals(event.appAccountToken, userId);
+      return Promise.resolve(userId);
     },
     applyLifecycleNotification: (event) => {
       assertEquals(event.notificationType, "DID_FAIL_TO_RENEW");
@@ -427,7 +508,10 @@ Deno.test("signed unsupported X5 products are acknowledged without state changes
   let applied = false;
   const handler = createHandler(dependencies({
     verifyTransaction: () =>
-      Promise.resolve({ ...inner, productId: "com.x5studio.app.pro.monthly" }),
+      Promise.resolve({
+        ...inner,
+        productId: "com.x5studio.app.retired.monthly",
+      }),
     applyNotification: () => {
       applied = true;
       return Promise.resolve({ status: "applied" });

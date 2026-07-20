@@ -369,6 +369,7 @@ final class IAPService: ObservableObject {
     func restore() async {
         lastError = nil
         do {
+            await retryUnfinishedConsumables(source: "restore_unfinished")
             try await AppStore.sync()
             let didReconcileRevocation = await syncRevokedStoreTransactions(
                 source: "restore_revoked"

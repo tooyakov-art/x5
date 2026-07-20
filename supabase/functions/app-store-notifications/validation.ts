@@ -16,6 +16,11 @@ export function pinnedAppleRootCertificates(): Uint8Array[] {
   return PINNED_APPLE_ROOT_CERTIFICATES_BASE64.map(decodeCertificateBase64);
 }
 export const VERIFIED_MONTHLY_PRODUCT_ID = "com.x5studio.app.verified.monthly";
+export const LEGACY_PLAN_PRODUCT_IDS = new Set([
+  "com.x5studio.app.lite.monthly",
+  "com.x5studio.app.pro.monthly",
+  "com.x5studio.app.max.monthly",
+]);
 export const CONSUMABLE_PRODUCT_IDS = new Set([
   "com.x5studio.app.credits.1000",
   "com.x5studio.app.credits.2000",
@@ -37,12 +42,12 @@ export interface RefundNotificationEvent {
   eventId: string;
   notificationType: "REFUND" | "REFUND_REVERSED";
   userId: string;
-  productKind: "consumable" | "subscription";
+  productKind: "consumable" | "subscription" | "legacy_subscription";
   productId: string;
   environment: AppStoreEnvironment;
   transactionId: string;
   originalTransactionId: string;
-  appAccountToken: string;
+  appAccountToken: string | null;
   purchaseDate: string;
   expiresDate: string | null;
   transactionSignedDate: string;
@@ -50,6 +55,21 @@ export interface RefundNotificationEvent {
   revocationDate: string | null;
   revocationPercentage: number | null;
   quantity: number | null;
+}
+
+export interface OneTimeChargeNotificationEvent {
+  eventId: string;
+  notificationType: "ONE_TIME_CHARGE";
+  userId: string;
+  productId: string;
+  environment: AppStoreEnvironment;
+  transactionId: string;
+  originalTransactionId: string;
+  appAccountToken: string;
+  purchaseDate: string;
+  transactionSignedDate: string;
+  notificationSignedDate: string;
+  quantity: 1;
 }
 
 export type SubscriptionLifecycleNotificationType =
@@ -65,11 +85,11 @@ export interface SubscriptionLifecycleNotificationEvent {
   notificationType: SubscriptionLifecycleNotificationType;
   notificationSubtype: string | null;
   userId: string;
-  productId: typeof VERIFIED_MONTHLY_PRODUCT_ID;
+  productId: string;
   environment: AppStoreEnvironment;
   transactionId: string;
   originalTransactionId: string;
-  appAccountToken: string;
+  appAccountToken: string | null;
   purchaseDate: string;
   expiresDate: string;
   transactionSignedDate: string;
@@ -146,6 +166,152 @@ export function parseUntrustedNotificationEnvironment(
   throw new InputError("invalid_environment");
 }
 
+export function validateVerifiedOneTimeChargeNotification(
+  _notification: unknown,
+  _transaction: unknown,
+  _expectedEnvironment: AppStoreEnvironment,
+  _nowMs: number,
+): OneTimeChargeNotificationEvent {
+  if (!isRecord(_notification) || !isRecord(_notification.data)) {
+    throw new InputError("invalid_notification_payload");
+  }
+  if (!isRecord(_transaction)) {
+    throw new InputError("invalid_transaction_payload");
+  }
+  if (_notification.notificationType !== "ONE_TIME_CHARGE") {
+    throw new InputError("unsupported_notification_type", 200);
+  }
+  if (_notification.subtype !== undefined && _notification.subtype !== null) {
+    throw new InputError("invalid_notification_subtype");
+  }
+
+  const eventId = requiredUUID(
+    _notification.notificationUUID,
+    "invalid_notification_uuid",
+  );
+  const version = requiredString(
+    _notification.version,
+    "invalid_notification_version",
+    16,
+  );
+  if (!version.startsWith("2.")) {
+    throw new InputError("invalid_notification_version");
+  }
+  if (
+    _notification.data.bundleId !== APP_BUNDLE_ID ||
+    _transaction.bundleId !== APP_BUNDLE_ID
+  ) {
+    throw new InputError("invalid_bundle");
+  }
+  if (
+    _notification.data.environment !== _expectedEnvironment ||
+    _transaction.environment !== _expectedEnvironment
+  ) {
+    throw new InputError("invalid_environment");
+  }
+  requiredString(
+    _notification.data.signedTransactionInfo,
+    "missing_signed_transaction_info",
+    MAX_SIGNED_PAYLOAD_LENGTH,
+  );
+
+  const productId = requiredString(
+    _transaction.productId,
+    "unsupported_product",
+  );
+  if (!CONSUMABLE_PRODUCT_IDS.has(productId)) {
+    throw new InputError("unsupported_product", 200);
+  }
+  if (_transaction.type !== "Consumable") {
+    throw new InputError("invalid_product_type");
+  }
+  if (
+    _transaction.quantity !== undefined &&
+    _transaction.quantity !== null &&
+    _transaction.quantity !== 1
+  ) {
+    throw new InputError("invalid_quantity");
+  }
+  if (
+    _transaction.expiresDate !== undefined &&
+    _transaction.expiresDate !== null
+  ) {
+    throw new InputError("invalid_expiration_date");
+  }
+  if (
+    _transaction.revocationDate != null ||
+    _transaction.revocationReason != null ||
+    _transaction.revocationType != null ||
+    _transaction.revocationPercentage != null
+  ) {
+    throw new InputError("transaction_revoked");
+  }
+
+  const transactionId = requiredString(
+    _transaction.transactionId,
+    "invalid_transaction_id",
+    255,
+  );
+  const originalTransactionId = requiredString(
+    _transaction.originalTransactionId,
+    "invalid_original_transaction_id",
+    255,
+  );
+  if (originalTransactionId !== transactionId) {
+    throw new InputError("invalid_original_transaction_id");
+  }
+  const appAccountToken = requiredUUID(
+    _transaction.appAccountToken,
+    _transaction.appAccountToken === undefined ||
+      _transaction.appAccountToken === null
+      ? "missing_account_token"
+      : "invalid_app_account_token",
+  ).toLowerCase();
+
+  const purchaseDateMs = requiredTimestamp(
+    _transaction.purchaseDate,
+    "invalid_purchase_date",
+  );
+  const transactionSignedDateMs = requiredTimestamp(
+    _transaction.signedDate,
+    "invalid_signed_date",
+  );
+  const notificationSignedDateMs = requiredTimestamp(
+    _notification.signedDate,
+    "invalid_notification_signed_date",
+  );
+  for (
+    const [value, code] of [
+      [purchaseDateMs, "invalid_purchase_date"],
+      [transactionSignedDateMs, "invalid_signed_date"],
+      [notificationSignedDateMs, "invalid_notification_signed_date"],
+    ] as const
+  ) {
+    if (value > _nowMs + MAX_CLOCK_SKEW_MS) throw new InputError(code);
+  }
+  if (
+    transactionSignedDateMs < purchaseDateMs - MAX_CLOCK_SKEW_MS ||
+    notificationSignedDateMs < transactionSignedDateMs - MAX_CLOCK_SKEW_MS
+  ) {
+    throw new InputError("invalid_signed_date");
+  }
+
+  return {
+    eventId,
+    notificationType: "ONE_TIME_CHARGE",
+    userId: appAccountToken,
+    productId,
+    environment: _expectedEnvironment,
+    transactionId,
+    originalTransactionId,
+    appAccountToken,
+    purchaseDate: new Date(purchaseDateMs).toISOString(),
+    transactionSignedDate: new Date(transactionSignedDateMs).toISOString(),
+    notificationSignedDate: new Date(notificationSignedDateMs).toISOString(),
+    quantity: 1,
+  };
+}
+
 export function validateVerifiedRefundNotification(
   _notification: unknown,
   _transaction: unknown,
@@ -203,6 +369,9 @@ export function validateVerifiedRefundNotification(
     ? "consumable"
     : productId === VERIFIED_MONTHLY_PRODUCT_ID
     ? "subscription"
+    : _expectedEnvironment === "Production" &&
+        LEGACY_PLAN_PRODUCT_IDS.has(productId)
+    ? "legacy_subscription"
     : null;
   if (!productKind) throw new InputError("unsupported_product", 200);
 
@@ -216,19 +385,26 @@ export function validateVerifiedRefundNotification(
     "invalid_original_transaction_id",
     255,
   );
-  const appAccountToken = requiredUUID(
-    _transaction.appAccountToken,
-    _transaction.appAccountToken === undefined ||
-      _transaction.appAccountToken === null
-      ? "missing_account_token"
-      : "invalid_app_account_token",
-  ).toLowerCase();
+  const accountTokenMissing = _transaction.appAccountToken === undefined ||
+    _transaction.appAccountToken === null;
+  const appAccountToken = accountTokenMissing
+    ? productKind === "legacy_subscription" ? null : (() => {
+      throw new InputError("missing_account_token");
+    })()
+    : requiredUUID(
+      _transaction.appAccountToken,
+      "invalid_app_account_token",
+    ).toLowerCase();
 
   if (productKind === "consumable") {
     if (_transaction.type !== "Consumable") {
       throw new InputError("invalid_product_type");
     }
-    if (_transaction.quantity !== 1) {
+    if (
+      _transaction.quantity !== undefined &&
+      _transaction.quantity !== null &&
+      _transaction.quantity !== 1
+    ) {
       throw new InputError("invalid_quantity");
     }
     if (
@@ -241,7 +417,13 @@ export function validateVerifiedRefundNotification(
     if (_transaction.type !== "Auto-Renewable Subscription") {
       throw new InputError("invalid_product_type");
     }
-    if (_transaction.quantity !== undefined && _transaction.quantity !== null) {
+    if (
+      (productKind === "subscription" ||
+        productKind === "legacy_subscription") &&
+      _transaction.quantity !== undefined &&
+      _transaction.quantity !== null &&
+      _transaction.quantity !== 1
+    ) {
       throw new InputError("invalid_quantity");
     }
   }
@@ -275,7 +457,9 @@ export function validateVerifiedRefundNotification(
   }
 
   let expiresDate: string | null = null;
-  if (productKind === "subscription") {
+  if (
+    productKind === "subscription" || productKind === "legacy_subscription"
+  ) {
     const expiresDateMs = requiredTimestamp(
       _transaction.expiresDate,
       "invalid_expiration_date",
@@ -319,7 +503,7 @@ export function validateVerifiedRefundNotification(
   return {
     eventId,
     notificationType,
-    userId: appAccountToken,
+    userId: appAccountToken ?? "",
     productKind,
     productId,
     environment: _expectedEnvironment,
@@ -332,7 +516,10 @@ export function validateVerifiedRefundNotification(
     notificationSignedDate: new Date(notificationSignedDateMs).toISOString(),
     revocationDate: normalizedRevocationDate,
     revocationPercentage: normalizedRevocationPercentage,
-    quantity: productKind === "consumable" ? 1 : null,
+    quantity: productKind === "consumable" ||
+        productKind === "legacy_subscription"
+      ? 1
+      : null,
   };
 }
 
@@ -412,21 +599,38 @@ export function validateVerifiedSubscriptionLifecycleNotification(
     _transaction.productId,
     "unsupported_product",
   );
-  if (productId !== VERIFIED_MONTHLY_PRODUCT_ID) {
+  const isVerifiedSubscription = productId === VERIFIED_MONTHLY_PRODUCT_ID;
+  const isLegacyPlan = LEGACY_PLAN_PRODUCT_IDS.has(productId);
+  if (!isVerifiedSubscription && !isLegacyPlan) {
     throw new InputError("unsupported_product", 200);
+  }
+  // The retired paid-plan products need only the signed grant events. Their
+  // expiry remains timestamp-driven and refunds use the separate refund JWS
+  // path, so accepting terminal lifecycle events here would widen authority
+  // without helping a build-179 purchase settle.
+  if (
+    isLegacyPlan &&
+    (_expectedEnvironment !== "Production" ||
+      (notificationType !== "SUBSCRIBED" && notificationType !== "DID_RENEW"))
+  ) {
+    throw new InputError("unsupported_notification_type", 200);
   }
   const renewalProducts = [_renewal.productId, _renewal.autoRenewProductId]
     .filter((value) => value !== undefined && value !== null);
   if (
     renewalProducts.length === 0 ||
-    renewalProducts.some((value) => value !== VERIFIED_MONTHLY_PRODUCT_ID)
+    renewalProducts.some((value) => value !== productId)
   ) {
     throw new InputError("unsupported_product", 200);
   }
   if (_transaction.type !== "Auto-Renewable Subscription") {
     throw new InputError("invalid_product_type");
   }
-  if (_transaction.quantity !== undefined && _transaction.quantity !== null) {
+  if (
+    _transaction.quantity !== undefined &&
+    _transaction.quantity !== null &&
+    _transaction.quantity !== 1
+  ) {
     throw new InputError("invalid_quantity");
   }
 
@@ -450,21 +654,30 @@ export function validateVerifiedSubscriptionLifecycleNotification(
     throw new InputError("invalid_original_transaction_id");
   }
 
-  const appAccountToken = requiredUUID(
+  const transactionTokenMissing = _transaction.appAccountToken === undefined ||
+    _transaction.appAccountToken === null;
+  const renewalTokenMissing = _renewal.appAccountToken === undefined ||
+    _renewal.appAccountToken === null;
+  const transactionAccountToken = transactionTokenMissing ? null : requiredUUID(
     _transaction.appAccountToken,
-    _transaction.appAccountToken === undefined ||
-      _transaction.appAccountToken === null
-      ? "missing_account_token"
-      : "invalid_app_account_token",
+    "invalid_app_account_token",
   ).toLowerCase();
-  const renewalAccountToken = requiredUUID(
+  const renewalAccountToken = renewalTokenMissing ? null : requiredUUID(
     _renewal.appAccountToken,
-    _renewal.appAccountToken === undefined || _renewal.appAccountToken === null
-      ? "missing_account_token"
-      : "invalid_app_account_token",
+    "invalid_app_account_token",
   ).toLowerCase();
-  if (renewalAccountToken !== appAccountToken) {
-    throw new InputError("account_token_mismatch");
+  let appAccountToken: string | null;
+  if (transactionTokenMissing || renewalTokenMissing) {
+    if (!isLegacyPlan) throw new InputError("missing_account_token");
+    if (!transactionTokenMissing || !renewalTokenMissing) {
+      throw new InputError("account_token_mismatch");
+    }
+    appAccountToken = null;
+  } else {
+    if (renewalAccountToken !== transactionAccountToken) {
+      throw new InputError("account_token_mismatch");
+    }
+    appAccountToken = transactionAccountToken;
   }
 
   const purchaseDateMs = requiredTimestamp(
@@ -592,8 +805,8 @@ export function validateVerifiedSubscriptionLifecycleNotification(
     eventId,
     notificationType,
     notificationSubtype,
-    userId: appAccountToken,
-    productId: VERIFIED_MONTHLY_PRODUCT_ID,
+    userId: appAccountToken ?? "",
+    productId,
     environment: _expectedEnvironment,
     transactionId,
     originalTransactionId,

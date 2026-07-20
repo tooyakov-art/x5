@@ -6,6 +6,7 @@ import {
   parseNotificationRequestBody,
   parseUntrustedNotificationEnvironment,
   pinnedAppleRootCertificates,
+  validateVerifiedOneTimeChargeNotification,
   validateVerifiedRefundNotification,
   validateVerifiedSubscriptionLifecycleNotification,
 } from "./validation.ts";
@@ -112,6 +113,31 @@ const creditTransaction = {
   revocationDate,
   revocationType: "REFUND_FULL",
   revocationPercentage: 100000,
+};
+
+const oneTimeChargeNotification = {
+  notificationType: "ONE_TIME_CHARGE",
+  notificationUUID: "f55c8bb4-e093-4f1e-a7fe-a247d31f79a4",
+  version: "2.0",
+  signedDate: outerSignedDate,
+  data: {
+    bundleId: "com.x5studio.app",
+    environment: "Production",
+    signedTransactionInfo: "inner.header.signature",
+  },
+};
+
+const oneTimeChargeTransaction = {
+  bundleId: "com.x5studio.app",
+  environment: "Production",
+  productId: "com.x5studio.app.credits.2000",
+  transactionId: "2000000123456890",
+  originalTransactionId: "2000000123456890",
+  appAccountToken: userId,
+  type: "Consumable",
+  quantity: 1,
+  purchaseDate,
+  signedDate: transactionSignedDate,
 };
 
 const lifecycleNotification = {
@@ -249,6 +275,172 @@ Deno.test("full credit refund is normalized from two verified JWS payloads", () 
   assertEquals(event.revocationPercentage, 100000);
   assertEquals(event.revocationDate, "2026-07-15T00:00:00.000Z");
   assertEquals(event.notificationSignedDate, "2026-07-16T11:59:00.000Z");
+});
+
+Deno.test("refunds accept Apple's omitted or explicit quantity one", () => {
+  const consumable = validateVerifiedRefundNotification(
+    refundNotification,
+    { ...creditTransaction, quantity: undefined },
+    "Production",
+    now,
+  );
+  assertEquals(consumable.quantity, 1);
+
+  const subscription = validateVerifiedRefundNotification(
+    refundNotification,
+    {
+      ...creditTransaction,
+      productId: "com.x5studio.app.verified.monthly",
+      type: "Auto-Renewable Subscription",
+      quantity: 1,
+      expiresDate: Date.UTC(2026, 7, 1),
+    },
+    "Production",
+    now,
+  );
+  assertEquals(subscription.quantity, null);
+});
+
+Deno.test("verified ONE_TIME_CHARGE normalizes an exact consumable credit grant", () => {
+  const event = validateVerifiedOneTimeChargeNotification(
+    oneTimeChargeNotification,
+    oneTimeChargeTransaction,
+    "Production",
+    now,
+  );
+
+  assertEquals(event.eventId, oneTimeChargeNotification.notificationUUID);
+  assertEquals(event.notificationType, "ONE_TIME_CHARGE");
+  assertEquals(event.userId, userId);
+  assertEquals(event.appAccountToken, userId);
+  assertEquals(event.productId, "com.x5studio.app.credits.2000");
+  assertEquals(event.environment, "Production");
+  assertEquals(event.transactionId, oneTimeChargeTransaction.transactionId);
+  assertEquals(
+    event.originalTransactionId,
+    oneTimeChargeTransaction.originalTransactionId,
+  );
+  assertEquals(event.quantity, 1);
+  assertEquals(event.purchaseDate, "2026-07-01T00:00:00.000Z");
+  assertEquals(event.transactionSignedDate, "2026-07-16T11:58:00.000Z");
+  assertEquals(event.notificationSignedDate, "2026-07-16T11:59:00.000Z");
+});
+
+Deno.test("ONE_TIME_CHARGE treats Apple's omitted consumable quantity as one", () => {
+  const event = validateVerifiedOneTimeChargeNotification(
+    oneTimeChargeNotification,
+    { ...oneTimeChargeTransaction, quantity: undefined },
+    "Production",
+    now,
+  );
+
+  assertEquals(event.quantity, 1);
+});
+
+Deno.test("ONE_TIME_CHARGE rejects any unsigned semantic mismatch before crediting", () => {
+  const cases: Array<[unknown, unknown, string]> = [
+    [
+      { ...oneTimeChargeNotification, notificationType: "REFUND" },
+      oneTimeChargeTransaction,
+      "unsupported_notification_type",
+    ],
+    [
+      { ...oneTimeChargeNotification, subtype: "INITIAL_BUY" },
+      oneTimeChargeTransaction,
+      "invalid_notification_subtype",
+    ],
+    [
+      {
+        ...oneTimeChargeNotification,
+        data: { ...oneTimeChargeNotification.data, bundleId: "attacker.app" },
+      },
+      oneTimeChargeTransaction,
+      "invalid_bundle",
+    ],
+    [
+      oneTimeChargeNotification,
+      { ...oneTimeChargeTransaction, environment: "Sandbox" },
+      "invalid_environment",
+    ],
+    [
+      oneTimeChargeNotification,
+      {
+        ...oneTimeChargeTransaction,
+        productId: "com.x5studio.app.credits.9999",
+      },
+      "unsupported_product",
+    ],
+    [
+      oneTimeChargeNotification,
+      { ...oneTimeChargeTransaction, type: "Non-Consumable" },
+      "invalid_product_type",
+    ],
+    [
+      oneTimeChargeNotification,
+      { ...oneTimeChargeTransaction, quantity: 2 },
+      "invalid_quantity",
+    ],
+    [
+      oneTimeChargeNotification,
+      { ...oneTimeChargeTransaction, appAccountToken: undefined },
+      "missing_account_token",
+    ],
+    [
+      oneTimeChargeNotification,
+      { ...oneTimeChargeTransaction, appAccountToken: "not-a-uuid" },
+      "invalid_app_account_token",
+    ],
+    [
+      oneTimeChargeNotification,
+      { ...oneTimeChargeTransaction, originalTransactionId: "different" },
+      "invalid_original_transaction_id",
+    ],
+    [
+      oneTimeChargeNotification,
+      { ...oneTimeChargeTransaction, expiresDate: Date.UTC(2026, 7, 1) },
+      "invalid_expiration_date",
+    ],
+    [
+      oneTimeChargeNotification,
+      { ...oneTimeChargeTransaction, revocationDate },
+      "transaction_revoked",
+    ],
+    [
+      oneTimeChargeNotification,
+      { ...oneTimeChargeTransaction, signedDate: purchaseDate - 10 * 60_000 },
+      "invalid_signed_date",
+    ],
+  ];
+
+  for (const [notification, transaction, code] of cases) {
+    assertInputError(
+      () =>
+        validateVerifiedOneTimeChargeNotification(
+          notification,
+          transaction,
+          "Production",
+          now,
+        ),
+      code,
+      code === "unsupported_notification_type" || code === "unsupported_product"
+        ? 200
+        : 400,
+    );
+  }
+});
+
+Deno.test("verified Sandbox ONE_TIME_CHARGE remains explicitly identified for allowlist routing", () => {
+  const event = validateVerifiedOneTimeChargeNotification(
+    {
+      ...oneTimeChargeNotification,
+      data: { ...oneTimeChargeNotification.data, environment: "Sandbox" },
+    },
+    { ...oneTimeChargeTransaction, environment: "Sandbox" },
+    "Sandbox",
+    now,
+  );
+  assertEquals(event.environment, "Sandbox");
+  assertEquals(event.userId, userId);
 });
 
 Deno.test("prorated credit refund preserves Apple's milliunit percentage", () => {
@@ -577,7 +769,7 @@ Deno.test("unsupported signed products are acknowledged separately from invalid 
     () =>
       validateVerifiedRefundNotification(
         refundNotification,
-        { ...creditTransaction, productId: "com.x5studio.app.pro.monthly" },
+        { ...creditTransaction, productId: "com.x5studio.app.retired.monthly" },
         "Production",
         now,
       ),

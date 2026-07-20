@@ -1,0 +1,47 @@
+name: ASC sandbox purchase history audit (read-only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      IAP_API_KEY_ID: ${{ secrets.IAP_API_KEY_ID }}
+      IAP_API_ISSUER_ID: ${{ secrets.IAP_API_ISSUER_ID }}
+      IAP_API_KEY_BASE64: ${{ secrets.IAP_API_KEY_BASE64 }}
+
+    steps:
+      - name: Check out the audited revision
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pinned audit dependencies
+        run: >-
+          python -m pip install
+          'PyJWT[crypto]==2.10.1'
+          'requests==2.32.5'
+
+      - name: Verify the read-only audit contract
+        run: python -m unittest scripts.tests.test_apple_sandbox_history_audit
+
+      - name: Read approved Apple Sandbox history windows
+        run: |
+          mkdir -p "$RUNNER_TEMP/x5-apple-audit"
+          python scripts/apple_sandbox_history_audit.py --output "$RUNNER_TEMP/x5-apple-audit/apple-sandbox-history-audit.json"
+
+      - name: Upload safe audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-sandbox-history-audit
+          path: ${{ runner.temp }}/x5-apple-audit/apple-sandbox-history-audit.json
+          if-no-files-found: error
+          retention-days: 7
