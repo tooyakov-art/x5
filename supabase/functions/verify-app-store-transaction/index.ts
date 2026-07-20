@@ -315,14 +315,8 @@ export function appleVerificationDiagnosticCode(error: unknown): string {
     return "UNKNOWN_VERIFICATION_ERROR";
   }
 
-  const status = VerificationStatus[error.status] ??
-    "UNKNOWN_VERIFICATION_STATUS";
-  if (error.status !== VerificationStatus.VERIFICATION_FAILURE) return status;
-
   const cause = error.cause;
-  if (!(cause instanceof Error)) return `${status}_NO_CAUSE`;
-
-  const message = cause.message.toLowerCase();
+  const message = cause instanceof Error ? cause.message.toLowerCase() : "";
   const edgeRuntimeStage: Record<string, string> = {
     edge_jws_segments_runtime: "EDGE_SEGMENTS_RUNTIME",
     edge_jws_payload_decode_runtime: "EDGE_PAYLOAD_DECODE_RUNTIME",
@@ -345,7 +339,14 @@ export function appleVerificationDiagnosticCode(error: unknown): string {
     edge_x509_leaf_public_key_runtime: "EDGE_X509_LEAF_PUBLIC_KEY_RUNTIME",
   };
   const safeEdgeRuntimeStage = edgeRuntimeStage[message];
-  if (safeEdgeRuntimeStage) return `${status}_${safeEdgeRuntimeStage}`;
+  if (safeEdgeRuntimeStage) {
+    return `VERIFICATION_FAILURE_${safeEdgeRuntimeStage}`;
+  }
+
+  const status = VerificationStatus[error.status] ??
+    "UNKNOWN_VERIFICATION_STATUS";
+  if (error.status !== VerificationStatus.VERIFICATION_FAILURE) return status;
+  if (!(cause instanceof Error)) return `${status}_NO_CAUSE`;
 
   if (message.includes("invalid signature")) {
     return `${status}_INVALID_SIGNATURE`;
