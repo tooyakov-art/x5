@@ -40,3 +40,7 @@ secrets.local
 .secrets/
 supabase/.temp/
 .scripts/screens_inbox/
+
+## Local production snapshots (course content may be private)
+diagnostics/course-repair/*.json
+!diagnostics/course-repair/.gitkeep

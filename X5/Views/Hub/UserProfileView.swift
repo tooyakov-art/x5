@@ -163,7 +163,7 @@ struct UserProfileView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.72)
                             .shadow(color: .black.opacity(0.5), radius: 10, x: 0, y: 4)
-                        if (profile?.hasActiveVerifiedBadge ?? (fallback?.isVerified == true)) {
+                        if (profile?.hasActiveVerifiedBadge ?? fallback?.hasActiveVerifiedBadge ?? false) {
                             VerifiedChip(size: 18)
                         }
                     }
@@ -369,7 +369,10 @@ struct UserProfileView: View {
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "id", value: "eq.\(userId)"),
-            URLQueryItem(name: "select", value: "*")
+            URLQueryItem(
+                name: "select",
+                value: "id,name,nickname,avatar,bio,services,plan,social_links,user_role,specialist_category,show_in_hub,is_public,signup_number,language,last_seen,is_verified,verified_until"
+            )
         ]
         var request = URLRequest(url: components.url!)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")

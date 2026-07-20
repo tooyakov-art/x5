@@ -1,0 +1,64 @@
+import Foundation
+
+enum CourseVideoStaging {
+    private static let directoryName = "x5-course-videos"
+
+    static func stageAsync(sourceURL: URL, lessonID: String) async throws -> URL {
+        try await Task.detached(priority: .userInitiated) {
+            try stage(sourceURL: sourceURL, lessonID: lessonID)
+        }.value
+    }
+
+    static func stage(sourceURL: URL, lessonID: String) throws -> URL {
+        let fileManager = FileManager.default
+        let directory = managedDirectory
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let safeLessonID = lessonID
+            .unicodeScalars
+            .map { CharacterSet.alphanumerics.contains($0) ? String($0) : "-" }
+            .joined()
+        let fileName = "\(safeLessonID)-\(UUID().uuidString).\(normalizedExtension(from: sourceURL))"
+        let destination = directory.appendingPathComponent(fileName, isDirectory: false)
+
+        do {
+            try fileManager.copyItem(at: sourceURL, to: destination)
+            return destination
+        } catch {
+            try? fileManager.removeItem(at: destination)
+            throw error
+        }
+    }
+
+    static func isManaged(_ url: URL) -> Bool {
+        let rootPath = managedDirectory
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+            .path
+        let candidatePath = url
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+            .path
+        return candidatePath.hasPrefix(rootPath + "/")
+    }
+
+    static func removeIfManaged(_ url: URL?) {
+        guard let url, isManaged(url) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    private static var managedDirectory: URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent(directoryName, isDirectory: true)
+            .standardizedFileURL
+    }
+
+    private static func normalizedExtension(from url: URL) -> String {
+        switch url.pathExtension.lowercased() {
+        case "mov", "m4v", "mp4":
+            return url.pathExtension.lowercased()
+        default:
+            return "mp4"
+        }
+    }
+}

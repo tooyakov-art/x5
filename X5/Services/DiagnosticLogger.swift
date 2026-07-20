@@ -28,7 +28,12 @@ enum DiagnosticLogger {
     static func log(event: String, extra: [String: String] = [:]) {
         var payload = baseInfo()
         payload["event"] = event
-        for (k, v) in extra { payload[k] = v }
+        if !extra.isEmpty {
+            payload["summary"] = extra
+                .sorted { $0.key < $1.key }
+                .map { "\($0.key)=\(String($0.value.prefix(160)))" }
+                .joined(separator: "; ")
+        }
         post(payload)
     }
 

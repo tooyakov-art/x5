@@ -20,7 +20,7 @@ jobs:
       BUNDLE_ID: com.x5studio.app
       PREVIOUS_VERSION: "1.1.3"
       TARGET_VERSION: "1.1.4"
-      TARGET_BUILD: "179"
+      TARGET_BUILD: "180"
     steps:
       - uses: actions/checkout@v4
 

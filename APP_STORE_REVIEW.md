@@ -98,7 +98,7 @@ New in this version:
 - Hub improvements for specialists, tasks and proposals.
 - Direct chats with text, photos, voice messages, search, replies, pin, mute, archive, report and block controls.
 - Portfolio improvements with photos, videos, likes, comments and pinned work.
-- CourseUP video lessons and Pro-gated course access.
+- CourseUP video lessons and credit-based course purchases.
 - Profile, onboarding, language, Face ID lock, push notification and subscription improvements.
 ```
 
@@ -150,7 +150,7 @@ What you can do:
 • Build your own portfolio and personal brand
 
 Subscriptions (auto-renewable):
-• X5 Pro — unlocks all AI tools, premium courses, +1000 credits/month
+• X5 Pro — unlocks all AI tools and adds monthly credits that can be spent on courses and creator tools
 • Verified Badge — blue ☑ that signals trust and ranks your profile higher in Hub
 
 Subscription auto-renews monthly until cancelled. Manage in iOS Settings → Apple ID → Subscriptions.

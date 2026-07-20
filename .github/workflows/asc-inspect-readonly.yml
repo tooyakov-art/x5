@@ -1,0 +1,118 @@
+name: ASC recover signed Apple purchase
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: x5-dossymkhan-apple-purchase-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      BUNDLE_ID: com.x5studio.app
+      TARGET_APP_ACCOUNT_TOKEN: f4e32ce0-ca32-45ad-a63e-cc3b4a526881
+      HISTORY_START_MS: "1784553300000"
+      HISTORY_END_MS: "1784556900000"
+      APP_STORE_NOTIFICATIONS_URL: https://afwznqjpshybmqhlewmy.supabase.co/functions/v1/app-store-notifications
+      # Prefer the dedicated In-App Purchase integration key. The ASC fallback
+      # only preserves compatibility with the repository's existing secret
+      # names and will fail closed if Apple does not authorize it for this API.
+      IAP_API_KEY_ID: ${{ secrets.IAP_API_KEY_ID || secrets.ASC_API_KEY_ID }}
+      IAP_API_ISSUER_ID: ${{ secrets.IAP_API_ISSUER_ID || secrets.ASC_API_ISSUER_ID }}
+      IAP_API_KEY_BASE64: ${{ secrets.IAP_API_KEY_BASE64 || secrets.ASC_API_KEY_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: pip install pyjwt[crypto] requests
+      - name: Verify narrow recovery matcher
+        run: python -m unittest scripts.tests.test_apple_notification_replay
+      - name: Prepare one signed Apple sample without logging it
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from scripts.apple_notification_replay import decode_jws_payload, fetch_history
+
+          history = fetch_history(
+              int(os.environ["HISTORY_START_MS"]),
+              int(os.environ["HISTORY_END_MS"]),
+          )
+          signed_payloads = [
+              item.get("signedPayload")
+              for item in history
+              if isinstance(item.get("signedPayload"), str)
+          ]
+          if not signed_payloads:
+              raise SystemExit("No signed Apple notification available for runtime diagnosis")
+          outer = signed_payloads[0]
+          decoded = decode_jws_payload(outer)
+          data = decoded.get("data") or {}
+          transaction = data.get("signedTransactionInfo")
+          renewal = data.get("signedRenewalInfo")
+          if not isinstance(transaction, str):
+              raise SystemExit("Selected notification has no signed transaction")
+          if not isinstance(renewal, str):
+              raise SystemExit("Selected notification has no signed renewal info")
+          temp = Path(os.environ["RUNNER_TEMP"])
+          (temp / "apple-notification.jws").write_text(outer, encoding="utf-8")
+          (temp / "apple-transaction.jws").write_text(transaction, encoding="utf-8")
+          (temp / "apple-renewal.jws").write_text(renewal, encoding="utf-8")
+          print("signed_payloads_prepared=3")
+          PY
+      - name: Diagnose notification verifier under Deno
+        env:
+          SIGNED_PAYLOAD_PATH: ${{ runner.temp }}/apple-notification.jws
+          PAYLOAD_KIND: notification
+        run: deno run --allow-env --allow-read --config supabase/functions/app-store-notifications/deno.json scripts/diagnose_apple_jws_runtime.ts
+      - name: Diagnose transaction verifier under Deno
+        env:
+          SIGNED_PAYLOAD_PATH: ${{ runner.temp }}/apple-transaction.jws
+          PAYLOAD_KIND: transaction
+        run: deno run --allow-env --allow-read --config supabase/functions/verify-app-store-transaction/deno.json scripts/diagnose_apple_jws_runtime.ts
+      - name: Diagnose renewal verifier under Deno
+        env:
+          SIGNED_PAYLOAD_PATH: ${{ runner.temp }}/apple-renewal.jws
+          PAYLOAD_KIND: renewal
+        run: deno run --allow-env --allow-read --config supabase/functions/app-store-notifications/deno.json scripts/diagnose_apple_jws_runtime.ts
+      - name: Verify deployed webhook with the signed Apple sample
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import requests
+
+          signed_payload = (
+              Path(os.environ["RUNNER_TEMP"]) / "apple-notification.jws"
+          ).read_text(encoding="utf-8").strip()
+          response = requests.post(
+              os.environ["APP_STORE_NOTIFICATIONS_URL"],
+              json={"signedPayload": signed_payload},
+              timeout=60,
+          )
+          try:
+              body = response.json()
+          except ValueError:
+              body = {}
+          print(f"deployed_webhook_http_status={response.status_code}")
+          print(f"deployed_webhook_status={body.get('status', '-')}")
+          print(
+              "deployed_webhook_error="
+              f"{body.get('error', body.get('reason', '-'))}"
+          )
+          if response.status_code != 200:
+              raise SystemExit("Deployed webhook rejected a genuine Apple notification")
+          PY
+      - name: Replay exact signed Apple notification
+        run: python scripts/apple_notification_replay.py

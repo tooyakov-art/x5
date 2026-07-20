@@ -2,6 +2,35 @@ import Foundation
 
 // MARK: - Models
 
+private struct CourseDynamicCodingKey: CodingKey, Hashable {
+    let stringValue: String
+    let intValue: Int?
+
+    init(_ stringValue: String) {
+        self.stringValue = stringValue
+        intValue = nil
+    }
+
+    init?(stringValue: String) {
+        self.init(stringValue)
+    }
+
+    init?(intValue: Int) {
+        stringValue = String(intValue)
+        self.intValue = intValue
+    }
+}
+
+private extension KeyedDecodingContainer where Key == CourseDynamicCodingKey {
+    func preservedCourseFields(excluding knownFields: Set<String>) throws -> [String: CourseJSONValue] {
+        var result: [String: CourseJSONValue] = [:]
+        for key in allKeys where !knownFields.contains(key.stringValue) {
+            result[key.stringValue] = try decode(CourseJSONValue.self, forKey: key)
+        }
+        return result
+    }
+}
+
 struct CourseLesson: Codable, Identifiable, Hashable {
     let id: String
     let title: String
@@ -13,14 +42,73 @@ struct CourseLesson: Codable, Identifiable, Hashable {
     let thumbnailUrl: String?
     let isFreePreview: Bool?
     let sellSeparately: Bool?
+    let preservedFields: [String: CourseJSONValue]
 
-    enum CodingKeys: String, CodingKey {
-        case id, title, duration, order, price
-        case videoUrl
-        case youtubeUrl
-        case thumbnailUrl
-        case isFreePreview
-        case sellSeparately
+    private static let knownFields: Set<String> = [
+        "id", "title", "duration", "order", "price", "videoUrl",
+        "youtubeUrl", "thumbnailUrl", "isFreePreview", "sellSeparately"
+    ]
+
+    init(
+        id: String,
+        title: String,
+        duration: String?,
+        order: Int?,
+        price: Int?,
+        videoUrl: String?,
+        youtubeUrl: String?,
+        thumbnailUrl: String?,
+        isFreePreview: Bool?,
+        sellSeparately: Bool?,
+        preservedFields: [String: CourseJSONValue] = [:]
+    ) {
+        self.id = id
+        self.title = title
+        self.duration = duration
+        self.order = order
+        self.price = price
+        self.videoUrl = videoUrl
+        self.youtubeUrl = youtubeUrl
+        self.thumbnailUrl = thumbnailUrl
+        self.isFreePreview = isFreePreview
+        self.sellSeparately = sellSeparately
+        self.preservedFields = preservedFields
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CourseDynamicCodingKey.self)
+        id = try container.decode(String.self, forKey: CourseDynamicCodingKey("id"))
+        title = try container.decode(String.self, forKey: CourseDynamicCodingKey("title"))
+        duration = try container.decodeIfPresent(String.self, forKey: CourseDynamicCodingKey("duration"))
+        order = try container.decodeIfPresent(Int.self, forKey: CourseDynamicCodingKey("order"))
+        price = try container.decodeIfPresent(Int.self, forKey: CourseDynamicCodingKey("price"))
+        videoUrl = try container.decodeIfPresent(String.self, forKey: CourseDynamicCodingKey("videoUrl"))
+        youtubeUrl = try container.decodeIfPresent(String.self, forKey: CourseDynamicCodingKey("youtubeUrl"))
+        thumbnailUrl = try container.decodeIfPresent(String.self, forKey: CourseDynamicCodingKey("thumbnailUrl"))
+        isFreePreview = try container.decodeIfPresent(Bool.self, forKey: CourseDynamicCodingKey("isFreePreview"))
+        sellSeparately = try container.decodeIfPresent(Bool.self, forKey: CourseDynamicCodingKey("sellSeparately"))
+        preservedFields = try container.preservedCourseFields(excluding: Self.knownFields)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CourseDynamicCodingKey.self)
+        for (key, value) in preservedFields where !Self.knownFields.contains(key) {
+            try container.encode(value, forKey: CourseDynamicCodingKey(key))
+        }
+        try container.encode(id, forKey: CourseDynamicCodingKey("id"))
+        try container.encode(title, forKey: CourseDynamicCodingKey("title"))
+        try container.encodeIfPresent(duration, forKey: CourseDynamicCodingKey("duration"))
+        try container.encodeIfPresent(order, forKey: CourseDynamicCodingKey("order"))
+        try container.encodeIfPresent(price, forKey: CourseDynamicCodingKey("price"))
+        try container.encodeIfPresent(videoUrl, forKey: CourseDynamicCodingKey("videoUrl"))
+        try container.encodeIfPresent(youtubeUrl, forKey: CourseDynamicCodingKey("youtubeUrl"))
+        try container.encodeIfPresent(thumbnailUrl, forKey: CourseDynamicCodingKey("thumbnailUrl"))
+        try container.encodeIfPresent(isFreePreview, forKey: CourseDynamicCodingKey("isFreePreview"))
+        try container.encodeIfPresent(sellSeparately, forKey: CourseDynamicCodingKey("sellSeparately"))
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 
     var freePreview: Bool { isFreePreview ?? false }
@@ -44,6 +132,47 @@ struct CourseDay: Codable, Identifiable, Hashable {
     let title: String
     let order: Int?
     let lessons: [CourseLesson]
+    let preservedFields: [String: CourseJSONValue]
+
+    private static let knownFields: Set<String> = ["id", "title", "order", "lessons"]
+
+    init(
+        id: String,
+        title: String,
+        order: Int?,
+        lessons: [CourseLesson],
+        preservedFields: [String: CourseJSONValue] = [:]
+    ) {
+        self.id = id
+        self.title = title
+        self.order = order
+        self.lessons = lessons
+        self.preservedFields = preservedFields
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CourseDynamicCodingKey.self)
+        id = try container.decode(String.self, forKey: CourseDynamicCodingKey("id"))
+        title = try container.decode(String.self, forKey: CourseDynamicCodingKey("title"))
+        order = try container.decodeIfPresent(Int.self, forKey: CourseDynamicCodingKey("order"))
+        lessons = try container.decode([CourseLesson].self, forKey: CourseDynamicCodingKey("lessons"))
+        preservedFields = try container.preservedCourseFields(excluding: Self.knownFields)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CourseDynamicCodingKey.self)
+        for (key, value) in preservedFields where !Self.knownFields.contains(key) {
+            try container.encode(value, forKey: CourseDynamicCodingKey(key))
+        }
+        try container.encode(id, forKey: CourseDynamicCodingKey("id"))
+        try container.encode(title, forKey: CourseDynamicCodingKey("title"))
+        try container.encodeIfPresent(order, forKey: CourseDynamicCodingKey("order"))
+        try container.encode(lessons, forKey: CourseDynamicCodingKey("lessons"))
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 }
 
 struct CourseCategory: Codable, Identifiable, Hashable {
@@ -52,6 +181,51 @@ struct CourseCategory: Codable, Identifiable, Hashable {
     let order: Int?
     let icon: String?
     let days: [CourseDay]
+    let preservedFields: [String: CourseJSONValue]
+
+    private static let knownFields: Set<String> = ["id", "title", "order", "icon", "days"]
+
+    init(
+        id: String,
+        title: String,
+        order: Int?,
+        icon: String?,
+        days: [CourseDay],
+        preservedFields: [String: CourseJSONValue] = [:]
+    ) {
+        self.id = id
+        self.title = title
+        self.order = order
+        self.icon = icon
+        self.days = days
+        self.preservedFields = preservedFields
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CourseDynamicCodingKey.self)
+        id = try container.decode(String.self, forKey: CourseDynamicCodingKey("id"))
+        title = try container.decode(String.self, forKey: CourseDynamicCodingKey("title"))
+        order = try container.decodeIfPresent(Int.self, forKey: CourseDynamicCodingKey("order"))
+        icon = try container.decodeIfPresent(String.self, forKey: CourseDynamicCodingKey("icon"))
+        days = try container.decode([CourseDay].self, forKey: CourseDynamicCodingKey("days"))
+        preservedFields = try container.preservedCourseFields(excluding: Self.knownFields)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CourseDynamicCodingKey.self)
+        for (key, value) in preservedFields where !Self.knownFields.contains(key) {
+            try container.encode(value, forKey: CourseDynamicCodingKey(key))
+        }
+        try container.encode(id, forKey: CourseDynamicCodingKey("id"))
+        try container.encode(title, forKey: CourseDynamicCodingKey("title"))
+        try container.encodeIfPresent(order, forKey: CourseDynamicCodingKey("order"))
+        try container.encodeIfPresent(icon, forKey: CourseDynamicCodingKey("icon"))
+        try container.encode(days, forKey: CourseDynamicCodingKey("days"))
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 }
 
 struct Course: Codable, Identifiable, Hashable {
@@ -61,6 +235,7 @@ struct Course: Codable, Identifiable, Hashable {
     let marketingHook: String?
     let coverUrl: String?
     let authorName: String?
+    let authorId: String?
     let price: Int?
     let isFree: Bool?
     let isPublic: Bool?
@@ -70,6 +245,40 @@ struct Course: Codable, Identifiable, Hashable {
     let sortOrder: Int?
     let categoriesRaw: [CourseCategory]?
 
+    init(
+        id: String,
+        title: String,
+        description: String?,
+        marketingHook: String?,
+        coverUrl: String?,
+        authorName: String?,
+        authorId: String? = nil,
+        price: Int?,
+        isFree: Bool?,
+        isPublic: Bool?,
+        courseLanguage: String?,
+        averageRating: Double?,
+        studentsCount: Int?,
+        sortOrder: Int?,
+        categoriesRaw: [CourseCategory]?
+    ) {
+        self.id = id
+        self.title = title
+        self.description = description
+        self.marketingHook = marketingHook
+        self.coverUrl = coverUrl
+        self.authorName = authorName
+        self.authorId = authorId
+        self.price = price
+        self.isFree = isFree
+        self.isPublic = isPublic
+        self.courseLanguage = courseLanguage
+        self.averageRating = averageRating
+        self.studentsCount = studentsCount
+        self.sortOrder = sortOrder
+        self.categoriesRaw = categoriesRaw
+    }
+
     var categories: [CourseCategory] { categoriesRaw ?? [] }
 
     enum CodingKeys: String, CodingKey {
@@ -78,6 +287,7 @@ struct Course: Codable, Identifiable, Hashable {
         case marketingHook = "marketing_hook"
         case coverUrl = "cover_url"
         case authorName = "author_name"
+        case authorId = "author_id"
         case isFree = "is_free"
         case isPublic = "is_public"
         case courseLanguage = "course_language"
@@ -137,24 +347,26 @@ struct CourseSubmission: Codable, Identifiable, Hashable {
 
 // MARK: - Service
 
-@MainActor
-final class CoursesService: ObservableObject {
-    @Published private(set) var courses: [Course] = []
-    @Published private(set) var submissions: [CourseSubmission] = []
-    @Published private(set) var isLoading: Bool = false
-    @Published private(set) var isLoadingSubmissions: Bool = false
-    @Published private(set) var error: String?
+enum CourseListRequestError: LocalizedError, Equatable {
+    case missingAccessToken
 
-    private var baseURL: URL { X5Config.supabaseBaseURL }
-    private var anonKey: String { X5Config.supabaseAnonKey }
+    var errorDescription: String? {
+        "Sign in again to load private course drafts."
+    }
+}
 
-    func loadCourses(includeHidden: Bool = false) async {
-        isLoading = true
-        error = nil
-        defer { isLoading = false }
-
-        let select = "id,title,description,marketing_hook,cover_url,author_name,price,is_free,is_public,course_language,average_rating,students_count,sort_order,categories"
-        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/courses"), resolvingAgainstBaseURL: false)!
+enum CourseListRequestBuilder {
+    static func makeRequest(
+        baseURL: URL,
+        anonKey: String,
+        includeHidden: Bool,
+        accessToken: String?
+    ) throws -> URLRequest {
+        let select = "id,title,description,marketing_hook,cover_url,author_name,author_id,price,is_free,is_public,course_language,average_rating,students_count,sort_order,categories"
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("rest/v1/courses"),
+            resolvingAgainstBaseURL: false
+        )!
         var items: [URLQueryItem] = [
             URLQueryItem(name: "select", value: select),
             URLQueryItem(name: "order", value: "sort_order.asc")
@@ -168,7 +380,70 @@ final class CoursesService: ObservableObject {
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
+        if includeHidden {
+            guard let token = accessToken?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !token.isEmpty else {
+                throw CourseListRequestError.missingAccessToken
+            }
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        return request
+    }
+}
+
+enum CourseSubmissionVideoPathError: Error {
+    case invalidUserID
+    case invalidFileExtension
+}
+
+enum CourseSubmissionVideoPath {
+    static func make(
+        userID: String,
+        fileExtension: String,
+        uniqueID: UUID = UUID(),
+        timestamp: Int = Int(Date().timeIntervalSince1970)
+    ) throws -> String {
+        let trimmedUserID = userID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let canonicalUserID = UUID(uuidString: trimmedUserID)?.uuidString.lowercased() else {
+            throw CourseSubmissionVideoPathError.invalidUserID
+        }
+
+        let normalizedExtension = fileExtension.lowercased()
+        guard !normalizedExtension.isEmpty,
+              normalizedExtension.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) })
+        else {
+            throw CourseSubmissionVideoPathError.invalidFileExtension
+        }
+
+        let fileID = uniqueID.uuidString.lowercased()
+        return "course-submissions/\(canonicalUserID)/\(fileID)-\(timestamp).\(normalizedExtension)"
+    }
+}
+
+@MainActor
+final class CoursesService: ObservableObject {
+    @Published private(set) var courses: [Course] = []
+    @Published private(set) var submissions: [CourseSubmission] = []
+    @Published private(set) var isLoading: Bool = false
+    @Published private(set) var isLoadingSubmissions: Bool = false
+    @Published private(set) var error: String?
+
+    private var baseURL: URL { X5Config.supabaseBaseURL }
+    private var anonKey: String { X5Config.supabaseAnonKey }
+
+    func loadCourses(includeHidden: Bool = false, accessToken: String? = nil) async {
+        isLoading = true
+        error = nil
+        defer { isLoading = false }
+
         do {
+            let request = try CourseListRequestBuilder.makeRequest(
+                baseURL: baseURL,
+                anonKey: anonKey,
+                includeHidden: includeHidden,
+                accessToken: accessToken
+            )
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 let body = String(data: data, encoding: .utf8) ?? ""
@@ -185,7 +460,12 @@ final class CoursesService: ObservableObject {
     // Mutations require an authenticated developer (RLS enforces on the server).
 
     /// Creates a draft course owned by the caller. Returns the new course on success.
-    func createCourse(title: String, accessToken: String) async -> Course? {
+    func createCourse(
+        title: String,
+        authorName: String,
+        authorId: String?,
+        accessToken: String
+    ) async -> Course? {
         let id = UUID().uuidString
         var post = URLRequest(url: baseURL.appendingPathComponent("rest/v1/courses"))
         post.httpMethod = "POST"
@@ -193,24 +473,40 @@ final class CoursesService: ObservableObject {
         post.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         post.setValue("application/json", forHTTPHeaderField: "Content-Type")
         post.setValue("return=representation", forHTTPHeaderField: "Prefer")
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "id": id,
             "title": title,
+            "author_name": authorName,
             "is_public": false,
             "is_free": true,
             "price": 0,
             "course_language": "ru",
             "categories": []
         ]
-        post.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        guard let (data, resp) = try? await URLSession.shared.data(for: post),
-              let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              let rows = try? JSONDecoder().decode([Course].self, from: data),
-              let row = rows.first else {
-            self.error = "Не удалось создать курс. Проверь права в Supabase RLS."
+        if let authorId, UUID(uuidString: authorId) != nil {
+            body["author_id"] = authorId
+        }
+
+        do {
+            post.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await URLSession.shared.data(for: post)
+            guard let http = response as? HTTPURLResponse else {
+                self.error = "Не удалось создать курс: сервер не ответил."
+                return nil
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                self.error = Self.httpError(prefix: "Не удалось создать курс", status: http.statusCode, data: data)
+                return nil
+            }
+            guard let row = try JSONDecoder().decode([Course].self, from: data).first else {
+                self.error = "Не удалось создать курс: сервер вернул пустой ответ."
+                return nil
+            }
+            return row
+        } catch {
+            self.error = "Не удалось создать курс: \(error.localizedDescription)"
             return nil
         }
-        return row
     }
 
     /// PATCH selected fields on a course row. Pass only the fields you want to change.
@@ -222,13 +518,38 @@ final class CoursesService: ObservableObject {
         patch.setValue(anonKey, forHTTPHeaderField: "apikey")
         patch.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         patch.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        patch.httpBody = try? JSONSerialization.data(withJSONObject: fields)
-        guard let (_, resp) = try? await URLSession.shared.data(for: patch),
-              let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            self.error = "Не удалось сохранить курс."
+        patch.setValue("application/json", forHTTPHeaderField: "Accept")
+        patch.setValue("return=representation", forHTTPHeaderField: "Prefer")
+
+        do {
+            patch.httpBody = try JSONSerialization.data(withJSONObject: fields)
+            let (data, response) = try await URLSession.shared.data(for: patch)
+            guard let http = response as? HTTPURLResponse else {
+                self.error = "Не удалось сохранить курс: сервер не ответил."
+                return false
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                self.error = Self.httpError(prefix: "Не удалось сохранить курс", status: http.statusCode, data: data)
+                return false
+            }
+            guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]], !rows.isEmpty else {
+                self.error = "Курс не сохранён: сервер не изменил ни одной записи."
+                return false
+            }
+            return true
+        } catch {
+            self.error = "Не удалось сохранить курс: \(error.localizedDescription)"
             return false
         }
-        return true
+    }
+
+    private static func httpError(prefix: String, status: Int, data: Data) -> String {
+        let raw = String(data: data, encoding: .utf8) ?? ""
+        let compact = raw
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let suffix = compact.isEmpty ? "" : ": \(String(compact.prefix(240)))"
+        return "\(prefix) (\(status))\(suffix)"
     }
 
     func deleteCourse(id: String, accessToken: String) async -> Bool {
@@ -308,7 +629,7 @@ final class CoursesService: ObservableObject {
     }
 
     @discardableResult
-    func uploadCourseSubmissionVideo(fileURL: URL, accessToken: String) async -> String? {
+    func uploadCourseSubmissionVideo(fileURL: URL, userID: String, accessToken: String) async -> String? {
         error = nil
 
         let didAccess = fileURL.startAccessingSecurityScopedResource()
@@ -318,16 +639,14 @@ final class CoursesService: ObservableObject {
 
         let ext = normalizedVideoExtension(from: fileURL)
         let mime = videoMimeType(for: ext)
-        let path = "course-submissions/\(UUID().uuidString)-\(Int(Date().timeIntervalSince1970)).\(ext)"
-        let uploadURL = baseURL.appendingPathComponent("storage/v1/object/videos/\(path)")
-
-        let data: Data
+        let path: String
         do {
-            data = try Data(contentsOf: fileURL)
+            path = try CourseSubmissionVideoPath.make(userID: userID, fileExtension: ext)
         } catch {
-            self.error = "Не удалось прочитать видео."
+            self.error = "Не удалось определить владельца видео. Войди снова."
             return nil
         }
+        let uploadURL = baseURL.appendingPathComponent("storage/v1/object/videos/\(path)")
 
         var req = URLRequest(url: uploadURL)
         req.httpMethod = "POST"
@@ -336,10 +655,9 @@ final class CoursesService: ObservableObject {
         req.setValue(mime, forHTTPHeaderField: "Content-Type")
         req.setValue("3600", forHTTPHeaderField: "Cache-Control")
         req.setValue("true", forHTTPHeaderField: "x-upsert")
-        req.httpBody = data
 
         do {
-            let (body, response) = try await URLSession.shared.data(for: req)
+            let (body, response) = try await URLSession.shared.upload(for: req, fromFile: fileURL)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 let details = String(data: body, encoding: .utf8) ?? ""
                 self.error = "Видео заявки не загружено. \(details)"
@@ -353,7 +671,9 @@ final class CoursesService: ObservableObject {
         return baseURL.appendingPathComponent("storage/v1/object/public/videos/\(path)").absoluteString
     }
 
-    /// Uploads `jpegData` to Storage `course-covers` bucket and PATCHes courses.cover_url.
+    /// Uploads `jpegData` to Storage `course-covers`. The editor writes the
+    /// returned URL only as part of the final course PATCH, keeping metadata
+    /// atomic when a later video upload fails.
     @discardableResult
     func uploadCover(courseId: String, jpegData: Data, accessToken: String) async -> String? {
         let path = "\(courseId)/\(Int(Date().timeIntervalSince1970)).jpg"
@@ -373,7 +693,6 @@ final class CoursesService: ObservableObject {
             return nil
         }
         let publicURL = baseURL.appendingPathComponent("storage/v1/object/public/course-covers/\(path)").absoluteString
-        _ = await updateCourse(id: courseId, fields: ["cover_url": publicURL], accessToken: accessToken)
         return publicURL
     }
 
@@ -393,14 +712,6 @@ final class CoursesService: ObservableObject {
         let path = "courses/\(courseId)/\(lessonId)-\(Int(Date().timeIntervalSince1970)).\(ext)"
         let uploadURL = baseURL.appendingPathComponent("storage/v1/object/videos/\(path)")
 
-        let data: Data
-        do {
-            data = try Data(contentsOf: fileURL)
-        } catch {
-            self.error = "Не удалось прочитать выбранный видеофайл."
-            return nil
-        }
-
         var req = URLRequest(url: uploadURL)
         req.httpMethod = "POST"
         req.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -408,10 +719,9 @@ final class CoursesService: ObservableObject {
         req.setValue(mime, forHTTPHeaderField: "Content-Type")
         req.setValue("3600", forHTTPHeaderField: "Cache-Control")
         req.setValue("true", forHTTPHeaderField: "x-upsert")
-        req.httpBody = data
 
         do {
-            let (body, response) = try await URLSession.shared.data(for: req)
+            let (body, response) = try await URLSession.shared.upload(for: req, fromFile: fileURL)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 let details = String(data: body, encoding: .utf8) ?? ""
                 self.error = "Видео не загружено. Блокер: Storage bucket `videos` должен разрешать authenticated/developer INSERT/UPDATE в `courses/*`. \(details)"

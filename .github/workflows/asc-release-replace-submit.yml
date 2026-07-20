@@ -17,8 +17,8 @@ jobs:
       ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
       ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
       BUNDLE_ID: com.x5studio.app
-      EXPECTED_VERSION: "1.1.4"
-      EXPECTED_BUILD: "179"
+      EXPECTED_VERSION: "1.1.5"
+      EXPECTED_BUILD: "184"
     steps:
       - uses: actions/checkout@v4
 
@@ -42,7 +42,13 @@ jobs:
 
           path = Path("fastlane/metadata/review_information/notes.txt")
           text = path.read_text(encoding="utf-8")
-          text = text.replace("build 163", f"build {os.environ['EXPECTED_BUILD']}")
+          import re
+          text = re.sub(
+              r"build \d+",
+              f"build {os.environ['EXPECTED_BUILD']}",
+              text,
+              count=1,
+          )
           path.write_text(text, encoding="utf-8")
           print(f"Review notes stamped for build {os.environ['EXPECTED_BUILD']}")
           PY

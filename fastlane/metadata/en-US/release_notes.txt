@@ -6,5 +6,5 @@ New in this version:
 - Hub improvements for specialists, tasks and proposals.
 - Direct chats with text, photos, voice messages, search, replies, pin, mute, archive, report and block controls.
 - Portfolio improvements with photos, videos, likes, comments and pinned work.
-- CourseUP video lessons and Pro-gated course access.
+- CourseUP video lessons and credit-based course purchases.
 - Profile, onboarding, language, Face ID lock, push notification and subscription improvements.

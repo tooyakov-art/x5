@@ -1,162 +1,507 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { create as jwtCreate, getNumericDate } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
+import {
+  createClient,
+  type SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  create as jwtCreate,
+  getNumericDate,
+} from "https://deno.land/x/djwt@v3.0.2/mod.ts";
+import {
+  ANDROID_PACKAGE_NAME,
+  buildGooglePlayClaimKey,
+  canRecoverKnownConsumedPurchase,
+  createGooglePlayAccountBinding,
+  extractInAppEntitlement,
+  extractSubscriptionEntitlement,
+  finalizeGooglePlayPurchase,
+  getGooglePlayPredecessorPurchaseTokens,
+  getProductEntitlement,
+  isGooglePlayFinalizationRace,
+  isGooglePlayPurchaseGone,
+  validateGooglePlayAccountBinding,
+} from "./entitlements.mjs";
+import { assertGooglePlayPackageAccess } from "./publisherAccess.mjs";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://afwznqjpshybmqhlewmy.supabase.co";
-const ANDROID_PUBLISHER_SCOPE = "https://www.googleapis.com/auth/androidpublisher";
-const DEFAULT_PACKAGE_NAME = "com.x5studio.app";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ||
+  "https://afwznqjpshybmqhlewmy.supabase.co";
+const ANDROID_PUBLISHER_SCOPE =
+  "https://www.googleapis.com/auth/androidpublisher";
 
-interface VerifyBody {
+const corsHeaders = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-headers":
+    "authorization, x-client-info, apikey, content-type",
+  "access-control-allow-methods": "POST, OPTIONS",
+};
+
+type VerifyBody = {
+  action?: "preflight";
   product_id?: string;
   purchase_token?: string;
   package_name?: string;
-}
+  purchase_type?: "subscription" | "inapp";
+};
 
-interface GoogleServiceAccount {
+type GoogleServiceAccount = {
   client_email: string;
   private_key: string;
   token_uri?: string;
-}
+};
 
-interface PlanEntitlement {
-  profilePlan: string;
-  subscriptionType: string;
-  credits: number;
-}
+type VerifiedPurchase = {
+  ok: true;
+  expiry: string | null;
+  orderId: string;
+  quantity?: number;
+  refundableQuantity?: number;
+};
 
-const planEntitlements: Record<string, PlanEntitlement> = {
-  "com.x5studio.app.lite.monthly": {
-    profilePlan: "lite",
-    subscriptionType: "lite_monthly",
-    credits: 1000
-  },
-  "com.x5studio.app.pro.monthly": {
-    profilePlan: "pro",
-    subscriptionType: "pro_monthly",
-    credits: 2000
-  },
-  "com.x5studio.app.max.monthly": {
-    profilePlan: "max",
-    subscriptionType: "max_monthly",
-    credits: 5000
-  }
+type PurchaseVerificationFailure = {
+  ok: false;
+  status: number;
+  error: string;
 };
 
 Deno.serve(async (req) => {
-  if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
-
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  if (!serviceKey || !anonKey) return new Response("missing Supabase env", { status: 500 });
-
-  const authHeader = req.headers.get("Authorization") || "";
-  const accessToken = authHeader.replace(/^Bearer\s+/i, "").trim();
-  if (!accessToken) return new Response("missing token", { status: 401 });
-
-  const body = (await req.json()) as VerifyBody;
-  const productId = body.product_id?.trim();
-  const purchaseToken = body.purchase_token?.trim();
-  const packageName = body.package_name?.trim() || DEFAULT_PACKAGE_NAME;
-  if (!productId || !purchaseToken) return new Response("missing purchase fields", { status: 400 });
-  if (packageName !== DEFAULT_PACKAGE_NAME) return new Response("invalid package", { status: 400 });
-  if (productId !== "com.x5studio.app.verified.monthly" && !planEntitlements[productId]) {
-    return new Response("unknown product", { status: 400 });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
   }
+  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
-  const authClient = createClient(SUPABASE_URL, anonKey, {
-    global: { headers: { Authorization: `Bearer ${accessToken}` } },
-    auth: { persistSession: false, autoRefreshToken: false }
-  });
-  const { data: userData, error: userError } = await authClient.auth.getUser(accessToken);
-  if (userError || !userData.user) return new Response("invalid user", { status: 401 });
-
-  const googleAccessToken = await googlePlayAccessToken();
-  const purchase = await loadGoogleSubscription(packageName, purchaseToken, googleAccessToken);
-  const entitlement = extractEntitlement(productId, purchase);
-  if (!entitlement.ok) return new Response(entitlement.error, { status: entitlement.status });
-
-  const admin = createClient(SUPABASE_URL, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  });
-
-  const userId = userData.user.id;
-  const now = new Date().toISOString();
-  const expiry = entitlement.expiry;
-  const update = productId === "com.x5studio.app.verified.monthly"
-    ? {
-      is_verified: true,
-      verified_until: expiry
+  try {
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    if (!serviceKey || !anonKey) {
+      return json({ error: "missing_supabase_env" }, 500);
     }
-    : await subscriptionUpdate(admin, userId, productId, now, expiry);
 
-  const { data: rows, error: updateError } = await admin
-    .from("profiles")
-    .update(update)
-    .eq("id", userId)
-    .select("*");
+    const accessToken = (req.headers.get("Authorization") || "").replace(
+      /^Bearer\s+/i,
+      "",
+    ).trim();
+    if (!accessToken) return json({ error: "missing_token" }, 401);
 
-  if (updateError) return new Response(`profile update error: ${updateError.message}`, { status: 500 });
-  const profile = rows?.[0];
-  if (!profile) return new Response("profile not found", { status: 404 });
+    const body = await req.json() as VerifyBody;
+    const authClient = createClient(SUPABASE_URL, anonKey, {
+      global: { headers: { Authorization: `Bearer ${accessToken}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data: userData, error: userError } = await authClient.auth.getUser(
+      accessToken,
+    );
+    if (userError || !userData.user) {
+      return json({ error: "invalid_user" }, 401);
+    }
 
-  return Response.json({ ok: true, product_id: productId, profile });
+    const bindingSecret = Deno.env.get("GOOGLE_PLAY_ACCOUNT_BINDING_SECRET");
+    if (!bindingSecret) {
+      return json({ error: "play_account_binding_unavailable" }, 503);
+    }
+    const userId = userData.user.id;
+    const expectedAccountBinding = await createGooglePlayAccountBinding(
+      userId,
+      bindingSecret,
+    );
+
+    if (body.action === "preflight") {
+      try {
+        const googleAccessToken = await googlePlayAccessToken();
+        await assertGooglePlayPackageAccess(
+          ANDROID_PACKAGE_NAME,
+          googleAccessToken,
+        );
+        return json({
+          ok: true,
+          ready: true,
+          account_binding: expectedAccountBinding,
+        });
+      } catch (error) {
+        console.error("[verify-play-purchase] readiness failed", error);
+        return json({
+          ok: false,
+          ready: false,
+          error: "play_payments_unavailable",
+        }, 503);
+      }
+    }
+
+    const productId = body.product_id?.trim() || "";
+    const purchaseToken = body.purchase_token?.trim() || "";
+    const packageName = body.package_name?.trim() || ANDROID_PACKAGE_NAME;
+    const requestedPurchaseType = body.purchase_type;
+    if (!productId || !purchaseToken) {
+      return json({ error: "missing_purchase_fields" }, 400);
+    }
+    if (packageName !== ANDROID_PACKAGE_NAME) {
+      return json({ error: "invalid_package" }, 400);
+    }
+
+    const entitlement = getProductEntitlement(productId);
+    if (!entitlement) return json({ error: "unknown_product" }, 400);
+    if (
+      requestedPurchaseType &&
+      requestedPurchaseType !== entitlement.purchaseType
+    ) {
+      return json({ error: "purchase_type_mismatch" }, 400);
+    }
+
+    const admin = createClient(SUPABASE_URL, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const tokenHash = await sha256(purchaseToken);
+    const googleAccessToken = await googlePlayAccessToken();
+    let purchase: unknown;
+    try {
+      purchase = entitlement.purchaseType === "subscription"
+        ? await loadGoogleSubscription(
+          packageName,
+          purchaseToken,
+          googleAccessToken,
+        )
+        : await loadGoogleProduct(
+          packageName,
+          productId,
+          purchaseToken,
+          googleAccessToken,
+        );
+    } catch (error) {
+      const recoveredProfile = await recoverKnownConsumedPurchase(admin, {
+        error,
+        purchaseType: entitlement.purchaseType,
+        userId,
+        productId,
+        tokenHash,
+      });
+      if (recoveredProfile) {
+        return json({
+          ok: true,
+          store_finalized: true,
+          product_id: productId,
+          entitlement,
+          already_claimed: true,
+          credits_granted: 0,
+          profile: recoveredProfile,
+        });
+      }
+      throw error;
+    }
+    const verified = (entitlement.purchaseType === "subscription"
+      ? extractSubscriptionEntitlement(productId, purchase)
+      : extractInAppEntitlement(purchase)) as
+        | VerifiedPurchase
+        | PurchaseVerificationFailure;
+    if (!verified.ok) {
+      return json({ error: verified.error }, verified.status);
+    }
+
+    let accountBinding = validateGooglePlayAccountBinding({
+      purchaseType: entitlement.purchaseType,
+      purchase,
+      expectedBinding: expectedAccountBinding,
+    });
+    if (
+      !accountBinding.ok &&
+      accountBinding.error === "purchase_account_binding_required"
+    ) {
+      const predecessorTokens = entitlement.purchaseType === "subscription"
+        ? getGooglePlayPredecessorPurchaseTokens(purchase)
+        : [];
+      const allowedTokenHashes = [
+        tokenHash,
+        ...await Promise.all(predecessorTokens.map((token) =>
+          sha256(token)
+        )),
+      ];
+      const ownershipLedgers = await loadGooglePlayOwnershipLedgers(
+        admin,
+        allowedTokenHashes,
+      );
+      accountBinding = validateGooglePlayAccountBinding({
+        purchaseType: entitlement.purchaseType,
+        purchase,
+        expectedBinding: expectedAccountBinding,
+        userId,
+        allowedTokenHashes,
+        ownershipLedgers,
+      });
+    }
+    if (!accountBinding.ok) {
+      return json({ error: accountBinding.error }, accountBinding.status);
+    }
+
+    const expiry = verified.expiry;
+    const claimKey = buildGooglePlayClaimKey(
+      productId,
+      tokenHash,
+      verified.orderId,
+    );
+
+    const { data: applyResult, error: applyError } = await admin
+      .rpc("apply_android_purchase_entitlement_v2", {
+        p_user_id: userId,
+        p_claim_key: claimKey,
+        p_product_id: productId,
+        p_purchase_type: entitlement.purchaseType,
+        p_purchase_token_hash: tokenHash,
+        p_successful_order_id: verified.orderId,
+        p_expires_at: expiry || null,
+        p_quantity: verified.quantity || 1,
+        p_refundable_quantity: verified.refundableQuantity ?? 1,
+        p_credits: entitlement.credits,
+        p_subscription_type: entitlement.subscriptionType || null,
+        p_profile_plan: entitlement.profilePlan || null,
+        p_verified: entitlement.verified,
+      });
+    if (applyError) {
+      if (applyError.message?.includes("owned_by_other")) {
+        return json({ error: "owned_by_other" }, 409);
+      }
+      return json({
+        error: "entitlement_apply_failed",
+      }, 500);
+    }
+
+    let responseProfile = applyResult?.profile || null;
+    if (
+      entitlement.purchaseType === "subscription" &&
+      await closeLinkedGoogleSubscription(
+        admin,
+        userId,
+        purchase,
+        tokenHash,
+      )
+    ) {
+      const { data: reconciledProfile, error: profileError } = await admin
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .single();
+      if (profileError || !reconciledProfile) {
+        throw new Error("linked_subscription_profile_failed");
+      }
+      responseProfile = reconciledProfile;
+    }
+
+    let storeFinalized = false;
+    try {
+      await finalizeGooglePlayPurchase({
+        purchaseType: entitlement.purchaseType,
+        purchase,
+        packageName,
+        productId,
+        purchaseToken,
+        accessToken: googleAccessToken,
+      });
+      storeFinalized = true;
+    } catch (error) {
+      if (
+        entitlement.purchaseType === "inapp" &&
+        isGooglePlayFinalizationRace(error)
+      ) {
+        try {
+          const refreshed = await loadGoogleProduct(
+            packageName,
+            productId,
+            purchaseToken,
+            googleAccessToken,
+          ) as { consumptionState?: number };
+          storeFinalized = refreshed.consumptionState === 1;
+        } catch (reloadError) {
+          storeFinalized = isGooglePlayPurchaseGone(reloadError);
+        }
+      }
+      if (storeFinalized) {
+        return json({
+          ok: true,
+          store_finalized: true,
+          product_id: productId,
+          entitlement,
+          already_claimed: applyResult?.already_claimed === true,
+          credits_granted: applyResult?.credits_granted || 0,
+          profile: responseProfile,
+        });
+      }
+      console.error(
+        "[verify-play-purchase] Google finalization pending",
+        error instanceof Error ? error.message : "unknown_error",
+      );
+      return json({
+        ok: false,
+        error: "play_finalization_pending",
+        retryable: true,
+        entitlement_applied: true,
+        already_claimed: applyResult?.already_claimed === true,
+        credits_granted: applyResult?.credits_granted || 0,
+        profile: responseProfile,
+      }, 503);
+    }
+
+    return json({
+      ok: true,
+      store_finalized: true,
+      product_id: productId,
+      entitlement,
+      already_claimed: applyResult?.already_claimed === true,
+      credits_granted: applyResult?.credits_granted || 0,
+      profile: responseProfile,
+    });
+  } catch (error) {
+    console.error("[verify-play-purchase] verification failed", error);
+    return json({ error: "verify_exception" }, 500);
+  }
 });
 
-async function subscriptionUpdate(
-  admin: any,
-  userId: string,
-  productId: string,
-  now: string,
-  expiry: string
-): Promise<Record<string, unknown>> {
-  const plan = planEntitlements[productId];
-  if (!plan) return {};
+function json(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "content-type": "application/json" },
+  });
+}
 
-  const { data: current } = await admin
-    .from("profiles")
-    .select("credits,subscription_end_date")
-    .eq("id", userId)
+async function recoverKnownConsumedPurchase(
+  admin: SupabaseClient,
+  {
+    error,
+    purchaseType,
+    userId,
+    productId,
+    tokenHash,
+  }: {
+    error: unknown;
+    purchaseType: string;
+    userId: string;
+    productId: string;
+    tokenHash: string;
+  },
+): Promise<Record<string, unknown> | null> {
+  if (!isGooglePlayPurchaseGone(error) || purchaseType !== "inapp") return null;
+  const { data: ledger, error: ledgerError } = await admin
+    .from("iap_entitlements")
+    .select(
+      "user_id,app_account_token,product_id,purchase_type,purchase_token_hash,successful_order_id",
+    )
+    .eq("platform", "android")
+    .eq("user_id", userId)
+    .eq("product_id", productId)
+    .eq("purchase_token_hash", tokenHash)
     .maybeSingle();
+  if (ledgerError) throw new Error("known_purchase_lookup_failed");
+  if (
+    !canRecoverKnownConsumedPurchase({
+      purchaseType,
+      googleStatus: (error as { status?: number })?.status,
+      ledger,
+      userId,
+      productId,
+      tokenHash,
+    })
+  ) return null;
 
-  const currentExpiry = Date.parse((current?.subscription_end_date as string | undefined) || "");
-  const newExpiry = Date.parse(expiry);
-  const shouldGrantCredits = Number.isNaN(currentExpiry) || newExpiry > currentExpiry;
+  const { data: profile, error: profileError } = await admin
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .single();
+  if (profileError || !profile) {
+    throw new Error("known_purchase_profile_failed");
+  }
+  return profile as Record<string, unknown>;
+}
 
-  return {
-    plan: plan.profilePlan,
-    credits: Number(current?.credits || 0) + (shouldGrantCredits ? plan.credits : 0),
-    subscription_type: plan.subscriptionType,
-    subscription_date: now,
-    subscription_end_date: expiry
+async function loadGooglePlayOwnershipLedgers(
+  admin: SupabaseClient,
+  tokenHashes: string[],
+): Promise<Array<Record<string, unknown>>> {
+  const uniqueHashes = [...new Set(tokenHashes.filter(Boolean))];
+  if (uniqueHashes.length === 0) return [];
+  const { data, error } = await admin
+    .from("iap_entitlements")
+    .select("user_id,app_account_token,purchase_token_hash")
+    .eq("platform", "android")
+    .in("purchase_token_hash", uniqueHashes);
+  if (error) throw new Error("purchase_owner_lookup_failed");
+  return (data || []) as Array<Record<string, unknown>>;
+}
+
+async function closeLinkedGoogleSubscription(
+  admin: SupabaseClient,
+  userId: string,
+  purchase: unknown,
+  replacementTokenHash: string,
+): Promise<boolean> {
+  const typed = purchase as {
+    linkedPurchaseToken?: unknown;
+    startTime?: unknown;
   };
+  if (
+    typeof typed.linkedPurchaseToken !== "string" ||
+    typed.linkedPurchaseToken.length === 0
+  ) {
+    return false;
+  }
+  const linkedTokenHash = await sha256(typed.linkedPurchaseToken);
+  const parsedStart = typeof typed.startTime === "string"
+    ? Date.parse(typed.startTime)
+    : Number.NaN;
+  const effectiveTime = Number.isFinite(parsedStart)
+    ? new Date(parsedStart).toISOString()
+    : new Date().toISOString();
+  const { error } = await admin.rpc("close_android_linked_subscription", {
+    p_user_id: userId,
+    p_linked_purchase_token_hash: linkedTokenHash,
+    p_replacement_purchase_token_hash: replacementTokenHash,
+    p_effective_time: effectiveTime,
+  });
+  if (error) throw new Error("linked_subscription_close_failed");
+  return true;
 }
 
-function extractEntitlement(
-  requestedProductId: string,
-  purchase: any
-): { ok: true; expiry: string } | { ok: false; status: number; error: string } {
-  const state = purchase?.subscriptionState;
-  const activeStates = new Set(["SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIOD"]);
-  if (state && !activeStates.has(state)) {
-    return { ok: false, status: 402, error: `purchase not active: ${state}` };
+class GooglePlayApiError extends Error {
+  constructor(readonly status: number) {
+    super(`google_play_api_failed:${status}`);
   }
-  const lineItems = Array.isArray(purchase?.lineItems) ? purchase.lineItems : [];
-  const matching = lineItems.find((item: any) => item?.productId === requestedProductId) || lineItems[0];
-  const expiry = matching?.expiryTime;
-  if (!matching || !expiry) return { ok: false, status: 402, error: "purchase not active" };
-  if (matching.productId && matching.productId !== requestedProductId) {
-    return { ok: false, status: 400, error: "product mismatch" };
-  }
-  if (Date.parse(expiry) <= Date.now()) return { ok: false, status: 402, error: "purchase expired" };
-  return { ok: true, expiry };
 }
 
-async function loadGoogleSubscription(packageName: string, purchaseToken: string, accessToken: string): Promise<unknown> {
-  const url = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(packageName)}/purchases/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}`;
+async function loadGoogleSubscription(
+  packageName: string,
+  purchaseToken: string,
+  accessToken: string,
+): Promise<unknown> {
+  const url =
+    `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${
+      encodeURIComponent(packageName)
+    }/purchases/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}`;
   const response = await fetch(url, {
-    headers: { authorization: `Bearer ${accessToken}` }
+    headers: { authorization: `Bearer ${accessToken}` },
   });
   const text = await response.text();
-  if (!response.ok) throw new Error(`Google Play purchase error ${response.status}: ${text}`);
+  if (!response.ok) {
+    void text;
+    throw new GooglePlayApiError(response.status);
+  }
+  return JSON.parse(text);
+}
+
+async function loadGoogleProduct(
+  packageName: string,
+  productId: string,
+  purchaseToken: string,
+  accessToken: string,
+): Promise<unknown> {
+  const url =
+    `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${
+      encodeURIComponent(packageName)
+    }/purchases/products/${encodeURIComponent(productId)}/tokens/${
+      encodeURIComponent(purchaseToken)
+    }`;
+  const response = await fetch(url, {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    void text;
+    throw new GooglePlayApiError(response.status);
+  }
   return JSON.parse(text);
 }
 
@@ -171,17 +516,22 @@ async function googlePlayAccessToken(): Promise<string> {
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion
-    })
+      assertion,
+    }),
   });
   const data = await response.json();
   if (!response.ok || !data.access_token) {
-    throw new Error(`Google token error ${response.status}: ${JSON.stringify(data)}`);
+    throw new Error(
+      `Google token error ${response.status}: ${JSON.stringify(data)}`,
+    );
   }
   return data.access_token as string;
 }
 
-async function serviceAccountJwt(account: GoogleServiceAccount, audience: string): Promise<string> {
+async function serviceAccountJwt(
+  account: GoogleServiceAccount,
+  audience: string,
+): Promise<string> {
   const key = await importRS256(account.private_key);
   return await jwtCreate(
     { alg: "RS256", typ: "JWT" },
@@ -190,9 +540,9 @@ async function serviceAccountJwt(account: GoogleServiceAccount, audience: string
       scope: ANDROID_PUBLISHER_SCOPE,
       aud: audience,
       iat: getNumericDate(0),
-      exp: getNumericDate(3600)
+      exp: getNumericDate(3600),
     },
-    key
+    key,
   );
 }
 
@@ -207,6 +557,14 @@ async function importRS256(pem: string): Promise<CryptoKey> {
     der.buffer,
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false,
-    ["sign"]
+    ["sign"],
   );
+}
+
+async function sha256(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(hash)).map((b) =>
+    b.toString(16).padStart(2, "0")
+  ).join("");
 }

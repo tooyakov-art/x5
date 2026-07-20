@@ -14,6 +14,23 @@ struct HubSpecialist: Codable, Identifiable, Hashable {
     let socialLinks: SocialLinks?
     let isVerified: Bool?
     let verifiedUntil: String?
+    var subscriptionEndDate: String? = nil
+
+    var isPro: Bool {
+        UserProfile.isPaidPlanActive(plan: plan, endDate: subscriptionEndDate)
+    }
+
+    var hasActiveVerifiedBadge: Bool {
+        hasActiveVerifiedBadge(at: Date())
+    }
+
+    func hasActiveVerifiedBadge(at now: Date) -> Bool {
+        UserProfile.isVerifiedBadgeActive(
+            isVerified: isVerified,
+            until: verifiedUntil,
+            now: now
+        )
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, name, nickname, avatar, bio, plan, services
@@ -21,6 +38,7 @@ struct HubSpecialist: Codable, Identifiable, Hashable {
         case socialLinks = "social_links"
         case isVerified = "is_verified"
         case verifiedUntil = "verified_until"
+        case subscriptionEndDate = "subscription_end_date"
     }
 }
 
@@ -116,6 +134,15 @@ enum HubCategories {
         .init(id: "other", emoji: "🔧", labelEn: "Other", labelRu: "Другое", labelKk: "Басқа")
     ]
 
+    static var hubDisplayOrder: [HubCategory] {
+        var categories = all
+        guard let seoIndex = categories.firstIndex(where: { $0.id == "seo" }),
+              let ugcIndex = categories.firstIndex(where: { $0.id == "ugc" })
+        else { return categories }
+        categories.swapAt(seoIndex, ugcIndex)
+        return categories
+    }
+
     static func label(for id: String?) -> String {
         guard let id else { return "Other" }
         return all.first(where: { $0.id == id })?.labelEn ?? id.capitalized
@@ -177,18 +204,30 @@ enum HubCategories {
 final class HubService: ObservableObject {
     @Published private(set) var specialists: [HubSpecialist] = []
     @Published private(set) var tasks: [HubTask] = []
+    @Published private(set) var myTasks: [HubTask] = []
     @Published private(set) var isLoading: Bool = false
     @Published private(set) var error: String?
 
-    private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
-    private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
+    private let session: URLSession
+    private let baseURL: URL
+    private let anonKey: String
+
+    init(
+        session: URLSession = .shared,
+        baseURL: URL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!,
+        anonKey: String = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
+    ) {
+        self.session = session
+        self.baseURL = baseURL
+        self.anonKey = anonKey
+    }
 
     func loadSpecialists() async {
         isLoading = true
         defer { isLoading = false }
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
-            URLQueryItem(name: "select", value: "id,name,nickname,avatar,bio,specialist_category,plan,services,social_links,is_verified,verified_until"),
+            URLQueryItem(name: "select", value: "id,name,nickname,avatar,bio,specialist_category,plan,services,social_links,is_verified,verified_until,subscription_end_date"),
             URLQueryItem(name: "show_in_hub", value: "eq.true"),
             URLQueryItem(name: "is_public", value: "eq.true"),
             URLQueryItem(name: "order", value: "created_at.desc")
@@ -220,6 +259,116 @@ final class HubService: ObservableObject {
             tasks = (try? JSONDecoder().decode([HubTask].self, from: data)) ?? []
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    // MARK: - Owner task management
+
+    /// Loads every task owned by the signed-in author, including inactive and
+    /// completed rows. The explicit owner filter complements server-side RLS.
+    @discardableResult
+    func loadMyTasks(authorId: String, accessToken: String) async -> [HubTask] {
+        isLoading = true
+        error = nil
+        defer { isLoading = false }
+
+        do {
+            let request = try makeOwnedTaskRequest(
+                method: "GET",
+                authorId: authorId,
+                accessToken: accessToken,
+                extraQueryItems: [
+                    URLQueryItem(name: "select", value: "*"),
+                    URLQueryItem(name: "order", value: "created_at.desc")
+                ]
+            )
+            let rows = try await taskRows(for: request)
+            myTasks = rows
+            return rows
+        } catch {
+            self.error = error.localizedDescription
+            return []
+        }
+    }
+
+    /// Updates an existing owned row. This deliberately uses PATCH, never the
+    /// create-task POST path, so editing cannot duplicate a task.
+    @discardableResult
+    func updateTask(
+        taskId: String,
+        authorId: String,
+        title: String,
+        description: String,
+        budget: String,
+        category: String,
+        deadline: Date?,
+        accessToken: String
+    ) async -> HubTask? {
+        var body: [String: Any] = [
+            "title": title,
+            "description": description,
+            "budget": budget,
+            "category": category,
+            "deadline": NSNull()
+        ]
+        if let deadline {
+            body["deadline"] = Self.iso8601String(from: deadline)
+        }
+
+        return await mutateOwnedTask(
+            method: "PATCH",
+            taskId: taskId,
+            authorId: authorId,
+            body: body,
+            accessToken: accessToken
+        )
+    }
+
+    /// Changes only the publication state exposed by the owner UI.
+    @discardableResult
+    func setTaskActive(
+        taskId: String,
+        authorId: String,
+        isActive: Bool,
+        accessToken: String
+    ) async -> HubTask? {
+        let expectedStatus = isActive ? "cancelled" : "open"
+        return await mutateOwnedTask(
+            method: "PATCH",
+            taskId: taskId,
+            authorId: authorId,
+            body: ["status": isActive ? "open" : "cancelled"],
+            accessToken: accessToken,
+            expectedStatus: expectedStatus
+        )
+    }
+
+    /// Deletes only when PostgREST returns the exact owned row. A successful
+    /// HTTP response with an empty body means RLS or the filters matched none.
+    @discardableResult
+    func deleteTask(
+        taskId: String,
+        authorId: String,
+        accessToken: String
+    ) async -> Bool {
+        error = nil
+        do {
+            let request = try makeOwnedTaskRequest(
+                method: "DELETE",
+                authorId: authorId,
+                taskId: taskId,
+                accessToken: accessToken,
+                returnRepresentation: true
+            )
+            let rows = try await taskRows(for: request)
+            guard rows.contains(where: { $0.id == taskId && $0.authorId == authorId }) else {
+                return false
+            }
+            myTasks.removeAll(where: { $0.id == taskId })
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
         }
     }
 
@@ -334,6 +483,118 @@ final class HubService: ObservableObject {
             return (try? JSONDecoder().decode([TaskResponse].self, from: data)) ?? []
         } catch {
             return []
+        }
+    }
+
+    private func mutateOwnedTask(
+        method: String,
+        taskId: String,
+        authorId: String,
+        body: [String: Any],
+        accessToken: String,
+        expectedStatus: String? = nil
+    ) async -> HubTask? {
+        error = nil
+        do {
+            let request = try makeOwnedTaskRequest(
+                method: method,
+                authorId: authorId,
+                taskId: taskId,
+                accessToken: accessToken,
+                extraQueryItems: expectedStatus.map {
+                    [URLQueryItem(name: "status", value: "eq.\($0)")]
+                } ?? [],
+                body: body,
+                returnRepresentation: true
+            )
+            let rows = try await taskRows(for: request)
+            guard let task = rows.first(where: {
+                $0.id == taskId && $0.authorId == authorId
+            }) else { return nil }
+            replaceManagedTask(task)
+            return task
+        } catch {
+            self.error = error.localizedDescription
+            return nil
+        }
+    }
+
+    private func makeOwnedTaskRequest(
+        method: String,
+        authorId: String,
+        taskId: String? = nil,
+        accessToken: String,
+        extraQueryItems: [URLQueryItem] = [],
+        body: [String: Any]? = nil,
+        returnRepresentation: Bool = false
+    ) throws -> URLRequest {
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("rest/v1/tasks"),
+            resolvingAgainstBaseURL: false
+        )
+        var queryItems = [URLQueryItem(name: "author_id", value: "eq.\(authorId)")]
+        if let taskId {
+            queryItems.append(URLQueryItem(name: "id", value: "eq.\(taskId)"))
+        }
+        queryItems.append(contentsOf: extraQueryItems)
+        components?.queryItems = queryItems
+        guard let url = components?.url else {
+            throw HubTaskServiceError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        if returnRepresentation {
+            request.setValue("return=representation", forHTTPHeaderField: "Prefer")
+        }
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+        return request
+    }
+
+    private func taskRows(for request: URLRequest) async throws -> [HubTask] {
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw HubTaskServiceError.invalidResponse
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw HubTaskServiceError.httpStatus(http.statusCode)
+        }
+        return try JSONDecoder().decode([HubTask].self, from: data)
+    }
+
+    private func replaceManagedTask(_ task: HubTask) {
+        if let index = myTasks.firstIndex(where: { $0.id == task.id }) {
+            myTasks[index] = task
+        } else {
+            myTasks.insert(task, at: 0)
+        }
+    }
+
+    private static func iso8601String(from date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.string(from: date)
+    }
+}
+
+private enum HubTaskServiceError: LocalizedError {
+    case invalidURL
+    case invalidResponse
+    case httpStatus(Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL:
+            return "Invalid task request URL."
+        case .invalidResponse:
+            return "The task server returned an invalid response."
+        case .httpStatus(let status):
+            return "The task server returned HTTP \(status)."
         }
     }
 }

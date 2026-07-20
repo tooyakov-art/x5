@@ -1,0 +1,50 @@
+name: Google Play voided purchase reconciliation
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      start_time_millis:
+        description: Optional oldest voided purchase timestamp in milliseconds
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: google-play-voided-reconciliation
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ENDPOINT: https://afwznqjpshybmqhlewmy.supabase.co/functions/v1/google-play-notifications
+      SCAN_SECRET: ${{ secrets.GOOGLE_PLAY_VOIDED_SCAN_SECRET }}
+      REQUESTED_START: ${{ inputs.start_time_millis }}
+    steps:
+      - name: Reconcile Google Play voided purchases
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SCAN_SECRET:-}" ]]; then
+            echo "::notice::GOOGLE_PLAY_VOIDED_SCAN_SECRET is not configured; scan skipped safely."
+            exit 0
+          fi
+
+          if [[ -n "${REQUESTED_START:-}" ]]; then
+            payload=$(jq -nc --arg start "$REQUESTED_START" \
+              '{action:"scan_voided_purchases",start_time_millis:$start}')
+          else
+            payload='{"action":"scan_voided_purchases"}'
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-all-errors \
+            --request POST "$ENDPOINT" \
+            --header "content-type: application/json" \
+            --header "x-google-play-scan-secret: $SCAN_SECRET" \
+            --data "$payload"

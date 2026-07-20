@@ -10,6 +10,14 @@ on:
         description: "Build number to inspect"
         required: true
         default: "64"
+      action:
+        description: "Read only, or guarded assignment to internal groups 123 and 321"
+        required: true
+        type: choice
+        default: "inspect"
+        options:
+          - inspect
+          - assign_internal_groups
 
 jobs:
   status:
@@ -22,10 +30,18 @@ jobs:
       BUNDLE_ID: com.x5studio.app
       BUILD_NUMBER: ${{ inputs.build_number }}
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: pip install pyjwt[crypto] requests
+      - name: Assign build to approved internal groups
+        if: ${{ inputs.action == 'assign_internal_groups' }}
+        run: |
+          python scripts/asc_assign_testflight_groups.py \
+            --build "$BUILD_NUMBER" \
+            --group "123" \
+            --group "321"
       - name: Check TF status
         run: |
           python <<'PY'
@@ -119,4 +135,38 @@ jobs:
                       for gb in gbuilds[:3]:
                           ga2 = gb.get("attributes", {})
                           print(f"    - build {ga2.get('version')} state={ga2.get('processingState')}")
+
+          # 6. External-testing prerequisites. Only completeness flags are
+          # printed; contact/demo values remain private.
+          rl = requests.get(
+              f"{base}/apps/{app_id}/betaAppLocalizations?limit=50", headers=h
+          )
+          print(f"\n=== betaAppLocalizations HTTP {rl.status_code} ===")
+          if rl.status_code == 200:
+              for loc in rl.json().get("data", []):
+                  la = loc.get("attributes", {})
+                  print(
+                      f"  locale={la.get('locale')} "
+                      f"description_present={bool(str(la.get('description') or '').strip())}"
+                  )
+
+          rr = requests.get(f"{base}/apps/{app_id}/betaAppReviewDetail", headers=h)
+          print(f"\n=== betaAppReviewDetail HTTP {rr.status_code} ===")
+          if rr.status_code == 200 and rr.json().get("data"):
+              ra = rr.json()["data"].get("attributes", {})
+              required = ["contactFirstName", "contactLastName", "contactPhone", "contactEmail"]
+              print(f"  contact_complete={all(bool(str(ra.get(k) or '').strip()) for k in required)}")
+              print(f"  notes_present={bool(str(ra.get('notes') or '').strip())}")
+
+          rs = requests.get(
+              f"{base}/betaAppReviewSubmissions",
+              headers=h,
+              params={"filter[build]": build["id"], "limit": 20},
+          )
+          print(f"\n=== betaAppReviewSubmissions HTTP {rs.status_code} ===")
+          if rs.status_code == 200:
+              submissions = rs.json().get("data", [])
+              print(f"  count={len(submissions)}")
+              for submission in submissions:
+                  print(f"  state={submission.get('attributes', {}).get('betaReviewState')}")
           PY
