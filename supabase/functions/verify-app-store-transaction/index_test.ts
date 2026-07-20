@@ -1,9 +1,20 @@
 import {
+  appleOnlineChecksEnabled,
+  appleVerificationDiagnosticCode,
   AppleVerificationError,
   createHandler,
   EntitlementApplyError,
   type HandlerDependencies,
 } from "./index.ts";
+import {
+  VerificationException,
+  VerificationStatus,
+} from "@apple/app-store-server-library";
+
+Deno.test("Apple online certificate checks stay enabled only for Production", () => {
+  assertEquals(appleOnlineChecksEnabled("Production"), true);
+  assertEquals(appleOnlineChecksEnabled("Sandbox"), false);
+});
 
 function assert(
   condition: unknown,
@@ -517,7 +528,10 @@ Deno.test("handler distinguishes retryable Apple verification failures", async (
     post({ signed_transaction: signedTransaction() }),
   );
   assertEquals(invalid.status, 400);
-  assertEquals((await invalid.json()).error, "invalid_apple_transaction");
+  assertEquals(
+    (await invalid.json()).error,
+    "invalid_apple_transaction_unknown_verification_status",
+  );
 });
 
 Deno.test("Apple verification failures retain only the safe status code", async () => {
@@ -540,6 +554,28 @@ Deno.test("Apple verification failures retain only the safe status code", async 
   assertEquals(
     (logged[0] as AppleVerificationError).diagnosticCode,
     "INVALID_APP_IDENTIFIER",
+  );
+  assertEquals(
+    (await response.clone().json()).error,
+    "invalid_apple_transaction_invalid_app_identifier",
+  );
+});
+
+Deno.test("Apple verification diagnostics distinguish trust-chain failures", () => {
+  assertEquals(
+    appleVerificationDiagnosticCode(
+      new VerificationException(VerificationStatus.VERIFICATION_FAILURE),
+    ),
+    "VERIFICATION_FAILURE_NO_CAUSE",
+  );
+  assertEquals(
+    appleVerificationDiagnosticCode(
+      new VerificationException(
+        VerificationStatus.VERIFICATION_FAILURE,
+        new Error("invalid signature"),
+      ),
+    ),
+    "VERIFICATION_FAILURE_INVALID_SIGNATURE",
   );
 });
 

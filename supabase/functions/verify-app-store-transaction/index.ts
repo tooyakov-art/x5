@@ -177,7 +177,9 @@ export function createHandler(
           }, 503)
           : jsonResponse({
             status: "rejected",
-            error: "invalid_apple_transaction",
+            error: `invalid_apple_transaction_${
+              safeAppleVerificationCode(error.diagnosticCode)
+            }`,
           }, 400);
       }
       if (error instanceof EntitlementApplyError) {
@@ -188,6 +190,27 @@ export function createHandler(
       return jsonResponse({ status: "rejected", error: "server_error" }, 500);
     }
   };
+}
+
+function safeAppleVerificationCode(code: string): string {
+  switch (code) {
+    case "VERIFICATION_FAILURE":
+    case "VERIFICATION_FAILURE_NO_CAUSE":
+    case "VERIFICATION_FAILURE_INVALID_SIGNATURE":
+    case "VERIFICATION_FAILURE_INVALID_JWT":
+    case "VERIFICATION_FAILURE_TYPE_ERROR":
+    case "VERIFICATION_FAILURE_OTHER_CAUSE":
+    case "INVALID_APP_IDENTIFIER":
+    case "INVALID_ENVIRONMENT":
+    case "INVALID_CHAIN_LENGTH":
+    case "INVALID_CERTIFICATE":
+    case "FAILURE":
+    case "UNKNOWN_VERIFICATION_STATUS":
+    case "UNKNOWN_VERIFICATION_ERROR":
+      return code.toLowerCase();
+    default:
+      return "unknown_verification_status";
+  }
 }
 
 function bearerToken(authorization: string | null): string | null {
@@ -248,7 +271,7 @@ function getAppleVerifier(
   try {
     verifier = new SignedDataVerifier(
       getAppleRootCertificates(),
-      true,
+      appleOnlineChecksEnabled(environment),
       verifierEnvironment,
       APP_BUNDLE_ID,
       appAppleId,
@@ -258,6 +281,17 @@ function getAppleVerifier(
   }
   appleVerifiers.set(environment, verifier);
   return verifier;
+}
+
+// StoreKit signs both TestFlight and App Review transactions as Sandbox.
+// Apple's verifier still validates the complete certificate chain, Apple OIDs,
+// JWS signature, bundle id and environment when online checks are disabled; it
+// uses the JWS signedDate for certificate validity and skips only live OCSP.
+// Keep live OCSP mandatory for real Production purchases.
+export function appleOnlineChecksEnabled(
+  environment: AppStoreEnvironment,
+): boolean {
+  return environment === "Production";
 }
 
 async function verifySignedTransaction(
@@ -270,11 +304,36 @@ async function verifySignedTransaction(
   } catch (error) {
     const retryable = error instanceof VerificationException &&
       error.status === VerificationStatus.RETRYABLE_VERIFICATION_FAILURE;
-    const diagnosticCode = error instanceof VerificationException
-      ? VerificationStatus[error.status] ?? "UNKNOWN_VERIFICATION_STATUS"
-      : "UNKNOWN_VERIFICATION_ERROR";
+    const diagnosticCode = appleVerificationDiagnosticCode(error);
     throw new AppleVerificationError(retryable, diagnosticCode);
   }
+}
+
+export function appleVerificationDiagnosticCode(error: unknown): string {
+  if (!(error instanceof VerificationException)) {
+    return "UNKNOWN_VERIFICATION_ERROR";
+  }
+
+  const status = VerificationStatus[error.status] ??
+    "UNKNOWN_VERIFICATION_STATUS";
+  if (error.status !== VerificationStatus.VERIFICATION_FAILURE) return status;
+
+  const cause = error.cause;
+  if (!(cause instanceof Error)) return `${status}_NO_CAUSE`;
+
+  const message = cause.message.toLowerCase();
+  if (message.includes("invalid signature")) {
+    return `${status}_INVALID_SIGNATURE`;
+  }
+  if (
+    message.includes("jwt malformed") ||
+    message.includes("invalid token") ||
+    message.includes("invalid algorithm")
+  ) {
+    return `${status}_INVALID_JWT`;
+  }
+  if (cause.name === "TypeError") return `${status}_TYPE_ERROR`;
+  return `${status}_OTHER_CAUSE`;
 }
 
 function publicSupabaseKey(): string {
