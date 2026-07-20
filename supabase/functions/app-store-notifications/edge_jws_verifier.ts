@@ -1,16 +1,11 @@
 import { Buffer } from "node:buffer";
 import {
-  type KeyObject,
-  verify as verifySignature,
-  X509Certificate,
-} from "node:crypto";
-import {
   Environment,
   SignedDataVerifier,
   VerificationException,
   VerificationStatus,
 } from "@apple/app-store-server-library";
-import { X509 } from "jsrsasign";
+import { KJUR, X509 } from "jsrsasign";
 
 interface PayloadValidator<T> {
   validate(value: unknown): value is T;
@@ -61,9 +56,9 @@ function parseJSONSegment(value: string): unknown {
   return JSON.parse(decodeBase64URL(value).toString("utf8"));
 }
 
-function parseCertificate(certificate: X509Certificate): X509 {
+export function parseCertificateBytes(certificateBytes: Uint8Array): X509 {
   const parsed = new X509();
-  parsed.readCertHex(Buffer.from(certificate.raw).toString("hex"));
+  parsed.readCertHex(Buffer.from(certificateBytes).toString("hex"));
   return parsed;
 }
 
@@ -143,28 +138,40 @@ function verifiesCertificateSignature(
  * JWS signature is checked directly with the verified P-256 leaf key.
  */
 export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
-  protected override verifyCertificateChain(
-    trustedRoots: X509Certificate[],
-    leaf: X509Certificate,
-    intermediate: X509Certificate,
+  private readonly edgeRootCertificates: X509[];
+
+  constructor(
+    appleRootCertificates: Buffer[],
+    enableOnlineChecks: boolean,
+    environment: Environment,
+    bundleId: string,
+    appAppleId?: number,
+  ) {
+    // The base verifier's root list is deliberately empty so its constructor
+    // never instantiates Node X509Certificate objects in the Edge runtime.
+    super([], enableOnlineChecks, environment, bundleId, appAppleId);
+    this.edgeRootCertificates = appleRootCertificates.map(
+      parseCertificateBytes,
+    );
+  }
+
+  protected verifyEdgeCertificateChain(
+    leafCertificate: X509,
+    intermediateCertificate: X509,
     effectiveDate: Date,
-  ): Promise<KeyObject> {
+  ): X509 {
     if (this.enableOnlineChecks) {
       throw new VerificationException(
         VerificationStatus.RETRYABLE_VERIFICATION_FAILURE,
       );
     }
 
-    let runtimeStage = "leaf_parse";
+    let runtimeStage = "root_parse";
     try {
-      const leafCertificate = parseCertificate(leaf);
-      runtimeStage = "intermediate_parse";
-      const intermediateCertificate = parseCertificate(intermediate);
       let trustedRootCertificate: X509 | undefined;
 
-      for (const trustedRoot of trustedRoots) {
+      for (const rootCertificate of this.edgeRootCertificates) {
         runtimeStage = "root_parse";
-        const rootCertificate = parseCertificate(trustedRoot);
         runtimeStage = "root_signature";
         if (
           intermediateCertificate.getIssuerHex() ===
@@ -205,8 +212,7 @@ export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
       checkCertificateDates(leafCertificate, effectiveDate);
       checkCertificateDates(intermediateCertificate, effectiveDate);
       checkCertificateDates(trustedRootCertificate, effectiveDate);
-      runtimeStage = "leaf_public_key";
-      return Promise.resolve(leaf.publicKey);
+      return leafCertificate;
     } catch (error) {
       if (error instanceof VerificationException) throw error;
       throw new VerificationException(
@@ -216,7 +222,7 @@ export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
     }
   }
 
-  protected override async verifyJWT<T>(
+  protected override verifyJWT<T>(
     jwt: string,
     validator: PayloadValidator<T>,
     signedDateExtractor: (decodedJWT: T) => Date,
@@ -241,11 +247,11 @@ export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
         this.environment === Environment.XCODE ||
         this.environment === Environment.LOCAL_TESTING
       ) {
-        return decodedJWT;
+        return Promise.resolve(decodedJWT);
       }
 
-      let leaf: X509Certificate;
-      let intermediate: X509Certificate;
+      let leafCertificate: X509;
+      let intermediateCertificate: X509;
       try {
         runtimeStage = "header_decode";
         const header = parseJSONSegment(segments[0]);
@@ -265,8 +271,12 @@ export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
         if (!chain.every((certificate) => typeof certificate === "string")) {
           throw new Error("invalid_apple_certificate_chain");
         }
-        leaf = new X509Certificate(decodeBase64Certificate(chain[0]));
-        intermediate = new X509Certificate(decodeBase64Certificate(chain[1]));
+        leafCertificate = parseCertificateBytes(
+          decodeBase64Certificate(chain[0]),
+        );
+        intermediateCertificate = parseCertificateBytes(
+          decodeBase64Certificate(chain[1]),
+        );
       } catch (error) {
         if (error instanceof VerificationException) throw error;
         throw new VerificationException(
@@ -280,17 +290,16 @@ export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
         ? new Date()
         : signedDateExtractor(decodedJWT);
       runtimeStage = "certificate_chain";
-      const publicKey: KeyObject = await this.verifyCertificateChain(
-        this.rootCertificates,
-        leaf,
-        intermediate,
+      const verifiedLeaf = this.verifyEdgeCertificateChain(
+        leafCertificate,
+        intermediateCertificate,
         effectiveDate,
       );
       runtimeStage = "key_constraints";
-      const namedCurve = publicKey.asymmetricKeyDetails?.namedCurve;
+      const publicKey = verifiedLeaf.getPublicKey();
       if (
-        publicKey.asymmetricKeyType !== "ec" ||
-        !["prime256v1", "secp256r1", "P-256"].includes(namedCurve ?? "")
+        !(publicKey instanceof KJUR.crypto.ECDSA) ||
+        publicKey.getShortNISTPCurveName() !== "P-256"
       ) {
         throw new VerificationException(
           VerificationStatus.VERIFICATION_FAILURE,
@@ -304,18 +313,13 @@ export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
         );
       }
       runtimeStage = "signature_verify";
-      const validSignature = verifySignature(
-        "sha256",
-        Buffer.from(`${segments[0]}.${segments[1]}`, "utf8"),
-        { key: publicKey, dsaEncoding: "ieee-p1363" },
-        signature,
-      );
+      const validSignature = KJUR.jws.JWS.verify(jwt, publicKey, ["ES256"]);
       if (!validSignature) {
         throw new VerificationException(
           VerificationStatus.VERIFICATION_FAILURE,
         );
       }
-      return decodedJWT;
+      return Promise.resolve(decodedJWT);
     } catch (error) {
       if (error instanceof VerificationException) throw error;
       throw new VerificationException(

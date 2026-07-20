@@ -73,8 +73,8 @@ Deno.test("runtime avoids live Apple OCSP that is incompatible with the Deno edg
 Deno.test("runtime verifies ES256 directly without Edge-incompatible key export", () => {
   assertMatch(
     edgeVerifierSource,
-    /verifySignature\(/,
-    "the notification runtime is not using direct ES256 verification",
+    /KJUR\.jws\.JWS\.verify\(\s*jwt,\s*publicKey,\s*\["ES256"\],?\s*\)/,
+    "the notification runtime is not using pure-JavaScript ES256 verification with an explicit algorithm allowlist",
   );
   assertNotMatch(
     edgeVerifierSource,
@@ -88,8 +88,18 @@ Deno.test("runtime verifies ES256 directly without Edge-incompatible key export"
   );
   assertMatch(
     edgeVerifierSource,
-    /protected override verifyCertificateChain\(/,
+    /protected verifyEdgeCertificateChain\(/,
     "the notification runtime does not provide an Edge-compatible certificate-chain verifier",
+  );
+  assertMatch(
+    edgeVerifierSource,
+    /super\(\[\], enableOnlineChecks, environment, bundleId, appAppleId\)/,
+    "the notification runtime still lets the Apple base class construct Node X.509 roots",
+  );
+  assertMatch(
+    edgeVerifierSource,
+    /edgeRootCertificates = appleRootCertificates\.map\(\s*parseCertificateBytes,?\s*\)/,
+    "the notification runtime does not retain pure-JavaScript trusted roots",
   );
   assertMatch(
     edgeVerifierSource,
@@ -98,8 +108,8 @@ Deno.test("runtime verifies ES256 directly without Edge-incompatible key export"
   );
   assertMatch(
     edgeVerifierSource,
-    /Buffer\.from\(certificate\.raw\)\.toString\("hex"\)/,
-    "the notification runtime assumes Edge X.509 raw bytes are a Node Buffer",
+    /readCertHex\(Buffer\.from\(certificateBytes\)\.toString\("hex"\)\)/,
+    "the notification runtime does not parse Apple header certificates directly with pure JavaScript",
   );
   assertMatch(
     edgeVerifierSource,
@@ -143,17 +153,12 @@ Deno.test("runtime verifies ES256 directly without Edge-incompatible key export"
   );
   assertMatch(
     edgeVerifierSource,
-    /dsaEncoding: "ieee-p1363"/,
-    "the notification runtime does not verify the JWS P1363 signature format",
-  );
-  assertMatch(
-    edgeVerifierSource,
-    /asymmetricKeyType !== "ec"/,
+    /publicKey instanceof KJUR\.crypto\.ECDSA/,
     "the notification runtime does not require an EC leaf key",
   );
   assertMatch(
     edgeVerifierSource,
-    /"prime256v1", "secp256r1", "P-256"/,
+    /getShortNISTPCurveName\(\) !== "P-256"/,
     "the notification runtime does not require the P-256 curve",
   );
   assertMatch(
@@ -174,6 +179,11 @@ Deno.test("runtime verifies ES256 directly without Edge-incompatible key export"
     edgeVerifierSource,
     /const canonical = decoded\.toString\("base64"\)[\s\S]*canonical !== value/,
     "JWS base64url trailing bits are not required to be canonical",
+  );
+  assertNotMatch(
+    edgeVerifierSource,
+    /from "node:crypto"|verify as verifySignature|leaf\.publicKey|asymmetricKeyDetails|dsaEncoding|\.raw/,
+    "the notification runtime still depends on Edge-incompatible Node certificate or signature operations",
   );
 });
 

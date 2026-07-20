@@ -1,8 +1,9 @@
 import { Buffer } from "node:buffer";
-import { X509Certificate } from "node:crypto";
 import { Environment } from "@apple/app-store-server-library";
+import { KJUR } from "jsrsasign";
 import {
   EdgeCompatibleSignedDataVerifier,
+  parseCertificateBytes,
   parseCertificateTime,
 } from "./edge_jws_verifier.ts";
 
@@ -21,7 +22,9 @@ function assertThrows(callback: () => unknown): void {
   throw new Error("expected callback to throw");
 }
 
-async function assertRejects(callback: () => Promise<unknown>): Promise<void> {
+async function assertRejects(
+  callback: () => unknown | Promise<unknown>,
+): Promise<void> {
   try {
     await callback();
   } catch {
@@ -61,10 +64,9 @@ class ChainFixtureVerifier extends EdgeCompatibleSignedDataVerifier {
     intermediateBase64: string,
     effectiveDate: Date,
   ) {
-    return this.verifyCertificateChain(
-      this.rootCertificates,
-      new X509Certificate(Buffer.from(leafBase64, "base64")),
-      new X509Certificate(Buffer.from(intermediateBase64, "base64")),
+    return this.verifyEdgeCertificateChain(
+      parseCertificateBytes(Buffer.from(leafBase64, "base64")),
+      parseCertificateBytes(Buffer.from(intermediateBase64, "base64")),
       effectiveDate,
     );
   }
@@ -112,7 +114,7 @@ Deno.test("verifies Apple's real signing chain and rejects trust failures", asyn
     realIntermediate,
     new Date(1761962975000),
   );
-  assertEquals(key.asymmetricKeyType, "ec");
+  assertEquals(key.getPublicKey() instanceof KJUR.crypto.ECDSA, true);
 
   const tamperedLeaf = Buffer.from(realLeaf, "base64");
   tamperedLeaf[tamperedLeaf.length - 1] ^= 1;
