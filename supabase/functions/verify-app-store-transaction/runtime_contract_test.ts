@@ -57,8 +57,53 @@ Deno.test("runtime verifies ES256 directly without Edge-incompatible key export"
   );
   assertMatch(
     edgeVerifierSource,
-    /verifyCertificateChain\(/,
-    "the verified purchase runtime bypasses Apple's certificate-chain validation",
+    /protected override verifyCertificateChain\(/,
+    "the verified purchase runtime does not provide an Edge-compatible certificate-chain verifier",
+  );
+  assertMatch(
+    edgeVerifierSource,
+    /from "jsrsasign"/,
+    "the verified purchase runtime does not use the pure-JavaScript X.509 verifier",
+  );
+  assertMatch(
+    edgeVerifierSource,
+    /verifiesCertificateSignature\(\s*intermediateCertificate,/,
+    "the intermediate certificate signature is not verified",
+  );
+  assertMatch(
+    edgeVerifierSource,
+    /verifiesCertificateSignature\(\s*leafCertificate,/,
+    "the leaf certificate signature is not verified",
+  );
+  assertMatch(
+    edgeVerifierSource,
+    /getExtBasicConstraints\(\)/,
+    "the intermediate CA basic constraint is not verified",
+  );
+  assertMatch(
+    edgeVerifierSource,
+    /getSignatureAlgorithmField\(\)[\s\S]*getSignatureAlgorithmName\(\)/,
+    "certificate signature algorithm fields are not required to match",
+  );
+  assertMatch(
+    edgeVerifierSource,
+    /1\.2\.840\.113635\.100\.6\.11\.1/,
+    "Apple's leaf certificate extension is not required",
+  );
+  assertMatch(
+    edgeVerifierSource,
+    /1\.2\.840\.113635\.100\.6\.2\.1/,
+    "Apple's intermediate certificate extension is not required",
+  );
+  assertMatch(
+    edgeVerifierSource,
+    /getNotBefore\(\)[\s\S]*getNotAfter\(\)/,
+    "certificate validity dates are not checked",
+  );
+  assertNotMatch(
+    edgeVerifierSource,
+    /intermediate\.verify\(|leaf\.verify\(/,
+    "the verified purchase runtime still uses Edge-incompatible Node X509Certificate.verify",
   );
   assertMatch(
     edgeVerifierSource,
@@ -79,5 +124,19 @@ Deno.test("runtime verifies ES256 directly without Edge-incompatible key export"
     edgeVerifierSource,
     /signature\.length !== 64/,
     "the verified purchase runtime does not require a 64-byte ES256 signature",
+  );
+  if (
+    !edgeVerifierSource.includes(
+      "const strictBase64UrlPattern = /^[A-Za-z0-9_-]+$/;",
+    )
+  ) {
+    throw new Error(
+      "JWS segments are not restricted to strict unpadded base64url",
+    );
+  }
+  assertMatch(
+    edgeVerifierSource,
+    /const canonical = decoded\.toString\("base64"\)[\s\S]*canonical !== value/,
+    "JWS base64url trailing bits are not required to be canonical",
   );
 });
