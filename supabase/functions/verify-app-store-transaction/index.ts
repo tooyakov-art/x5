@@ -201,6 +201,15 @@ function safeAppleVerificationCode(code: string): string {
     case "VERIFICATION_FAILURE_INVALID_JWT":
     case "VERIFICATION_FAILURE_TYPE_ERROR":
     case "VERIFICATION_FAILURE_OTHER_CAUSE":
+    case "VERIFICATION_FAILURE_EDGE_SEGMENTS_RUNTIME":
+    case "VERIFICATION_FAILURE_EDGE_PAYLOAD_DECODE_RUNTIME":
+    case "VERIFICATION_FAILURE_EDGE_PAYLOAD_VALIDATE_RUNTIME":
+    case "VERIFICATION_FAILURE_EDGE_HEADER_DECODE_RUNTIME":
+    case "VERIFICATION_FAILURE_EDGE_EFFECTIVE_DATE_RUNTIME":
+    case "VERIFICATION_FAILURE_EDGE_CERTIFICATE_CHAIN_RUNTIME":
+    case "VERIFICATION_FAILURE_EDGE_KEY_CONSTRAINTS_RUNTIME":
+    case "VERIFICATION_FAILURE_EDGE_SIGNATURE_DECODE_RUNTIME":
+    case "VERIFICATION_FAILURE_EDGE_SIGNATURE_VERIFY_RUNTIME":
     case "INVALID_APP_IDENTIFIER":
     case "INVALID_ENVIRONMENT":
     case "INVALID_CHAIN_LENGTH":
@@ -314,6 +323,20 @@ export function appleVerificationDiagnosticCode(error: unknown): string {
   if (!(cause instanceof Error)) return `${status}_NO_CAUSE`;
 
   const message = cause.message.toLowerCase();
+  const edgeRuntimeStage: Record<string, string> = {
+    edge_jws_segments_runtime: "EDGE_SEGMENTS_RUNTIME",
+    edge_jws_payload_decode_runtime: "EDGE_PAYLOAD_DECODE_RUNTIME",
+    edge_jws_payload_validate_runtime: "EDGE_PAYLOAD_VALIDATE_RUNTIME",
+    edge_jws_header_decode_runtime: "EDGE_HEADER_DECODE_RUNTIME",
+    edge_jws_effective_date_runtime: "EDGE_EFFECTIVE_DATE_RUNTIME",
+    edge_jws_certificate_chain_runtime: "EDGE_CERTIFICATE_CHAIN_RUNTIME",
+    edge_jws_key_constraints_runtime: "EDGE_KEY_CONSTRAINTS_RUNTIME",
+    edge_jws_signature_decode_runtime: "EDGE_SIGNATURE_DECODE_RUNTIME",
+    edge_jws_signature_verify_runtime: "EDGE_SIGNATURE_VERIFY_RUNTIME",
+  };
+  const safeEdgeRuntimeStage = edgeRuntimeStage[message];
+  if (safeEdgeRuntimeStage) return `${status}_${safeEdgeRuntimeStage}`;
+
   if (message.includes("invalid signature")) {
     return `${status}_INVALID_SIGNATURE`;
   }

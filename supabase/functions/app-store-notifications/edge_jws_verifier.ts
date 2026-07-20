@@ -41,6 +41,7 @@ export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
     validator: PayloadValidator<T>,
     signedDateExtractor: (decodedJWT: T) => Date,
   ): Promise<T> {
+    let runtimeStage = "segments";
     try {
       const segments = jwt.split(".");
       if (
@@ -50,7 +51,9 @@ export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
         throw new VerificationException(VerificationStatus.FAILURE);
       }
 
+      runtimeStage = "payload_decode";
       const decodedJWT = parseJSONSegment(segments[1]);
+      runtimeStage = "payload_validate";
       if (!validator.validate(decodedJWT)) {
         throw new VerificationException(VerificationStatus.FAILURE);
       }
@@ -64,6 +67,7 @@ export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
       let leaf: X509Certificate;
       let intermediate: X509Certificate;
       try {
+        runtimeStage = "header_decode";
         const header = parseJSONSegment(segments[0]);
         if (
           typeof header !== "object" ||
@@ -91,15 +95,18 @@ export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
         );
       }
 
+      runtimeStage = "effective_date";
       const effectiveDate = this.enableOnlineChecks
         ? new Date()
         : signedDateExtractor(decodedJWT);
+      runtimeStage = "certificate_chain";
       const publicKey: KeyObject = await this.verifyCertificateChain(
         this.rootCertificates,
         leaf,
         intermediate,
         effectiveDate,
       );
+      runtimeStage = "key_constraints";
       const namedCurve = publicKey.asymmetricKeyDetails?.namedCurve;
       if (
         publicKey.asymmetricKeyType !== "ec" ||
@@ -109,12 +116,14 @@ export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
           VerificationStatus.VERIFICATION_FAILURE,
         );
       }
+      runtimeStage = "signature_decode";
       const signature = decodeBase64URL(segments[2]);
       if (signature.length !== 64) {
         throw new VerificationException(
           VerificationStatus.VERIFICATION_FAILURE,
         );
       }
+      runtimeStage = "signature_verify";
       const validSignature = verifySignature(
         "sha256",
         Buffer.from(`${segments[0]}.${segments[1]}`, "utf8"),
@@ -131,7 +140,7 @@ export class EdgeCompatibleSignedDataVerifier extends SignedDataVerifier {
       if (error instanceof VerificationException) throw error;
       throw new VerificationException(
         VerificationStatus.VERIFICATION_FAILURE,
-        error instanceof Error ? error : undefined,
+        new Error(`edge_jws_${runtimeStage}_runtime`),
       );
     }
   }

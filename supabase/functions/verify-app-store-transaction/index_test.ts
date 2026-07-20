@@ -577,6 +577,15 @@ Deno.test("Apple verification diagnostics distinguish trust-chain failures", () 
     ),
     "VERIFICATION_FAILURE_INVALID_SIGNATURE",
   );
+  assertEquals(
+    appleVerificationDiagnosticCode(
+      new VerificationException(
+        VerificationStatus.VERIFICATION_FAILURE,
+        new Error("edge_jws_certificate_chain_runtime"),
+      ),
+    ),
+    "VERIFICATION_FAILURE_EDGE_CERTIFICATE_CHAIN_RUNTIME",
+  );
 });
 
 Deno.test("handler reports the safe rejection code for production diagnostics", async () => {

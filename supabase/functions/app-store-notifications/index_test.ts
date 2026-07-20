@@ -1,4 +1,9 @@
 import {
+  VerificationException,
+  VerificationStatus,
+} from "@apple/app-store-server-library";
+import {
+  appleVerificationDiagnosticCode,
   AppleVerificationError,
   createHandler,
   NotificationApplyError,
@@ -469,6 +474,18 @@ Deno.test("Apple verification rejection exposes only phase and safe diagnostic c
   assertEquals(
     (await response.json()).error,
     "invalid_apple_notification_verification_failure_type_error",
+  );
+});
+
+Deno.test("Apple verification diagnostics expose only an allowlisted Edge stage", () => {
+  assertEquals(
+    appleVerificationDiagnosticCode(
+      new VerificationException(
+        VerificationStatus.VERIFICATION_FAILURE,
+        new Error("edge_jws_signature_verify_runtime"),
+      ),
+    ),
+    "VERIFICATION_FAILURE_EDGE_SIGNATURE_VERIFY_RUNTIME",
   );
 });
 
