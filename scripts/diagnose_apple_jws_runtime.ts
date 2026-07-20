@@ -76,6 +76,11 @@ try {
         payload.bundleId === BUNDLE_ID
       } environment=${payload.environment ?? "-"}`,
     );
+  } else if (Deno.env.get("PAYLOAD_KIND") === "renewal") {
+    const payload = await verifier.verifyAndDecodeRenewalInfo(signedPayload);
+    console.log(
+      `verified=renewal product_present=${Boolean(payload.productId)}`,
+    );
   } else {
     const payload = await verifier.verifyAndDecodeNotification(signedPayload);
     console.log(

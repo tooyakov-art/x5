@@ -59,12 +59,16 @@ jobs:
           decoded = decode_jws_payload(outer)
           data = decoded.get("data") or {}
           transaction = data.get("signedTransactionInfo")
+          renewal = data.get("signedRenewalInfo")
           if not isinstance(transaction, str):
               raise SystemExit("Selected notification has no signed transaction")
+          if not isinstance(renewal, str):
+              raise SystemExit("Selected notification has no signed renewal info")
           temp = Path(os.environ["RUNNER_TEMP"])
           (temp / "apple-notification.jws").write_text(outer, encoding="utf-8")
           (temp / "apple-transaction.jws").write_text(transaction, encoding="utf-8")
-          print("signed_payloads_prepared=2")
+          (temp / "apple-renewal.jws").write_text(renewal, encoding="utf-8")
+          print("signed_payloads_prepared=3")
           PY
       - name: Diagnose notification verifier under Deno
         env:
@@ -76,6 +80,11 @@ jobs:
           SIGNED_PAYLOAD_PATH: ${{ runner.temp }}/apple-transaction.jws
           PAYLOAD_KIND: transaction
         run: deno run --allow-env --allow-read --config supabase/functions/verify-app-store-transaction/deno.json scripts/diagnose_apple_jws_runtime.ts
+      - name: Diagnose renewal verifier under Deno
+        env:
+          SIGNED_PAYLOAD_PATH: ${{ runner.temp }}/apple-renewal.jws
+          PAYLOAD_KIND: renewal
+        run: deno run --allow-env --allow-read --config supabase/functions/app-store-notifications/deno.json scripts/diagnose_apple_jws_runtime.ts
       - name: Verify deployed webhook with the signed Apple sample
         shell: bash
         run: |
@@ -98,6 +107,10 @@ jobs:
               body = {}
           print(f"deployed_webhook_http_status={response.status_code}")
           print(f"deployed_webhook_status={body.get('status', '-')}")
+          print(
+              "deployed_webhook_error="
+              f"{body.get('error', body.get('reason', '-'))}"
+          )
           if response.status_code != 200:
               raise SystemExit("Deployed webhook rejected a genuine Apple notification")
           PY
