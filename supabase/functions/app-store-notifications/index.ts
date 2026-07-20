@@ -55,7 +55,11 @@ export interface NotificationHandlerDependencies {
 }
 
 export class AppleVerificationError extends Error {
-  constructor(readonly retryable: boolean) {
+  constructor(
+    readonly retryable: boolean,
+    readonly diagnosticCode = "UNKNOWN_VERIFICATION_ERROR",
+    readonly phase: "notification" | "transaction" | "renewal" = "notification",
+  ) {
     super("apple_verification_failed");
   }
 }
@@ -188,7 +192,9 @@ export function createHandler(
           }, 503)
           : jsonResponse({
             status: "rejected",
-            error: "invalid_apple_signature",
+            error: `invalid_apple_${error.phase}_${
+              safeAppleVerificationCode(error.diagnosticCode)
+            }`,
           }, 400);
       }
       if (error instanceof NotificationApplyError) {
@@ -201,6 +207,27 @@ export function createHandler(
       return jsonResponse({ status: "rejected", error: "server_error" }, 500);
     }
   };
+}
+
+function safeAppleVerificationCode(code: string): string {
+  switch (code) {
+    case "VERIFICATION_FAILURE":
+    case "VERIFICATION_FAILURE_NO_CAUSE":
+    case "VERIFICATION_FAILURE_INVALID_SIGNATURE":
+    case "VERIFICATION_FAILURE_INVALID_JWT":
+    case "VERIFICATION_FAILURE_TYPE_ERROR":
+    case "VERIFICATION_FAILURE_OTHER_CAUSE":
+    case "INVALID_APP_IDENTIFIER":
+    case "INVALID_ENVIRONMENT":
+    case "INVALID_CHAIN_LENGTH":
+    case "INVALID_CERTIFICATE":
+    case "FAILURE":
+    case "UNKNOWN_VERIFICATION_STATUS":
+    case "UNKNOWN_VERIFICATION_ERROR":
+      return code.toLowerCase();
+    default:
+      return "unknown_verification_status";
+  }
 }
 
 async function withResolvedNotificationUser<
@@ -308,11 +335,43 @@ function getAppleVerifier(
   return verifier;
 }
 
-function appleVerificationError(error: unknown): AppleVerificationError {
+function appleVerificationError(
+  error: unknown,
+  phase: "notification" | "transaction" | "renewal",
+): AppleVerificationError {
   return new AppleVerificationError(
     error instanceof VerificationException &&
       error.status === VerificationStatus.RETRYABLE_VERIFICATION_FAILURE,
+    appleVerificationDiagnosticCode(error),
+    phase,
   );
+}
+
+function appleVerificationDiagnosticCode(error: unknown): string {
+  if (!(error instanceof VerificationException)) {
+    return "UNKNOWN_VERIFICATION_ERROR";
+  }
+
+  const status = VerificationStatus[error.status] ??
+    "UNKNOWN_VERIFICATION_STATUS";
+  if (error.status !== VerificationStatus.VERIFICATION_FAILURE) return status;
+
+  const cause = error.cause;
+  if (!(cause instanceof Error)) return `${status}_NO_CAUSE`;
+
+  const message = cause.message.toLowerCase();
+  if (message.includes("invalid signature")) {
+    return `${status}_INVALID_SIGNATURE`;
+  }
+  if (
+    message.includes("jwt malformed") ||
+    message.includes("invalid token") ||
+    message.includes("invalid algorithm")
+  ) {
+    return `${status}_INVALID_JWT`;
+  }
+  if (cause.name === "TypeError") return `${status}_TYPE_ERROR`;
+  return `${status}_OTHER_CAUSE`;
 }
 
 async function verifyNotification(
@@ -324,7 +383,7 @@ async function verifyNotification(
       signedPayload,
     );
   } catch (error) {
-    throw appleVerificationError(error);
+    throw appleVerificationError(error, "notification");
   }
 }
 
@@ -337,7 +396,7 @@ async function verifyTransaction(
       signedTransaction,
     );
   } catch (error) {
-    throw appleVerificationError(error);
+    throw appleVerificationError(error, "transaction");
   }
 }
 
@@ -350,7 +409,7 @@ async function verifyRenewalInfo(
       signedRenewalInfo,
     );
   } catch (error) {
-    throw appleVerificationError(error);
+    throw appleVerificationError(error, "renewal");
   }
 }
 

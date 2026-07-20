@@ -451,6 +451,27 @@ Deno.test("invalid Apple signatures are rejected and retryable OCSP failures get
   }
 });
 
+Deno.test("Apple verification rejection exposes only phase and safe diagnostic code", async () => {
+  const handler = createHandler(dependencies({
+    verifyNotification: () =>
+      Promise.reject(
+        new AppleVerificationError(
+          false,
+          "VERIFICATION_FAILURE_TYPE_ERROR",
+          "notification",
+        ),
+      ),
+  }));
+  const response = await handler(
+    post({ signedPayload: unsignedNotification() }),
+  );
+  assertEquals(response.status, 400);
+  assertEquals(
+    (await response.json()).error,
+    "invalid_apple_notification_verification_failure_type_error",
+  );
+});
+
 Deno.test("database conflicts are not acknowledged as successful Apple delivery", async () => {
   const handler = createHandler(dependencies({
     applyNotification: () =>
