@@ -30,8 +30,67 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
       - run: pip install pyjwt[crypto] requests
       - name: Verify narrow recovery matcher
         run: python -m unittest scripts.tests.test_apple_notification_replay
+      - name: Prepare one signed Apple sample without logging it
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from scripts.apple_notification_replay import decode_jws_payload, fetch_history
+
+          history = fetch_history(
+              int(os.environ["HISTORY_START_MS"]),
+              int(os.environ["HISTORY_END_MS"]),
+          )
+          signed_payloads = [
+              item.get("signedPayload")
+              for item in history
+              if isinstance(item.get("signedPayload"), str)
+          ]
+          if not signed_payloads:
+              raise SystemExit("No signed Apple notification available for runtime diagnosis")
+          outer = signed_payloads[0]
+          decoded = decode_jws_payload(outer)
+          data = decoded.get("data") or {}
+          transaction = data.get("signedTransactionInfo")
+          if not isinstance(transaction, str):
+              raise SystemExit("Selected notification has no signed transaction")
+          temp = Path(os.environ["RUNNER_TEMP"])
+          (temp / "apple-notification.jws").write_text(outer, encoding="utf-8")
+          (temp / "apple-transaction.jws").write_text(transaction, encoding="utf-8")
+          print("signed_payloads_prepared=2")
+          PY
+      - name: Download Apple trust roots
+        shell: bash
+        run: |
+          curl --fail --silent --show-error \
+            https://www.apple.com/appleca/AppleIncRootCertificate.cer \
+            --output "$RUNNER_TEMP/AppleIncRootCertificate.cer"
+          curl --fail --silent --show-error \
+            https://www.apple.com/certificateauthority/AppleRootCA-G2.cer \
+            --output "$RUNNER_TEMP/AppleRootCA-G2.cer"
+          curl --fail --silent --show-error \
+            https://www.apple.com/certificateauthority/AppleRootCA-G3.cer \
+            --output "$RUNNER_TEMP/AppleRootCA-G3.cer"
+      - name: Diagnose notification verifier under Deno
+        continue-on-error: true
+        env:
+          SIGNED_PAYLOAD_PATH: ${{ runner.temp }}/apple-notification.jws
+          APPLE_ROOT_CA_PATHS: ${{ runner.temp }}/AppleIncRootCertificate.cer,${{ runner.temp }}/AppleRootCA-G2.cer,${{ runner.temp }}/AppleRootCA-G3.cer
+          PAYLOAD_KIND: notification
+        run: deno run --allow-env --allow-read --config supabase/functions/app-store-notifications/deno.json scripts/diagnose_apple_jws_runtime.ts
+      - name: Diagnose transaction verifier under Deno
+        continue-on-error: true
+        env:
+          SIGNED_PAYLOAD_PATH: ${{ runner.temp }}/apple-transaction.jws
+          APPLE_ROOT_CA_PATHS: ${{ runner.temp }}/AppleIncRootCertificate.cer,${{ runner.temp }}/AppleRootCA-G2.cer,${{ runner.temp }}/AppleRootCA-G3.cer
+          PAYLOAD_KIND: transaction
+        run: deno run --allow-env --allow-read --config supabase/functions/verify-app-store-transaction/deno.json scripts/diagnose_apple_jws_runtime.ts
       - name: Replay exact signed Apple notification
         run: python scripts/apple_notification_replay.py
