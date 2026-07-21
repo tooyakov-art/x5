@@ -1,4 +1,25 @@
 import Foundation
+import CoreTransferable
+import UniformTypeIdentifiers
+
+struct CourseGalleryVideo: Transferable {
+    let fileURL: URL
+    let originalFileName: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .movie) { received in
+            let stagedURL = try await CourseVideoStaging.stageAsync(
+                sourceURL: received.file,
+                lessonID: "photo-library"
+            )
+            let receivedName = received.file.lastPathComponent
+            return CourseGalleryVideo(
+                fileURL: stagedURL,
+                originalFileName: receivedName.isEmpty ? stagedURL.lastPathComponent : receivedName
+            )
+        }
+    }
+}
 
 enum CourseVideoStaging {
     private static let directoryName = "x5-course-videos"

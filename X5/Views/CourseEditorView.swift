@@ -1,6 +1,5 @@
 import SwiftUI
 import PhotosUI
-import UniformTypeIdentifiers
 
 private typealias EditableCategory = CourseCategoryDraft
 private typealias EditableDay = CourseDayDraft
@@ -743,8 +742,8 @@ private struct LessonEditorSheet: View {
     @State private var pendingVideoFileURL: URL?
     @State private var pendingVideoFileName: String?
     @State private var pendingThumbnailData: Data?
+    @State private var videoItem: PhotosPickerItem?
     @State private var thumbnailItem: PhotosPickerItem?
-    @State private var showingImporter = false
     @State private var uploading = false
     @State private var uploadingThumbnail = false
     @State private var errorText: String?
@@ -795,10 +794,8 @@ private struct LessonEditorSheet: View {
                         .autocorrectionDisabled()
                         .lineLimit(1...3)
 
-                    Button {
-                        showingImporter = true
-                    } label: {
-                        Label(videoImportTitle, systemImage: "square.and.arrow.up")
+                    PhotosPicker(selection: $videoItem, matching: .videos) {
+                        Label(videoImportTitle, systemImage: "photo.on.rectangle.angled")
                     }
                     .disabled(uploading)
 
@@ -840,18 +837,9 @@ private struct LessonEditorSheet: View {
                     .disabled(title.x5Trimmed.isEmpty || uploading || uploadingThumbnail)
                 }
             }
-            .fileImporter(
-                isPresented: $showingImporter,
-                allowedContentTypes: [.movie, .mpeg4Movie, .quickTimeMovie],
-                allowsMultipleSelection: false
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    guard let url = urls.first else { return }
-                    Task { await importVideo(url) }
-                case .failure(let error):
-                    errorText = error.localizedDescription
-                }
+            .onChange(of: videoItem) { newValue in
+                guard let newValue else { return }
+                Task { await importVideo(newValue) }
             }
             .onChange(of: thumbnailItem) { newValue in
                 guard let newValue else { return }
@@ -944,32 +932,31 @@ private struct LessonEditorSheet: View {
     }
 
     private var videoImportTitle: String {
-        if uploading { return "Загрузка..." }
-        if pendingVideoFileURL != nil || !videoUrl.x5Trimmed.isEmpty { return "Заменить видеофайл" }
-        return "Импортировать видеофайл"
+        if uploading { return "Подготовка видео..." }
+        if pendingVideoFileURL != nil || !videoUrl.x5Trimmed.isEmpty { return "Заменить видео из галереи" }
+        return "Выбрать видео из галереи"
     }
 
-    private func importVideo(_ url: URL) async {
+    private func importVideo(_ item: PhotosPickerItem) async {
         uploading = true
-        defer { uploading = false }
-        errorText = nil
-        let didAccess = url.startAccessingSecurityScopedResource()
         defer {
-            if didAccess { url.stopAccessingSecurityScopedResource() }
+            uploading = false
+            videoItem = nil
         }
+        errorText = nil
 
         do {
-            let stagedURL = try await CourseVideoStaging.stageAsync(
-                sourceURL: url,
-                lessonID: lesson.id
-            )
+            guard let imported = try await item.loadTransferable(type: CourseGalleryVideo.self) else {
+                errorText = "Не удалось прочитать видео из галереи."
+                return
+            }
             if pendingVideoFileURL != initialPendingVideoFileURL {
                 CourseVideoStaging.removeIfManaged(pendingVideoFileURL)
             }
-            pendingVideoFileURL = stagedURL
-            pendingVideoFileName = url.lastPathComponent
+            pendingVideoFileURL = imported.fileURL
+            pendingVideoFileName = imported.originalFileName
         } catch {
-            errorText = "Не удалось подготовить видеофайл: \(error.localizedDescription)"
+            errorText = "Не удалось подготовить видео из галереи: \(error.localizedDescription)"
         }
     }
 

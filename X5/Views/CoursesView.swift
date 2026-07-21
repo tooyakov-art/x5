@@ -1,5 +1,5 @@
 import SwiftUI
-import UniformTypeIdentifiers
+import PhotosUI
 
 struct CoursesView: View {
     @EnvironmentObject private var auth: Auth
@@ -1414,12 +1414,13 @@ private struct CourseSubmissionView: View {
     @State private var contact = ""
     @State private var videoFileURL: URL?
     @State private var videoFileName: String?
-    @State private var showingImporter = false
+    @State private var videoItem: PhotosPickerItem?
+    @State private var isImportingVideo = false
     @State private var isSending = false
     @State private var message: String?
 
     private var canSend: Bool {
-        !title.x5Trimmed.isEmpty && !description.x5Trimmed.isEmpty && !contact.x5Trimmed.isEmpty && videoFileURL != nil && !isSending
+        !title.x5Trimmed.isEmpty && !description.x5Trimmed.isEmpty && !contact.x5Trimmed.isEmpty && videoFileURL != nil && !isImportingVideo && !isSending
     }
 
     var body: some View {
@@ -1440,11 +1441,13 @@ private struct CourseSubmissionView: View {
                 }
 
                 Section("Видео") {
-                    Button {
-                        showingImporter = true
-                    } label: {
-                        Label(videoFileName == nil ? "Прикрепить видео" : "Заменить видео", systemImage: "video.badge.plus")
+                    PhotosPicker(selection: $videoItem, matching: .videos) {
+                        Label(
+                            isImportingVideo ? "Подготовка видео..." : (videoFileName == nil ? "Выбрать видео из галереи" : "Заменить видео из галереи"),
+                            systemImage: "photo.on.rectangle.angled"
+                        )
                     }
+                    .disabled(isImportingVideo || isSending)
 
                     if let videoFileName {
                         Label(videoFileName, systemImage: "film")
@@ -1467,7 +1470,8 @@ private struct CourseSubmissionView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") { dismiss() }
+                    Button("Отмена") { cancelAndDismiss() }
+                        .disabled(isImportingVideo || isSending)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
@@ -1478,22 +1482,41 @@ private struct CourseSubmissionView: View {
                     .disabled(!canSend)
                 }
             }
-            .fileImporter(
-                isPresented: $showingImporter,
-                allowedContentTypes: [.movie, .mpeg4Movie, .quickTimeMovie],
-                allowsMultipleSelection: false
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    guard let url = urls.first else { return }
-                    videoFileURL = url
-                    videoFileName = url.lastPathComponent
-                case .failure(let error):
-                    message = error.localizedDescription
-                }
+            .onChange(of: videoItem) { newValue in
+                guard let newValue else { return }
+                Task { await importVideo(newValue) }
             }
         }
         .preferredColorScheme(.dark)
+        .interactiveDismissDisabled(isImportingVideo || isSending)
+        .onDisappear { CourseVideoStaging.removeIfManaged(videoFileURL) }
+    }
+
+    private func importVideo(_ item: PhotosPickerItem) async {
+        isImportingVideo = true
+        defer {
+            isImportingVideo = false
+            videoItem = nil
+        }
+        message = nil
+
+        do {
+            guard let imported = try await item.loadTransferable(type: CourseGalleryVideo.self) else {
+                message = "Не удалось прочитать видео из галереи."
+                return
+            }
+            CourseVideoStaging.removeIfManaged(videoFileURL)
+            videoFileURL = imported.fileURL
+            videoFileName = imported.originalFileName
+        } catch {
+            message = "Не удалось подготовить видео из галереи: \(error.localizedDescription)"
+        }
+    }
+
+    private func cancelAndDismiss() {
+        CourseVideoStaging.removeIfManaged(videoFileURL)
+        videoFileURL = nil
+        dismiss()
     }
 
     private func send() async {
@@ -1530,6 +1553,8 @@ private struct CourseSubmissionView: View {
         if ok {
             X5Feedback.success()
             message = "Заявка отправлена. Проверим видео и напишем."
+            CourseVideoStaging.removeIfManaged(videoFileURL)
+            videoFileURL = nil
             try? await Task.sleep(nanoseconds: 700_000_000)
             dismiss()
         } else {
