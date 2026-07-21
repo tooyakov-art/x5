@@ -24,7 +24,7 @@ struct HubTaskBrowseState: Equatable {
         page = .results(categoryIds: [categoryId])
     }
 
-    mutating func showPersonalizedResults(for categoryIds: Set<String>) {
+    mutating func applyCategoryFilter(_ categoryIds: Set<String>) {
         guard !categoryIds.isEmpty else { return }
         page = .results(categoryIds: categoryIds)
     }

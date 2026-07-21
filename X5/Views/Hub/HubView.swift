@@ -23,6 +23,7 @@ struct HubView: View {
     @State private var chatError: String? = nil
     @State private var selectedCountry: HubCountry = .kazakhstan
     @State private var taskCategoriesExpanded = false
+    @State private var showingTaskCategoryFilter = false
 
     private var currentRole: String {
         (currentUser.profile?.userRole ?? "").lowercased()
@@ -36,23 +37,6 @@ struct HubView: View {
         taskCategoriesExpanded
             ? HubCategories.hubDisplayOrder
             : Array(HubCategories.hubDisplayOrder.prefix(7))
-    }
-
-    private var personalizedTaskCategoryIds: Set<String> {
-        let knownCategoryIds = Set(HubCategories.all.map(\.id))
-        let profileCategoryIds = currentUser.profile?.specialistCategory ?? []
-        return Set(profileCategoryIds.map { normalizedHubCategory($0) })
-            .intersection(knownCategoryIds)
-    }
-
-    private var personalizedTaskCount: Int {
-        guard !personalizedTaskCategoryIds.isEmpty else { return 0 }
-        return service.tasks
-            .filter { !BlockList.contains($0.authorId) }
-            .filter {
-                personalizedTaskCategoryIds.contains(normalizedHubCategory($0.category))
-            }
-            .count
     }
 
     var body: some View {
@@ -113,6 +97,16 @@ struct HubView: View {
                 Task { await service.loadSpecialists() }
             }) {
                 EditProfileView(activateSpecialistOnOpen: true)
+            }
+            .sheet(isPresented: $showingTaskCategoryFilter) {
+                TaskCategoryFilterSheet(
+                    initialSelection: taskBrowseState.selectedCategoryIds
+                ) { selectedCategoryIds in
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                        taskBrowseState.applyCategoryFilter(selectedCategoryIds)
+                        taskCategoriesExpanded = true
+                    }
+                }
             }
             .sheet(item: $startingChat) { chat in
                 NavigationStack { ChatThreadView(chat: chat) }
@@ -604,25 +598,18 @@ struct HubView: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("hub-task-category-all")
 
-            if !personalizedTaskCategoryIds.isEmpty {
-                Button {
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
-                        taskBrowseState.showPersonalizedResults(
-                            for: personalizedTaskCategoryIds
-                        )
-                        taskCategoriesExpanded = true
-                    }
-                } label: {
-                    CategoryTile(
-                        title: loc.t("hub_tasks_for_your_categories"),
-                        systemImage: "person.crop.circle.badge.checkmark",
-                        count: personalizedTaskCount,
-                        isSelected: false
-                    )
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("hub-task-category-personalized")
+            Button {
+                showingTaskCategoryFilter = true
+            } label: {
+                CategoryTile(
+                    title: loc.t("hub_tasks_by_categories"),
+                    systemImage: "slider.horizontal.3",
+                    count: 0,
+                    isSelected: false
+                )
             }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("hub-task-category-filter")
 
             ForEach(HubCategories.hubDisplayOrder) { cat in
                 Button {
@@ -682,6 +669,76 @@ struct HubView: View {
               let token = await auth.freshAccessToken()
         else { return }
         await currentUser.patchMany(["is_public": AnyEncodable(true)], accessToken: token)
+    }
+}
+
+private struct TaskCategoryFilterSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var loc: LocalizationService
+
+    @State private var selection: Set<String>
+    let onApply: (Set<String>) -> Void
+
+    init(initialSelection: Set<String>, onApply: @escaping (Set<String>) -> Void) {
+        _selection = State(initialValue: initialSelection)
+        self.onApply = onApply
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(HubCategories.hubDisplayOrder) { category in
+                        Button {
+                            toggle(category.id)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Label(
+                                    HubCategories.label(for: category.id, language: loc.current),
+                                    systemImage: HubCategories.symbol(for: category.id)
+                                )
+                                .foregroundStyle(.primary)
+
+                                Spacer()
+
+                                if selection.contains(category.id) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(Color.accentColor)
+                                        .accessibilityHidden(true)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .accessibilityIdentifier("hub-task-filter-option-\(category.id)")
+                    }
+                } footer: {
+                    Text(loc.t("hub_category_filter_hint"))
+                }
+            }
+            .navigationTitle(loc.t("hub_category_filter_title"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(loc.t("common_cancel")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(loc.t("hub_category_filter_apply")) {
+                        onApply(selection)
+                        dismiss()
+                    }
+                    .disabled(selection.isEmpty)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func toggle(_ categoryId: String) {
+        if selection.contains(categoryId) {
+            selection.remove(categoryId)
+        } else {
+            selection.insert(categoryId)
+        }
     }
 }
 
