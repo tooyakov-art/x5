@@ -1520,17 +1520,22 @@ private struct CourseSubmissionView: View {
     }
 
     private func send() async {
-        guard let token = await auth.freshAccessToken(),
-              let userID = auth.userId,
-              let videoFileURL else {
+        guard !isSending else { return }
+        guard let selectedVideoURL = videoFileURL else {
             message = "Нужно войти и прикрепить видео."
             return
         }
         isSending = true
         defer { isSending = false }
 
+        guard let token = await auth.freshAccessToken(),
+              let userID = auth.userId else {
+            message = "Нужно войти и прикрепить видео."
+            return
+        }
+
         let uploadedVideo = await service.uploadCourseSubmissionVideo(
-            fileURL: videoFileURL,
+            fileURL: selectedVideoURL,
             userID: userID,
             accessToken: token
         )
@@ -1553,8 +1558,8 @@ private struct CourseSubmissionView: View {
         if ok {
             X5Feedback.success()
             message = "Заявка отправлена. Проверим видео и напишем."
-            CourseVideoStaging.removeIfManaged(videoFileURL)
-            videoFileURL = nil
+            CourseVideoStaging.removeIfManaged(selectedVideoURL)
+            self.videoFileURL = nil
             try? await Task.sleep(nanoseconds: 700_000_000)
             dismiss()
         } else {

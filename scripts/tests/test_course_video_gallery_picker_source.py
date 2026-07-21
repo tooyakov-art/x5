@@ -29,6 +29,18 @@ class CourseVideoGalleryPickerSourceTests(unittest.TestCase):
         self.assertIn('"Выбрать видео из галереи"', source)
         self.assertNotIn(".fileImporter(", source)
 
+    def test_submission_locks_send_before_first_await(self):
+        source = COURSES_VIEW.read_text(encoding="utf-8")
+        send = source.split("private func send() async {", 1)[1]
+
+        self.assertLess(send.index("isSending = true"), send.index("await auth.freshAccessToken()"))
+
+    def test_submission_clears_the_state_url_after_success(self):
+        source = COURSES_VIEW.read_text(encoding="utf-8")
+        send = source.split("private func send() async {", 1)[1]
+
+        self.assertIn("self.videoFileURL = nil", send)
+
 
 if __name__ == "__main__":
     unittest.main()
