@@ -24,6 +24,11 @@ struct HubTaskBrowseState: Equatable {
         page = .results(categoryIds: [categoryId])
     }
 
+    mutating func showPersonalizedResults(for categoryIds: Set<String>) {
+        guard !categoryIds.isEmpty else { return }
+        page = .results(categoryIds: categoryIds)
+    }
+
     mutating func toggleResults(for categoryId: String) {
         var categoryIds = selectedCategoryIds
         if categoryIds.contains(categoryId) {

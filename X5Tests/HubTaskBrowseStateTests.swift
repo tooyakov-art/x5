@@ -79,6 +79,7 @@ final class HubTaskBrowseStateTests: XCTestCase {
     }
 
     func testUGCAndSEOUseRequestedGridPositions() {
+        XCTAssertEqual(HubCategories.hubDisplayOrder.first?.id, "marketing")
         XCTAssertEqual(HubCategories.hubDisplayOrder[3].id, "ugc")
         XCTAssertEqual(HubCategories.hubDisplayOrder[14].id, "seo")
     }

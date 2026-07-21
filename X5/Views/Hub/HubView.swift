@@ -38,6 +38,23 @@ struct HubView: View {
             : Array(HubCategories.hubDisplayOrder.prefix(7))
     }
 
+    private var personalizedTaskCategoryIds: Set<String> {
+        let knownCategoryIds = Set(HubCategories.all.map(\.id))
+        let profileCategoryIds = currentUser.profile?.specialistCategory ?? []
+        return Set(profileCategoryIds.map { normalizedHubCategory($0) })
+            .intersection(knownCategoryIds)
+    }
+
+    private var personalizedTaskCount: Int {
+        guard !personalizedTaskCategoryIds.isEmpty else { return 0 }
+        return service.tasks
+            .filter { !BlockList.contains($0.authorId) }
+            .filter {
+                personalizedTaskCategoryIds.contains(normalizedHubCategory($0.category))
+            }
+            .count
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -585,6 +602,27 @@ struct HubView: View {
                 )
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("hub-task-category-all")
+
+            if !personalizedTaskCategoryIds.isEmpty {
+                Button {
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                        taskBrowseState.showPersonalizedResults(
+                            for: personalizedTaskCategoryIds
+                        )
+                        taskCategoriesExpanded = true
+                    }
+                } label: {
+                    CategoryTile(
+                        title: loc.t("hub_tasks_for_your_categories"),
+                        systemImage: "person.crop.circle.badge.checkmark",
+                        count: personalizedTaskCount,
+                        isSelected: false
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("hub-task-category-personalized")
+            }
 
             ForEach(HubCategories.hubDisplayOrder) { cat in
                 Button {
@@ -601,6 +639,7 @@ struct HubView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("hub-task-category-\(cat.id)")
             }
         }
     }
@@ -749,7 +788,7 @@ private struct CategoryTile: View {
                 .font(.system(size: 10.5, weight: .heavy))
                 .foregroundColor(isSelected ? .black : .white)
                 .multilineTextAlignment(.center)
-                .lineLimit(2)
+                .lineLimit(3)
                 .minimumScaleFactor(0.68)
             if count > 0 {
                 Text("\(count)")
