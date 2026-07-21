@@ -57,6 +57,27 @@ final class HubTaskBrowseStateTests: XCTestCase {
         XCTAssertTrue(state.includes(categoryId: "ugc"))
     }
 
+    func testPersonalizedResultsSelectEveryProfileCategory() {
+        var state = HubTaskBrowseState()
+
+        state.showPersonalizedResults(for: ["marketing", "ugc", "design"])
+
+        XCTAssertTrue(state.isShowingResults)
+        XCTAssertEqual(state.selectedCategoryIds, ["marketing", "ugc", "design"])
+        XCTAssertTrue(state.includes(categoryId: "marketing"))
+        XCTAssertTrue(state.includes(categoryId: "ugc"))
+        XCTAssertFalse(state.includes(categoryId: "seo"))
+    }
+
+    func testPersonalizedResultsWithoutProfileCategoriesStayOnGrid() {
+        var state = HubTaskBrowseState()
+
+        state.showPersonalizedResults(for: [])
+
+        XCTAssertFalse(state.isShowingResults)
+        XCTAssertEqual(state.selectedCategoryIds, [])
+    }
+
     func testUGCAndSEOUseRequestedGridPositions() {
         XCTAssertEqual(HubCategories.hubDisplayOrder[3].id, "ugc")
         XCTAssertEqual(HubCategories.hubDisplayOrder[14].id, "seo")
