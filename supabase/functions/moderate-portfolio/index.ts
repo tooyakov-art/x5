@@ -226,17 +226,17 @@ async function moderateItem(item: PortfolioItem): Promise<{
     item.description ? `Описание: ${item.description}` : "",
   ].filter(Boolean).join("\n").trim();
 
-  if (item.type === "video") {
+  const imageUrl = imageURLFor(item);
+  if (item.type === "video" && !imageUrl) {
     return {
       status: "manual_review",
-      reason: "Видео ожидает проверки разработчиком",
-      result: { reason: "video_requires_developer_review" },
+      reason: "Не удалось подготовить превью видео для автоматической проверки",
+      result: { reason: "video_preview_missing" },
       model: null,
-      error: null,
+      error: "video_preview_missing",
     };
   }
 
-  const imageUrl = imageURLFor(item);
   if (!text && !imageUrl) {
     return {
       status: "manual_review",

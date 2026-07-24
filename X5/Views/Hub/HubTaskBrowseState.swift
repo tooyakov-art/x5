@@ -24,6 +24,17 @@ struct HubTaskBrowseState: Equatable {
         page = .results(categoryIds: [categoryId])
     }
 
+    @discardableResult
+    mutating func showResults(forProfileCategories categories: [String]?) -> Bool {
+        let categoryIds = HubCategories.normalizedIDs(from: categories)
+        guard !categoryIds.isEmpty else {
+            page = .categories
+            return false
+        }
+        page = .results(categoryIds: categoryIds)
+        return true
+    }
+
     mutating func applyCategoryFilter(_ categoryIds: Set<String>) {
         guard !categoryIds.isEmpty else { return }
         page = .results(categoryIds: categoryIds)

@@ -1,6 +1,33 @@
 import Foundation
 import AuthenticationServices
 
+enum JWTAccessTokenValidity {
+    static func needsRefresh(
+        _ token: String,
+        now: Date = Date(),
+        minimumValidity: TimeInterval
+    ) -> Bool {
+        let segments = token.split(separator: ".", omittingEmptySubsequences: false)
+        guard segments.count == 3 else { return true }
+
+        var payload = String(segments[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while payload.count % 4 != 0 {
+            payload.append("=")
+        }
+
+        guard let data = Data(base64Encoded: payload),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let expiration = (json["exp"] as? NSNumber)?.doubleValue
+        else {
+            return true
+        }
+
+        return expiration <= now.addingTimeInterval(minimumValidity).timeIntervalSince1970
+    }
+}
+
 @MainActor
 final class Auth: ObservableObject {
     @Published private(set) var isAuthenticated: Bool = false
@@ -109,6 +136,19 @@ final class Auth: ObservableObject {
         } catch {
             return nil
         }
+    }
+
+    /// Supplies long-running uploads with a token that will remain valid for
+    /// the next several chunks, refreshing only when the JWT is near expiry.
+    func accessTokenForUpload(minimumValidity: TimeInterval = 10 * 60) async -> String? {
+        guard let token = accessToken else { return nil }
+        guard JWTAccessTokenValidity.needsRefresh(
+            token,
+            minimumValidity: minimumValidity
+        ) else {
+            return token
+        }
+        return await freshAccessToken()
     }
 
     func deleteAccount() async throws {

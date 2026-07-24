@@ -42,18 +42,26 @@ class PortfolioModerationSourceTests(unittest.TestCase):
         self.assertIn('status: "approved"', source)
         self.assertIn('status: "rejected"', source)
         self.assertIn('status: "manual_review"', source)
-        self.assertIn('reason: "video_requires_developer_review"', source)
+        self.assertNotIn('reason: "video_requires_developer_review"', source)
         self.assertIn('reason: "moderation_response_invalid"', source)
 
-    def test_video_is_never_auto_approved_from_a_client_thumbnail(self):
+    def test_video_uses_generated_thumbnail_and_text_in_existing_moderation(self):
         source = EDGE_FUNCTION.read_text(encoding="utf-8")
-        video_guard = source.index('if (item.type === "video")')
+        image_lookup = source.index("const imageUrl = imageURLFor(item)")
+        video_guard = source.index('if (item.type === "video" && !imageUrl)')
         provider_call = source.index("fetch(OPENAI_MODERATION_URL")
 
+        self.assertLess(image_lookup, video_guard)
         self.assertLess(video_guard, provider_call)
         self.assertIn(
-            'result: { reason: "video_requires_developer_review" }', source
+            'result: { reason: "video_preview_missing" }', source
         )
+        self.assertIn('if (text) input.push({ type: "text", text })', source)
+        self.assertIn(
+            'if (imageUrl) input.push({ type: "image_url", image_url: { url: imageUrl } })',
+            source,
+        )
+        self.assertIn('status: "manual_review"', source)
 
     def test_edge_function_uses_revision_compare_and_swap(self):
         source = EDGE_FUNCTION.read_text(encoding="utf-8")
@@ -138,6 +146,15 @@ class PortfolioModerationSourceTests(unittest.TestCase):
         self.assertIn(".disabled(saving || preparingMedia || mediaData == nil)", view)
         self.assertIn("let thumbnailFractions:", view)
         self.assertGreaterEqual(view.count("generator.copyCGImage"), 1)
+
+    def test_video_thumbnail_is_a_three_frame_contact_sheet(self):
+        view = PORTFOLIO_VIEW.read_text(encoding="utf-8")
+
+        self.assertIn("var frames: [UIImage] = []", view)
+        self.assertIn("frames.append(UIImage(cgImage: cgImage))", view)
+        self.assertIn("makeVideoContactSheet(from: frames)", view)
+        self.assertIn("private func makeVideoContactSheet", view)
+        self.assertIn("UIGraphicsImageRenderer", view)
 
     def test_approved_storage_objects_are_immutable_and_moderation_is_revision_bound(self):
         service = PORTFOLIO_SERVICE.read_text(encoding="utf-8")

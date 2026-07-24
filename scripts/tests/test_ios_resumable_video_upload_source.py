@@ -1,0 +1,72 @@
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
+PROJECT = ROOT / "project.yml"
+UPLOADER = ROOT / "X5" / "Services" / "SupabaseResumableVideoUploader.swift"
+COURSES_SERVICE = ROOT / "X5" / "Services" / "CoursesService.swift"
+LICENSE = ROOT / "X5" / "Resources" / "ThirdParty" / "TUSKit-LICENSE.txt"
+SOURCES = ROOT / "THIRD_PARTY_SOURCES.md"
+
+
+class IOSResumableVideoUploadSourceTests(unittest.TestCase):
+    def test_xcodegen_pins_audited_tuskit_timeout_patch_and_links_product(self):
+        project = PROJECT.read_text(encoding="utf-8")
+
+        self.assertIn("https://github.com/tooyakov-art/TUSKit.git", project)
+        self.assertIn(
+            'revision: "4fd278f37b8a20f826a6fa45ae12b18b47b058b6"',
+            project,
+        )
+        self.assertIn("- package: TUSKit", project)
+        self.assertIn("product: TUSKit", project)
+        self.assertIn("- path: X5/Resources/ThirdParty", project)
+
+    def test_uploader_uses_supabase_tus_contract(self):
+        source = UPLOADER.read_text(encoding="utf-8")
+
+        self.assertIn("import TUSKit", source)
+        self.assertIn("storage/v1/upload/resumable", source)
+        self.assertIn("6 * 1024 * 1024", source)
+        for key in ("bucketName", "objectName", "contentType", "cacheControl"):
+            self.assertIn(f'"{key}"', source)
+        self.assertIn("URLSessionConfiguration.ephemeral", source)
+        self.assertIn("timeoutIntervalForRequest = 300", source)
+        self.assertIn('headers["Authorization"] = "Bearer \\(token)"', source)
+        self.assertIn("accessTokenProvider", source)
+        self.assertIn("persistGeneratedHeaders: false", source)
+        self.assertIn("uploadFileAt(", source)
+        self.assertIn("progressFor(", source)
+        self.assertIn("try? client.resume(id:", source)
+        self.assertIn("scheduleResumeWatchdog", source)
+        self.assertIn("cancelAndDelete(id:", source)
+        self.assertIn("func fileError(id:", source)
+        self.assertIn(".now() + 960", source)
+
+    def test_courses_service_routes_both_video_flows_through_resumable_uploader(self):
+        source = COURSES_SERVICE.read_text(encoding="utf-8")
+
+        self.assertGreaterEqual(source.count("resumableVideoUploader.upload("), 2)
+        self.assertNotIn("URLSession.shared.upload(for:", source)
+        self.assertIn("@Published private(set) var videoUploadProgress", source)
+        self.assertGreaterEqual(
+            source.count("CourseVideoUploadIdentity.stableToken(for: fileURL)"),
+            2,
+        )
+
+    def test_tuskit_license_and_provenance_are_preserved(self):
+        license_text = LICENSE.read_text(encoding="utf-8")
+        sources = SOURCES.read_text(encoding="utf-8")
+
+        self.assertIn("Copyright (c) 2015 tus", license_text)
+        self.assertIn("The MIT License (MIT)", license_text)
+        self.assertIn("TUSKit", sources)
+        self.assertIn("3.7.1", sources)
+        self.assertIn("167938293923b5c31ba1255da5aada8e67533984", sources)
+        self.assertIn("4fd278f37b8a20f826a6fa45ae12b18b47b058b6", sources)
+        self.assertIn("timeoutIntervalForRequest", sources)
+
+
+if __name__ == "__main__":
+    unittest.main()

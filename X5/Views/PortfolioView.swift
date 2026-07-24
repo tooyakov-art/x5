@@ -1263,16 +1263,64 @@ struct AddPortfolioItemView: View {
                     ? thumbnailFractions.map { min(max($0 * durationSeconds, 0), durationSeconds) }
                     : [0.0]
 
+                var frames: [UIImage] = []
                 for seconds in requestedSeconds {
                     let time = CMTime(seconds: seconds, preferredTimescale: 600)
                     if let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) {
-                        return UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.82)
+                        frames.append(UIImage(cgImage: cgImage))
                     }
                 }
-                return nil
+                return makeVideoContactSheet(from: frames)
             } catch {
                 return nil
             }
         }.value
+    }
+
+    private func makeVideoContactSheet(from frames: [UIImage]) -> Data? {
+        let previewFrames = Array(frames.prefix(3))
+        guard !previewFrames.isEmpty else { return nil }
+
+        let tileSize = CGSize(width: 400, height: 400)
+        let sheetSize = CGSize(
+            width: tileSize.width * CGFloat(previewFrames.count),
+            height: tileSize.height
+        )
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: sheetSize, format: format)
+        let contactSheet = renderer.image { context in
+            context.cgContext.setFillColor(UIColor.black.cgColor)
+            context.cgContext.fill(CGRect(origin: .zero, size: sheetSize))
+
+            for (index, image) in previewFrames.enumerated() {
+                let tile = CGRect(
+                    x: CGFloat(index) * tileSize.width,
+                    y: 0,
+                    width: tileSize.width,
+                    height: tileSize.height
+                )
+                let scale = max(
+                    tile.width / max(image.size.width, 1),
+                    tile.height / max(image.size.height, 1)
+                )
+                let drawSize = CGSize(
+                    width: image.size.width * scale,
+                    height: image.size.height * scale
+                )
+                let drawRect = CGRect(
+                    x: tile.midX - drawSize.width / 2,
+                    y: tile.midY - drawSize.height / 2,
+                    width: drawSize.width,
+                    height: drawSize.height
+                )
+
+                context.cgContext.saveGState()
+                context.cgContext.clip(to: tile)
+                image.draw(in: drawRect)
+                context.cgContext.restoreGState()
+            }
+        }
+        return contactSheet.jpegData(compressionQuality: 0.78)
     }
 }

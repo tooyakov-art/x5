@@ -97,7 +97,6 @@ struct CourseLesson: Codable, Identifiable, Hashable {
         }
         try container.encode(id, forKey: CourseDynamicCodingKey("id"))
         try container.encode(title, forKey: CourseDynamicCodingKey("title"))
-        try container.encodeIfPresent(duration, forKey: CourseDynamicCodingKey("duration"))
         try container.encodeIfPresent(order, forKey: CourseDynamicCodingKey("order"))
         try container.encodeIfPresent(price, forKey: CourseDynamicCodingKey("price"))
         try container.encodeIfPresent(videoUrl, forKey: CourseDynamicCodingKey("videoUrl"))
@@ -395,12 +394,28 @@ enum CourseListRequestBuilder {
 enum CourseSubmissionVideoPathError: Error {
     case invalidUserID
     case invalidFileExtension
+    case invalidUploadIdentity
+}
+
+enum CourseVideoUploadIdentity {
+    /// The staged filename is a per-selection UUID. Hashing it gives retries
+    /// for the same pending file one stable, non-identifying Storage object.
+    static func stableToken(for fileURL: URL) -> String {
+        let standardizedURL = fileURL.standardizedFileURL
+        let size = (try? standardizedURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1
+        let identity = "\(standardizedURL.lastPathComponent)|\(size)"
+        let hash = identity.utf8.reduce(UInt64(14_695_981_039_346_656_037)) {
+            ($0 ^ UInt64($1)) &* 1_099_511_628_211
+        }
+        return String(format: "%016llx", hash)
+    }
 }
 
 enum CourseSubmissionVideoPath {
     static func make(
         userID: String,
         fileExtension: String,
+        uploadIdentity: String? = nil,
         uniqueID: UUID = UUID(),
         timestamp: Int = Int(Date().timeIntervalSince1970)
     ) throws -> String {
@@ -416,8 +431,21 @@ enum CourseSubmissionVideoPath {
             throw CourseSubmissionVideoPathError.invalidFileExtension
         }
 
-        let fileID = uniqueID.uuidString.lowercased()
-        return "course-submissions/\(canonicalUserID)/\(fileID)-\(timestamp).\(normalizedExtension)"
+        let fileID: String
+        if let uploadIdentity {
+            let normalizedIdentity = uploadIdentity.lowercased()
+            guard !normalizedIdentity.isEmpty,
+                  normalizedIdentity.unicodeScalars.allSatisfy({
+                      CharacterSet.alphanumerics.contains($0) || $0.value == 45
+                  })
+            else {
+                throw CourseSubmissionVideoPathError.invalidUploadIdentity
+            }
+            fileID = normalizedIdentity
+        } else {
+            fileID = "\(uniqueID.uuidString.lowercased())-\(timestamp)"
+        }
+        return "course-submissions/\(canonicalUserID)/\(fileID).\(normalizedExtension)"
     }
 }
 
@@ -428,9 +456,14 @@ final class CoursesService: ObservableObject {
     @Published private(set) var isLoading: Bool = false
     @Published private(set) var isLoadingSubmissions: Bool = false
     @Published private(set) var error: String?
+    @Published private(set) var videoUploadProgress: Double?
 
     private var baseURL: URL { X5Config.supabaseBaseURL }
     private var anonKey: String { X5Config.supabaseAnonKey }
+    private lazy var resumableVideoUploader = SupabaseResumableVideoUploader(
+        baseURL: baseURL,
+        anonKey: anonKey
+    )
 
     func loadCourses(includeHidden: Bool = false, accessToken: String? = nil) async {
         isLoading = true
@@ -672,7 +705,12 @@ final class CoursesService: ObservableObject {
     }
 
     @discardableResult
-    func uploadCourseSubmissionVideo(fileURL: URL, userID: String, accessToken: String) async -> String? {
+    func uploadCourseSubmissionVideo(
+        fileURL: URL,
+        userID: String,
+        accessToken: String,
+        accessTokenProvider: @escaping SupabaseResumableVideoUploader.AccessTokenProvider = { nil }
+    ) async -> String? {
         error = nil
 
         let didAccess = fileURL.startAccessingSecurityScopedResource()
@@ -682,36 +720,38 @@ final class CoursesService: ObservableObject {
 
         let ext = normalizedVideoExtension(from: fileURL)
         let mime = videoMimeType(for: ext)
+        let uploadIdentity = CourseVideoUploadIdentity.stableToken(for: fileURL)
         let path: String
         do {
-            path = try CourseSubmissionVideoPath.make(userID: userID, fileExtension: ext)
+            path = try CourseSubmissionVideoPath.make(
+                userID: userID,
+                fileExtension: ext,
+                uploadIdentity: uploadIdentity
+            )
         } catch {
             self.error = "Не удалось определить владельца видео. Войди снова."
             return nil
         }
-        let uploadURL = baseURL.appendingPathComponent("storage/v1/object/videos/\(path)")
-
-        var req = URLRequest(url: uploadURL)
-        req.httpMethod = "POST"
-        req.setValue(anonKey, forHTTPHeaderField: "apikey")
-        req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        req.setValue(mime, forHTTPHeaderField: "Content-Type")
-        req.setValue("3600", forHTTPHeaderField: "Cache-Control")
-        req.setValue("true", forHTTPHeaderField: "x-upsert")
-
+        videoUploadProgress = 0
         do {
-            let (body, response) = try await URLSession.shared.upload(for: req, fromFile: fileURL)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                let details = String(data: body, encoding: .utf8) ?? ""
-                self.error = "Видео заявки не загружено. \(details)"
-                return nil
+            let publicURL = try await resumableVideoUploader.upload(
+                fileURL: fileURL,
+                bucketName: "videos",
+                objectName: path,
+                contentType: mime,
+                accessToken: accessToken,
+                accessTokenProvider: accessTokenProvider
+            ) { [weak self] fraction in
+                Task { @MainActor in
+                    self?.videoUploadProgress = fraction
+                }
             }
+            videoUploadProgress = 1
+            return publicURL.absoluteString
         } catch {
             self.error = "Видео заявки не загружено: \(error.localizedDescription)"
             return nil
         }
-
-        return baseURL.appendingPathComponent("storage/v1/object/public/videos/\(path)").absoluteString
     }
 
     /// Uploads `jpegData` to Storage `course-covers`. The editor writes the
@@ -742,7 +782,13 @@ final class CoursesService: ObservableObject {
     /// Uploads a lesson video to the existing public `videos` bucket.
     /// If Storage policy rejects this, the editor still supports direct video URLs.
     @discardableResult
-    func uploadLessonVideo(courseId: String, lessonId: String, fileURL: URL, accessToken: String) async -> String? {
+    func uploadLessonVideo(
+        courseId: String,
+        lessonId: String,
+        fileURL: URL,
+        accessToken: String,
+        accessTokenProvider: @escaping SupabaseResumableVideoUploader.AccessTokenProvider = { nil }
+    ) async -> String? {
         error = nil
 
         let didAccess = fileURL.startAccessingSecurityScopedResource()
@@ -752,30 +798,28 @@ final class CoursesService: ObservableObject {
 
         let ext = normalizedVideoExtension(from: fileURL)
         let mime = videoMimeType(for: ext)
-        let path = "courses/\(courseId)/\(lessonId)-\(Int(Date().timeIntervalSince1970)).\(ext)"
-        let uploadURL = baseURL.appendingPathComponent("storage/v1/object/videos/\(path)")
-
-        var req = URLRequest(url: uploadURL)
-        req.httpMethod = "POST"
-        req.setValue(anonKey, forHTTPHeaderField: "apikey")
-        req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        req.setValue(mime, forHTTPHeaderField: "Content-Type")
-        req.setValue("3600", forHTTPHeaderField: "Cache-Control")
-        req.setValue("true", forHTTPHeaderField: "x-upsert")
-
+        let uploadIdentity = CourseVideoUploadIdentity.stableToken(for: fileURL)
+        let path = "courses/\(courseId)/\(lessonId)-\(uploadIdentity).\(ext)"
+        videoUploadProgress = 0
         do {
-            let (body, response) = try await URLSession.shared.upload(for: req, fromFile: fileURL)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                let details = String(data: body, encoding: .utf8) ?? ""
-                self.error = "Видео не загружено. Блокер: Storage bucket `videos` должен разрешать authenticated/developer INSERT/UPDATE в `courses/*`. \(details)"
-                return nil
+            let publicURL = try await resumableVideoUploader.upload(
+                fileURL: fileURL,
+                bucketName: "videos",
+                objectName: path,
+                contentType: mime,
+                accessToken: accessToken,
+                accessTokenProvider: accessTokenProvider
+            ) { [weak self] fraction in
+                Task { @MainActor in
+                    self?.videoUploadProgress = fraction
+                }
             }
+            videoUploadProgress = 1
+            return publicURL.absoluteString
         } catch {
             self.error = "Видео не загружено: \(error.localizedDescription)"
             return nil
         }
-
-        return baseURL.appendingPathComponent("storage/v1/object/public/videos/\(path)").absoluteString
     }
 
     /// Uploads a JPEG cover for a single lesson video. The returned URL is saved

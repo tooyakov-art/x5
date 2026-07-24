@@ -26,4 +26,31 @@ final class CourseSubmissionVideoPathTests: XCTestCase {
             )
         )
     }
+
+    func testStableUploadIdentityKeepsRetryOnSameObjectPath() throws {
+        let fileURL = URL(fileURLWithPath: "/tmp/x5-course-videos/photo-library-abc.mp4")
+        let identity = CourseVideoUploadIdentity.stableToken(for: fileURL)
+
+        XCTAssertEqual(identity, CourseVideoUploadIdentity.stableToken(for: fileURL))
+        XCTAssertNotEqual(
+            identity,
+            CourseVideoUploadIdentity.stableToken(
+                for: URL(fileURLWithPath: "/tmp/x5-course-videos/photo-library-def.mp4")
+            )
+        )
+
+        let first = try CourseSubmissionVideoPath.make(
+            userID: "EEE55A08-18D1-46E3-A303-1411D1BB9333",
+            fileExtension: "mp4",
+            uploadIdentity: identity
+        )
+        let retry = try CourseSubmissionVideoPath.make(
+            userID: "EEE55A08-18D1-46E3-A303-1411D1BB9333",
+            fileExtension: "mp4",
+            uploadIdentity: identity
+        )
+
+        XCTAssertEqual(first, retry)
+        XCTAssertTrue(first.hasSuffix("/\(identity).mp4"))
+    }
 }

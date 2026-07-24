@@ -6,7 +6,6 @@ final class CourseDraftTests: XCTestCase {
         let original = CourseLessonDraft(
             id: "lesson-lossless",
             title: "Original lesson",
-            duration: "10:00",
             order: 7,
             price: "25",
             videoUrl: "https://cdn.example.com/original.mp4",
@@ -24,7 +23,6 @@ final class CourseDraftTests: XCTestCase {
 
         let edited = original.applyingEditorChanges(
             title: "Edited lesson",
-            duration: "12:00",
             price: "50",
             videoUrl: "https://cdn.example.com/edited.mp4",
             youtubeUrl: "https://youtu.be/example",
@@ -40,7 +38,6 @@ final class CourseDraftTests: XCTestCase {
         XCTAssertEqual(edited.order, original.order)
         XCTAssertEqual(edited.preservedFields, original.preservedFields)
         XCTAssertEqual(edited.title, "Edited lesson")
-        XCTAssertEqual(edited.duration, "12:00")
         XCTAssertEqual(edited.price, "50")
         XCTAssertEqual(edited.videoUrl, "https://cdn.example.com/edited.mp4")
         XCTAssertEqual(edited.youtubeUrl, "https://youtu.be/example")
@@ -54,6 +51,14 @@ final class CourseDraftTests: XCTestCase {
         let payload = edited.payload(order: edited.order)
         XCTAssertEqual(payload["description"] as? String, "Keep this description")
         XCTAssertEqual(payload["storagePath"] as? String, "courses/course-lossless/video.mp4")
+        XCTAssertNil(payload["duration"])
+    }
+
+    func testLegacyDurationDecodesButDraftPayloadDropsIt() {
+        let lesson = makeLesson(id: "legacy-duration", order: 1, videoURL: nil)
+
+        XCTAssertEqual(lesson.duration, "10:00")
+        XCTAssertNil(CourseLessonDraft(lesson: lesson).payload(order: 1)["duration"])
     }
 
     func testDecodedUnknownNestedFieldsSurviveEditingKnownFields() throws {

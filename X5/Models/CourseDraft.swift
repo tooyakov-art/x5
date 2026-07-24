@@ -245,7 +245,6 @@ struct CourseDayDraft: Identifiable, Equatable {
 struct CourseLessonDraft: Identifiable, Equatable {
     var id: String
     var title: String
-    var duration: String
     var order: Int
     var price: String
     var savedVideoURL: String
@@ -278,7 +277,6 @@ struct CourseLessonDraft: Identifiable, Equatable {
     init(
         id: String,
         title: String,
-        duration: String,
         order: Int,
         price: String,
         savedVideoURL: String,
@@ -293,7 +291,6 @@ struct CourseLessonDraft: Identifiable, Equatable {
     ) {
         self.id = id
         self.title = title
-        self.duration = duration
         self.order = order
         self.price = price
         self.savedVideoURL = savedVideoURL
@@ -310,7 +307,6 @@ struct CourseLessonDraft: Identifiable, Equatable {
     init(
         id: String,
         title: String,
-        duration: String,
         order: Int,
         price: String,
         videoUrl: String,
@@ -326,7 +322,6 @@ struct CourseLessonDraft: Identifiable, Equatable {
         self.init(
             id: id,
             title: title,
-            duration: duration,
             order: order,
             price: price,
             savedVideoURL: videoUrl,
@@ -344,7 +339,6 @@ struct CourseLessonDraft: Identifiable, Equatable {
     init(lesson: CourseLesson) {
         id = lesson.id
         title = lesson.title
-        duration = lesson.duration ?? ""
         order = lesson.order ?? 0
         price = String(lesson.price ?? 0)
         savedVideoURL = lesson.videoUrl ?? ""
@@ -360,7 +354,6 @@ struct CourseLessonDraft: Identifiable, Equatable {
 
     func applyingEditorChanges(
         title: String,
-        duration: String,
         price: String,
         videoUrl: String,
         youtubeUrl: String,
@@ -373,7 +366,6 @@ struct CourseLessonDraft: Identifiable, Equatable {
     ) -> CourseLessonDraft {
         var updated = self
         updated.title = title
-        updated.duration = duration
         updated.price = price
         updated.videoUrl = videoUrl
         updated.youtubeUrl = youtubeUrl
@@ -390,7 +382,6 @@ struct CourseLessonDraft: Identifiable, Equatable {
         CourseLessonDraft(
             id: "lesson_\(UUID().uuidString)",
             title: "",
-            duration: "",
             order: order,
             price: "0",
             savedVideoURL: "",
@@ -445,11 +436,9 @@ struct CourseLessonDraft: Identifiable, Equatable {
         result["price"] = Int(price) ?? 0
         result["isFreePreview"] = isFreePreview
         result["sellSeparately"] = sellSeparately
-        if !duration.courseDraftTrimmed.isEmpty {
-            result["duration"] = duration.courseDraftTrimmed
-        } else {
-            result.removeValue(forKey: "duration")
-        }
+        // Legacy payloads can still be decoded by CourseLesson, but manual
+        // duration is no longer part of the editor or any new save.
+        result.removeValue(forKey: "duration")
         if !savedVideoURL.courseDraftTrimmed.isEmpty {
             result["videoUrl"] = savedVideoURL.courseDraftTrimmed
         } else {

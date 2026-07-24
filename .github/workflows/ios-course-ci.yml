@@ -13,6 +13,9 @@ on:
       - "supabase/functions/app-store-notifications/**"
       - "supabase/functions/verify-play-purchase/**"
       - "supabase/functions/google-play-notifications/**"
+      - "supabase/functions/generate-image/**"
+      - "supabase/functions/moderate-portfolio/**"
+      - "supabase/tests/image_generation_reliability_contract_test.mjs"
       - "supabase/migrations/**apple*store*.sql"
       - "supabase/migrations/**/*store*.sql"
       - "scripts/tests/**"
@@ -71,6 +74,15 @@ jobs:
           deno check index.ts
           deno test --allow-read
 
+      - name: Verify image generation and portfolio moderation
+        run: |
+          deno check \
+            supabase/functions/generate-image/index.ts \
+            supabase/functions/moderate-portfolio/index.ts
+          deno test --allow-read \
+            supabase/functions/generate-image/economy.test.mjs \
+            supabase/tests/image_generation_reliability_contract_test.mjs
+
       - name: Verify release automation contracts
         run: python3 -m unittest discover -s scripts/tests -p "test_*.py"
 
@@ -78,6 +90,16 @@ jobs:
         run: |
           sudo xcode-select -s /Applications/Xcode_26.app || sudo xcode-select -s /Applications/Xcode.app
           xcodebuild -version
+
+      - name: Verify pinned TUSKit fork
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch x5-request-timeout-300 \
+            https://github.com/tooyakov-art/TUSKit.git "$RUNNER_TEMP/TUSKit"
+          test "$(git -C "$RUNNER_TEMP/TUSKit" rev-parse HEAD)" = \
+            "4fd278f37b8a20f826a6fa45ae12b18b47b058b6"
+          swift test --package-path "$RUNNER_TEMP/TUSKit"
 
       - name: Install XcodeGen
         run: brew install xcodegen

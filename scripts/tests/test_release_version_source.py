@@ -13,6 +13,12 @@ class ReleaseVersionSourceTests(unittest.TestCase):
         review_notes = (
             ROOT / "fastlane" / "metadata" / "review_information" / "notes.txt"
         ).read_text(encoding="utf-8")
+        submit_workflow = (
+            ROOT / ".github" / "workflows" / "asc-release-submit.yml"
+        ).read_text(encoding="utf-8")
+        prepare_workflow = (
+            ROOT / ".github" / "workflows" / "asc-release-prepare.yml"
+        ).read_text(encoding="utf-8")
 
         marketing_version = re.search(
             r'MARKETING_VERSION:\s*"([^"]+)"', project
@@ -25,11 +31,27 @@ class ReleaseVersionSourceTests(unittest.TestCase):
         ).group(1)
 
         self.assertEqual(marketing_version, "1.1.6")
-        self.assertEqual(build_number, "188")
+        self.assertEqual(build_number, "189")
         self.assertEqual(fastlane_version, marketing_version)
         self.assertIn(
             f"Version {marketing_version} build {build_number}",
             review_notes,
+        )
+        self.assertIn(
+            f'EXPECTED_VERSION: "{marketing_version}"',
+            submit_workflow,
+        )
+        self.assertIn(
+            f'EXPECTED_BUILD: "{build_number}"',
+            submit_workflow,
+        )
+        self.assertIn(
+            f'VERSION: "{marketing_version}"',
+            prepare_workflow,
+        )
+        self.assertIn(
+            f'BUILD_NUMBER: "{build_number}"',
+            prepare_workflow,
         )
 
     def test_app_store_review_notes_fit_apple_limit(self):

@@ -143,6 +143,70 @@ enum HubCategories {
         return categories
     }
 
+    private static let validCategoryIds = Set(all.map(\.id))
+
+    private static let profileCategoryAliases: [String: [String]] = [
+        "marketer": ["marketing"],
+        "marketing_specialist": ["marketing"],
+        "smm_specialist": ["smm"],
+        "ads": ["targeting"],
+        "target": ["targeting"],
+        "target_ads": ["targeting"],
+        "targeting_ads": ["targeting"],
+        "designer": ["design"],
+        "uiux": ["ui_ux"],
+        "ux_ui": ["ui_ux"],
+        "web": ["web_dev"],
+        "webdev": ["web_dev"],
+        "web_development": ["web_dev"],
+        "mobile": ["mobile_dev"],
+        "mobiledev": ["mobile_dev"],
+        "mobile_development": ["mobile_dev"],
+        "chatbot": ["bot_dev"],
+        "chatbots": ["bot_dev"],
+        "botdev": ["bot_dev"],
+        "ai": ["ai_ml"],
+        "ml": ["ai_ml"],
+        "ai_neural": ["ai_ml"],
+        "game": ["gamedev"],
+        "game_dev": ["gamedev"],
+        "copywriting": ["copy"],
+        "content": ["copy", "ugc"],
+        "context_ads": ["targeting"],
+        "branding": ["design"],
+        "analytics": ["consulting"],
+        "email": ["marketing"],
+        "influence": ["ugc"],
+        "strategy": ["consulting"],
+        "pr": ["marketing"]
+    ]
+
+    static func normalizedIDs(from values: [String]?) -> Set<String> {
+        var result: Set<String> = []
+
+        for value in values ?? [] {
+            let normalized = value
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "-", with: "_")
+                .replacingOccurrences(of: " ", with: "_")
+
+            guard !normalized.isEmpty else { continue }
+            if validCategoryIds.contains(normalized) {
+                result.insert(normalized)
+                continue
+            }
+
+            for categoryId in profileCategoryAliases[normalized] ?? []
+            where validCategoryIds.contains(categoryId) {
+                result.insert(categoryId)
+            }
+        }
+
+        return result
+    }
+
     static func label(for id: String?) -> String {
         guard let id else { return "Other" }
         return all.first(where: { $0.id == id })?.labelEn ?? id.capitalized

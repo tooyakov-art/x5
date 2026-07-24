@@ -437,7 +437,13 @@ struct CourseEditorView: View {
         if let message = saveStage.message {
             HStack(spacing: 12) {
                 if saveStage.isProgress {
-                    ProgressView()
+                    if case .uploadingVideo = saveStage,
+                       let progress = service.videoUploadProgress {
+                        ProgressView(value: progress)
+                            .frame(width: 52)
+                    } else {
+                        ProgressView()
+                    }
                 } else {
                     Image(
                         systemName: saveStage == .completed
@@ -450,6 +456,11 @@ struct CourseEditorView: View {
                     .font(.footnote.weight(.semibold))
                     .lineLimit(3)
                 Spacer(minLength: 0)
+                if case .uploadingVideo = saveStage,
+                   let progress = service.videoUploadProgress {
+                    Text("\(Int((progress * 100).rounded()))%")
+                        .font(.caption.monospacedDigit().weight(.bold))
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -549,7 +560,14 @@ struct CourseEditorView: View {
         guard await uploadPendingLessonVideos(courseId: id, accessToken: token) else {
             return
         }
-        guard await uploadPendingLessonThumbnails(courseId: id, accessToken: token) else {
+        guard let postUploadToken = await auth.accessTokenForUpload() else {
+            markSaveFailed("Сессия истекла во время загрузки. Войдите снова.")
+            return
+        }
+        guard await uploadPendingLessonThumbnails(
+            courseId: id,
+            accessToken: postUploadToken
+        ) else {
             return
         }
 
@@ -568,7 +586,11 @@ struct CourseEditorView: View {
             "categories": categoriesPayload()
         ]
         saveStage = .savingCourse
-        let ok = await service.updateCourse(id: id, fields: fields, accessToken: token)
+        let ok = await service.updateCourse(
+            id: id,
+            fields: fields,
+            accessToken: postUploadToken
+        )
         if !ok {
             markSaveFailed(service.error ?? "Не удалось сохранить.")
             return
@@ -610,7 +632,15 @@ struct CourseEditorView: View {
 
                     saveStage = .uploadingVideo(current: uploaded + 1, total: total)
                     let lessonId = categories[categoryIndex].days[dayIndex].lessons[lessonIndex].id
-                    guard let publicURL = await service.uploadLessonVideo(courseId: courseId, lessonId: lessonId, fileURL: fileURL, accessToken: accessToken) else {
+                    guard let publicURL = await service.uploadLessonVideo(
+                        courseId: courseId,
+                        lessonId: lessonId,
+                        fileURL: fileURL,
+                        accessToken: accessToken,
+                        accessTokenProvider: {
+                            await auth.accessTokenForUpload()
+                        }
+                    ) else {
                         markSaveFailed(service.error ?? "Не удалось загрузить видео урока.")
                         return false
                     }
@@ -978,9 +1008,6 @@ private struct LessonDraftRow: View {
                     .foregroundStyle(.primary)
                 HStack(spacing: 8) {
                     Text(lesson.videoLabel)
-                    if !lesson.duration.x5Trimmed.isEmpty {
-                        Text(lesson.duration)
-                    }
                     if lesson.isFreePreview {
                         Text("Бесплатный preview")
                     }
@@ -1041,7 +1068,6 @@ private struct LessonEditorSheet: View {
     let onSave: (EditableLesson) -> Void
 
     @State private var title: String
-    @State private var duration: String
     @State private var price: String
     @State private var videoUrl: String
     @State private var youtubeUrl: String
@@ -1051,7 +1077,7 @@ private struct LessonEditorSheet: View {
     @State private var pendingVideoFileURL: URL?
     @State private var pendingVideoFileName: String?
     @State private var pendingThumbnailData: Data?
-    @State private var videoItem: PhotosPickerItem?
+    @State private var showingVideoPicker = false
     @State private var thumbnailItem: PhotosPickerItem?
     @State private var uploading = false
     @State private var uploadingThumbnail = false
@@ -1066,7 +1092,6 @@ private struct LessonEditorSheet: View {
         initialPendingVideoFileURL = lesson.pendingVideoFileURL
         self.onSave = onSave
         _title = State(initialValue: lesson.title)
-        _duration = State(initialValue: lesson.duration)
         _price = State(initialValue: lesson.price)
         _videoUrl = State(initialValue: lesson.videoUrl)
         _youtubeUrl = State(initialValue: lesson.youtubeUrl)
@@ -1101,7 +1126,10 @@ private struct LessonEditorSheet: View {
                         .autocorrectionDisabled()
                         .lineLimit(1...3)
 
-                    PhotosPicker(selection: $videoItem, matching: .videos) {
+                    Button {
+                        uploading = true
+                        showingVideoPicker = true
+                    } label: {
                         Label(videoImportTitle, systemImage: "photo.on.rectangle.angled")
                     }
                     .disabled(uploading)
@@ -1150,13 +1178,22 @@ private struct LessonEditorSheet: View {
                     .disabled(title.x5Trimmed.isEmpty || uploading || uploadingThumbnail)
                 }
             }
-            .onChange(of: videoItem) { newValue in
-                guard let newValue else { return }
-                Task { await importVideo(newValue) }
-            }
             .onChange(of: thumbnailItem) { newValue in
                 guard let newValue else { return }
                 Task { await importThumbnail(newValue) }
+            }
+            .sheet(isPresented: $showingVideoPicker, onDismiss: {
+                uploading = false
+            }) {
+                GalleryVideoPicker(
+                    stagingID: "lesson-\(lesson.id)",
+                    onResult: handleVideoPickerResult,
+                    onCancel: {
+                        uploading = false
+                        showingVideoPicker = false
+                    }
+                )
+                .ignoresSafeArea()
             }
         }
         .interactiveDismissDisabled(uploading || uploadingThumbnail)
@@ -1250,25 +1287,20 @@ private struct LessonEditorSheet: View {
         return "Выбрать видео из галереи"
     }
 
-    private func importVideo(_ item: PhotosPickerItem) async {
-        uploading = true
-        defer {
-            uploading = false
-            videoItem = nil
-        }
+    @MainActor
+    private func handleVideoPickerResult(_ result: Result<CourseGalleryVideo, Error>) {
+        uploading = false
+        showingVideoPicker = false
         errorText = nil
 
-        do {
-            guard let imported = try await item.loadTransferable(type: CourseGalleryVideo.self) else {
-                errorText = "Не удалось прочитать видео из галереи."
-                return
-            }
+        switch result {
+        case .success(let imported):
             if pendingVideoFileURL != initialPendingVideoFileURL {
                 CourseVideoStaging.removeIfManaged(pendingVideoFileURL)
             }
             pendingVideoFileURL = imported.fileURL
             pendingVideoFileName = imported.originalFileName
-        } catch {
+        case .failure(let error):
             errorText = "Не удалось подготовить видео из галереи: \(error.localizedDescription)"
         }
     }
@@ -1310,7 +1342,6 @@ private struct LessonEditorSheet: View {
     private func updatedLesson() -> EditableLesson {
         lesson.applyingEditorChanges(
             title: title.x5Trimmed,
-            duration: duration.x5Trimmed,
             price: price.x5Trimmed.isEmpty ? "0" : price.x5Trimmed,
             videoUrl: videoUrl.x5Trimmed,
             youtubeUrl: youtubeUrl.x5Trimmed,

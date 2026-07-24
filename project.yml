@@ -11,13 +11,16 @@ packages:
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS
     from: "7.1.0"
+  TUSKit:
+    url: https://github.com/tooyakov-art/TUSKit.git
+    revision: "4fd278f37b8a20f826a6fa45ae12b18b47b058b6"
 
 settings:
   base:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: F8LA8PC4U6
     MARKETING_VERSION: "1.1.6"
-    CURRENT_PROJECT_VERSION: "188"
+    CURRENT_PROJECT_VERSION: "189"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
 targets:
@@ -29,6 +32,8 @@ targets:
         product: GoogleSignIn
       - package: GoogleSignIn
         product: GoogleSignInSwift
+      - package: TUSKit
+        product: TUSKit
     sources:
       - path: X5
     resources:
@@ -37,6 +42,7 @@ targets:
       - path: X5/ru.lproj
       - path: X5/kk.lproj
       - path: X5/PrivacyInfo.xcprivacy
+      - path: X5/Resources/ThirdParty
     info:
       path: X5/Info.plist
       properties:

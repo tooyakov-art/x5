@@ -23,7 +23,6 @@ struct HubView: View {
     @State private var chatError: String? = nil
     @State private var selectedCountry: HubCountry = .kazakhstan
     @State private var taskCategoriesExpanded = false
-    @State private var showingTaskCategoryFilter = false
 
     private var currentRole: String {
         (currentUser.profile?.userRole ?? "").lowercased()
@@ -97,16 +96,6 @@ struct HubView: View {
                 Task { await service.loadSpecialists() }
             }) {
                 EditProfileView(activateSpecialistOnOpen: true)
-            }
-            .sheet(isPresented: $showingTaskCategoryFilter) {
-                TaskCategoryFilterSheet(
-                    initialSelection: taskBrowseState.selectedCategoryIds
-                ) { selectedCategoryIds in
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
-                        taskBrowseState.applyCategoryFilter(selectedCategoryIds)
-                        taskCategoriesExpanded = true
-                    }
-                }
             }
             .sheet(item: $startingChat) { chat in
                 NavigationStack { ChatThreadView(chat: chat) }
@@ -599,7 +588,10 @@ struct HubView: View {
             .accessibilityIdentifier("hub-task-category-all")
 
             Button {
-                showingTaskCategoryFilter = true
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                    taskBrowseState.showResults(forProfileCategories: currentUser.profile?.specialistCategory)
+                    taskCategoriesExpanded = true
+                }
             } label: {
                 CategoryTile(
                     title: loc.t("hub_tasks_by_categories"),
@@ -669,76 +661,6 @@ struct HubView: View {
               let token = await auth.freshAccessToken()
         else { return }
         await currentUser.patchMany(["is_public": AnyEncodable(true)], accessToken: token)
-    }
-}
-
-private struct TaskCategoryFilterSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var loc: LocalizationService
-
-    @State private var selection: Set<String>
-    let onApply: (Set<String>) -> Void
-
-    init(initialSelection: Set<String>, onApply: @escaping (Set<String>) -> Void) {
-        _selection = State(initialValue: initialSelection)
-        self.onApply = onApply
-    }
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    ForEach(HubCategories.hubDisplayOrder) { category in
-                        Button {
-                            toggle(category.id)
-                        } label: {
-                            HStack(spacing: 12) {
-                                Label(
-                                    HubCategories.label(for: category.id, language: loc.current),
-                                    systemImage: HubCategories.symbol(for: category.id)
-                                )
-                                .foregroundStyle(.primary)
-
-                                Spacer()
-
-                                if selection.contains(category.id) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(Color.accentColor)
-                                        .accessibilityHidden(true)
-                                }
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .accessibilityIdentifier("hub-task-filter-option-\(category.id)")
-                    }
-                } footer: {
-                    Text(loc.t("hub_category_filter_hint"))
-                }
-            }
-            .navigationTitle(loc.t("hub_category_filter_title"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(loc.t("common_cancel")) { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(loc.t("hub_category_filter_apply")) {
-                        onApply(selection)
-                        dismiss()
-                    }
-                    .disabled(selection.isEmpty)
-                }
-            }
-        }
-        .preferredColorScheme(.dark)
-    }
-
-    private func toggle(_ categoryId: String) {
-        if selection.contains(categoryId) {
-            selection.remove(categoryId)
-        } else {
-            selection.insert(categoryId)
-        }
     }
 }
 

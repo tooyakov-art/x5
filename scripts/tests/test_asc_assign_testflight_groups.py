@@ -47,9 +47,9 @@ class AssignTestFlightGroupsContractTests(unittest.TestCase):
                 self.app_id = app_id
                 return [
                     {
-                        "id": "build-184",
+                        "id": "build-189",
                         "attributes": {
-                            "version": "184",
+                            "version": "189",
                             "processingState": "VALID",
                             "expired": False,
                         },
@@ -87,13 +87,13 @@ class AssignTestFlightGroupsContractTests(unittest.TestCase):
         result = module.assign_internal_groups(
             client,
             bundle_id="com.x5studio.app",
-            build_number="184",
+            build_number="189",
             group_names=("123", "321"),
         )
 
         self.assertEqual(
             client.added,
-            [("group-123", "build-184"), ("group-321", "build-184")],
+            [("group-123", "build-189"), ("group-321", "build-189")],
         )
         self.assertEqual(result, {"123": "confirmed", "321": "confirmed"})
 
@@ -101,7 +101,7 @@ class AssignTestFlightGroupsContractTests(unittest.TestCase):
         module.assign_internal_groups(
             client,
             bundle_id="com.x5studio.app",
-            build_number="184",
+            build_number="189",
             group_names=("123", "321"),
         )
         self.assertEqual(len(client.added), 2)
@@ -124,9 +124,9 @@ class AssignTestFlightGroupsContractTests(unittest.TestCase):
             def list_builds(self, _app_id):
                 return [
                     {
-                        "id": "build-184",
+                        "id": "build-189",
                         "attributes": {
-                            "version": "184",
+                            "version": "189",
                             "processingState": "VALID",
                             "expired": False,
                         },
@@ -164,7 +164,7 @@ class AssignTestFlightGroupsContractTests(unittest.TestCase):
             module.assign_internal_groups(
                 client,
                 bundle_id="com.x5studio.app",
-                build_number="184",
+                build_number="189",
                 group_names=("123", "321"),
             )
         self.assertEqual(client.added, [])
@@ -173,7 +173,7 @@ class AssignTestFlightGroupsContractTests(unittest.TestCase):
             module.assign_internal_groups(
                 client,
                 bundle_id="com.x5studio.app",
-                build_number="185",
+                build_number="188",
                 group_names=("123", "321"),
             )
         self.assertEqual(client.added, [])

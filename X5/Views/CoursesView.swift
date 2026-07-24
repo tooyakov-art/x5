@@ -40,9 +40,8 @@ struct CoursesView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 18) {
                             HStack(alignment: .center, spacing: 12) {
-                                Text("Академия")
-                                    .font(.system(size: 34, weight: .black, design: .rounded))
-                                    .italic()
+                                Text("CourseUP")
+                                    .font(.system(size: 34, weight: .black))
                                     .foregroundColor(.white)
                                     .kerning(0)
 
@@ -97,16 +96,55 @@ struct CoursesView: View {
                             }
 
                             ForEach(Array(academyCourses.enumerated()), id: \.element.id) { index, course in
-                                NavigationLink {
-                                    if service.courses.dropFirst().contains(where: { $0.id == course.id }) {
-                                        CourseDetailView(course: course, openPaywall: { showingPaywall = true })
-                                    } else {
-                                        CourseInDevelopmentView(course: course)
+                                let isEditableCourse = service.courses.contains(where: { $0.id == course.id })
+
+                                ZStack(alignment: .topLeading) {
+                                    NavigationLink {
+                                        if isEditableCourse {
+                                            CourseDetailView(course: course, openPaywall: { showingPaywall = true })
+                                        } else {
+                                            CourseInDevelopmentView(course: course)
+                                        }
+                                    } label: {
+                                        AcademyCourseCard(course: course, paletteIndex: index)
                                     }
-                                } label: {
-                                    AcademyCourseCard(course: course, paletteIndex: index)
+                                    .buttonStyle(.plain)
+
+                                    if isDev && isEditableCourse {
+                                        Button {
+                                            editorTarget = .edit(course)
+                                        } label: {
+                                            Image(systemName: "pencil")
+                                                .font(.system(size: 14, weight: .bold))
+                                                .foregroundColor(.black)
+                                                .frame(width: 36, height: 36)
+                                                .background(Color.accentColor)
+                                                .clipShape(Circle())
+                                                .shadow(color: .black.opacity(0.4), radius: 6)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .padding(12)
+                                        .accessibilityLabel("Редактировать курс")
+                                    }
                                 }
-                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    if isDev && isEditableCourse {
+                                        Button {
+                                            editorTarget = .edit(course)
+                                        } label: {
+                                            Label("Редактировать", systemImage: "pencil")
+                                        }
+                                        Button(role: .destructive) {
+                                            Task {
+                                                guard let token = await auth.freshAccessToken() else { return }
+                                                _ = await service.deleteCourse(id: course.id, accessToken: token)
+                                                await reloadCourses()
+                                            }
+                                        } label: {
+                                            Label("Удалить", systemImage: "trash")
+                                        }
+                                    }
+                                }
                             }
                         }
                         .padding(.horizontal, 16)
@@ -257,7 +295,7 @@ struct CoursesView: View {
                                 CourseLesson(
                                     id: "\(id)-lesson-\(index + 1)",
                                     title: title,
-                                    duration: "08:00",
+                                    duration: nil,
                                     order: index + 1,
                                     price: nil,
                                     videoUrl: nil,
@@ -472,13 +510,6 @@ private struct CourseRow: View {
                     Text("\(course.totalLessons) \(loc.t("courses_lessons_word"))")
                         .font(.system(size: 11))
                         .foregroundColor(.white.opacity(0.4))
-                    if !course.totalDurationLabel.isEmpty {
-                        Text("·")
-                            .foregroundColor(.white.opacity(0.3))
-                        Text(course.totalDurationLabel)
-                            .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.4))
-                    }
                     if let r = course.averageRating, r > 0 {
                         Text("·")
                             .foregroundColor(.white.opacity(0.3))
@@ -588,7 +619,6 @@ private struct UpcomingCourseCard: View {
 
                 HStack(spacing: 14) {
                     Label("\(course.totalLessons) урока", systemImage: "book")
-                    Label(course.totalDurationLabel.isEmpty ? "32 мин" : course.totalDurationLabel, systemImage: "clock")
                     Spacer()
                     Image(systemName: "arrow.right")
                         .font(.system(size: 15, weight: .bold))
@@ -903,9 +933,6 @@ struct CourseDetailView: View {
 
                 HStack(spacing: 12) {
                     StatBubble(value: "\(course.totalLessons)", label: "lessons")
-                    if !course.totalDurationLabel.isEmpty {
-                        StatBubble(value: course.totalDurationLabel, label: "duration")
-                    }
                     if let r = course.averageRating, r > 0 {
                         StatBubble(value: String(format: "%.1f ⭐", r), label: "\(course.studentsCount ?? 0) students")
                     }
@@ -1337,9 +1364,6 @@ private struct LessonRow: View {
                     .foregroundColor(.white)
                     .lineLimit(2)
                 HStack(spacing: 8) {
-                    if let d = lesson.duration, !d.isEmpty {
-                        Text(d).font(.system(size: 11)).foregroundColor(.white.opacity(0.4))
-                    }
                     if lesson.freePreview {
                         Text(loc.t("courses_free_preview"))
                             .font(.system(size: 9, weight: .heavy))
@@ -1414,7 +1438,7 @@ private struct CourseSubmissionView: View {
     @State private var contact = ""
     @State private var videoFileURL: URL?
     @State private var videoFileName: String?
-    @State private var videoItem: PhotosPickerItem?
+    @State private var showingVideoPicker = false
     @State private var isImportingVideo = false
     @State private var isSending = false
     @State private var message: String?
@@ -1441,7 +1465,10 @@ private struct CourseSubmissionView: View {
                 }
 
                 Section("Видео") {
-                    PhotosPicker(selection: $videoItem, matching: .videos) {
+                    Button {
+                        isImportingVideo = true
+                        showingVideoPicker = true
+                    } label: {
                         Label(
                             isImportingVideo ? "Подготовка видео..." : (videoFileName == nil ? "Выбрать видео из галереи" : "Заменить видео из галереи"),
                             systemImage: "photo.on.rectangle.angled"
@@ -1452,6 +1479,14 @@ private struct CourseSubmissionView: View {
                     if let videoFileName {
                         Label(videoFileName, systemImage: "film")
                             .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if isSending, let progress = service.videoUploadProgress {
+                        ProgressView(value: progress)
+                            .tint(.accentColor)
+                        Text("Загрузка видео: \(Int((progress * 100).rounded()))%")
+                            .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -1482,9 +1517,18 @@ private struct CourseSubmissionView: View {
                     .disabled(!canSend)
                 }
             }
-            .onChange(of: videoItem) { newValue in
-                guard let newValue else { return }
-                Task { await importVideo(newValue) }
+            .sheet(isPresented: $showingVideoPicker, onDismiss: {
+                isImportingVideo = false
+            }) {
+                GalleryVideoPicker(
+                    stagingID: "course-submission",
+                    onResult: handleVideoPickerResult,
+                    onCancel: {
+                        isImportingVideo = false
+                        showingVideoPicker = false
+                    }
+                )
+                .ignoresSafeArea()
             }
         }
         .preferredColorScheme(.dark)
@@ -1492,23 +1536,18 @@ private struct CourseSubmissionView: View {
         .onDisappear { CourseVideoStaging.removeIfManaged(videoFileURL) }
     }
 
-    private func importVideo(_ item: PhotosPickerItem) async {
-        isImportingVideo = true
-        defer {
-            isImportingVideo = false
-            videoItem = nil
-        }
+    @MainActor
+    private func handleVideoPickerResult(_ result: Result<CourseGalleryVideo, Error>) {
+        isImportingVideo = false
+        showingVideoPicker = false
         message = nil
 
-        do {
-            guard let imported = try await item.loadTransferable(type: CourseGalleryVideo.self) else {
-                message = "Не удалось прочитать видео из галереи."
-                return
-            }
+        switch result {
+        case .success(let imported):
             CourseVideoStaging.removeIfManaged(videoFileURL)
             videoFileURL = imported.fileURL
             videoFileName = imported.originalFileName
-        } catch {
+        case .failure(let error):
             message = "Не удалось подготовить видео из галереи: \(error.localizedDescription)"
         }
     }
@@ -1537,10 +1576,18 @@ private struct CourseSubmissionView: View {
         let uploadedVideo = await service.uploadCourseSubmissionVideo(
             fileURL: selectedVideoURL,
             userID: userID,
-            accessToken: token
+            accessToken: token,
+            accessTokenProvider: {
+                await auth.accessTokenForUpload()
+            }
         )
         guard let uploadedVideo else {
             message = service.error ?? "Видео не загрузилось."
+            return
+        }
+
+        guard let postUploadToken = await auth.accessTokenForUpload() else {
+            message = "Сессия истекла во время загрузки. Войди снова."
             return
         }
 
@@ -1552,7 +1599,7 @@ private struct CourseSubmissionView: View {
             authorEmail: auth.userEmail,
             authorName: currentUser.profile?.name ?? auth.userEmail,
             videoURL: uploadedVideo,
-            accessToken: token
+            accessToken: postUploadToken
         )
 
         if ok {
