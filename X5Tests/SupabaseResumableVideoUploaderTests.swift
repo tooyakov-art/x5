@@ -127,7 +127,9 @@ final class SupabaseResumableVideoUploaderTests: XCTestCase {
             details: "The request timed out."
         )
 
-        XCTAssertTrue(error.localizedDescription.contains("возобновляемая загрузка"))
+        XCTAssertTrue(
+            error.localizedDescription.lowercased().contains("возобновляемая загрузка")
+        )
         XCTAssertTrue(error.localizedDescription.contains("The request timed out."))
     }
 
