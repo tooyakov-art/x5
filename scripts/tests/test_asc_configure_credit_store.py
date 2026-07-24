@@ -4,6 +4,7 @@ import pathlib
 import sys
 import unittest
 from decimal import Decimal
+from unittest import mock
 
 
 SCRIPT = pathlib.Path(__file__).parents[1] / "asc_configure_credit_store.py"
@@ -15,6 +16,42 @@ SPEC.loader.exec_module(MODULE)
 
 
 class CreditStoreConfigurationTests(unittest.TestCase):
+    def test_app_store_request_retries_transient_network_timeout(self):
+        class FakeRequestException(Exception):
+            pass
+
+        class FakeResponse:
+            status_code = 200
+            url = "https://api.appstoreconnect.apple.com/v1/test"
+            text = '{"data":[]}'
+
+            @staticmethod
+            def json():
+                return {"data": []}
+
+        class FakeRequests:
+            class exceptions:
+                RequestException = FakeRequestException
+
+            def __init__(self):
+                self.calls = 0
+
+            def request(self, *args, **kwargs):
+                self.calls += 1
+                if self.calls == 1:
+                    raise FakeRequestException("read timeout")
+                return FakeResponse()
+
+        api = object.__new__(MODULE.AppStoreConnect)
+        api.requests = FakeRequests()
+        api.headers = {"Authorization": "Bearer test"}
+
+        with mock.patch.object(MODULE.time, "sleep") as sleep:
+            self.assertEqual(api.request("GET", "/v1/test"), {"data": []})
+
+        self.assertEqual(api.requests.calls, 2)
+        sleep.assert_called_once()
+
     def test_catalog_has_exactly_three_consumable_credit_packs(self):
         self.assertEqual(
             [pack.product_id for pack in MODULE.CREDIT_PACKS],

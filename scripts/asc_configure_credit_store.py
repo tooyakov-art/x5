@@ -16,6 +16,8 @@ from typing import Any
 API_ROOT = "https://api.appstoreconnect.apple.com"
 BUNDLE_ID = "com.x5studio.app"
 BASE_TERRITORY = "KAZ"
+REQUEST_ATTEMPTS = 3
+TRANSIENT_HTTP_STATUSES = {429, 500, 502, 503, 504}
 
 
 @dataclass(frozen=True)
@@ -180,16 +182,39 @@ class AppStoreConnect:
         expected: tuple[int, ...] = (200,),
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        response = self.requests.request(
-            method,
-            path if path.startswith("http") else f"{API_ROOT}{path}",
-            headers={
-                **self.headers,
-                **({"Content-Type": "application/json"} if payload else {}),
-            },
-            json=payload,
-            timeout=60,
-        )
+        url = path if path.startswith("http") else f"{API_ROOT}{path}"
+        response = None
+        for attempt in range(REQUEST_ATTEMPTS):
+            try:
+                response = self.requests.request(
+                    method,
+                    url,
+                    headers={
+                        **self.headers,
+                        **({"Content-Type": "application/json"} if payload else {}),
+                    },
+                    json=payload,
+                    timeout=60,
+                )
+            except self.requests.exceptions.RequestException as error:
+                if attempt + 1 >= REQUEST_ATTEMPTS:
+                    raise RuntimeError(
+                        f"{method} {url} failed after {REQUEST_ATTEMPTS} attempts: "
+                        f"{type(error).__name__}"
+                    ) from error
+                time.sleep(2**attempt)
+                continue
+
+            if (
+                response.status_code in TRANSIENT_HTTP_STATUSES
+                and attempt + 1 < REQUEST_ATTEMPTS
+            ):
+                time.sleep(2**attempt)
+                continue
+            break
+
+        if response is None:
+            raise RuntimeError(f"{method} {url} returned no response")
         if response.status_code not in expected:
             raise RuntimeError(
                 f"{method} {response.url} -> HTTP {response.status_code}: "
