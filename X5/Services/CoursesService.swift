@@ -459,6 +459,49 @@ final class CoursesService: ObservableObject {
     // MARK: - Editor (developer-only)
     // Mutations require an authenticated developer (RLS enforces on the server).
 
+    /// Loads real profile rows for the developer-only author picker. The
+    /// profiles table remains the source of truth for both the displayed name
+    /// and the UUID used by course-detail navigation.
+    func loadCourseAuthors(accessToken: String) async -> [UserProfile] {
+        error = nil
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("rest/v1/profiles"),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = [
+            URLQueryItem(name: "select", value: "id,name,nickname,avatar"),
+            URLQueryItem(name: "order", value: "name.asc.nullslast"),
+            URLQueryItem(name: "limit", value: "200")
+        ]
+
+        var request = URLRequest(url: components.url!)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else {
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                self.error = Self.httpError(
+                    prefix: "Не удалось загрузить авторов",
+                    status: status,
+                    data: data
+                )
+                return []
+            }
+            return try JSONDecoder()
+                .decode([UserProfile].self, from: data)
+                .sorted {
+                    $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+                }
+        } catch {
+            self.error = "Не удалось загрузить авторов: \(error.localizedDescription)"
+            return []
+        }
+    }
+
     /// Creates a draft course owned by the caller. Returns the new course on success.
     func createCourse(
         title: String,

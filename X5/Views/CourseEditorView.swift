@@ -5,6 +5,51 @@ private typealias EditableCategory = CourseCategoryDraft
 private typealias EditableDay = CourseDayDraft
 private typealias EditableLesson = CourseLessonDraft
 
+private enum CourseSaveStage: Equatable {
+    case idle
+    case preparing
+    case creatingCourse
+    case uploadingCover
+    case uploadingVideo(current: Int, total: Int)
+    case uploadingLessonCover(current: Int, total: Int)
+    case savingCourse
+    case completed
+    case failed(String)
+
+    var message: String? {
+        switch self {
+        case .idle:
+            return nil
+        case .preparing:
+            return "Подготовка к сохранению…"
+        case .creatingCourse:
+            return "Создание черновика курса…"
+        case .uploadingCover:
+            return "Загрузка обложки курса…"
+        case let .uploadingVideo(current, total):
+            return "Загрузка видео \(current) из \(total)…"
+        case let .uploadingLessonCover(current, total):
+            return "Загрузка обложки урока \(current) из \(total)…"
+        case .savingCourse:
+            return "Сохранение курса…"
+        case .completed:
+            return "Готово"
+        case let .failed(message):
+            return message
+        }
+    }
+
+    var isProgress: Bool {
+        switch self {
+        case .preparing, .creatingCourse, .uploadingCover, .uploadingVideo,
+             .uploadingLessonCover, .savingCourse:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
 /// Developer-only course editor. Handles course metadata, cover image, and lessons
 /// stored inside `courses.categories` JSON.
 struct CourseEditorView: View {
@@ -25,6 +70,11 @@ struct CourseEditorView: View {
     @State private var isPublic: Bool = false
     @State private var courseLanguage: String = "ru"
     @State private var authorName: String = ""
+    @State private var selectedAuthorId: String?
+    @State private var availableAuthors: [UserProfile] = []
+    @State private var authorPickerPresented = false
+    @State private var loadingAuthors = false
+    @State private var authorLoadError: String?
     @State private var coverUrl: String?
     @State private var categories: [EditableCategory] = [.defaultContent()]
 
@@ -38,6 +88,7 @@ struct CourseEditorView: View {
     @State private var deleteConfirm = false
     @State private var errorText: String?
     @State private var saveIdentity: CourseSaveIdentity
+    @State private var saveStage: CourseSaveStage = .idle
 
     private var isCreating: Bool { saveIdentity.persistedCourseID == nil }
     private var existingId: String? { saveIdentity.persistedCourseID }
@@ -59,8 +110,23 @@ struct CourseEditorView: View {
                     TextField("Название курса", text: $title)
                         .textInputAutocapitalization(.sentences)
                     TextField("Подзаголовок", text: $marketingHook)
-                    TextField("Автор курса", text: $authorName)
-                        .textInputAutocapitalization(.words)
+                    Button {
+                        authorPickerPresented = true
+                        Task { await loadCourseAuthors() }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Label("Автор курса", systemImage: "person.crop.circle")
+                            Spacer()
+                            Text(resolvedAuthorId == nil ? "Выбрать" : resolvedAuthorName)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                     TextField("Описание", text: $description, axis: .vertical)
                         .lineLimit(3...8)
                 }
@@ -108,6 +174,9 @@ struct CourseEditorView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color(red: 0.04, green: 0.05, blue: 0.10))
+            .safeAreaInset(edge: .bottom) {
+                saveStatusBanner
+            }
             .navigationTitle(isCreating ? "Новый курс" : "Редактировать")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -139,14 +208,37 @@ struct CourseEditorView: View {
                     }
                 )
             }
+            .sheet(isPresented: $authorPickerPresented) {
+                CourseAuthorPickerSheet(
+                    authors: availableAuthors,
+                    selectedAuthorId: selectedAuthorId,
+                    isLoading: loadingAuthors,
+                    errorText: authorLoadError,
+                    onReload: {
+                        Task { await loadCourseAuthors(force: true) }
+                    },
+                    onSelect: { author in
+                        selectedAuthorId = author.id
+                        authorName = author.displayName
+                    }
+                )
+            }
             .onAppear { populate() }
             .onChange(of: currentUser.profile?.displayName) { _ in
-                guard isCreating, authorName.x5Trimmed.isEmpty else { return }
-                authorName = defaultAuthorName
+                guard isCreating else { return }
+                if selectedAuthorId == nil {
+                    selectedAuthorId = currentUser.profile?.id ?? auth.userId
+                }
+                if authorName.x5Trimmed.isEmpty {
+                    authorName = defaultAuthorName
+                }
             }
             .onChange(of: coverItem) { newValue in
                 guard let newValue else { return }
                 Task { await loadCoverPreview(newValue) }
+            }
+            .task {
+                await loadCourseAuthors()
             }
         }
         .preferredColorScheme(.dark)
@@ -301,6 +393,7 @@ struct CourseEditorView: View {
 
         guard let c = editing else {
             categories = [.defaultContent()]
+            selectedAuthorId = auth.userId
             authorName = defaultAuthorName
             return
         }
@@ -311,6 +404,7 @@ struct CourseEditorView: View {
         isFree = c.isFree ?? false
         isPublic = c.isPublic ?? false
         courseLanguage = c.courseLanguage ?? "ru"
+        selectedAuthorId = c.authorId
         if let existingAuthor = c.authorName?.x5Trimmed, !existingAuthor.isEmpty {
             authorName = existingAuthor
         } else {
@@ -338,6 +432,63 @@ struct CourseEditorView: View {
         return "Xfive marketing"
     }
 
+    @ViewBuilder
+    private var saveStatusBanner: some View {
+        if let message = saveStage.message {
+            HStack(spacing: 12) {
+                if saveStage.isProgress {
+                    ProgressView()
+                } else {
+                    Image(
+                        systemName: saveStage == .completed
+                            ? "checkmark.circle.fill"
+                            : "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(saveStage == .completed ? Color.green : Color.red)
+                }
+                Text(message)
+                    .font(.footnote.weight(.semibold))
+                    .lineLimit(3)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(.regularMaterial)
+        }
+    }
+
+    private func loadCourseAuthors(force: Bool = false) async {
+        guard !loadingAuthors else { return }
+        guard force || availableAuthors.isEmpty else { return }
+        guard let token = await auth.freshAccessToken() else {
+            authorLoadError = "Не удалось подтвердить вход. Войдите снова."
+            return
+        }
+
+        loadingAuthors = true
+        authorLoadError = nil
+        var authors = await service.loadCourseAuthors(accessToken: token)
+        loadingAuthors = false
+
+        if let currentProfile = currentUser.profile,
+           !authors.contains(where: { $0.id.caseInsensitiveCompare(currentProfile.id) == .orderedSame }) {
+            authors.append(currentProfile)
+        }
+        availableAuthors = authors.sorted {
+            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        }
+        if let selectedAuthorId,
+           let matchingAuthor = availableAuthors.first(where: {
+               $0.id.caseInsensitiveCompare(selectedAuthorId) == .orderedSame
+           }) {
+            authorName = matchingAuthor.displayName
+        }
+        if availableAuthors.isEmpty {
+            authorLoadError = service.error ?? "Профили авторов не найдены."
+        }
+    }
+
     private func loadCoverPreview(_ item: PhotosPickerItem) async {
         if let data = try? await item.loadTransferable(type: Data.self),
            let ui = UIImage(data: data),
@@ -347,34 +498,47 @@ struct CourseEditorView: View {
     }
 
     private func save() async {
-        guard let token = await auth.freshAccessToken() else { return }
+        saveStage = .preparing
+        errorText = nil
+        guard let resolvedAuthorId else {
+            markSaveFailed("Выберите автора курса из профилей.")
+            return
+        }
+        guard let token = await auth.freshAccessToken() else {
+            markSaveFailed("Не удалось подтвердить вход. Войдите снова.")
+            return
+        }
         saving = true
         defer { saving = false }
-        errorText = nil
 
         var courseId = existingId
 
         // Create row first if new. This gives storage a stable course path.
         if courseId == nil {
+            saveStage = .creatingCourse
             guard let created = await service.createCourse(
                 title: title,
                 authorName: resolvedAuthorName,
-                authorId: auth.userId,
+                authorId: resolvedAuthorId,
                 accessToken: token
             ) else {
-                errorText = service.error ?? "Не удалось создать курс."
+                markSaveFailed(service.error ?? "Не удалось создать курс.")
                 return
             }
             saveIdentity.recordCreatedCourse(id: created.id)
             courseId = saveIdentity.persistedCourseID
         }
-        guard let id = courseId else { return }
+        guard let id = courseId else {
+            markSaveFailed("Не удалось подготовить курс к сохранению.")
+            return
+        }
 
         if let jpeg = coverPreviewData {
             uploadingCover = true
+            saveStage = .uploadingCover
             guard let uploadedCoverURL = await service.uploadCover(courseId: id, jpegData: jpeg, accessToken: token) else {
                 uploadingCover = false
-                errorText = service.error ?? "Не удалось загрузить обложку курса."
+                markSaveFailed(service.error ?? "Не удалось загрузить обложку курса.")
                 return
             }
             uploadingCover = false
@@ -395,6 +559,7 @@ struct CourseEditorView: View {
             "description": description.x5Trimmed.isEmpty ? NSNull() : description,
             "marketing_hook": marketingHook.x5Trimmed.isEmpty ? NSNull() : marketingHook,
             "author_name": resolvedAuthorName,
+            "author_id": resolvedAuthorId,
             "cover_url": coverUrl?.x5Trimmed.isEmpty == false ? (coverUrl ?? "") : NSNull(),
             "price": priceInt,
             "is_free": isFree,
@@ -402,12 +567,15 @@ struct CourseEditorView: View {
             "course_language": courseLanguage,
             "categories": categoriesPayload()
         ]
+        saveStage = .savingCourse
         let ok = await service.updateCourse(id: id, fields: fields, accessToken: token)
         if !ok {
-            errorText = service.error ?? "Не удалось сохранить."
+            markSaveFailed(service.error ?? "Не удалось сохранить.")
             return
         }
+        saveStage = .completed
         onChange()
+        try? await Task.sleep(nanoseconds: 350_000_000)
         dismiss()
     }
 
@@ -426,6 +594,13 @@ struct CourseEditorView: View {
     }
 
     private func uploadPendingLessonVideos(courseId: String, accessToken: String) async -> Bool {
+        let total = categories
+            .flatMap(\.days)
+            .flatMap(\.lessons)
+            .filter { $0.pendingVideoFileURL != nil }
+            .count
+        var uploaded = 0
+
         for categoryIndex in categories.indices {
             for dayIndex in categories[categoryIndex].days.indices {
                 for lessonIndex in categories[categoryIndex].days[dayIndex].lessons.indices {
@@ -433,15 +608,17 @@ struct CourseEditorView: View {
                         continue
                     }
 
+                    saveStage = .uploadingVideo(current: uploaded + 1, total: total)
                     let lessonId = categories[categoryIndex].days[dayIndex].lessons[lessonIndex].id
                     guard let publicURL = await service.uploadLessonVideo(courseId: courseId, lessonId: lessonId, fileURL: fileURL, accessToken: accessToken) else {
-                        errorText = service.error ?? "Не удалось загрузить видео урока."
+                        markSaveFailed(service.error ?? "Не удалось загрузить видео урока.")
                         return false
                     }
 
                     CourseVideoStaging.removeIfManaged(fileURL)
                     categories[categoryIndex].days[dayIndex].lessons[lessonIndex]
                         .markVideoUploadSucceeded(publicURL: publicURL)
+                    uploaded += 1
                 }
             }
         }
@@ -449,6 +626,13 @@ struct CourseEditorView: View {
     }
 
     private func uploadPendingLessonThumbnails(courseId: String, accessToken: String) async -> Bool {
+        let total = categories
+            .flatMap(\.days)
+            .flatMap(\.lessons)
+            .filter { $0.pendingThumbnailData != nil }
+            .count
+        var uploaded = 0
+
         for categoryIndex in categories.indices {
             for dayIndex in categories[categoryIndex].days.indices {
                 for lessonIndex in categories[categoryIndex].days[dayIndex].lessons.indices {
@@ -456,18 +640,25 @@ struct CourseEditorView: View {
                         continue
                     }
 
+                    saveStage = .uploadingLessonCover(current: uploaded + 1, total: total)
                     let lessonId = categories[categoryIndex].days[dayIndex].lessons[lessonIndex].id
                     guard let publicURL = await service.uploadLessonThumbnail(courseId: courseId, lessonId: lessonId, jpegData: jpegData, accessToken: accessToken) else {
-                        errorText = service.error ?? "Не удалось загрузить обложку урока."
+                        markSaveFailed(service.error ?? "Не удалось загрузить обложку урока.")
                         return false
                     }
 
                     categories[categoryIndex].days[dayIndex].lessons[lessonIndex]
                         .markThumbnailUploadSucceeded(publicURL: publicURL)
+                    uploaded += 1
                 }
             }
         }
         return true
+    }
+
+    private func markSaveFailed(_ message: String) {
+        errorText = message
+        saveStage = .failed(message)
     }
 
 
@@ -529,6 +720,12 @@ struct CourseEditorView: View {
     private var resolvedAuthorName: String {
         let value = authorName.x5Trimmed
         return value.isEmpty ? defaultAuthorName : value
+    }
+
+    private var resolvedAuthorId: String? {
+        guard let value = selectedAuthorId?.x5Trimmed,
+              UUID(uuidString: value) != nil else { return nil }
+        return value
     }
 
     private func ensureDefaultContent() {
@@ -646,6 +843,118 @@ struct CourseEditorView: View {
             return updated
         }
         categories[categoryIndex].days[dayIndex].lessons = sorted
+    }
+}
+
+private struct CourseAuthorPickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText = ""
+
+    let authors: [UserProfile]
+    let selectedAuthorId: String?
+    let isLoading: Bool
+    let errorText: String?
+    let onReload: () -> Void
+    let onSelect: (UserProfile) -> Void
+
+    private var filteredAuthors: [UserProfile] {
+        let query = searchText.x5Trimmed
+        guard !query.isEmpty else { return authors }
+        return authors.filter {
+            $0.displayName.localizedCaseInsensitiveContains(query)
+                || ($0.nickname?.localizedCaseInsensitiveContains(query) ?? false)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if isLoading && authors.isEmpty {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text("Загрузка профилей…")
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if authors.isEmpty {
+                    VStack(spacing: 14) {
+                        Image(systemName: "person.crop.circle.badge.exclamationmark")
+                            .font(.system(size: 34))
+                            .foregroundStyle(.secondary)
+                        Text(errorText ?? "Профили авторов не найдены.")
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.secondary)
+                        Button("Повторить", action: onReload)
+                    }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(filteredAuthors) { author in
+                        Button {
+                            onSelect(author)
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 12) {
+                                authorAvatar(author)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(author.displayName)
+                                        .foregroundStyle(.primary)
+                                    if let nickname = author.nickname?.x5Trimmed,
+                                       !nickname.isEmpty {
+                                        Text("@\(nickname)")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                if selectedAuthorId?.caseInsensitiveCompare(author.id) == .orderedSame {
+                                    Image(systemName: "checkmark")
+                                        .font(.body.weight(.semibold))
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .searchable(text: $searchText, prompt: "Имя или никнейм")
+                    .refreshable {
+                        onReload()
+                    }
+                }
+            }
+            .navigationTitle("Автор курса")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Закрыть") { dismiss() }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder
+    private func authorAvatar(_ author: UserProfile) -> some View {
+        if let raw = author.avatar?.x5Trimmed,
+           let url = URL(string: raw),
+           !raw.isEmpty {
+            CachedAsyncImage(url: url) { image in
+                image.resizable().scaledToFill()
+            } placeholder: {
+                avatarPlaceholder
+            }
+            .frame(width: 42, height: 42)
+            .clipShape(Circle())
+        } else {
+            avatarPlaceholder
+        }
+    }
+
+    private var avatarPlaceholder: some View {
+        Image(systemName: "person.crop.circle.fill")
+            .font(.system(size: 39))
+            .foregroundStyle(.secondary)
+            .frame(width: 42, height: 42)
     }
 }
 
@@ -775,8 +1084,6 @@ private struct LessonEditorSheet: View {
                 Section("Урок") {
                     TextField("Название урока", text: $title)
                         .textInputAutocapitalization(.sentences)
-                    TextField("Длительность, например 12:30", text: $duration)
-                        .keyboardType(.numbersAndPunctuation)
                     Toggle("Бесплатный preview", isOn: $isFreePreview)
                 }
 
@@ -800,9 +1107,15 @@ private struct LessonEditorSheet: View {
                     .disabled(uploading)
 
                     if let pendingVideoFileName {
-                        Label(pendingVideoFileName, systemImage: "clock.arrow.circlepath")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label("Видео подготовлено", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text(pendingVideoFileName)
+                                .lineLimit(1)
+                            Text("Загрузится после сохранения курса")
+                        }
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                     }
 
                 } header: {
