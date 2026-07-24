@@ -14,11 +14,36 @@ SPEC.loader.exec_module(MODULE)
 
 
 class CreditPackSubmissionTests(unittest.TestCase):
-    def test_submission_payload_targets_v2_purchase(self):
-        payload = MODULE.submission_payload("iap-1")
+    def test_iap_version_payload_targets_parent_purchase(self):
+        payload = MODULE.iap_version_payload("iap-1")
         self.assertEqual(
-            payload["data"]["relationships"]["inAppPurchaseV2"]["data"],
+            payload["data"]["relationships"]["inAppPurchase"]["data"],
             {"type": "inAppPurchases", "id": "iap-1"},
+        )
+
+    def test_review_item_can_attach_iap_version(self):
+        payload = MODULE.review_item_payload(
+            "submission-1",
+            "inAppPurchaseVersion",
+            "inAppPurchaseVersions",
+            "version-1",
+        )
+        relationships = payload["data"]["relationships"]
+        self.assertEqual(
+            relationships["reviewSubmission"]["data"]["id"],
+            "submission-1",
+        )
+        self.assertEqual(
+            relationships["inAppPurchaseVersion"]["data"],
+            {"type": "inAppPurchaseVersions", "id": "version-1"},
+        )
+
+    def test_combined_submission_targets_ios_app(self):
+        payload = MODULE.review_submission_payload("app-1")
+        self.assertEqual(payload["data"]["attributes"]["platform"], "IOS")
+        self.assertEqual(
+            payload["data"]["relationships"]["app"]["data"],
+            {"type": "apps", "id": "app-1"},
         )
 
     def test_submit_only_from_ready_to_submit(self):
