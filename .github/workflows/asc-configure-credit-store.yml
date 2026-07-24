@@ -56,6 +56,10 @@ jobs:
           -p "test_asc_submit_credit_packs.py"
       - name: Audit or submit credit packs for App Review
         if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
         run: >-
           python scripts/asc_submit_credit_packs.py
           --action "${{ inputs.credit_review_action }}"
