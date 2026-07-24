@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const migration = readFileSync(
@@ -12,6 +12,10 @@ const migration = readFileSync(
 const edge = readFileSync(
   new URL("../functions/generate-image/index.ts", import.meta.url),
   "utf8",
+);
+const serviceRoleHotfixURL = new URL(
+  "../migrations/20260724090000_fix_image_generation_service_role_guard.sql",
+  import.meta.url,
 );
 
 test("generation ledger is private and stores only hashed request identity", () => {
@@ -77,6 +81,33 @@ test("claim, completion, failure, lookup, and reconciliation stay privileged", (
     migration,
     /grant execute on function public\.x5_restore_image_generation_credits/,
   );
+});
+
+test("service RPC guards read the current JWT claims object", () => {
+  assert.doesNotMatch(migration, /request\.jwt\.claim\.role/);
+  assert.equal(
+    (
+      migration.match(
+        /coalesce\(auth\.jwt\(\)\s*->>\s*'role',\s*''\)\s*<>\s*'service_role'/g,
+      ) || []
+    ).length,
+    4,
+  );
+});
+
+test("production receives an idempotent service-role guard hotfix", () => {
+  assert.equal(existsSync(serviceRoleHotfixURL), true);
+  const hotfix = readFileSync(serviceRoleHotfixURL, "utf8");
+  for (const functionName of [
+    "claim_image_generation_request",
+    "complete_image_generation_request",
+    "get_image_generation_request",
+    "fail_image_generation_request",
+  ]) {
+    assert.match(hotfix, new RegExp(functionName));
+  }
+  assert.match(hotfix, /auth\.jwt\(\)\s*->>\s*''role''/);
+  assert.match(hotfix, /unexpected_generation_service_role_guard/);
 });
 
 test("ledger debits once, replays completion, and refunds once", () => {

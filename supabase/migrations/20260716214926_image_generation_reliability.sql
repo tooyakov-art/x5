@@ -112,8 +112,7 @@ declare
   v_claim_token_hash text;
   v_previous_manifest jsonb;
 begin
-  if coalesce(current_setting('request.jwt.claim.role', true), '') <>
-       'service_role'
+  if coalesce(auth.jwt() ->> 'role', '') <> 'service_role'
      and session_user <> 'postgres' then
     raise exception using errcode = '42501', message = 'service_role_required';
   end if;
@@ -294,8 +293,7 @@ declare
   request public.image_generation_requests%rowtype;
   v_expected_prefix text;
 begin
-  if coalesce(current_setting('request.jwt.claim.role', true), '') <>
-       'service_role'
+  if coalesce(auth.jwt() ->> 'role', '') <> 'service_role'
      and session_user <> 'postgres' then
     raise exception using errcode = '42501', message = 'service_role_required';
   end if;
@@ -452,8 +450,7 @@ as $function$
 declare
   request public.image_generation_requests%rowtype;
 begin
-  if coalesce(current_setting('request.jwt.claim.role', true), '') <>
-       'service_role'
+  if coalesce(auth.jwt() ->> 'role', '') <> 'service_role'
      and session_user <> 'postgres' then
     raise exception using errcode = '42501', message = 'service_role_required';
   end if;
@@ -653,8 +650,7 @@ declare
   v_credits integer;
   v_error_code text := lower(coalesce(nullif(btrim(p_error_code), ''), 'generation_failed'));
 begin
-  if coalesce(current_setting('request.jwt.claim.role', true), '') <>
-       'service_role'
+  if coalesce(auth.jwt() ->> 'role', '') <> 'service_role'
      and session_user <> 'postgres' then
     raise exception using errcode = '42501', message = 'service_role_required';
   end if;
