@@ -92,6 +92,16 @@ struct SettingsView: View {
                     }
                 }
 
+                if Roles.isDeveloper(email: auth.userEmail, userId: auth.userId) {
+                    Section("Разработчик") {
+                        NavigationLink {
+                            PortfolioModerationQueueView()
+                        } label: {
+                            Label("Проверка портфолио", systemImage: "checkmark.shield")
+                        }
+                    }
+                }
+
                 // Appearance / language
                 Section {
                     Picker(selection: Binding(

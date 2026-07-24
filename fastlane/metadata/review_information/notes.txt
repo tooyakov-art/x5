@@ -1,77 +1,61 @@
-Xfive marketing is a creator workspace and marketplace for creators, marketers,
-specialists and clients. Version 1.1.5 build 184 includes Home creator tools,
-image generation, Generated Gallery, Hub, Chats, Portfolio, CourseUP, Profile,
-one-time credit packs, verified badge, report/block controls and account deletion.
+Xfive marketing is a creator workspace and marketplace. Version 1.1.6 build 188
+includes creator tools, image generation, Hub, Chats, Portfolio, CourseUP,
+Profile, one-time credit packs, verified badge, UGC controls and account
+deletion.
 
 Demo account:
-Use the credentials in the Apple Demo Account fields:
-appreview@x5studio.app
+Use the Apple Demo Account credentials for appreview@x5studio.app. The account
+has sample content, chats and credits. Apple, Google and email sign-in are
+supported.
 
-The account has a profile, sample portfolio content, chats and credits for
-testing image generation. Sign in with Apple or Google may also be used.
+Quick test:
+1. Sign in.
+2. Home -> Image generation: enter a prompt, optionally add references, choose
+   size/quantity and generate. Results can be previewed, saved and shared.
+3. Hub -> Tasks: tap the category filter next to All, select several categories,
+   open a task, then use Back to categories.
+4. Chats: send text/photo/voice; reply, search, pin, mute, archive, report or
+   block.
+5. Portfolio/Profile: add a photo or video from the photo library. Safe images
+   are checked automatically; videos and inconclusive items enter the
+   developer-only review queue.
+6. CourseUP: open a course, tap the author to open that exact public profile,
+   preview a lesson and buy a paid course with credits. Developer accounts can
+   select a real author and manage lesson videos with visible upload progress.
+7. Profile -> Store: buy one-time 1,000/2,000/5,000-credit packs. Profile ->
+   Get verified opens the separate monthly verified-badge subscription.
+8. Settings: language, Face ID lock, notifications, sign out and Delete Account.
 
-Quick test flow:
-1. Sign in with the demo email and password, Apple or Google.
-2. Home tab - open Image generation, Logo, Story, Post, Product photo or
-   Packaging.
-3. Image generator - enter a prompt, optionally attach reference images, choose
-   model/size/quantity and tap Generate.
-4. Generated result - preview, save to in-app gallery, save to Photos, share,
-   markup or regenerate from edits.
-5. Hub - switch between Specialists and Tasks. In Tasks, open any category,
-   select several category chips to combine filters, then open a task. Open a
-   specialist/task, start a chat or send a proposal.
-6. Chats - send text, attach a photo, record voice, search, reply, pin, mute,
-   archive, report or block.
-7. Portfolio/Profile - add photos or videos, edit public visibility and social
-   links.
-8. CourseUP - open a course, tap its author to open the author's public profile,
-   preview a lesson and buy a paid course with credits.
-9. Profile -> Store - review and purchase a one-time 1,000, 2,000 or 5,000
-   credit pack. Profile -> Get verified opens the separate monthly verified
-   badge subscription with restore and management controls.
-10. Profile -> Settings - language, Face ID lock, cache, notifications, sign
-    out and Delete Account.
+Data processing and moderation:
+- Image generation sends the user's prompt and optional selected reference
+  images to the Xfive Supabase Edge Function generate-image.
+- For portfolio safety, portfolio titles/descriptions and user-selected images
+  are sent by our Supabase Edge Function to OpenAI's moderation API. Videos are
+  not sent to OpenAI; they require developer review.
+- The app does not use third-party advertising trackers.
 
-Image generation:
-The app sends the user's prompt and optional reference images to the Xfive marketing Supabase
-Edge Function generate-image. Generation is credit-based and the UI shows cost
-before generation. Generated images can be kept on-device, saved to Photos or
-shared. Reference images are chosen by the user through the iOS photo picker.
-Unfinished video/startup-chat cards are marked as in development.
+In-app purchases:
+- com.x5studio.app.credits.1000 / .2000 / .5000 are consumables.
+- com.x5studio.app.verified.monthly is an auto-renewable subscription.
+Credit packs change only the signed-in server balance and are applied exactly
+once from Apple's signed transaction. Unfinished delivery is retried. The
+verified badge is separate and does not include credits.
 
-Credit purchases and verification:
-1,000 Credits: com.x5studio.app.credits.1000 (consumable).
-2,000 Credits: com.x5studio.app.credits.2000 (consumable).
-5,000 Credits: com.x5studio.app.credits.5000 (consumable).
-Verified Badge Monthly: com.x5studio.app.verified.monthly (auto-renewable).
-The Store is available from every Profile and shows the current server balance.
-A credit purchase changes only that balance; it does not activate Pro or change
-subscription dates. The server applies each signed consumable exactly once and
-retries unfinished delivery after a temporary failure. Consumables are not shown
-as restorable. The verified badge
-is a separate 1,000 KZT/month subscription from Profile -> Get verified.
-
-Existing Lite, Pro and Max subscriptions remain recognized and restorable for
-current subscribers, but they are not offered in the new Store:
-com.x5studio.app.lite.monthly, com.x5studio.app.pro.monthly and
-com.x5studio.app.max.monthly.
+Existing Lite/Pro/Max subscriptions remain recognized for current subscribers
+but are not offered in the new Store.
 
 UGC safety:
-Every chat user can be blocked or reported from the chat header menu. Hub users
-and task authors can be reported. Reports open an email to support and are
-reviewed within 24 hours. Users can delete their account from Settings; the app
-calls Supabase delete_own_account and signs the user out.
+Chat users, Hub users and task authors can be reported; chat users can be
+blocked. Reports go to support and are reviewed within 24 hours. Account
+deletion is available in Settings.
 
 Biometrics:
-The app does not collect, store, transmit or process face data. Apple's
-LocalAuthentication framework is used only for optional App Lock. Xfive marketing receives
-only success/fail result and no biometric data.
+LocalAuthentication is used only for optional App Lock. No face or biometric
+data is collected, stored or transmitted.
 
 Permissions:
-Photos are used for avatars, portfolio, chat attachments, reference images and
-saving generated images. Microphone is used only for chat voice messages. APNs
-is used for message, proposal and optional promo alerts.
+Photos: avatars, portfolio, chats, references and saving results.
+Microphone: chat voice messages. APNs: message/proposal/optional promo alerts.
 
 Privacy: https://tooyakov-art.github.io/x5site/privacy.html
 Terms: https://tooyakov-art.github.io/x5site/terms.html

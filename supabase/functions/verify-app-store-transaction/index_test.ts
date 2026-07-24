@@ -454,20 +454,23 @@ Deno.test("handler requires the authenticated account token for Sandbox subscrip
   assertEquals(sandboxApplied, false);
 });
 
-Deno.test("handler rejects a mismatched account token for Sandbox subscriptions", async () => {
+Deno.test("Sandbox subscription account mismatches retain verified ownership only in diagnostics", async () => {
   let sandboxApplied = false;
+  const logged: unknown[] = [];
+  const ownerToken = "f76bc6fd-481e-4a02-aebc-a7a771f00ca2";
   const handler = createHandler(dependencies({
     verifySignedTransaction: () =>
       Promise.resolve({
         ...verifiedPayload,
         productId: "com.x5studio.app.verified.monthly",
         environment: "Sandbox",
-        appAccountToken: "f76bc6fd-481e-4a02-aebc-a7a771f00ca2",
+        appAccountToken: ownerToken,
       }),
     applyVerifiedSandboxReview: () => {
       sandboxApplied = true;
       throw new Error("sandbox_rpc_must_not_run");
     },
+    logError: (error) => logged.push(error),
   }));
 
   const response = await handler(
@@ -475,8 +478,91 @@ Deno.test("handler rejects a mismatched account token for Sandbox subscriptions"
   );
 
   assertEquals(response.status, 400);
-  assertEquals((await response.json()).error, "account_token_mismatch");
+  const body = await response.json();
+  assertEquals(body.status, "rejected");
+  assertEquals(body.error, "account_token_mismatch");
+  assertEquals("transactionId" in body, false);
+  assertEquals("appAccountToken" in body, false);
   assertEquals(sandboxApplied, false);
+  assertEquals(logged.length, 1);
+  const diagnostic = logged[0] as Record<string, unknown>;
+  assertEquals(diagnostic["transactionId"], verifiedPayload.transactionId);
+  assertEquals(
+    diagnostic["productId"],
+    "com.x5studio.app.verified.monthly",
+  );
+  assertEquals(diagnostic["environment"], "Sandbox");
+  assertEquals(diagnostic["appAccountToken"], ownerToken);
+  assertEquals(diagnostic["authenticatedUserId"], userId);
+});
+
+Deno.test("Production subscription account mismatches retain verified ownership only in diagnostics", async () => {
+  const logged: unknown[] = [];
+  const ownerToken = "f76bc6fd-481e-4a02-aebc-a7a771f00ca2";
+  const handler = createHandler(dependencies({
+    verifySignedTransaction: () =>
+      Promise.resolve({
+        ...verifiedPayload,
+        appAccountToken: ownerToken,
+      }),
+    applyVerifiedSubscription: () =>
+      Promise.reject(
+        new EntitlementApplyError(
+          "rejected",
+          400,
+          "account_token_mismatch",
+        ),
+      ),
+    logError: (error) => logged.push(error),
+  }));
+
+  const response = await handler(
+    post({ signed_transaction: signedTransaction() }),
+  );
+
+  assertEquals(response.status, 400);
+  const body = await response.json();
+  assertEquals(body.status, "rejected");
+  assertEquals("error" in body, false);
+  assertEquals("transactionId" in body, false);
+  assertEquals("appAccountToken" in body, false);
+  assertEquals(logged.length, 1);
+  const diagnostic = logged[0] as Record<string, unknown>;
+  assertEquals(diagnostic["transactionId"], verifiedPayload.transactionId);
+  assertEquals(diagnostic["productId"], verifiedPayload.productId);
+  assertEquals(diagnostic["environment"], "Production");
+  assertEquals(diagnostic["appAccountToken"], ownerToken);
+  assertEquals(diagnostic["authenticatedUserId"], userId);
+});
+
+Deno.test("account mismatch diagnostics retain verified transaction ownership", async () => {
+  const logged: unknown[] = [];
+  const ownerToken = "f76bc6fd-481e-4a02-aebc-a7a771f00ca2";
+  const handler = createHandler(dependencies({
+    verifySignedTransaction: () =>
+      Promise.resolve({
+        ...verifiedConsumablePayload,
+        appAccountToken: ownerToken,
+      }),
+    logError: (error) => logged.push(error),
+  }));
+
+  const response = await handler(
+    post({ signed_transaction: signedTransaction() }),
+  );
+
+  assertEquals(response.status, 400);
+  assertEquals((await response.json()).error, "account_token_mismatch");
+  assertEquals(logged.length, 1);
+  const diagnostic = logged[0] as Record<string, unknown>;
+  assertEquals(
+    diagnostic["transactionId"],
+    verifiedConsumablePayload.transactionId,
+  );
+  assertEquals(diagnostic["productId"], verifiedConsumablePayload.productId);
+  assertEquals(diagnostic["environment"], "Production");
+  assertEquals(diagnostic["appAccountToken"], ownerToken);
+  assertEquals(diagnostic["authenticatedUserId"], userId);
 });
 
 Deno.test("handler returns exact already_applied and owned_by_other status contracts", async () => {

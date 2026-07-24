@@ -13,6 +13,7 @@ struct PortfolioItem: Codable, Identifiable, Equatable {
     var createdAt: String?
     var moderationStatusRaw: String?
     var moderationReason: String?
+    var moderationRevision: Int64?
 
     enum CodingKeys: String, CodingKey {
         case id, type, title, description, link
@@ -23,6 +24,7 @@ struct PortfolioItem: Codable, Identifiable, Equatable {
         case createdAt = "created_at"
         case moderationStatusRaw = "moderation_status"
         case moderationReason = "moderation_reason"
+        case moderationRevision = "moderation_revision"
     }
 
     var moderationStatus: String {
@@ -107,29 +109,30 @@ final class PortfolioService: ObservableObject {
     }
 
     /// Uploads image/video to Storage, then inserts a portfolio_items row pointing at the public URL.
-    func addMedia(data: Data, type: String, mime: String, ext: String, userId: String, title: String?, description: String?, accessToken: String) async -> Bool {
+    func addMedia(data: Data, type: String, mime: String, ext: String, thumbnailData: Data? = nil, userId: String, title: String?, description: String?, accessToken: String) async -> Bool {
         let cleanType = type == "video" ? "video" : "image"
         let safeExt = ext.isEmpty ? (cleanType == "video" ? "mov" : "jpg") : ext
-        let path = "\(userId)/\(Int(Date().timeIntervalSince1970)).\(safeExt)"
-        let uploadURL = baseURL.appendingPathComponent("storage/v1/object/portfolio/\(path)")
-
-        var upload = URLRequest(url: uploadURL)
-        upload.httpMethod = "POST"
-        upload.setValue(anonKey, forHTTPHeaderField: "apikey")
-        upload.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        upload.setValue(mime, forHTTPHeaderField: "Content-Type")
-        upload.setValue("3600", forHTTPHeaderField: "Cache-Control")
-        upload.setValue("true", forHTTPHeaderField: "x-upsert")
-        upload.httpBody = data
-
-        guard let (_, response) = try? await URLSession.shared.data(for: upload),
-              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode)
-        else {
+        let identifier = "\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.lowercased())"
+        let path = "\(userId)/\(identifier).\(safeExt)"
+        guard let publicURL = await uploadPortfolioMedia(
+            data: data,
+            path: path,
+            mime: mime,
+            accessToken: accessToken
+        ) else {
             self.error = "Upload failed"
             return false
         }
 
-        let publicURL = baseURL.appendingPathComponent("storage/v1/object/public/portfolio/\(path)").absoluteString
+        var thumbnailURL: String?
+        if cleanType == "video", let thumbnailData {
+            thumbnailURL = await uploadPortfolioMedia(
+                data: thumbnailData,
+                path: "\(userId)/thumbnails/\(identifier).jpg",
+                mime: "image/jpeg",
+                accessToken: accessToken
+            )
+        }
 
         var insert = URLRequest(url: baseURL.appendingPathComponent("rest/v1/portfolio_items"))
         insert.httpMethod = "POST"
@@ -144,7 +147,7 @@ final class PortfolioService: ObservableObject {
             "title": AnyEncodable(title ?? ""),
             "description": AnyEncodable(description ?? ""),
             "media_url": AnyEncodable(publicURL),
-            "thumbnail_url": AnyEncodable(cleanType == "image" ? publicURL : ""),
+            "thumbnail_url": AnyEncodable(cleanType == "image" ? publicURL : (thumbnailURL ?? "")),
             "moderation_status": AnyEncodable("pending")
         ]
         insert.httpBody = try? JSONEncoder().encode(body)
@@ -156,19 +159,55 @@ final class PortfolioService: ObservableObject {
             self.error = "Insert failed"
             return false
         }
-        let moderated = await moderate(itemId: inserted.id, accessToken: accessToken) ?? inserted
+        let moderated = await moderate(
+            itemId: inserted.id,
+            moderationRevision: inserted.moderationRevision,
+            accessToken: accessToken
+        ) ?? inserted
         items.insert(moderated, at: 0)
         return true
     }
 
+    private func uploadPortfolioMedia(
+        data: Data,
+        path: String,
+        mime: String,
+        accessToken: String
+    ) async -> String? {
+        let uploadURL = baseURL.appendingPathComponent("storage/v1/object/portfolio/\(path)")
+        var upload = URLRequest(url: uploadURL)
+        upload.httpMethod = "POST"
+        upload.setValue(anonKey, forHTTPHeaderField: "apikey")
+        upload.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        upload.setValue(mime, forHTTPHeaderField: "Content-Type")
+        upload.setValue("3600", forHTTPHeaderField: "Cache-Control")
+        upload.setValue("false", forHTTPHeaderField: "x-upsert")
+        upload.httpBody = data
+
+        guard let (_, response) = try? await URLSession.shared.data(for: upload),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode)
+        else {
+            return nil
+        }
+        return baseURL
+            .appendingPathComponent("storage/v1/object/public/portfolio/\(path)")
+            .absoluteString
+    }
+
     @discardableResult
-    func moderate(itemId: String, accessToken: String) async -> PortfolioItem? {
+    func moderate(itemId: String, moderationRevision: Int64?, accessToken: String) async -> PortfolioItem? {
         var request = URLRequest(url: functionsBaseURL.appendingPathComponent("moderate-portfolio"))
         request.httpMethod = "POST"
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(["item_id": itemId])
+        request.httpBody = try? JSONEncoder().encode(
+            PortfolioModerationRequest(
+                itemId: itemId,
+                moderationRevision: moderationRevision
+            )
+        )
 
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               let http = response as? HTTPURLResponse,
@@ -271,11 +310,19 @@ final class PortfolioService: ObservableObject {
         else { return nil }
 
         if let index = items.firstIndex(where: { $0.id == itemId }) {
-            let moderated = await moderate(itemId: updated.id, accessToken: accessToken) ?? updated
+            let moderated = await moderate(
+                itemId: updated.id,
+                moderationRevision: updated.moderationRevision,
+                accessToken: accessToken
+            ) ?? updated
             items[index] = moderated
             return moderated
         }
-        return await moderate(itemId: updated.id, accessToken: accessToken) ?? updated
+        return await moderate(
+            itemId: updated.id,
+            moderationRevision: updated.moderationRevision,
+            accessToken: accessToken
+        ) ?? updated
     }
 
     func likeState(itemId: String, currentUserId: String, accessToken: String) async -> PortfolioLikeState {
@@ -349,6 +396,16 @@ private struct PortfolioLikeRow: Codable {
 
     enum CodingKeys: String, CodingKey {
         case userId = "user_id"
+    }
+}
+
+private struct PortfolioModerationRequest: Encodable {
+    let itemId: String
+    let moderationRevision: Int64?
+
+    enum CodingKeys: String, CodingKey {
+        case itemId = "item_id"
+        case moderationRevision = "moderation_revision"
     }
 }
 

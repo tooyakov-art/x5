@@ -1,10 +1,10 @@
-This update expands Xfive marketing into a fuller creator workspace.
+This update improves courses, Hub filters, portfolio safety and purchases.
 
 New in this version:
-- Updated Home screen with creator and marketing tools.
-- Image generation for marketing creatives, logos, stories, posts, product photos and packaging ideas.
-- Hub improvements for specialists, tasks and proposals.
-- Direct chats with text, photos, voice messages, search, replies, pin, mute, archive, report and block controls.
-- Portfolio improvements with photos, videos, likes, comments and pinned work.
-- CourseUP video lessons and credit-based course purchases.
-- Profile, onboarding, language, Face ID lock, push notification and subscription improvements.
+- Select several task categories and return to the complete Hub category grid.
+- Open a course author's public profile and select the correct author while managing a course.
+- Choose lesson and submission videos from the photo library with clearer preparation and upload progress.
+- Keep course modules and videos intact while editing.
+- View course videos full screen with zoom controls.
+- Automatic portfolio image safety checks and a protected developer review queue.
+- More reliable one-time credit delivery and restored image generation.

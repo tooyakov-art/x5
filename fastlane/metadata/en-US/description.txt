@@ -23,10 +23,10 @@ The verified badge is a separate optional monthly auto-renewable subscription. I
 Payment is charged to your Apple ID at confirmation of purchase. The verified badge subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel it in your App Store account settings.
 
 SAFETY
-Chats include report and block controls. Users can delete their account from Settings. User-generated content is handled with moderation support through support@x5studio.app.
+Chats include report and block controls. Users can delete their account from Settings. Portfolio images and text are screened for prohibited content; videos and inconclusive items can be reviewed by the developer accounts.
 
 PRIVACY
-Authentication uses Sign in with Apple, Google or email. Profile data, chats, tasks and portfolio items are handled through Supabase. Xfive marketing does not use third-party advertising trackers.
+Authentication uses Sign in with Apple, Google or email. Profile data, chats, tasks and portfolio items are stored through Supabase. User-selected portfolio images plus their titles and descriptions may be sent from our Supabase Edge Function to OpenAI solely for content moderation. Portfolio videos are not sent to OpenAI. Xfive marketing does not use third-party advertising trackers.
 
 Terms of Service: https://tooyakov-art.github.io/x5site/terms.html
 Privacy Policy: https://tooyakov-art.github.io/x5site/privacy.html

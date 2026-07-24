@@ -72,9 +72,50 @@ export class EntitlementApplyError extends Error {
   constructor(
     readonly statusValue: "owned_by_other" | "rejected",
     readonly httpStatus: number,
+    readonly diagnosticCode:
+      | "owned_by_other"
+      | "rejected"
+      | "account_token_mismatch" = statusValue,
   ) {
     super(statusValue);
   }
+}
+
+type AccountTokenMismatchDiagnostic =
+  & (InputError | EntitlementApplyError)
+  & {
+    transactionId?: string;
+    productId?: string;
+    environment?: AppStoreEnvironment;
+    appAccountToken?: string;
+    authenticatedUserId?: string;
+  };
+
+function accountTokenMismatchDiagnostic(
+  error: unknown,
+): AccountTokenMismatchDiagnostic | null {
+  const isMismatch = error instanceof InputError
+    ? error.code === "account_token_mismatch"
+    : error instanceof EntitlementApplyError
+    ? error.diagnosticCode === "account_token_mismatch"
+    : false;
+  return isMismatch ? error as AccountTokenMismatchDiagnostic : null;
+}
+
+function retainVerifiedTransactionOwnership(
+  error: unknown,
+  verifiedPayload: VerifiedTransactionPayload,
+  environment: AppStoreEnvironment,
+  authenticatedUserId: string,
+): void {
+  const diagnostic = accountTokenMismatchDiagnostic(error);
+  if (!diagnostic) return;
+
+  diagnostic.transactionId = verifiedPayload.transactionId;
+  diagnostic.productId = verifiedPayload.productId;
+  diagnostic.environment = environment;
+  diagnostic.appAccountToken = verifiedPayload.appAccountToken;
+  diagnostic.authenticatedUserId = authenticatedUserId;
 }
 
 export function createHandler(
@@ -123,41 +164,54 @@ export function createHandler(
         signedTransaction,
         environment,
       );
-      const transaction = validateVerifiedTransaction(
-        verifiedPayload,
-        userId,
-        environment,
-        _dependencies.now(),
-      );
-      let result: EntitlementResult;
-      if (transaction.revocationDate) {
-        result = transaction.productKind === "consumable"
-          ? await _dependencies.applyVerifiedConsumableRefund(
+      try {
+        const transaction = validateVerifiedTransaction(
+          verifiedPayload,
+          userId,
+          environment,
+          _dependencies.now(),
+        );
+        let result: EntitlementResult;
+        if (transaction.revocationDate) {
+          result = transaction.productKind === "consumable"
+            ? await _dependencies.applyVerifiedConsumableRefund(
+              userId,
+              transaction,
+            )
+            : await _dependencies.applyVerifiedRevocation(userId, transaction);
+        } else if (transaction.environment === "Sandbox") {
+          // Apple signs both TestFlight and App Review purchases as Sandbox.
+          // Unlike the legacy production restore path, the isolated review RPC
+          // always requires StoreKit's appAccountToken to bind the purchase to
+          // the authenticated dedicated review account.
+          if (!transaction.appAccountToken) {
+            throw new InputError("missing_account_token");
+          }
+          if (transaction.appAccountToken !== userId.toLowerCase()) {
+            throw new InputError("account_token_mismatch");
+          }
+          result = await _dependencies.applyVerifiedSandboxReview(
             userId,
             transaction,
-          )
-          : await _dependencies.applyVerifiedRevocation(userId, transaction);
-      } else if (transaction.environment === "Sandbox") {
-        // Apple signs both TestFlight and App Review purchases as Sandbox.
-        // Unlike the legacy production restore path, the isolated review RPC
-        // always requires StoreKit's appAccountToken to bind the purchase to
-        // the authenticated dedicated review account.
-        if (!transaction.appAccountToken) {
-          throw new InputError("missing_account_token");
+          );
+        } else {
+          result = transaction.productKind === "consumable"
+            ? await _dependencies.applyVerifiedConsumable(userId, transaction)
+            : await _dependencies.applyVerifiedSubscription(
+              userId,
+              transaction,
+            );
         }
-        if (transaction.appAccountToken !== userId.toLowerCase()) {
-          throw new InputError("account_token_mismatch");
-        }
-        result = await _dependencies.applyVerifiedSandboxReview(
+        return jsonResponse(result, 200);
+      } catch (error) {
+        retainVerifiedTransactionOwnership(
+          error,
+          verifiedPayload,
+          environment,
           userId,
-          transaction,
         );
-      } else {
-        result = transaction.productKind === "consumable"
-          ? await _dependencies.applyVerifiedConsumable(userId, transaction)
-          : await _dependencies.applyVerifiedSubscription(userId, transaction);
+        throw error;
       }
-      return jsonResponse(result, 200);
     } catch (error) {
       if (error instanceof InputError) {
         _dependencies.logError(error);
@@ -562,6 +616,13 @@ async function applyVerifiedRpc(
     ) {
       throw new EntitlementApplyError("rejected", 403);
     }
+    if (safeToken.includes("account_token_mismatch")) {
+      throw new EntitlementApplyError(
+        "rejected",
+        400,
+        "account_token_mismatch",
+      );
+    }
     if (
       safeToken.includes("invalid_user_id") ||
       safeToken.includes("profile_not_found") ||
@@ -577,7 +638,6 @@ async function applyVerifiedRpc(
       safeToken.includes("invalid_expiration_date") ||
       safeToken.includes("transaction_expired") ||
       safeToken.includes("invalid_transaction_dates") ||
-      safeToken.includes("account_token_mismatch") ||
       safeToken.includes("missing_account_token") ||
       safeToken.includes("revocation_source_not_found") ||
       safeToken.includes("revocation_source_mismatch") ||
@@ -631,11 +691,24 @@ const runtimeDependencies: HandlerDependencies = {
     const code = error instanceof InputError
       ? error.code
       : error instanceof EntitlementApplyError
-      ? error.statusValue
+      ? error.diagnosticCode
       : error instanceof AppleVerificationError
       ? error.diagnosticCode
       : "server_error";
-    console.error("verify-app-store-transaction failed", { name, code });
+    const ownership = accountTokenMismatchDiagnostic(error);
+    console.error("verify-app-store-transaction failed", {
+      name,
+      code,
+      ...(ownership
+        ? {
+          transaction_id: ownership.transactionId,
+          product_id: ownership.productId,
+          environment: ownership.environment,
+          app_account_token: ownership.appAccountToken,
+          authenticated_user_id: ownership.authenticatedUserId,
+        }
+        : {}),
+    });
   },
 };
 

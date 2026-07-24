@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import AVKit
+import AVFoundation
 import UniformTypeIdentifiers
 
 /// Instagram-style portfolio feed. Used inside ProfileView (own) and UserProfileView (public).
@@ -81,9 +82,19 @@ struct PortfolioGrid: View {
             await service.load(userId: userId, accessToken: token, includeUnapproved: canEdit)
         }
         .sheet(isPresented: $showingAdd) {
-            AddPortfolioItemView { data, mediaType, mime, ext, title, desc in
+            AddPortfolioItemView { data, mediaType, mime, ext, thumbnailData, title, desc in
                 guard let token = auth.accessToken else { return false }
-                return await service.addMedia(data: data, type: mediaType, mime: mime, ext: ext, userId: userId, title: title, description: desc, accessToken: token)
+                return await service.addMedia(
+                    data: data,
+                    type: mediaType,
+                    mime: mime,
+                    ext: ext,
+                    thumbnailData: thumbnailData,
+                    userId: userId,
+                    title: title,
+                    description: desc,
+                    accessToken: token
+                )
             }
             .preferredColorScheme(.dark)
         }
@@ -1055,17 +1066,20 @@ private struct EditPortfolioItemView: View {
 // MARK: - Add item
 
 struct AddPortfolioItemView: View {
-    let onSave: (Data, String, String, String, String?, String?) async -> Bool
+    let onSave: (Data, String, String, String, Data?, String?, String?) async -> Bool
 
     @Environment(\.dismiss) private var dismiss
     @State private var mediaItem: PhotosPickerItem?
     @State private var mediaData: Data?
+    @State private var videoThumbnailData: Data?
     @State private var mediaType: String = "image"
     @State private var mime: String = "image/jpeg"
     @State private var ext: String = "jpg"
     @State private var title: String = ""
     @State private var description: String = ""
     @State private var saving = false
+    @State private var preparingMedia = false
+    @State private var mediaPreparationGeneration = 0
     @State private var errorText: String?
 
     var body: some View {
@@ -1073,7 +1087,26 @@ struct AddPortfolioItemView: View {
             Form {
                 Section {
                     PhotosPicker(selection: $mediaItem, matching: .any(of: [.images, .videos])) {
-                        if mediaType == "video", mediaData != nil {
+                        if preparingMedia {
+                            VStack(spacing: 10) {
+                                ProgressView()
+                                Text("Подготавливаем медиа…")
+                                    .font(.system(size: 15, weight: .semibold))
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 160)
+                        } else if mediaType == "video", let thumbnailData = videoThumbnailData,
+                           let image = UIImage(data: thumbnailData) {
+                            ZStack {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxHeight: 220)
+                                Image(systemName: "play.circle.fill")
+                                    .font(.system(size: 44, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .shadow(radius: 6)
+                            }
+                        } else if mediaType == "video", mediaData != nil {
                             VStack(spacing: 10) {
                                 Image(systemName: "play.rectangle.fill")
                                     .font(.system(size: 44, weight: .semibold))
@@ -1096,7 +1129,13 @@ struct AddPortfolioItemView: View {
                         }
                     }
                     .onChange(of: mediaItem) { newValue in
-                        Task { await loadMedia(newValue) }
+                        mediaPreparationGeneration += 1
+                        let generation = mediaPreparationGeneration
+                        preparingMedia = newValue != nil
+                        mediaData = nil
+                        videoThumbnailData = nil
+                        errorText = nil
+                        Task { await loadMedia(newValue, generation: generation) }
                     }
                 }
 
@@ -1125,20 +1164,27 @@ struct AddPortfolioItemView: View {
                     } label: {
                         if saving { ProgressView() } else { Text("Сохранить").bold() }
                     }
-                    .disabled(saving || mediaData == nil)
+                    .disabled(saving || preparingMedia || mediaData == nil)
                 }
             }
         }
     }
 
     private func save() async {
-        guard let data = mediaData else { return }
+        guard !preparingMedia, let data = mediaData else { return }
         saving = true
         defer { saving = false }
         let titleTrim = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let descTrim = description.trimmingCharacters(in: .whitespacesAndNewlines)
-        let ok = await onSave(data, mediaType, mime, ext, titleTrim.isEmpty ? nil : titleTrim,
-                              descTrim.isEmpty ? nil : descTrim)
+        let ok = await onSave(
+            data,
+            mediaType,
+            mime,
+            ext,
+            videoThumbnailData,
+            titleTrim.isEmpty ? nil : titleTrim,
+            descTrim.isEmpty ? nil : descTrim
+        )
         if ok {
             dismiss()
         } else {
@@ -1158,19 +1204,75 @@ struct AddPortfolioItemView: View {
         return resized.jpegData(compressionQuality: 0.82) ?? data
     }
 
-    private func loadMedia(_ item: PhotosPickerItem?) async {
-        guard let item, let data = try? await item.loadTransferable(type: Data.self) else { return }
+    private func loadMedia(_ item: PhotosPickerItem?, generation: Int) async {
+        guard let item else {
+            guard generation == mediaPreparationGeneration else { return }
+            preparingMedia = false
+            return
+        }
+        guard let data = try? await item.loadTransferable(type: Data.self) else {
+            guard generation == mediaPreparationGeneration else { return }
+            preparingMedia = false
+            errorText = "Не удалось подготовить выбранный файл."
+            return
+        }
+        guard generation == mediaPreparationGeneration else { return }
+
         let contentType = item.supportedContentTypes.first
         if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) || $0.conforms(to: .video) }) {
+            let videoMime = contentType?.preferredMIMEType ?? "video/quicktime"
+            let videoExtension = contentType?.preferredFilenameExtension ?? "mov"
+            let thumbnail = await makeVideoThumbnail(from: data, fileExtension: videoExtension)
+            guard generation == mediaPreparationGeneration else { return }
             mediaType = "video"
-            mime = contentType?.preferredMIMEType ?? "video/quicktime"
-            ext = contentType?.preferredFilenameExtension ?? "mov"
+            mime = videoMime
+            ext = videoExtension
+            videoThumbnailData = thumbnail
             mediaData = data
         } else {
+            let compressed = compress(data)
+            guard generation == mediaPreparationGeneration else { return }
             mediaType = "image"
             mime = "image/jpeg"
             ext = "jpg"
-            mediaData = compress(data)
+            videoThumbnailData = nil
+            mediaData = compressed
         }
+        preparingMedia = false
+    }
+
+    private func makeVideoThumbnail(from data: Data, fileExtension: String) async -> Data? {
+        await Task.detached(priority: .userInitiated) {
+            let safeExtension = fileExtension.isEmpty ? "mov" : fileExtension
+            let fileURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("portfolio-preview-\(UUID().uuidString)")
+                .appendingPathExtension(safeExtension)
+            defer { try? FileManager.default.removeItem(at: fileURL) }
+
+            do {
+                try data.write(to: fileURL, options: .atomic)
+                let asset = AVURLAsset(url: fileURL)
+                let generator = AVAssetImageGenerator(asset: asset)
+                generator.appliesPreferredTrackTransform = true
+                generator.maximumSize = CGSize(width: 1280, height: 1280)
+
+                let duration = try await asset.load(.duration)
+                let durationSeconds = duration.seconds
+                let thumbnailFractions: [Double] = [0.1, 0.5, 0.9]
+                let requestedSeconds = durationSeconds.isFinite && durationSeconds > 0
+                    ? thumbnailFractions.map { min(max($0 * durationSeconds, 0), durationSeconds) }
+                    : [0.0]
+
+                for seconds in requestedSeconds {
+                    let time = CMTime(seconds: seconds, preferredTimescale: 600)
+                    if let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) {
+                        return UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.82)
+                    }
+                }
+                return nil
+            } catch {
+                return nil
+            }
+        }.value
     }
 }
