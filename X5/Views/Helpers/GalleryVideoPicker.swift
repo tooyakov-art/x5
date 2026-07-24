@@ -125,7 +125,7 @@ struct GalleryVideoPicker: UIViewControllerRepresentable {
                 do {
                     let stagedURL = try CourseVideoStaging.stage(
                         sourceURL: sourceURL,
-                        lessonID: parent.stagingID
+                        lessonID: self.parent.stagingID
                     )
                     let trimmedName = suggestedName?
                         .trimmingCharacters(in: .whitespacesAndNewlines)
