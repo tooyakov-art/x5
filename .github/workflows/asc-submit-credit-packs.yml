@@ -1,0 +1,38 @@
+name: ASC submit credit packs
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Audit only, or submit READY_TO_SUBMIT credit packs"
+        required: true
+        type: choice
+        default: audit
+        options:
+          - audit
+          - submit
+
+jobs:
+  credit-packs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyjwt[crypto] requests
+      - name: Verify guarded submission contract
+        run: >-
+          python -m unittest discover -s scripts/tests
+          -p "test_asc_submit_credit_packs.py"
+      - name: Audit or submit credit packs
+        run: >-
+          python scripts/asc_submit_credit_packs.py
+          --action "${{ inputs.action }}"
