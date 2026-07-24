@@ -2,6 +2,15 @@ name: ASC configure credit store
 
 on:
   workflow_dispatch:
+    inputs:
+      credit_review_action:
+        description: "Audit only, or submit READY_TO_SUBMIT credit packs"
+        required: true
+        type: choice
+        default: audit
+        options:
+          - audit
+          - submit
   push:
     branches: [main, codex/x5-course-client-fixes-20260714]
     paths:
@@ -40,3 +49,13 @@ jobs:
           APP_STORE_NOTIFICATIONS_URL: >-
             https://afwznqjpshybmqhlewmy.supabase.co/functions/v1/app-store-notifications
         run: python scripts/asc_configure_server_notifications.py
+      - name: Verify guarded credit review contract
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: >-
+          python -m unittest discover -s scripts/tests
+          -p "test_asc_submit_credit_packs.py"
+      - name: Audit or submit credit packs for App Review
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: >-
+          python scripts/asc_submit_credit_packs.py
+          --action "${{ inputs.credit_review_action }}"
