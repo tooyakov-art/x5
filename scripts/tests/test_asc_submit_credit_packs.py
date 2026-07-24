@@ -64,6 +64,28 @@ class CreditPackSubmissionTests(unittest.TestCase):
             rejected,
         )
 
+    def test_single_ready_submission_is_reused(self):
+        ready = {
+            "id": "submission-1",
+            "attributes": {"state": "READY_FOR_REVIEW"},
+        }
+        complete = {
+            "id": "submission-2",
+            "attributes": {"state": "COMPLETE"},
+        }
+        self.assertEqual(
+            MODULE.single_ready_submission([complete, ready]),
+            ready,
+        )
+
+    def test_multiple_ready_submissions_fail_closed(self):
+        rows = [
+            {"id": "one", "attributes": {"state": "READY_FOR_REVIEW"}},
+            {"id": "two", "attributes": {"state": "READY_FOR_REVIEW"}},
+        ]
+        with self.assertRaisesRegex(RuntimeError, "More than one"):
+            MODULE.single_ready_submission(rows)
+
     def test_submit_only_from_ready_to_submit(self):
         self.assertTrue(
             MODULE.should_submit("READY_TO_SUBMIT", action="submit")

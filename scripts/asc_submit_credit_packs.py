@@ -95,6 +95,21 @@ def submit_review_payload(submission_id: str) -> dict[str, Any]:
     }
 
 
+def single_ready_submission(
+    submissions: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    ready = [
+        row
+        for row in submissions
+        if row.get("attributes", {}).get("state") == "READY_FOR_REVIEW"
+    ]
+    if len(ready) > 1:
+        raise RuntimeError(
+            f"More than one READY_FOR_REVIEW submission exists: {len(ready)}"
+        )
+    return ready[0] if ready else None
+
+
 def should_submit(state: str, *, action: str) -> bool:
     if action == "audit":
         return False
@@ -260,14 +275,23 @@ def create_combined_review(
     app_version_id: str,
     iap_versions: list[dict[str, Any]],
 ) -> str:
-    submission = api.request(
-        "POST",
-        "/v1/reviewSubmissions",
-        expected=(201,),
-        payload=review_submission_payload(app_id),
-    )["data"]
+    existing = api.request(
+        "GET",
+        f"/v1/reviewSubmissions?filter[app]={app_id}"
+        "&filter[platform]=IOS",
+    ).get("data", [])
+    submission = single_ready_submission(existing)
+    if submission:
+        print(f"Reusing READY ReviewSubmission {submission['id']}")
+    else:
+        submission = api.request(
+            "POST",
+            "/v1/reviewSubmissions",
+            expected=(201,),
+            payload=review_submission_payload(app_id),
+        )["data"]
+        print(f"Created combined ReviewSubmission {submission['id']}")
     submission_id = submission["id"]
-    print(f"Created combined ReviewSubmission {submission_id}")
 
     api.request(
         "POST",
