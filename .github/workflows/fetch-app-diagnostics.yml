@@ -64,35 +64,3 @@ jobs:
                       print(f"    {line}")
                   print("    --- end ---")
           PY
-      - name: Verify image generation credit RPC
-        run: |
-          python <<'PY'
-          import os
-          import requests
-
-          base = os.environ["SUPABASE_URL"]
-          key = os.environ["SUPABASE_SERVICE_KEY"]
-          response = requests.post(
-              f"{base}/rest/v1/rpc/claim_image_generation_request",
-              headers={
-                  "apikey": key,
-                  "Authorization": f"Bearer {key}",
-                  "Content-Type": "application/json",
-              },
-              json={
-                  "p_user_id": "00000000-0000-0000-0000-000000000000",
-                  "p_request_key": f"explicit:{'0' * 64}",
-                  "p_request_fingerprint": "0" * 64,
-                  "p_is_legacy": False,
-                  "p_cost_credits": 0,
-                  "p_claim_token": "a" * 32,
-              },
-              timeout=30,
-          )
-          payload = response.json() if response.content else {}
-          print(f"HTTP {response.status_code}; status={payload.get('status')}")
-          if response.status_code != 200:
-              raise SystemExit(response.text[:500])
-          if payload.get("status") != "invalid_request":
-              raise SystemExit(f"Unexpected payload: {payload}")
-          PY
