@@ -46,6 +46,24 @@ class CreditPackSubmissionTests(unittest.TestCase):
             {"type": "apps", "id": "app-1"},
         )
 
+    def test_developer_rejected_iap_version_is_reused(self):
+        rejected = {
+            "id": "version-1",
+            "attributes": {"state": "DEVELOPER_REJECTED"},
+        }
+
+        class FakeAPI:
+            def list_all(self, path):
+                return [rejected]
+
+            def request(self, *args, **kwargs):
+                raise AssertionError("must not create a duplicate version")
+
+        self.assertEqual(
+            MODULE.ensure_iap_version(FakeAPI(), "iap-1"),
+            rejected,
+        )
+
     def test_submit_only_from_ready_to_submit(self):
         self.assertTrue(
             MODULE.should_submit("READY_TO_SUBMIT", action="submit")

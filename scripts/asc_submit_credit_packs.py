@@ -167,7 +167,12 @@ def ensure_iap_version(
             row
             for row in versions
             if row.get("attributes", {}).get("state")
-            in {"PREPARE_FOR_SUBMISSION", "READY_FOR_REVIEW"}
+            in {
+                "PREPARE_FOR_SUBMISSION",
+                "READY_FOR_REVIEW",
+                "DEVELOPER_REJECTED",
+                "REJECTED",
+            }
         ),
         None,
     )
