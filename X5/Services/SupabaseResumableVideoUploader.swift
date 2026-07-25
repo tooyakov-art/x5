@@ -6,6 +6,7 @@ enum SupabaseResumableVideoUploadError: Error, Equatable, LocalizedError {
     case invalidBucketName
     case invalidObjectName
     case missingAccessToken
+    case fileTooLarge
     case uploadFailed(details: String)
 
     var errorDescription: String? {
@@ -18,9 +19,25 @@ enum SupabaseResumableVideoUploadError: Error, Equatable, LocalizedError {
             return "Указан небезопасный путь видео."
         case .missingAccessToken:
             return "Сессия истекла. Войдите снова и повторите загрузку."
+        case .fileTooLarge:
+            return "Видео превышает лимит хранилища 50 МБ. Выберите более короткое видео."
         case .uploadFailed(let details):
             return "Возобновляемая загрузка видео не завершилась. Можно повторить без повторного выбора файла. \(details)"
         }
+    }
+
+    static func fromUploadFailure(details: String) -> Self {
+        let normalized = details.lowercased()
+        if normalized.contains("413")
+            || normalized.contains("entitytoolarge")
+            || normalized.contains("entity too large") {
+            return .fileTooLarge
+        }
+        return .uploadFailed(details: details)
+    }
+
+    var shouldDiscardResumableState: Bool {
+        self == .fileTooLarge
     }
 }
 
@@ -165,6 +182,15 @@ final class SupabaseResumableVideoUploader {
         accessTokenProvider: AccessTokenProvider? = nil,
         progress: @escaping ProgressHandler
     ) async throws -> URL {
+        if let fileSize = try? fileURL.resourceValues(
+            forKeys: [.fileSizeKey]
+        ).fileSize,
+           CourseVideoUploadPolicy.requiresTranscoding(
+               fileSizeBytes: Int64(fileSize)
+           ) {
+            throw SupabaseResumableVideoUploadError.fileTooLarge
+        }
+
         let initialToken = try SupabaseTUSAuthorization.normalizedToken(accessToken)
         let resolvedTokenProvider = accessTokenProvider ?? { initialToken }
         let descriptor = try SupabaseTUSUploadDescriptor(
@@ -316,6 +342,17 @@ private final class UploadSession: NSObject, TUSClientDelegate {
         client: TUSClient
     ) {
         guard id == activeUploadID else { return }
+        let uploadError = SupabaseResumableVideoUploadError.fromUploadFailure(
+            details: error.localizedDescription
+        )
+        if uploadError.shouldDiscardResumableState {
+            // A 413 cannot succeed on resume. Delete TUSKit's private copy and
+            // metadata immediately so every rejected video does not strand
+            // another ~47 MB under Application Support.
+            _ = try? client.cancelAndDelete(id: id)
+            finish(.failure(uploadError))
+            return
+        }
         if !didManualResume {
             didManualResume = true
             if (try? client.resume(id: id)) == true {
@@ -323,11 +360,7 @@ private final class UploadSession: NSObject, TUSClientDelegate {
                 return
             }
         }
-        finish(.failure(
-            SupabaseResumableVideoUploadError.uploadFailed(
-                details: error.localizedDescription
-            )
-        ))
+        finish(.failure(uploadError))
     }
 
     func fileError(error: TUSClientError, client: TUSClient) {
@@ -391,7 +424,9 @@ private final class UploadSession: NSObject, TUSClientDelegate {
             let details = lastFileError?.localizedDescription
                 ?? "Не удалось продолжить сохранённую загрузку."
             finish(.failure(
-                SupabaseResumableVideoUploadError.uploadFailed(details: details)
+                SupabaseResumableVideoUploadError.fromUploadFailure(
+                    details: details
+                )
             ))
             return
         }
@@ -403,7 +438,7 @@ private final class UploadSession: NSObject, TUSClientDelegate {
             try beginFreshUpload(fileURL: sourceFileURL)
         } catch {
             finish(.failure(
-                SupabaseResumableVideoUploadError.uploadFailed(
+                SupabaseResumableVideoUploadError.fromUploadFailure(
                     details: error.localizedDescription
                 )
             ))

@@ -30,4 +30,23 @@ final class CourseVideoStagingTests: XCTestCase {
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
     }
+
+    func testCleanupAlsoRemovesCachedPreparedUpload() throws {
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent("x5-preparation-source-\(UUID().uuidString).mov")
+        try Data("source".utf8).write(to: source, options: .atomic)
+        defer { try? FileManager.default.removeItem(at: source) }
+
+        let staged = try CourseVideoStaging.stage(
+            sourceURL: source,
+            lessonID: "prepared-cleanup"
+        )
+        let prepared = CourseVideoStaging.preparedUploadURL(for: staged)
+        try Data("prepared".utf8).write(to: prepared, options: .atomic)
+
+        CourseVideoStaging.removeIfManaged(staged)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staged.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: prepared.path))
+    }
 }

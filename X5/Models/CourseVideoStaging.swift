@@ -23,6 +23,7 @@ struct CourseGalleryVideo: Transferable {
 
 enum CourseVideoStaging {
     private static let directoryName = "x5-course-videos"
+    private static let preparedSuffix = "-upload-ready"
 
     static func stageAsync(sourceURL: URL, lessonID: String) async throws -> URL {
         try await Task.detached(priority: .userInitiated) {
@@ -65,7 +66,24 @@ enum CourseVideoStaging {
 
     static func removeIfManaged(_ url: URL?) {
         guard let url, isManaged(url) else { return }
+        let preparedURL = preparedUploadURL(for: url)
         try? FileManager.default.removeItem(at: url)
+        if preparedURL.standardizedFileURL != url.standardizedFileURL {
+            try? FileManager.default.removeItem(at: preparedURL)
+        }
+    }
+
+    static func preparedUploadURL(for sourceURL: URL) -> URL {
+        let stem = sourceURL.deletingPathExtension().lastPathComponent
+        guard !stem.hasSuffix(preparedSuffix) else {
+            return sourceURL
+        }
+        return sourceURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(
+                "\(stem)\(preparedSuffix).mp4",
+                isDirectory: false
+            )
     }
 
     private static var managedDirectory: URL {

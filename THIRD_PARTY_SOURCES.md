@@ -20,3 +20,22 @@ case-insensitive legacy `Authorization` entries left by older app builds before
 resolving or re-saving upload metadata. The app configures 300 seconds and
 regenerates its short-lived Supabase token for each request. No protocol,
 storage or server API behavior is otherwise changed.
+
+## NextLevelSessionExporter
+
+- Source: https://github.com/NextLevel/NextLevelSessionExporter
+- Version: post-1.0.1 audited main snapshot
+- Pinned commit: `1bb6e19731ff512f4652f8ce2a8f67c779b1598f`
+- License: MIT; preserved at
+  `X5/Resources/ThirdParty/NextLevelSessionExporter-LICENSE.txt`
+- Use: local H.264/AAC transcoding of user-selected course videos before
+  resumable upload when the source exceeds Supabase Free's global Storage
+  limit.
+
+The package is pinned rather than floating. This commit has a passing upstream
+CodeQL scan and includes fixes for failed video-output setup, scaling,
+long-export memory use and temporary-file cleanup. It uses Apple's AVFoundation
+reader/writer pipeline, supports iOS 16+, exposes bitrate and output-dimension
+controls, and does not add a network or analytics layer. X5 targets iOS 16,
+forces web-compatible SDR H.264 output, and checks the exported byte size and
+full duration before any server request.

@@ -464,6 +464,7 @@ final class CoursesService: ObservableObject {
         baseURL: baseURL,
         anonKey: anonKey
     )
+    private lazy var videoUploadPreparer = CourseVideoUploadPreparer()
 
     func loadCourses(includeHidden: Bool = false, accessToken: String? = nil) async {
         isLoading = true
@@ -718,9 +719,26 @@ final class CoursesService: ObservableObject {
             if didAccess { fileURL.stopAccessingSecurityScopedResource() }
         }
 
-        let ext = normalizedVideoExtension(from: fileURL)
+        videoUploadProgress = 0
+        let uploadFileURL: URL
+        do {
+            uploadFileURL = try await videoUploadPreparer.prepare(
+                fileURL: fileURL
+            ) { [weak self] fraction in
+                Task { @MainActor in
+                    self?.videoUploadProgress = fraction * 0.15
+                }
+            }
+        } catch {
+            self.error = "Видео заявки не подготовлено: \(error.localizedDescription)"
+            return nil
+        }
+
+        let ext = normalizedVideoExtension(from: uploadFileURL)
         let mime = videoMimeType(for: ext)
-        let uploadIdentity = CourseVideoUploadIdentity.stableToken(for: fileURL)
+        let uploadIdentity = CourseVideoUploadIdentity.stableToken(
+            for: uploadFileURL
+        )
         let path: String
         do {
             path = try CourseSubmissionVideoPath.make(
@@ -732,10 +750,9 @@ final class CoursesService: ObservableObject {
             self.error = "Не удалось определить владельца видео. Войди снова."
             return nil
         }
-        videoUploadProgress = 0
         do {
             let publicURL = try await resumableVideoUploader.upload(
-                fileURL: fileURL,
+                fileURL: uploadFileURL,
                 bucketName: "videos",
                 objectName: path,
                 contentType: mime,
@@ -743,10 +760,14 @@ final class CoursesService: ObservableObject {
                 accessTokenProvider: accessTokenProvider
             ) { [weak self] fraction in
                 Task { @MainActor in
-                    self?.videoUploadProgress = fraction
+                    self?.videoUploadProgress = 0.15 + (fraction * 0.85)
                 }
             }
             videoUploadProgress = 1
+            if uploadFileURL.standardizedFileURL
+                != fileURL.standardizedFileURL {
+                CourseVideoStaging.removeIfManaged(uploadFileURL)
+            }
             return publicURL.absoluteString
         } catch {
             self.error = "Видео заявки не загружено: \(error.localizedDescription)"
@@ -796,14 +817,30 @@ final class CoursesService: ObservableObject {
             if didAccess { fileURL.stopAccessingSecurityScopedResource() }
         }
 
-        let ext = normalizedVideoExtension(from: fileURL)
-        let mime = videoMimeType(for: ext)
-        let uploadIdentity = CourseVideoUploadIdentity.stableToken(for: fileURL)
-        let path = "courses/\(courseId)/\(lessonId)-\(uploadIdentity).\(ext)"
         videoUploadProgress = 0
+        let uploadFileURL: URL
+        do {
+            uploadFileURL = try await videoUploadPreparer.prepare(
+                fileURL: fileURL
+            ) { [weak self] fraction in
+                Task { @MainActor in
+                    self?.videoUploadProgress = fraction * 0.15
+                }
+            }
+        } catch {
+            self.error = "Видео не подготовлено: \(error.localizedDescription)"
+            return nil
+        }
+
+        let ext = normalizedVideoExtension(from: uploadFileURL)
+        let mime = videoMimeType(for: ext)
+        let uploadIdentity = CourseVideoUploadIdentity.stableToken(
+            for: uploadFileURL
+        )
+        let path = "courses/\(courseId)/\(lessonId)-\(uploadIdentity).\(ext)"
         do {
             let publicURL = try await resumableVideoUploader.upload(
-                fileURL: fileURL,
+                fileURL: uploadFileURL,
                 bucketName: "videos",
                 objectName: path,
                 contentType: mime,
@@ -811,10 +848,14 @@ final class CoursesService: ObservableObject {
                 accessTokenProvider: accessTokenProvider
             ) { [weak self] fraction in
                 Task { @MainActor in
-                    self?.videoUploadProgress = fraction
+                    self?.videoUploadProgress = 0.15 + (fraction * 0.85)
                 }
             }
             videoUploadProgress = 1
+            if uploadFileURL.standardizedFileURL
+                != fileURL.standardizedFileURL {
+                CourseVideoStaging.removeIfManaged(uploadFileURL)
+            }
             return publicURL.absoluteString
         } catch {
             self.error = "Видео не загружено: \(error.localizedDescription)"
