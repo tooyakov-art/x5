@@ -48,6 +48,7 @@ targets:
       - path: X5/kk.lproj
       - path: X5/PrivacyInfo.xcprivacy
       - path: X5/Resources/ThirdParty
+      - path: X5/Resources/HomeMotion
     info:
       path: X5/Info.plist
       properties:

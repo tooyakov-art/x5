@@ -1,0 +1,80 @@
+import XCTest
+@testable import X5
+
+final class HomeMotionPolicyTests: XCTestCase {
+    func testMotionCatalogAnimatesOnlyTheHeroAndVideoMarkedMedia() {
+        XCTAssertEqual(
+            HomeMotionCatalog.asset(for: "HomeCoverTargetAds"),
+            HomeMotionAsset(
+                resourceName: "HomeMotionStudio",
+                posterAssetName: "HomeMotionStudioPoster"
+            )
+        )
+        XCTAssertEqual(
+            HomeMotionCatalog.asset(for: "HomeTrendFruitVideo"),
+            HomeMotionAsset(
+                resourceName: "HomeMotionFruit",
+                posterAssetName: "HomeMotionFruitPoster"
+            )
+        )
+        XCTAssertEqual(
+            HomeMotionCatalog.asset(for: "HomeTrendLiveVideo"),
+            HomeMotionAsset(
+                resourceName: "HomeMotionStudio",
+                posterAssetName: "HomeMotionStudioPoster"
+            )
+        )
+        XCTAssertEqual(
+            HomeMotionCatalog.asset(for: "HomeUtilityVideo"),
+            HomeMotionAsset(
+                resourceName: "HomeMotionStudio",
+                posterAssetName: "HomeMotionStudioPoster"
+            )
+        )
+        XCTAssertNil(HomeMotionCatalog.asset(for: "HomeTrendPost"))
+        XCTAssertNil(HomeMotionCatalog.asset(for: "HomeCoverYoutube"))
+    }
+
+    func testPlaybackRunsOnlyWhenActiveVisibleForegroundAndMotionAllowed() {
+        XCTAssertTrue(
+            HomeMotionPlaybackPolicy.shouldPlay(
+                isActive: true,
+                isVisible: true,
+                appIsActive: true,
+                reduceMotion: false
+            )
+        )
+        XCTAssertFalse(
+            HomeMotionPlaybackPolicy.shouldPlay(
+                isActive: false,
+                isVisible: true,
+                appIsActive: true,
+                reduceMotion: false
+            )
+        )
+        XCTAssertFalse(
+            HomeMotionPlaybackPolicy.shouldPlay(
+                isActive: true,
+                isVisible: false,
+                appIsActive: true,
+                reduceMotion: false
+            )
+        )
+        XCTAssertFalse(
+            HomeMotionPlaybackPolicy.shouldPlay(
+                isActive: true,
+                isVisible: true,
+                appIsActive: false,
+                reduceMotion: false
+            )
+        )
+        XCTAssertFalse(
+            HomeMotionPlaybackPolicy.shouldPlay(
+                isActive: true,
+                isVisible: true,
+                appIsActive: true,
+                reduceMotion: true
+            )
+        )
+    }
+}

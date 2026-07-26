@@ -1,77 +1,231 @@
-import SwiftUI
 import AVFoundation
+import SwiftUI
 
-/// Auto-playing, looping, muted video used as a card cover.
-/// Falls back to gradient placeholder while loading.
-struct LoopingVideo: View {
-    let url: URL
-    var fallback: Color = Color.white.opacity(0.05)
+struct HomeMotionAsset: Equatable {
+    let resourceName: String
+    let posterAssetName: String
+}
 
-    var body: some View {
-        ZStack {
-            fallback
-            LoopingVideoRepresentable(url: url)
+enum HomeMotionCatalog {
+    static func asset(for imageAssetName: String) -> HomeMotionAsset? {
+        switch imageAssetName {
+        case "HomeCoverTargetAds", "HomeTrendLiveVideo", "HomeUtilityVideo":
+            return HomeMotionAsset(
+                resourceName: "HomeMotionStudio",
+                posterAssetName: "HomeMotionStudioPoster"
+            )
+        case "HomeTrendFruitVideo":
+            return HomeMotionAsset(
+                resourceName: "HomeMotionFruit",
+                posterAssetName: "HomeMotionFruitPoster"
+            )
+        default:
+            return nil
         }
     }
 }
 
-private struct LoopingVideoRepresentable: UIViewRepresentable {
-    let url: URL
-
-    func makeUIView(context: Context) -> PlayerContainerView {
-        let view = PlayerContainerView()
-        view.configure(url: url)
-        return view
-    }
-
-    func updateUIView(_ uiView: PlayerContainerView, context: Context) {
-        // No-op
-    }
-
-    static func dismantleUIView(_ uiView: PlayerContainerView, coordinator: ()) {
-        uiView.tearDown()
+enum HomeMotionPlaybackPolicy {
+    static func shouldPlay(
+        isActive: Bool,
+        isVisible: Bool,
+        appIsActive: Bool,
+        reduceMotion: Bool
+    ) -> Bool {
+        isActive && isVisible && appIsActive && !reduceMotion
     }
 }
 
-final class PlayerContainerView: UIView {
-    private var player: AVQueuePlayer?
-    private var looper: AVPlayerLooper?
-    private var playerLayer: AVPlayerLayer?
+/// Muted card motion backed by one ordinary AVPlayer.
+/// The poster always remains underneath, so a missing or failed video is harmless.
+struct LoopingVideo: View {
+    let resourceName: String
+    let posterAssetName: String
+    let isActive: Bool
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .black
-    }
-    required init?(coder: NSCoder) { fatalError() }
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    func configure(url: URL) {
-        let item = AVPlayerItem(url: url)
-        let queue = AVQueuePlayer(playerItem: item)
-        queue.isMuted = true
-        queue.actionAtItemEnd = .advance
-        let looper = AVPlayerLooper(player: queue, templateItem: item)
+    @StateObject private var controller: HomeLoopingVideoController
+    @State private var isVisible = false
 
-        let layer = AVPlayerLayer(player: queue)
-        layer.videoGravity = .resizeAspectFill
-        layer.frame = bounds
-        self.layer.addSublayer(layer)
-
-        self.player = queue
-        self.looper = looper
-        self.playerLayer = layer
-        queue.play()
+    init(resourceName: String, posterAssetName: String, isActive: Bool) {
+        self.resourceName = resourceName
+        self.posterAssetName = posterAssetName
+        self.isActive = isActive
+        _controller = StateObject(
+            wrappedValue: HomeLoopingVideoController(resourceName: resourceName)
+        )
     }
 
-    func tearDown() {
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Image(posterAssetName)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+
+                if controller.isReady, let player = controller.player {
+                    HomePlayerLayerView(player: player)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                        .transition(.opacity)
+                }
+            }
+            .background(
+                Color.clear.preference(
+                    key: HomeMotionFramePreferenceKey.self,
+                    value: proxy.frame(in: .global)
+                )
+            )
+        }
+        .background(Color.white.opacity(0.06))
+        .onPreferenceChange(HomeMotionFramePreferenceKey.self) { frame in
+            let screen = UIScreen.main.bounds.insetBy(dx: 0, dy: -32)
+            isVisible = frame.width > 0
+                && frame.height > 0
+                && frame.intersects(screen)
+        }
+        .onAppear {
+            controller.setShouldPlay(playbackShouldRun)
+        }
+        .onDisappear {
+            isVisible = false
+            controller.setShouldPlay(false)
+        }
+        .onChange(of: playbackShouldRun) { shouldPlay in
+            controller.setShouldPlay(shouldPlay)
+        }
+    }
+
+    private var playbackShouldRun: Bool {
+        HomeMotionPlaybackPolicy.shouldPlay(
+            isActive: isActive,
+            isVisible: isVisible,
+            appIsActive: scenePhase == .active,
+            reduceMotion: reduceMotion
+        )
+    }
+}
+
+private struct HomeMotionFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect = .null
+
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+private final class HomeLoopingVideoController: ObservableObject {
+    @Published private(set) var isReady = false
+    private(set) var player: AVPlayer?
+
+    private var shouldPlay = false
+    private var endObserver: NSObjectProtocol?
+    private var statusObservation: NSKeyValueObservation?
+
+    init(resourceName: String, bundle: Bundle = .main) {
+        guard let url = Self.resourceURL(named: resourceName, bundle: bundle) else {
+            return
+        }
+
+        let asset = AVURLAsset(
+            url: url,
+            options: [AVURLAssetPreferPreciseDurationAndTimingKey: false]
+        )
+        let item = AVPlayerItem(asset: asset)
+        item.preferredForwardBufferDuration = 1
+
+        let player = AVPlayer(playerItem: item)
+        player.isMuted = true
+        player.actionAtItemEnd = .pause
+        player.automaticallyWaitsToMinimizeStalling = false
+        self.player = player
+
+        statusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isReady = item.status == .readyToPlay
+                self.applyPlaybackState()
+            }
+        }
+
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.player?.seek(to: .zero)
+            self.applyPlaybackState()
+        }
+    }
+
+    deinit {
+        statusObservation?.invalidate()
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+        }
         player?.pause()
-        playerLayer?.removeFromSuperlayer()
-        player = nil
-        looper = nil
-        playerLayer = nil
+        player?.replaceCurrentItem(with: nil)
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        playerLayer?.frame = bounds
+    func setShouldPlay(_ shouldPlay: Bool) {
+        self.shouldPlay = shouldPlay
+        applyPlaybackState()
+    }
+
+    private func applyPlaybackState() {
+        guard shouldPlay, isReady else {
+            player?.pause()
+            return
+        }
+        player?.play()
+    }
+
+    private static func resourceURL(named name: String, bundle: Bundle) -> URL? {
+        bundle.url(
+            forResource: name,
+            withExtension: "mp4",
+            subdirectory: "HomeMotion"
+        ) ?? bundle.url(forResource: name, withExtension: "mp4")
+    }
+}
+
+private struct HomePlayerLayerView: UIViewRepresentable {
+    let player: AVPlayer
+
+    func makeUIView(context: Context) -> HomePlayerContainerView {
+        let view = HomePlayerContainerView()
+        view.player = player
+        return view
+    }
+
+    func updateUIView(_ uiView: HomePlayerContainerView, context: Context) {
+        uiView.player = player
+    }
+
+    static func dismantleUIView(_ uiView: HomePlayerContainerView, coordinator: ()) {
+        uiView.player = nil
+    }
+}
+
+private final class HomePlayerContainerView: UIView {
+    override class var layerClass: AnyClass {
+        AVPlayerLayer.self
+    }
+
+    private var playerLayer: AVPlayerLayer {
+        layer as! AVPlayerLayer
+    }
+
+    var player: AVPlayer? {
+        get { playerLayer.player }
+        set {
+            playerLayer.videoGravity = .resizeAspectFill
+            playerLayer.player = newValue
+        }
     }
 }

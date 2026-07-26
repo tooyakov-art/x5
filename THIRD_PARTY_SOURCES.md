@@ -1,5 +1,37 @@
 # Third-party sources
 
+## Pexels Home motion clips
+
+- Pexels license: https://www.pexels.com/legal-pages/license/
+- Retrieved: 2026-07-26
+- Use: short, muted motion backgrounds on the X five marketing Home screen.
+- App transforms: each selected source was trimmed to six seconds, resized to
+  960 x 540, transcoded to H.264, and had audio removed.
+  Matching local JPEG posters provide the no-motion and playback-failure
+  fallback.
+
+### Digital Projection Of Abstract Geometrical Lines
+
+- Creator: Pressmaster
+- Source page:
+  https://www.pexels.com/video/digital-projection-of-abstract-geometrical-lines-3129671/
+- Selected official Pexels file:
+  https://videos.pexels.com/video-files/3129671/3129671-hd_1280_720_30fps.mp4
+- Bundled derivative: `X5/Resources/HomeMotion/HomeMotionStudio.mp4`
+- Poster derivative:
+  `X5/Assets.xcassets/HomeMotionStudioPoster.imageset/HomeMotionStudioPoster.jpg`
+
+### Close-Up View of Fruits in a Bowl
+
+- Creator: www.kaboompics.com
+- Source page:
+  https://www.pexels.com/video/close-up-view-of-fruits-in-a-bowl-6989164/
+- Selected official Pexels file:
+  https://videos.pexels.com/video-files/6989164/6989164-uhd_4096_2160_25fps.mp4
+- Bundled derivative: `X5/Resources/HomeMotion/HomeMotionFruit.mp4`
+- Poster derivative:
+  `X5/Assets.xcassets/HomeMotionFruitPoster.imageset/HomeMotionFruitPoster.jpg`
+
 ## TUSKit
 
 - Upstream source: https://github.com/tus/TUSKit

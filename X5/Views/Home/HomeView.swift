@@ -99,7 +99,12 @@ struct HomeView: View {
                 Button {
                     handle(slide.action)
                 } label: {
-                    HeroSlideCard(slide: slide, activePage: activeHeroPage, pageCount: heroSlides.count)
+                    HeroSlideCard(
+                        slide: slide,
+                        pageIndex: index,
+                        activePage: activeHeroPage,
+                        pageCount: heroSlides.count
+                    )
                 }
                 .buttonStyle(.plain)
                 .tag(index)
@@ -474,12 +479,13 @@ private struct VisualCardItem: Identifiable {
 
 private struct HeroSlideCard: View {
     let slide: HeroSlide
+    let pageIndex: Int
     let activePage: Int
     let pageCount: Int
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            CardImage(assetName: slide.assetName)
+            CardMedia(assetName: slide.assetName, isMotionActive: activePage == pageIndex)
 
             LinearGradient(
                 colors: [
@@ -633,7 +639,7 @@ private struct TrendCard: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            CardImage(assetName: item.assetName)
+            CardMedia(assetName: item.assetName, isMotionActive: item.showsPlay)
 
             LinearGradient(
                 colors: [Color.black.opacity(0.05), Color.black.opacity(0.78)],
@@ -675,7 +681,7 @@ private struct FeedCard: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            CardImage(assetName: item.assetName)
+            CardMedia(assetName: item.assetName, isMotionActive: item.showsPlay)
 
             LinearGradient(
                 colors: [Color.black.opacity(0.0), Color.black.opacity(0.82)],
@@ -723,6 +729,24 @@ private struct CardImage: View {
                 .clipped()
         }
         .background(Color.white.opacity(0.06))
+    }
+}
+
+private struct CardMedia: View {
+    let assetName: String
+    let isMotionActive: Bool
+
+    @ViewBuilder
+    var body: some View {
+        if isMotionActive, let motion = HomeMotionCatalog.asset(for: assetName) {
+            LoopingVideo(
+                resourceName: motion.resourceName,
+                posterAssetName: motion.posterAssetName,
+                isActive: true
+            )
+        } else {
+            CardImage(assetName: assetName)
+        }
     }
 }
 
