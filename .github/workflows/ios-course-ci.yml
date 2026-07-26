@@ -95,6 +95,7 @@ jobs:
             supabase/functions/moderate-portfolio/index.ts
           deno test --allow-read \
             supabase/functions/generate-image/economy.test.mjs \
+            supabase/functions/moderate-portfolio/decision.test.mjs \
             supabase/tests/image_generation_reliability_contract_test.mjs
 
       - name: Verify AI Home backends

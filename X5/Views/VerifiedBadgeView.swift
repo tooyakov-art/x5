@@ -149,6 +149,7 @@ struct VerifiedBadgeView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 7)
+                .foregroundStyle(.black)
             }
             .buttonStyle(.borderedProminent)
             .tint(.accentColor)

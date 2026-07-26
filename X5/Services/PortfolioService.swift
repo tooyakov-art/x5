@@ -37,11 +37,10 @@ struct PortfolioItem: Codable, Identifiable, Equatable {
 
     var moderationBadgeTitle: String {
         switch moderationStatus {
-        case "pending": return "На модерации"
-        case "manual_review": return "Ручная проверка"
         case "rejected": return "Отклонено"
-        case "failed": return "Проверка не прошла"
-        default: return "На модерации"
+        case "pending", "manual_review", "failed":
+            return "Автопроверка повторится"
+        default: return "Автопроверка"
         }
     }
 }
@@ -101,6 +100,17 @@ final class PortfolioService: ObservableObject {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         guard let (data, _) = try? await URLSession.shared.data(for: request) else { return }
         items = (try? JSONDecoder().decode([PortfolioItem].self, from: data)) ?? []
+        if includeUnapproved {
+            let retryable = items.filter {
+                ["pending", "manual_review", "failed"].contains($0.moderationStatus)
+            }
+            Task { [weak self] in
+                await self?.retryAutomaticModeration(
+                    retryable,
+                    accessToken: accessToken
+                )
+            }
+        }
     }
 
     /// Uploads JPEG to Storage, then inserts a portfolio_items row pointing at the public URL.
@@ -196,7 +206,12 @@ final class PortfolioService: ObservableObject {
     }
 
     @discardableResult
-    func moderate(itemId: String, moderationRevision: Int64?, accessToken: String) async -> PortfolioItem? {
+    func moderate(
+        itemId: String,
+        moderationRevision: Int64?,
+        accessToken: String,
+        action: String = "moderate"
+    ) async -> PortfolioItem? {
         var request = URLRequest(url: functionsBaseURL.appendingPathComponent("moderate-portfolio"))
         request.httpMethod = "POST"
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -205,7 +220,8 @@ final class PortfolioService: ObservableObject {
         request.httpBody = try? JSONEncoder().encode(
             PortfolioModerationRequest(
                 itemId: itemId,
-                moderationRevision: moderationRevision
+                moderationRevision: moderationRevision,
+                action: action
             )
         )
 
@@ -215,8 +231,8 @@ final class PortfolioService: ObservableObject {
               let result = try? JSONDecoder().decode(PortfolioModerationResponse.self, from: data)
         else {
             if let index = items.firstIndex(where: { $0.id == itemId }) {
-                items[index].moderationStatusRaw = "manual_review"
-                items[index].moderationReason = "Ожидает ручную проверку"
+                items[index].moderationStatusRaw = "pending"
+                items[index].moderationReason = "Автоматическая проверка будет повторена"
                 return items[index]
             }
             return nil
@@ -229,6 +245,20 @@ final class PortfolioService: ObservableObject {
             return item
         }
         return nil
+    }
+
+    private func retryAutomaticModeration(
+        _ retryableItems: [PortfolioItem],
+        accessToken: String
+    ) async {
+        for item in retryableItems {
+            _ = await moderate(
+                itemId: item.id,
+                moderationRevision: item.moderationRevision,
+                accessToken: accessToken,
+                action: "retry"
+            )
+        }
     }
 
     func loadComments(itemId: String, accessToken: String) async -> [PortfolioComment] {
@@ -402,10 +432,12 @@ private struct PortfolioLikeRow: Codable {
 private struct PortfolioModerationRequest: Encodable {
     let itemId: String
     let moderationRevision: Int64?
+    let action: String
 
     enum CodingKeys: String, CodingKey {
         case itemId = "item_id"
         case moderationRevision = "moderation_revision"
+        case action
     }
 }
 

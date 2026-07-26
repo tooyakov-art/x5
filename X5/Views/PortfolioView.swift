@@ -370,9 +370,9 @@ private struct PortfolioModerationBadge: View {
     private var symbol: String {
         switch item.moderationStatus {
         case "rejected": return "xmark.octagon.fill"
-        case "manual_review": return "person.crop.circle.badge.questionmark"
-        case "failed": return "exclamationmark.triangle.fill"
-        default: return "clock.fill"
+        case "pending", "manual_review", "failed":
+            return "arrow.clockwise.circle.fill"
+        default: return "shield.checkered"
         }
     }
 
@@ -383,8 +383,8 @@ private struct PortfolioModerationBadge: View {
     private var background: Color {
         switch item.moderationStatus {
         case "rejected": return .red
-        case "manual_review", "failed": return .orange
-        default: return .accentColor
+        case "pending", "manual_review", "failed": return .accentColor
+        default: return .gray
         }
     }
 }
@@ -693,7 +693,7 @@ private struct PortfolioInstagramPostPage: View {
             if item.needsModerationBadge {
                 VStack(alignment: .leading, spacing: 4) {
                     PortfolioModerationBadge(item: item)
-                    Text(item.moderationReason?.isEmpty == false ? item.moderationReason! : "Пока не показывается в публичном Hub.")
+                    Text(item.moderationReason?.isEmpty == false ? item.moderationReason! : "Автоматическая проверка будет повторена.")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.white.opacity(0.62))
                 }

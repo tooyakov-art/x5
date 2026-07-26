@@ -1,9 +1,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  automaticPendingDecision,
+  decisionFromModerationResult,
+  MODERATION_MODEL,
+} from "./decision.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ||
   "https://afwznqjpshybmqhlewmy.supabase.co";
 const OPENAI_MODERATION_URL = "https://api.openai.com/v1/moderations";
-const MODERATION_MODEL = "omni-moderation-latest";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,8 +22,7 @@ interface ModerateBody {
   moderation_revision?: number;
 }
 
-type DeveloperAction = "approve" | "reject" | "retry";
-type ModerationAction = "moderate" | DeveloperAction;
+type ModerationAction = "moderate" | "retry";
 
 interface PortfolioItem {
   id: string;
@@ -81,11 +84,10 @@ Deno.serve(async (req) => {
   const itemId = body.item_id?.trim();
   if (!itemId) return json({ error: "missing_item_id" }, 400);
   const action: ModerationAction = body.action ?? "moderate";
-  if (!["moderate", "approve", "reject", "retry"].includes(action)) {
+  if (!["moderate", "retry"].includes(action)) {
     return json({ error: "invalid_action" }, 400);
   }
 
-  const requiresDeveloper = action !== "moderate";
   const requestedRevision = body.moderation_revision;
   if (
     requestedRevision != null &&
@@ -95,16 +97,6 @@ Deno.serve(async (req) => {
   }
   if (requestedRevision == null) {
     return json({ error: "missing_moderation_revision" }, 400);
-  }
-
-  let isDeveloper = false;
-  if (requiresDeveloper) {
-    const { data: developerData, error: developerError } = await authClient
-      .rpc("is_x5_developer");
-    isDeveloper = developerError == null && developerData === true;
-  }
-  if (requiresDeveloper && !isDeveloper) {
-    return json({ error: "forbidden" }, 403);
   }
 
   const admin = createClient(SUPABASE_URL, serviceKey, {
@@ -120,7 +112,7 @@ Deno.serve(async (req) => {
     .single<PortfolioItem>();
 
   if (itemError || !item) return json({ error: "item_not_found" }, 404);
-  if (!requiresDeveloper && item.user_id !== userData.user.id) {
+  if (item.user_id !== userData.user.id) {
     return json({ error: "forbidden" }, 403);
   }
   if (
@@ -129,24 +121,20 @@ Deno.serve(async (req) => {
   ) {
     return json({ error: "stale_item" }, 409);
   }
-  const queueStatuses = ["pending", "manual_review", "failed"];
-  if (!requiresDeveloper && item.moderation_status !== "pending") {
-    return json({ error: "stale_item" }, 409);
-  }
-  if (requiresDeveloper && !queueStatuses.includes(item.moderation_status)) {
+  if (item.moderation_status !== "pending") {
     return json({ error: "stale_item" }, 409);
   }
 
-  const decision = action === "approve" || action === "reject"
-    ? developerDecision(action, userData.user.id)
-    : await moderateItem(item);
+  const decision = await moderateItem(item);
   const update = {
     moderation_status: decision.status,
     moderation_reason: decision.reason,
     moderation_result: decision.result,
     moderation_model: decision.model,
     moderation_error: decision.error,
-    moderated_at: new Date().toISOString(),
+    moderated_at: decision.status === "pending"
+      ? null
+      : new Date().toISOString(),
   };
 
   const { data: rows, error: updateError } = await admin
@@ -171,16 +159,18 @@ Deno.serve(async (req) => {
       const { data: rollbackRows, error: rollbackError } = await admin
         .from("portfolio_items")
         .update({
-          moderation_status: "manual_review",
-          moderation_reason: "Не удалось безопасно удалить отклонённый файл",
+          moderation_status: "pending",
+          moderation_reason: "Автоматическая проверка ожидает повтора",
           moderation_result: {
             ...decision.result,
+            retryable: true,
+            retry_reason: "media_cleanup_failed",
             rejected_reason: decision.reason,
             media_cleanup_error: deletionError,
           },
           moderation_model: decision.model,
           moderation_error: deletionError,
-          moderated_at: new Date().toISOString(),
+          moderated_at: null,
         })
         .eq("id", item.id)
         .eq("moderation_revision", updatedItem.moderation_revision)
@@ -205,7 +195,7 @@ Deno.serve(async (req) => {
 });
 
 async function moderateItem(item: PortfolioItem): Promise<{
-  status: "approved" | "rejected" | "manual_review" | "failed";
+  status: "approved" | "rejected" | "pending";
   reason: string;
   result: Record<string, unknown>;
   model: string | null;
@@ -213,11 +203,11 @@ async function moderateItem(item: PortfolioItem): Promise<{
 }> {
   if (hasInvalidPortfolioMediaURL(item)) {
     return {
-      status: "failed",
+      status: "rejected",
       reason: "Недопустимая ссылка на медиа портфолио",
       result: { reason: "portfolio_media_url_invalid" },
       model: null,
-      error: "portfolio_media_url_invalid",
+      error: null,
     };
   }
 
@@ -228,34 +218,31 @@ async function moderateItem(item: PortfolioItem): Promise<{
 
   const imageUrl = imageURLFor(item);
   if (item.type === "video" && !imageUrl) {
-    return {
-      status: "manual_review",
-      reason: "Не удалось подготовить превью видео для автоматической проверки",
+    return automaticPendingDecision({
+      code: "video_preview_missing",
       result: { reason: "video_preview_missing" },
       model: null,
       error: "video_preview_missing",
-    };
+    });
   }
 
   if (!text && !imageUrl) {
-    return {
-      status: "manual_review",
-      reason: "Недостаточно данных для автоматической проверки",
+    return automaticPendingDecision({
+      code: "empty_content",
       result: { reason: "empty_content" },
       model: null,
-      error: null,
-    };
+      error: "empty_content",
+    });
   }
 
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) {
-    return {
-      status: "manual_review",
-      reason: "Автомодерация не настроена",
+    return automaticPendingDecision({
+      code: "missing_openai_key",
       result: { reason: "missing_openai_key" },
       model: MODERATION_MODEL,
       error: "missing_openai_key",
-    };
+    });
   }
 
   const input: unknown[] = [];
@@ -274,62 +261,23 @@ async function moderateItem(item: PortfolioItem): Promise<{
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      return {
-        status: "manual_review",
-        reason: "Не удалось проверить автоматически",
+      return automaticPendingDecision({
+        code: "provider_unavailable",
         result: { openai_status: response.status, payload },
         model: MODERATION_MODEL,
         error: payload?.error?.message || `OpenAI ${response.status}`,
-      };
+      });
     }
 
     const result = payload?.results?.[0];
-    if (
-      !result ||
-      typeof result.flagged !== "boolean" ||
-      !result.categories ||
-      typeof result.categories !== "object"
-    ) {
-      return {
-        status: "manual_review",
-        reason: "Ответ автоматической проверки неоднозначен",
-        result: { reason: "moderation_response_invalid", payload },
-        model: MODERATION_MODEL,
-        error: "moderation_response_invalid",
-      };
-    }
-
-    const flagged = result?.flagged === true;
-    const categories = result?.categories ?? {};
-    const flaggedCategories = Object.entries(categories)
-      .filter(([, value]) => value === true)
-      .map(([key]) => key);
-
-    if (flagged || flaggedCategories.length > 0) {
-      return {
-        status: "rejected",
-        reason: reasonFor(flaggedCategories),
-        result: payload,
-        model: MODERATION_MODEL,
-        error: null,
-      };
-    }
-
-    return {
-      status: "approved",
-      reason: "Проверено автоматически",
-      result: payload,
-      model: MODERATION_MODEL,
-      error: null,
-    };
+    return decisionFromModerationResult(result, payload, MODERATION_MODEL);
   } catch (error) {
-    return {
-      status: "manual_review",
-      reason: "Не удалось проверить автоматически",
+    return automaticPendingDecision({
+      code: "provider_exception",
       result: { exception: String(error) },
       model: MODERATION_MODEL,
       error: String(error),
-    };
+    });
   }
 }
 
@@ -396,30 +344,6 @@ function hasInvalidPortfolioMediaURL(item: PortfolioItem): boolean {
     .some((value) => portfolioObjectPath(value, item.user_id) == null);
 }
 
-function developerDecision(
-  action: Exclude<DeveloperAction, "retry">,
-  developerUserId: string,
-): {
-  status: "approved" | "rejected";
-  reason: string;
-  result: Record<string, unknown>;
-  model: string;
-  error: null;
-} {
-  const approved = action === "approve";
-  return {
-    status: approved ? "approved" : "rejected",
-    reason: approved ? "Одобрено разработчиком" : "Отклонено разработчиком",
-    result: {
-      action,
-      developer_user_id: developerUserId,
-      reviewed_at: new Date().toISOString(),
-    },
-    model: "developer-review",
-    error: null,
-  };
-}
-
 function imageURLFor(item: PortfolioItem): string | null {
   const thumbnail = item.thumbnail_url?.trim();
   if (thumbnail && portfolioObjectPath(thumbnail, item.user_id)) {
@@ -434,31 +358,6 @@ function imageURLFor(item: PortfolioItem): string | null {
     return media;
   }
   return null;
-}
-
-function reasonFor(categories: string[]): string {
-  if (categories.includes("sexual/minors")) {
-    return "Материал отклонен: запрещенный сексуальный контент";
-  }
-  if (categories.some((category) => category.startsWith("sexual"))) {
-    return "Материал отклонен: сексуальный контент";
-  }
-  if (categories.some((category) => category.startsWith("violence"))) {
-    return "Материал отклонен: насилие";
-  }
-  if (categories.some((category) => category.startsWith("hate"))) {
-    return "Материал отклонен: разжигание ненависти";
-  }
-  if (categories.some((category) => category.startsWith("self-harm"))) {
-    return "Материал отклонен: самоповреждение";
-  }
-  if (categories.some((category) => category.startsWith("illicit"))) {
-    return "Материал отклонен: запрещенная деятельность";
-  }
-  if (categories.some((category) => category.startsWith("harassment"))) {
-    return "Материал отклонен: угрозы или травля";
-  }
-  return "Материал отклонен автоматической модерацией";
 }
 
 function json(body: unknown, status = 200) {

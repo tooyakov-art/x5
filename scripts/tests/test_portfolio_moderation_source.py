@@ -4,6 +4,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 EDGE_FUNCTION = ROOT / "supabase" / "functions" / "moderate-portfolio" / "index.ts"
+DECISION_MODULE = (
+    ROOT / "supabase" / "functions" / "moderate-portfolio" / "decision.mjs"
+)
 MIGRATION = (
     ROOT
     / "supabase"
@@ -16,34 +19,41 @@ CAS_HARDENING_MIGRATION = (
     / "migrations"
     / "20260724134000_harden_portfolio_moderation_cas.sql"
 )
+AUTOMATIC_ONLY_MIGRATION = (
+    ROOT
+    / "supabase"
+    / "migrations"
+    / "20260726193000_portfolio_automatic_only_moderation.sql"
+)
 PORTFOLIO_SERVICE = ROOT / "X5" / "Services" / "PortfolioService.swift"
 PORTFOLIO_VIEW = ROOT / "X5" / "Views" / "PortfolioView.swift"
-MODERATION_VIEW = ROOT / "X5" / "Views" / "PortfolioModerationQueueView.swift"
-MODERATION_SERVICE = (
-    ROOT / "X5" / "Services" / "PortfolioModerationQueueService.swift"
-)
 SETTINGS_VIEW = ROOT / "X5" / "Views" / "SettingsView.swift"
 
 
 class PortfolioModerationSourceTests(unittest.TestCase):
-    def test_edge_function_uses_server_developer_gate_for_manual_actions(self):
+    def test_edge_function_has_no_developer_approval_or_manual_review_path(self):
         source = EDGE_FUNCTION.read_text(encoding="utf-8")
 
-        self.assertIn('"approve" | "reject" | "retry"', source)
-        self.assertIn('.rpc("is_x5_developer")', source)
-        self.assertIn('if (requiresDeveloper && !isDeveloper)', source)
-        self.assertIn('return json({ error: "forbidden" }, 403)', source)
-        self.assertNotIn("f3eea23f-0aeb-405b-ab35-2c53173b7a8f", source)
-        self.assertNotIn("eee55a08-18d1-46e3-a303-1411d1bb9333", source)
+        self.assertIn('type ModerationAction = "moderate" | "retry";', source)
+        self.assertNotIn('"approve"', source)
+        self.assertNotIn('"reject"', source)
+        self.assertNotIn("developerDecision", source)
+        self.assertNotIn('.rpc("is_x5_developer")', source)
+        self.assertNotIn("manual_review", source)
 
-    def test_edge_function_auto_approves_safe_content_and_queues_failures(self):
-        source = EDGE_FUNCTION.read_text(encoding="utf-8")
+    def test_edge_function_auto_approves_safe_content_rejects_forbidden_and_retries_failures(self):
+        source = (
+            EDGE_FUNCTION.read_text(encoding="utf-8")
+            + DECISION_MODULE.read_text(encoding="utf-8")
+        )
 
         self.assertIn('status: "approved"', source)
         self.assertIn('status: "rejected"', source)
-        self.assertIn('status: "manual_review"', source)
+        self.assertIn("automaticPendingDecision", source)
+        self.assertIn('status: "pending"', source)
         self.assertNotIn('reason: "video_requires_developer_review"', source)
         self.assertIn('reason: "moderation_response_invalid"', source)
+        self.assertNotIn("Ручная проверка", source)
 
     def test_video_uses_generated_thumbnail_and_text_in_existing_moderation(self):
         source = EDGE_FUNCTION.read_text(encoding="utf-8")
@@ -61,11 +71,10 @@ class PortfolioModerationSourceTests(unittest.TestCase):
             'if (imageUrl) input.push({ type: "image_url", image_url: { url: imageUrl } })',
             source,
         )
-        self.assertIn('status: "manual_review"', source)
+        self.assertIn("automaticPendingDecision", source)
 
     def test_edge_function_uses_revision_compare_and_swap(self):
         source = EDGE_FUNCTION.read_text(encoding="utf-8")
-        queue_service = MODERATION_SERVICE.read_text(encoding="utf-8")
         hardening = CAS_HARDENING_MIGRATION.read_text(encoding="utf-8")
 
         self.assertIn("moderation_revision?: number;", source)
@@ -82,8 +91,6 @@ class PortfolioModerationSourceTests(unittest.TestCase):
         self.assertIn(
             "new.moderation_revision := old.moderation_revision + 1", hardening
         )
-        self.assertIn('case moderationRevision = "moderation_revision"', queue_service)
-        self.assertIn("moderationRevision: Int64?", queue_service)
 
     def test_rejected_media_is_removed_from_public_portfolio_storage(self):
         source = EDGE_FUNCTION.read_text(encoding="utf-8")
@@ -103,20 +110,16 @@ class PortfolioModerationSourceTests(unittest.TestCase):
 
     def test_unapproved_queue_never_loads_untrusted_media_urls(self):
         edge = EDGE_FUNCTION.read_text(encoding="utf-8")
-        queue = MODERATION_VIEW.read_text(encoding="utf-8")
 
         self.assertIn("hasInvalidPortfolioMediaURL(item)", edge)
-        self.assertIn("trustedPortfolioImageURL(item)", queue)
-        self.assertIn("trustedPortfolioMediaURL(item.mediaUrl, ownerId: item.userId)", queue)
-        self.assertIn("components.query == nil", queue)
-        self.assertIn("components.fragment == nil", queue)
-        self.assertIn('"/storage/v1/object/public/portfolio/"', queue)
+        self.assertIn("portfolioObjectPath(value, item.user_id)", edge)
 
     def test_new_moderation_sources_do_not_contain_mojibake(self):
         sources = [
             EDGE_FUNCTION,
-            MODERATION_VIEW,
-            MODERATION_SERVICE,
+            DECISION_MODULE,
+            PORTFOLIO_SERVICE,
+            PORTFOLIO_VIEW,
         ]
         signatures = ("РќР", "РћР", "РџС", "Р”Р", "Р‘Р", "вЂ")
 
@@ -169,33 +172,36 @@ class PortfolioModerationSourceTests(unittest.TestCase):
         self.assertIn(".eq(\"moderation_revision\", item.moderation_revision)", edge)
         self.assertIn('return json({ error: "stale_item" }, 409)', edge)
 
-    def test_developer_queue_is_reachable_only_for_local_developer_ids(self):
+    def test_developer_manual_queue_is_not_reachable(self):
         settings = SETTINGS_VIEW.read_text(encoding="utf-8")
-        queue = MODERATION_VIEW.read_text(encoding="utf-8")
 
-        self.assertIn(
-            "Roles.isDeveloper(email: auth.userEmail, userId: auth.userId)", settings
+        self.assertNotIn("PortfolioModerationQueueView()", settings)
+        self.assertNotIn("Проверка портфолио", settings)
+        self.assertFalse(
+            (ROOT / "X5" / "Views" / "PortfolioModerationQueueView.swift").exists()
         )
-        self.assertIn("PortfolioModerationQueueView()", settings)
-        self.assertIn('run("approve"', queue)
-        self.assertIn('run("reject"', queue)
-        self.assertIn('run("retry"', queue)
+        self.assertFalse(
+            (
+                ROOT
+                / "X5"
+                / "Services"
+                / "PortfolioModerationQueueService.swift"
+            ).exists()
+        )
 
-    def test_developer_can_read_description_and_play_original_video(self):
-        queue = MODERATION_VIEW.read_text(encoding="utf-8")
+    def test_pending_items_retry_automatic_moderation_without_manual_ui(self):
+        service = PORTFOLIO_SERVICE.read_text(encoding="utf-8")
 
-        self.assertIn("item.description", queue)
-        self.assertIn("PortfolioModerationPreviewView", queue)
-        self.assertIn("VideoPlayer(player:", queue)
-        self.assertIn("item.mediaUrl", queue)
+        self.assertIn("retryAutomaticModeration", service)
+        self.assertIn('action: "retry"', service)
+        self.assertIn('moderationStatusRaw = "pending"', service)
+        self.assertNotIn("Ручная проверка", service)
+        self.assertNotIn("Ожидает ручную проверку", service)
 
-    def test_database_exposes_queue_to_developers_and_storage_updates_to_owner(self):
+    def test_database_removes_developer_queue_and_normalizes_old_manual_statuses(self):
         source = MIGRATION.read_text(encoding="utf-8")
+        automatic_only = AUTOMATIC_ONLY_MIGRATION.read_text(encoding="utf-8")
 
-        self.assertIn("public.is_x5_developer()", source)
-        self.assertIn(
-            "moderation_status in ('pending', 'manual_review', 'failed')", source
-        )
         self.assertIn("moderation_revision bigint not null default 1", source)
         self.assertIn("old.moderation_revision + 1", source)
         self.assertIn("owner_id = (select auth.uid())::text", source)
@@ -221,6 +227,21 @@ class PortfolioModerationSourceTests(unittest.TestCase):
         )[1].split(";", 1)[0]
         self.assertNotIn("'portfolio'", update_policy)
         self.assertNotIn("'portfolio'", delete_policy)
+        self.assertIn(
+            "where moderation_status in ('manual_review', 'failed')",
+            automatic_only,
+        )
+        self.assertIn(
+            "set_config('request.jwt.claim.role', 'service_role', true)",
+            automatic_only,
+        )
+        self.assertIn("set moderation_status = 'pending'", automatic_only)
+        self.assertNotIn("public.is_x5_developer()", automatic_only)
+        public_policy = automatic_only.split(
+            'create policy "portfolio public read"', 1
+        )[1].split(";", 1)[0]
+        self.assertNotIn("is_x5_developer", public_policy)
+        self.assertNotIn("manual_review", public_policy)
 
     def test_portfolio_uploads_are_immutable_and_media_prep_is_race_safe(self):
         service = PORTFOLIO_SERVICE.read_text(encoding="utf-8")
