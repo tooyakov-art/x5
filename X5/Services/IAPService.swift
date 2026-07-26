@@ -94,6 +94,38 @@ enum IAPVerificationRetryPolicy {
     }
 }
 
+/// Keeps repeatable consumable purchases stateless. Every tap first asks
+/// StoreKit to replay pending delivery; a new charge starts only when that
+/// recovery is complete. No product id or date is cached locally.
+enum IAPRepeatPurchaseCoordinator {
+    @MainActor
+    static func perform<PurchaseResult>(
+        recoverUnfinished: () async -> Bool,
+        startPurchase: () async throws -> PurchaseResult
+    ) async rethrows -> PurchaseResult? {
+        guard await recoverUnfinished() else {
+            return nil
+        }
+        return try await startPurchase()
+    }
+}
+
+enum IAPPrePurchaseRecoveryPolicy {
+    static func shouldRequireDelivery(
+        productID: String,
+        transactionAppAccountToken: UUID?,
+        currentUserToken: UUID
+    ) -> Bool {
+        guard transactionAppAccountToken == currentUserToken else {
+            return false
+        }
+        if case .creditPack = IAPProductCatalog.kind(for: productID) {
+            return true
+        }
+        return false
+    }
+}
+
 enum IAPOwnershipRoutingPolicy {
     /// Apple JWS ownership is decided only by the server. A non-nil token that
     /// differs from the current user can be either another account or one of
@@ -325,9 +357,25 @@ final class IAPService: ObservableObject {
         isPurchasing = true
         defer { isPurchasing = false }
         do {
-            let result = try await product.purchase(options: [
-                .appAccountToken(appUserToken)
-            ])
+            let result = try await IAPRepeatPurchaseCoordinator.perform(
+                recoverUnfinished: { [self] in
+                    await retryUnfinishedConsumables(
+                        source: "purchase_unfinished",
+                        requiredAppAccountToken: appUserToken
+                    )
+                },
+                startPurchase: {
+                    try await product.purchase(options: [
+                        .appAccountToken(appUserToken)
+                    ])
+                }
+            )
+            guard let result else {
+                if lastError == nil {
+                    lastError = LocalizationService.shared.t("iap_delivery_pending")
+                }
+                return false
+            }
             switch result {
             case .success(let verification):
                 if case .verified(let transaction) = verification {
@@ -369,7 +417,7 @@ final class IAPService: ObservableObject {
     func restore() async {
         lastError = nil
         do {
-            await retryUnfinishedConsumables(source: "restore_unfinished")
+            _ = await retryUnfinishedConsumables(source: "restore_unfinished")
             try await AppStore.sync()
             let didReconcileRevocation = await syncRevokedStoreTransactions(
                 source: "restore_revoked"
@@ -448,22 +496,67 @@ final class IAPService: ObservableObject {
     /// Consumables are not part of `Transaction.currentEntitlements`, and revoked
     /// subscriptions disappear from it. StoreKit keeps either transaction unfinished
     /// until the server confirms delivery.
-    func retryUnfinishedConsumables(source: String) async {
+    func retryUnfinishedConsumables(
+        source: String,
+        requiredAppAccountToken: UUID? = nil
+    ) async -> Bool {
+        var didDeliverEveryTransaction = true
+
         for await result in Transaction.unfinished {
-            guard case .verified(let transaction) = result,
-                  IAPProductCatalog.shouldReplayUnfinishedTransaction(
+            switch result {
+            case .verified(let transaction):
+                let shouldReplay: Bool
+                if let requiredAppAccountToken {
+                    shouldReplay = IAPPrePurchaseRecoveryPolicy.shouldRequireDelivery(
+                        productID: transaction.productID,
+                        transactionAppAccountToken: transaction.appAccountToken,
+                        currentUserToken: requiredAppAccountToken
+                    )
+                } else {
+                    shouldReplay = IAPProductCatalog.shouldReplayUnfinishedTransaction(
+                        productID: transaction.productID,
+                        hasRevocation: transaction.revocationDate != nil
+                    )
+                }
+                guard shouldReplay else {
+                    continue
+                }
+
+                let disposition = await deliverVerifiedTransaction(
+                    transaction: transaction,
+                    signedTransaction: result.jwsRepresentation,
+                    source: source
+                )
+                if !disposition.shouldFinishTransaction {
+                    didDeliverEveryTransaction = false
+                }
+
+            case .unverified(let transaction, let verificationError):
+                if requiredAppAccountToken != nil {
+                    // Purchase preflight only trusts a verified owner token.
+                    // Leave this transaction pending for StoreKit to retry.
+                    continue
+                }
+                guard IAPProductCatalog.shouldReplayUnfinishedTransaction(
                     productID: transaction.productID,
                     hasRevocation: transaction.revocationDate != nil
-                  ) else {
-                continue
-            }
+                ) else {
+                    continue
+                }
 
-            _ = await deliverVerifiedTransaction(
-                transaction: transaction,
-                signedTransaction: result.jwsRepresentation,
-                source: source
-            )
+                // Never finish or charge again while StoreKit cannot verify a
+                // pending consumable. A later tap/listener can retry it.
+                didDeliverEveryTransaction = false
+                lastError = LocalizationService.shared.t("iap_purchase_unverified")
+                DiagnosticLogger.log(event: "iap_unfinished_unverified", extra: [
+                    "source": source,
+                    "product": transaction.productID,
+                    "error": String(verificationError.localizedDescription.prefix(120))
+                ])
+            }
         }
+
+        return didDeliverEveryTransaction
     }
 
     private func deliverVerifiedTransaction(

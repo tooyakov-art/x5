@@ -71,6 +71,59 @@ class IOSPurchaseLifecycleSourceTests(unittest.TestCase):
         self.assertLess(restore.index(retry), restore.index(store_sync))
         self.assertLess(restore.index(retry), restore.index(entitlements))
 
+    def test_every_purchase_recovers_unfinished_consumables_before_storekit(self):
+        source = IAP_SERVICE.read_text(encoding="utf-8")
+        purchase_start = source.index("    func purchase(productID: String) async -> Bool {")
+        purchase_end = source.index("    func restore() async {", purchase_start)
+        purchase = source[purchase_start:purchase_end]
+
+        recovery = 'recoverUnfinished: { [self] in'
+        retry = 'source: "purchase_unfinished"'
+        owner = "requiredAppAccountToken: appUserToken"
+        storekit = "product.purchase(options:"
+        self.assertIn("IAPRepeatPurchaseCoordinator.perform(", purchase)
+        self.assertIn(recovery, purchase)
+        self.assertIn(retry, purchase)
+        self.assertIn(owner, purchase)
+        self.assertIn(storekit, purchase)
+        self.assertLess(purchase.index(recovery), purchase.index(storekit))
+        self.assertLess(purchase.index(retry), purchase.index(storekit))
+
+    def test_preflight_skips_other_account_consumables_without_finishing_them(self):
+        source = IAP_SERVICE.read_text(encoding="utf-8")
+        retry_start = source.index("    func retryUnfinishedConsumables(")
+        retry_end = source.index("    private func deliverVerifiedTransaction(", retry_start)
+        retry = source[retry_start:retry_end]
+
+        self.assertIn("requiredAppAccountToken: UUID? = nil", retry)
+        self.assertIn("IAPPrePurchaseRecoveryPolicy.shouldRequireDelivery(", retry)
+        self.assertIn("transactionAppAccountToken: transaction.appAccountToken", retry)
+        self.assertIn("currentUserToken: requiredAppAccountToken", retry)
+        self.assertIn("if requiredAppAccountToken != nil", retry)
+
+    def test_unfinished_recovery_blocks_new_charge_until_delivery_finishes(self):
+        source = IAP_SERVICE.read_text(encoding="utf-8")
+        retry_start = source.index("    func retryUnfinishedConsumables(")
+        retry_end = source.index("    private func deliverVerifiedTransaction(", retry_start)
+        retry = source[retry_start:retry_end]
+
+        self.assertIn("async -> Bool", retry)
+        self.assertIn("var didDeliverEveryTransaction = true", retry)
+        self.assertIn("disposition.shouldFinishTransaction", retry)
+        self.assertIn("didDeliverEveryTransaction = false", retry)
+        self.assertIn("return didDeliverEveryTransaction", retry)
+
+    def test_repeatable_consumables_have_no_daily_or_local_product_lock(self):
+        source = IAP_SERVICE.read_text(encoding="utf-8")
+        purchase_start = source.index("    func purchase(productID: String) async -> Bool {")
+        purchase_end = source.index("    func restore() async {", purchase_start)
+        purchase = source[purchase_start:purchase_end]
+
+        self.assertNotIn("UserDefaults", purchase)
+        self.assertNotIn("Calendar.", purchase)
+        self.assertNotIn("lastPurchase", purchase)
+        self.assertNotIn("purchasedProductIDs", purchase)
+
     def test_failed_profile_reload_has_truthful_confirmation_copy(self):
         paywall = PAYWALL.read_text(encoding="utf-8")
         profile = PROFILE.read_text(encoding="utf-8")

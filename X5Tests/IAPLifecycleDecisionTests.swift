@@ -3,6 +3,107 @@ import XCTest
 @testable import X5
 
 final class IAPLifecycleDecisionTests: XCTestCase {
+    func testPrePurchaseRecoveryRequiresOnlyConsumablesBoundToCurrentX5Account() {
+        let currentAccount = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
+        let otherAccount = UUID(uuidString: "22222222-2222-4222-8222-222222222222")!
+        let creditPack = "com.x5studio.app.credits.1000"
+
+        XCTAssertTrue(
+            IAPPrePurchaseRecoveryPolicy.shouldRequireDelivery(
+                productID: creditPack,
+                transactionAppAccountToken: currentAccount,
+                currentUserToken: currentAccount
+            )
+        )
+        XCTAssertFalse(
+            IAPPrePurchaseRecoveryPolicy.shouldRequireDelivery(
+                productID: creditPack,
+                transactionAppAccountToken: otherAccount,
+                currentUserToken: currentAccount
+            )
+        )
+        XCTAssertFalse(
+            IAPPrePurchaseRecoveryPolicy.shouldRequireDelivery(
+                productID: creditPack,
+                transactionAppAccountToken: nil,
+                currentUserToken: currentAccount
+            )
+        )
+        XCTAssertFalse(
+            IAPPrePurchaseRecoveryPolicy.shouldRequireDelivery(
+                productID: IAPService.verifiedMonthlyProductID,
+                transactionAppAccountToken: currentAccount,
+                currentUserToken: currentAccount
+            )
+        )
+    }
+
+    @MainActor
+    func testRepeatPurchaseRecoversUnfinishedTransactionsBeforeEveryStoreKitAttempt() async {
+        var events: [String] = []
+
+        for _ in 0..<2 {
+            let result: String? = await IAPRepeatPurchaseCoordinator.perform(
+                recoverUnfinished: {
+                    events.append("recover")
+                    return true
+                },
+                startPurchase: {
+                    events.append("purchase")
+                    return "purchased"
+                }
+            )
+
+            XCTAssertEqual(result, "purchased")
+        }
+
+        XCTAssertEqual(events, [
+            "recover", "purchase",
+            "recover", "purchase"
+        ])
+    }
+
+    @MainActor
+    func testRepeatPurchaseDoesNotStartNewChargeWhileUnfinishedDeliveryIsPending() async {
+        var didStartPurchase = false
+
+        let result: String? = await IAPRepeatPurchaseCoordinator.perform(
+            recoverUnfinished: { false },
+            startPurchase: {
+                didStartPurchase = true
+                return "purchased"
+            }
+        )
+
+        XCTAssertNil(result)
+        XCTAssertFalse(didStartPurchase)
+    }
+
+    @MainActor
+    func testFailedRecoveryDoesNotCreateAStickyLocalProductLock() async {
+        var recoveryResults = [false, true]
+        var purchaseCount = 0
+
+        let firstAttempt: String? = await IAPRepeatPurchaseCoordinator.perform(
+            recoverUnfinished: { recoveryResults.removeFirst() },
+            startPurchase: {
+                purchaseCount += 1
+                return "purchased"
+            }
+        )
+        let secondAttempt: String? = await IAPRepeatPurchaseCoordinator.perform(
+            recoverUnfinished: { recoveryResults.removeFirst() },
+            startPurchase: {
+                purchaseCount += 1
+                return "purchased"
+            }
+        )
+
+        XCTAssertNil(firstAttempt)
+        XCTAssertEqual(secondAttempt, "purchased")
+        XCTAssertEqual(purchaseCount, 1)
+    }
+
     @MainActor
     func testServerDeliveryFailureLeavesConsumableUnfinished() async {
         let lifecycle = IAPTransactionLifecycleCoordinator()
