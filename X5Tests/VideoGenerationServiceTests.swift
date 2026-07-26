@@ -34,6 +34,9 @@ final class VideoGenerationServiceTests: XCTestCase {
             prompt: "A cinematic coffee advertisement",
             aspectRatio: "9:16",
             durationSeconds: 5,
+            model: .seedance15Pro,
+            resolution: .fullHD,
+            generateAudio: true,
             idempotencyKey: "22222222-2222-4222-8222-222222222222",
             accessToken: "access-token"
         )
@@ -57,6 +60,9 @@ final class VideoGenerationServiceTests: XCTestCase {
         )
         XCTAssertEqual(payload["duration_seconds"] as? Int, 5)
         XCTAssertEqual(payload["aspect_ratio"] as? String, "9:16")
+        XCTAssertEqual(payload["model"] as? String, "seedance-1.5-pro")
+        XCTAssertEqual(payload["resolution"] as? String, "1080p")
+        XCTAssertEqual(payload["generate_audio"] as? Bool, true)
         XCTAssertNil(payload["start_image"])
     }
 
@@ -144,23 +150,62 @@ final class VideoGenerationServiceTests: XCTestCase {
             prompt: "  Animate this photo  ",
             aspectRatio: "9:16",
             durationSeconds: 5,
+            model: .seedance15Pro,
+            resolution: .hd,
+            generateAudio: true,
             startImage: image
         )
         let same = VideoGenerationInputFingerprint.make(
             prompt: "Animate this photo",
             aspectRatio: "9:16",
             durationSeconds: 5,
+            model: .seedance15Pro,
+            resolution: .hd,
+            generateAudio: true,
             startImage: image
         )
         let textOnly = VideoGenerationInputFingerprint.make(
             prompt: "Animate this photo",
             aspectRatio: "9:16",
             durationSeconds: 5,
+            model: .seedance15Pro,
+            resolution: .hd,
+            generateAudio: true,
             startImage: nil
+        )
+        let muted = VideoGenerationInputFingerprint.make(
+            prompt: "Animate this photo",
+            aspectRatio: "9:16",
+            durationSeconds: 5,
+            model: .seedance15Pro,
+            resolution: .hd,
+            generateAudio: false,
+            startImage: image
+        )
+        let fullHD = VideoGenerationInputFingerprint.make(
+            prompt: "Animate this photo",
+            aspectRatio: "9:16",
+            durationSeconds: 5,
+            model: .seedance15Pro,
+            resolution: .fullHD,
+            generateAudio: true,
+            startImage: image
+        )
+        let automatic = VideoGenerationInputFingerprint.make(
+            prompt: "Animate this photo",
+            aspectRatio: "9:16",
+            durationSeconds: 5,
+            model: .automatic,
+            resolution: .hd,
+            generateAudio: true,
+            startImage: image
         )
 
         XCTAssertEqual(first, same)
         XCTAssertNotEqual(first, textOnly)
+        XCTAssertNotEqual(first, muted)
+        XCTAssertNotEqual(first, fullHD)
+        XCTAssertNotEqual(first, automatic)
         XCTAssertEqual(first.count, 64)
     }
 

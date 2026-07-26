@@ -6,6 +6,15 @@ export const VIDEO_CREDIT_COSTS = Object.freeze({
   5: 650,
   10: 1200,
 });
+export const VIDEO_GENERATION_MODELS = Object.freeze([
+  "auto",
+  "seedance-1.5-pro",
+]);
+export const VIDEO_GENERATION_RESOLUTIONS = Object.freeze([
+  "480p",
+  "720p",
+  "1080p",
+]);
 export const VIDEO_JOB_STATUSES = Object.freeze([
   "queued",
   "rendering",
@@ -14,6 +23,8 @@ export const VIDEO_JOB_STATUSES = Object.freeze([
 ]);
 
 const SUPPORTED_ASPECT_RATIOS = new Set(["16:9", "9:16"]);
+const SUPPORTED_MODELS = new Set(VIDEO_GENERATION_MODELS);
+const SUPPORTED_RESOLUTIONS = new Set(VIDEO_GENERATION_RESOLUTIONS);
 const SUPPORTED_IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -63,11 +74,31 @@ export function normalizeVideoGenerationRequest(body) {
     throw new VideoRequestError("unsupported_duration");
   }
 
+  const model = String(body.model ?? "auto").trim();
+  if (!SUPPORTED_MODELS.has(model)) {
+    throw new VideoRequestError("unsupported_model");
+  }
+
+  const resolution = String(body.resolution ?? "720p").trim();
+  if (!SUPPORTED_RESOLUTIONS.has(resolution)) {
+    throw new VideoRequestError("unsupported_resolution");
+  }
+
+  const generateAudio = body.generate_audio == null
+    ? model === "seedance-1.5-pro"
+    : body.generate_audio;
+  if (typeof generateAudio !== "boolean") {
+    throw new VideoRequestError("invalid_generate_audio");
+  }
+
   return {
     idempotencyKey,
     prompt,
     aspectRatio,
     durationSeconds,
+    model,
+    resolution,
+    generateAudio,
     costCredits: VIDEO_CREDIT_COSTS[durationSeconds],
     startImage: normalizeStartImage(body.start_image),
   };
@@ -115,6 +146,9 @@ export async function buildVideoGenerationIdentity(normalized) {
     prompt: normalized.prompt,
     aspect_ratio: normalized.aspectRatio,
     duration_seconds: normalized.durationSeconds,
+    model: normalized.model,
+    resolution: normalized.resolution,
+    generate_audio: normalized.generateAudio,
     start_image: normalized.startImage
       ? {
         mime_type: normalized.startImage.mimeType,

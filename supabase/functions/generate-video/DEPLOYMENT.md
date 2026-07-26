@@ -15,7 +15,8 @@ Required server-side environment:
 - `OPENAI_API_KEY` for text/image safety checks before any credit claim and the
   server-side OpenAI Videos fallback
 - at least one video provider:
-  - `FAL_KEY` for Kling V3 Standard
+  - `FAL_KEY` for Kling V3 Standard automatic routing and the explicit
+    Seedance 1.5 Pro option
   - `GOOGLE_API_KEY` or `GEMINI_API_KEY` for Gemini Omni Flash
   - `OPENAI_API_KEY` for Sora 2
 - Before applying the follow-up cron-secret migration, Supabase Vault must
@@ -90,6 +91,19 @@ Before enabling the client:
     5-second option maps to a 4-second fallback clip, and the 10-second option
     maps to 8 seconds. Confirm completion is copied from the authenticated
     `/v1/videos/{id}/content` response into private X5 Storage.
+16. Submit explicit Seedance 1.5 Pro text-to-video and image-to-video jobs for
+    both supported aspect ratios. Confirm fal receives only 5/10-second,
+    480p/720p/1080p allowlisted values, uses `image_url` for a private signed
+    start image, and always receives `enable_safety_checker: true`.
+17. Confirm Seedance native audio follows the authenticated boolean request and
+    that changing model, resolution, or audio with the same idempotency key
+    returns an idempotency conflict instead of reusing a different semantic
+    job.
+18. Remove `FAL_KEY` in staging while leaving Google/OpenAI configured and
+    request Seedance explicitly. Confirm the request fails before the credit
+    claim. Restore `FAL_KEY`, force a definitive fal `429`, and confirm the
+    explicit Seedance job refunds exactly once without switching to another
+    model.
 
 Do not deploy from this task automatically; release only after the owning
 workspace has reviewed the migration order, secrets, provider billing, and

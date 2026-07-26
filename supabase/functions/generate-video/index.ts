@@ -276,7 +276,13 @@ async function createSignedVideoUrl(path: string) {
 const userHandler = createGenerateVideoHandler({
   verifyUser,
   moderateRequest,
-  selectProvider: () => selectVideoProvider({ falKey, googleKey, openAIKey }),
+  selectProvider: (normalized: JsonRecord) =>
+    selectVideoProvider({
+      model: String(normalized.model || "auto"),
+      falKey,
+      googleKey,
+      openAIKey,
+    }),
   selectFallbackProvider: (providerName: string) => {
     const fallbackName = providerName === "fal"
       ? (googleKey ? "google" : openAIKey ? "openai" : null)

@@ -32,11 +32,19 @@ class IOSVideoGenerationSourceTests(unittest.TestCase):
 
     def test_submit_has_text_to_video_controls(self):
         view = VIEW.read_text(encoding="utf-8")
+        service = SERVICE.read_text(encoding="utf-8")
 
         self.assertIn("durationSeconds", view)
         self.assertIn("aspectRatio", view)
+        self.assertIn("VideoGenerationModel", view)
+        self.assertIn("Seedance 1.5 Pro", service)
+        self.assertIn("VideoGenerationResolution", view)
+        self.assertIn("generateAudio", view)
         self.assertIn("submitVideo()", view)
         self.assertIn("estimatedCreditCost", view)
+        self.assertIn('"model"', service)
+        self.assertIn('"resolution"', service)
+        self.assertIn('"generate_audio"', service)
 
     def test_service_accepts_fractional_supabase_timestamps(self):
         service = SERVICE.read_text(encoding="utf-8")

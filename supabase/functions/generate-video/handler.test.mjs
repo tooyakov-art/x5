@@ -288,6 +288,95 @@ test("claims once, submits once, and never returns the provider request id", asy
   assert.doesNotMatch(JSON.stringify(payload), /provider-request-123/);
 });
 
+test("passes the allowlisted Seedance settings to provider selection and submit", async () => {
+  let selectedInput = null;
+  let submittedInput = null;
+  const { deps } = dependencies({
+    selectProvider: (normalized) => {
+      selectedInput = normalized;
+      return {
+        name: "fal",
+        requestedModel: normalized.model,
+        adapter: {
+          submit: async (parameters) => {
+            submittedInput = parameters;
+            return { requestId: "seedance-provider-request-1", kind: "text" };
+          },
+        },
+      };
+    },
+  });
+  const handler = createGenerateVideoHandler(deps);
+  const response = await handler(
+    new Request("https://example.test/generate-video", {
+      method: "POST",
+      headers: { Authorization: "Bearer user-token" },
+      body: JSON.stringify({
+        ...requestBody,
+        idempotency_key: "video-seedance-handler-1",
+        model: "seedance-1.5-pro",
+        resolution: "1080p",
+        generate_audio: true,
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 202);
+  assert.equal(selectedInput.model, "seedance-1.5-pro");
+  assert.equal(submittedInput.model, "seedance-1.5-pro");
+  assert.equal(submittedInput.resolution, "1080p");
+  assert.equal(submittedInput.generateAudio, true);
+});
+
+test("does not silently fall back from an explicit Seedance request", async () => {
+  let fallbackSelections = 0;
+  const { deps, calls } = dependencies({
+    selectProvider: () => ({
+      name: "fal",
+      requestedModel: "seedance-1.5-pro",
+      adapter: {
+        submit: async () => {
+          throw new FalProviderError("provider_unavailable", {
+            retryable: true,
+            safeToFallback: true,
+            httpStatus: 429,
+          });
+        },
+      },
+    }),
+    selectFallbackProvider: () => {
+      fallbackSelections += 1;
+      return {
+        name: "google",
+        requestedModel: "auto",
+        adapter: {
+          submit: async () => ({ requestId: "google-request-123" }),
+        },
+      };
+    },
+  });
+  const handler = createGenerateVideoHandler(deps);
+  const response = await handler(
+    new Request("https://example.test/generate-video", {
+      method: "POST",
+      headers: { Authorization: "Bearer user-token" },
+      body: JSON.stringify({
+        ...requestBody,
+        idempotency_key: "video-seedance-no-fallback",
+        model: "seedance-1.5-pro",
+        resolution: "720p",
+        generate_audio: true,
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 503);
+  assert.equal(fallbackSelections, 0);
+  assert.equal(calls.filter(([name]) => name === "claim").length, 1);
+  assert.equal(calls.filter(([name]) => name === "switch").length, 0);
+  assert.equal(calls.filter(([name]) => name === "failed").length, 1);
+});
+
 test("replays the owned job without another provider submission or debit", async () => {
   let submitCount = 0;
   const { deps } = dependencies({

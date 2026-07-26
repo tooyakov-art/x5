@@ -135,7 +135,7 @@ async function handleSubmit(req, userId, deps) {
 
   let provider;
   try {
-    provider = deps.selectProvider();
+    provider = deps.selectProvider(normalized);
   } catch {
     return json(
       safeVideoError(
@@ -414,9 +414,12 @@ async function submitToProvider(
     ? (await deps.signStartImage(inputObject))?.signedUrl || null
     : null;
   const submitted = await provider.adapter.submit({
+    model: normalized.model,
     prompt: normalized.prompt,
     aspectRatio: normalized.aspectRatio,
     durationSeconds: normalized.durationSeconds,
+    resolution: normalized.resolution,
+    generateAudio: normalized.generateAudio,
     startImageUrl,
     startImage: ["google", "openai"].includes(provider.name)
       ? normalized.startImage
@@ -444,6 +447,12 @@ async function submitToProvider(
 }
 
 function isSafeProviderFallback(provider, error) {
+  if (
+    provider?.requestedModel &&
+    provider.requestedModel !== "auto"
+  ) {
+    return false;
+  }
   if (
     provider?.name === "fal" &&
     error instanceof FalProviderError

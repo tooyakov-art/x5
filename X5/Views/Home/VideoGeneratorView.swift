@@ -122,6 +122,9 @@ struct VideoGeneratorView: View {
     @State private var prompt = ""
     @State private var aspectRatio = "9:16"
     @State private var durationSeconds = 5
+    @State private var model: VideoGenerationModel = .seedance15Pro
+    @State private var resolution: VideoGenerationResolution = .hd
+    @State private var generateAudio = true
     @State private var currentJob: VideoGenerationJob?
     @State private var recentJobs: [VideoGenerationJob] = []
     @State private var errorMessage: String?
@@ -223,6 +226,9 @@ struct VideoGeneratorView: View {
             }
             .onChange(of: startImageItem) { item in
                 beginStartImagePreparation(item)
+            }
+            .onChange(of: model) { selectedModel in
+                generateAudio = selectedModel == .seedance15Pro
             }
             .onChange(of: currentJob?.resultURL) { resultURL in
                 guard let resultURL else {
@@ -391,6 +397,18 @@ struct VideoGeneratorView: View {
             sectionTitle("НАСТРОЙКИ")
 
             VStack(spacing: 12) {
+                settingRow(title: "Модель", systemImage: "sparkles.rectangle.stack") {
+                    Picker("Модель", selection: $model) {
+                        ForEach(VideoGenerationModel.allCases) { option in
+                            Text(option.title).tag(option)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(Color.accentColor)
+                }
+
+                Divider().overlay(Color.white.opacity(0.08))
+
                 settingRow(title: "Формат", systemImage: "aspectratio") {
                     Picker("Формат", selection: $aspectRatio) {
                         ForEach(aspectRatios, id: \.self) { ratio in
@@ -410,6 +428,27 @@ struct VideoGeneratorView: View {
                     }
                     .pickerStyle(.segmented)
                 }
+
+                Divider().overlay(Color.white.opacity(0.08))
+
+                settingRow(title: "Качество", systemImage: "4k.tv") {
+                    Picker("Качество", selection: $resolution) {
+                        ForEach(VideoGenerationResolution.allCases) { option in
+                            Text(option.title).tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                Divider().overlay(Color.white.opacity(0.08))
+
+                Toggle(isOn: $generateAudio) {
+                    Label("Звук в ролике", systemImage: "speaker.wave.2")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white.opacity(0.82))
+                }
+                .tint(Color.accentColor)
+                .disabled(model != .seedance15Pro)
 
                 Divider().overlay(Color.white.opacity(0.08))
 
@@ -744,11 +783,17 @@ struct VideoGeneratorView: View {
         let cleanPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let requestedRatio = aspectRatio
         let requestedDuration = durationSeconds
+        let requestedModel = model
+        let requestedResolution = resolution
+        let requestedGenerateAudio = generateAudio
         let requestedStartImage = startImage
         let fingerprint = VideoGenerationInputFingerprint.make(
             prompt: cleanPrompt,
             aspectRatio: requestedRatio,
             durationSeconds: requestedDuration,
+            model: requestedModel,
+            resolution: requestedResolution,
+            generateAudio: requestedGenerateAudio,
             startImage: requestedStartImage
         )
         let idempotencyKey = localStore.pendingIdempotencyKey(
@@ -786,6 +831,9 @@ struct VideoGeneratorView: View {
                     prompt: cleanPrompt,
                     aspectRatio: requestedRatio,
                     durationSeconds: requestedDuration,
+                    model: requestedModel,
+                    resolution: requestedResolution,
+                    generateAudio: requestedGenerateAudio,
                     idempotencyKey: idempotencyKey,
                     startImage: requestedStartImage,
                     accessToken: token

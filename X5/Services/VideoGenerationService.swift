@@ -65,6 +65,31 @@ struct VideoGenerationStartImage: Equatable {
     }
 }
 
+enum VideoGenerationModel: String, CaseIterable, Identifiable {
+    case seedance15Pro = "seedance-1.5-pro"
+    case automatic = "auto"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .seedance15Pro:
+            return "Seedance 1.5 Pro"
+        case .automatic:
+            return "Авто"
+        }
+    }
+}
+
+enum VideoGenerationResolution: String, CaseIterable, Identifiable {
+    case standard = "480p"
+    case hd = "720p"
+    case fullHD = "1080p"
+
+    var id: String { rawValue }
+    var title: String { rawValue }
+}
+
 enum VideoGenerationServiceError: LocalizedError, Equatable {
     case invalidPrompt
     case invalidAspectRatio
@@ -189,6 +214,9 @@ final class VideoGenerationService {
         prompt: String,
         aspectRatio: String,
         durationSeconds: Int,
+        model: VideoGenerationModel = .automatic,
+        resolution: VideoGenerationResolution = .hd,
+        generateAudio: Bool = false,
         idempotencyKey: String,
         startImage: VideoGenerationStartImage? = nil,
         accessToken: String
@@ -217,7 +245,10 @@ final class VideoGenerationService {
             "idempotency_key": idempotencyKey,
             "prompt": cleanPrompt,
             "aspect_ratio": aspectRatio,
-            "duration_seconds": durationSeconds
+            "duration_seconds": durationSeconds,
+            "model": model.rawValue,
+            "resolution": resolution.rawValue,
+            "generate_audio": generateAudio
         ]
         if let startImage {
             payload["start_image"] = startImage.requestPayload
@@ -319,12 +350,18 @@ enum VideoGenerationInputFingerprint {
         prompt: String,
         aspectRatio: String,
         durationSeconds: Int,
+        model: VideoGenerationModel = .automatic,
+        resolution: VideoGenerationResolution = .hd,
+        generateAudio: Bool = false,
         startImage: VideoGenerationStartImage?
     ) -> String {
         var canonical: [String: Any] = [
             "prompt": prompt.trimmingCharacters(in: .whitespacesAndNewlines),
             "aspect_ratio": aspectRatio,
-            "duration_seconds": durationSeconds
+            "duration_seconds": durationSeconds,
+            "model": model.rawValue,
+            "resolution": resolution.rawValue,
+            "generate_audio": generateAudio
         ]
         if let startImage {
             canonical["start_image"] = [

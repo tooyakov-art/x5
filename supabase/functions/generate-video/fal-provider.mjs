@@ -1,6 +1,11 @@
 const FAL_QUEUE_ROOT = "https://queue.fal.run";
 const TEXT_MODEL = "fal-ai/kling-video/v3/standard/text-to-video";
 const IMAGE_MODEL = "fal-ai/kling-video/v3/standard/image-to-video";
+const SEEDANCE_TEXT_MODEL = "fal-ai/bytedance/seedance/v1.5/pro/text-to-video";
+const SEEDANCE_IMAGE_MODEL =
+  "fal-ai/bytedance/seedance/v1.5/pro/image-to-video";
+const SEEDANCE_MODEL = "seedance-1.5-pro";
+const SEEDANCE_RESOLUTIONS = new Set(["480p", "720p", "1080p"]);
 const NEGATIVE_PROMPT =
   "blur, distort, low quality, explicit sexual content, gore";
 const SAFE_FALLBACK_HTTP_STATUSES = new Set([429]);
@@ -34,27 +39,59 @@ export class FalKlingProvider {
   }
 
   async submit({
+    model = "auto",
     prompt,
     aspectRatio,
     durationSeconds,
+    resolution = "720p",
+    generateAudio = false,
     startImageUrl,
     webhookUrl,
   }) {
-    const model = startImageUrl ? IMAGE_MODEL : TEXT_MODEL;
-    const url = new URL(`${FAL_QUEUE_ROOT}/${model}`);
+    if (!["auto", SEEDANCE_MODEL].includes(model)) {
+      throw new FalProviderError("provider_model_invalid", {
+        retryable: false,
+      });
+    }
+    if (model === SEEDANCE_MODEL && !SEEDANCE_RESOLUTIONS.has(resolution)) {
+      throw new FalProviderError("provider_resolution_invalid", {
+        retryable: false,
+      });
+    }
+    if (typeof generateAudio !== "boolean") {
+      throw new FalProviderError("provider_audio_invalid", {
+        retryable: false,
+      });
+    }
+
+    const endpoint = modelForKind(
+      startImageUrl ? "image" : "text",
+      model,
+    );
+    const url = new URL(`${FAL_QUEUE_ROOT}/${endpoint}`);
     if (webhookUrl) url.searchParams.set("fal_webhook", webhookUrl);
 
-    const body = {
-      prompt,
-      duration: String(durationSeconds),
-      generate_audio: false,
-      shot_type: "customize",
-      ...(startImageUrl
-        ? { start_image_url: startImageUrl }
-        : { aspect_ratio: aspectRatio }),
-      negative_prompt: NEGATIVE_PROMPT,
-      cfg_scale: 0.5,
-    };
+    const body = model === SEEDANCE_MODEL
+      ? {
+        prompt,
+        aspect_ratio: aspectRatio,
+        resolution,
+        duration: String(durationSeconds),
+        enable_safety_checker: true,
+        generate_audio: generateAudio,
+        ...(startImageUrl ? { image_url: startImageUrl } : {}),
+      }
+      : {
+        prompt,
+        duration: String(durationSeconds),
+        generate_audio: false,
+        shot_type: "customize",
+        ...(startImageUrl
+          ? { start_image_url: startImageUrl }
+          : { aspect_ratio: aspectRatio }),
+        negative_prompt: NEGATIVE_PROMPT,
+        cfg_scale: 0.5,
+      };
     let response;
     try {
       response = await this.fetchImpl(url, {
@@ -104,29 +141,41 @@ export class FalKlingProvider {
   }
 
   async status({ requestId, kind }) {
-    const response = await this.fetchImpl(
-      `${FAL_QUEUE_ROOT}/${modelForKind(kind)}/requests/${
-        encodeURIComponent(requestId)
-      }/status`,
-      { headers: this.#headers(false) },
-    );
-    if (!response.ok) {
-      throw new FalProviderError("provider_unavailable", { retryable: true });
-    }
+    const response = await this.#fetchQueueResource({
+      requestId,
+      kind,
+      suffix: "/status",
+    });
     return mapFalQueueStatus(await response.json().catch(() => ({})));
   }
 
   async result({ requestId, kind }) {
-    const response = await this.fetchImpl(
-      `${FAL_QUEUE_ROOT}/${modelForKind(kind)}/requests/${
-        encodeURIComponent(requestId)
-      }`,
-      { headers: this.#headers(false) },
-    );
-    if (!response.ok) {
-      throw new FalProviderError("provider_unavailable", { retryable: true });
-    }
+    const response = await this.#fetchQueueResource({
+      requestId,
+      kind,
+      suffix: "",
+    });
     return extractFalVideo(await response.json().catch(() => ({})));
+  }
+
+  async #fetchQueueResource({ requestId, kind, suffix }) {
+    const models = modelCandidatesForKind(kind);
+    for (let index = 0; index < models.length; index += 1) {
+      const response = await this.fetchImpl(
+        `${FAL_QUEUE_ROOT}/${models[index]}/requests/${
+          encodeURIComponent(requestId)
+        }${suffix}`,
+        { headers: this.#headers(false) },
+      );
+      if (response.ok) return response;
+      if (response.status !== 404 || index === models.length - 1) {
+        throw new FalProviderError("provider_unavailable", {
+          retryable: true,
+          httpStatus: response.status,
+        });
+      }
+    }
+    throw new FalProviderError("provider_unavailable", { retryable: true });
   }
 
   #headers(withContentType = true) {
@@ -179,8 +228,19 @@ export function falModelKindFromStartImage(hasStartImage) {
   return hasStartImage ? "image" : "text";
 }
 
-function modelForKind(kind) {
-  if (kind === "image") return IMAGE_MODEL;
-  if (kind === "text") return TEXT_MODEL;
+function modelForKind(kind, model = "auto") {
+  if (kind === "image") {
+    return model === SEEDANCE_MODEL ? SEEDANCE_IMAGE_MODEL : IMAGE_MODEL;
+  }
+  if (kind === "text") {
+    return model === SEEDANCE_MODEL ? SEEDANCE_TEXT_MODEL : TEXT_MODEL;
+  }
   throw new FalProviderError("provider_model_invalid", { retryable: false });
+}
+
+function modelCandidatesForKind(kind) {
+  return [
+    modelForKind(kind, "auto"),
+    modelForKind(kind, SEEDANCE_MODEL),
+  ];
 }

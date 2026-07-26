@@ -89,6 +89,23 @@ bundled in the app.
 - Integration: server-side HTTP contract adapted to the documented queue
   submit/status/result API. `FAL_KEY` is never included in the iOS binary.
 
+### fal ByteDance Seedance 1.5 Pro
+
+- Official combined text-to-video and image-to-video API reference:
+  https://fal.ai/docs/model-api-reference/video-generation-api/bytedance-seedance-v1.5-pro
+- Official text-to-video API:
+  https://fal.ai/models/fal-ai/bytedance/seedance/v1.5/pro/text-to-video/api
+- Official image-to-video API:
+  https://fal.ai/models/fal-ai/bytedance/seedance/v1.5/pro/image-to-video/api
+- Retrieved: 2026-07-26
+- Use: explicit 5- or 10-second Seedance text-to-video and image-to-video jobs
+  with 480p, 720p, or 1080p output and optional native audio.
+- Integration: the existing server-side fal queue, signed webhook, private input
+  and exact-once credit flow is reused. X5 always sends
+  `enable_safety_checker: true`; that setting is not client-controlled. An
+  explicit Seedance request never silently falls back to a different model.
+  `FAL_KEY` remains server-only and is never included in the iOS binary.
+
 ### Google Gemini Omni Flash
 
 - Official model card:

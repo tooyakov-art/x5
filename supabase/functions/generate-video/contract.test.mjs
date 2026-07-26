@@ -27,7 +27,27 @@ test("normalizes a text-to-video request and keeps pricing server-owned", () => 
   assert.equal(normalized.aspectRatio, "9:16");
   assert.equal(normalized.durationSeconds, 10);
   assert.equal(normalized.costCredits, 1200);
+  assert.equal(normalized.model, "auto");
+  assert.equal(normalized.resolution, "720p");
+  assert.equal(normalized.generateAudio, false);
   assert.equal(normalized.startImage, null);
+});
+
+test("normalizes an explicit Seedance 1.5 Pro request", () => {
+  const normalized = normalizeVideoGenerationRequest({
+    idempotency_key: "video-seedance-0001",
+    prompt: "A cinematic launch video for a coffee shop",
+    aspect_ratio: "9:16",
+    duration_seconds: 10,
+    model: "seedance-1.5-pro",
+    resolution: "1080p",
+    generate_audio: true,
+  });
+
+  assert.equal(normalized.model, "seedance-1.5-pro");
+  assert.equal(normalized.resolution, "1080p");
+  assert.equal(normalized.generateAudio, true);
+  assert.equal(normalized.costCredits, 1200);
 });
 
 test("accepts a private-safe base64 start image up to eight MiB", () => {
@@ -63,6 +83,9 @@ test("rejects invalid prompts, duration, aspect ratio, key, and images", () => {
       [{ duration_seconds: 9 }, "unsupported_duration"],
       [{ aspect_ratio: "4:5" }, "unsupported_aspect_ratio"],
       [{ aspect_ratio: "1:1" }, "unsupported_aspect_ratio"],
+      [{ model: "seedance-latest" }, "unsupported_model"],
+      [{ resolution: "4k" }, "unsupported_resolution"],
+      [{ generate_audio: "true" }, "invalid_generate_audio"],
       [{ idempotency_key: "short" }, "invalid_idempotency_key"],
       [{
         start_image: { mime_type: "image/gif", data_base64: tinyPng },
@@ -96,6 +119,34 @@ test("hashes idempotency and semantic inputs without retaining raw media", async
   assert.match(identity.fingerprint, /^[0-9a-f]{64}$/);
   assert.notEqual(identity.requestKey, identity.fingerprint);
   assert.doesNotMatch(JSON.stringify(identity), /iVBOR/);
+});
+
+test("fingerprints model, resolution, and native audio settings", async () => {
+  const base = {
+    idempotency_key: "video-request-model-fingerprint",
+    prompt: "Animate this still image",
+    aspect_ratio: "9:16",
+    duration_seconds: 5,
+    model: "seedance-1.5-pro",
+    resolution: "720p",
+    generate_audio: true,
+  };
+  const baseline = await buildVideoGenerationIdentity(
+    normalizeVideoGenerationRequest(base),
+  );
+
+  for (
+    const patch of [
+      { model: "auto", generate_audio: false },
+      { resolution: "1080p" },
+      { generate_audio: false },
+    ]
+  ) {
+    const changed = await buildVideoGenerationIdentity(
+      normalizeVideoGenerationRequest({ ...base, ...patch }),
+    );
+    assert.notEqual(changed.fingerprint, baseline.fingerprint);
+  }
 });
 
 test("returns only the public job contract and a temporary signed result", () => {
