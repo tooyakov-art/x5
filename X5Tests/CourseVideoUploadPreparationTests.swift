@@ -777,8 +777,11 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
         let sourceDuration = try await sourceAsset.load(.duration)
         let preparedAsset = AVURLAsset(url: preparedURL)
         let preparedDuration = try await preparedAsset.load(.duration)
+        let videoTracks = try await preparedAsset.loadTracks(
+            withMediaType: .video
+        )
         let videoTrack = try XCTUnwrap(
-            try await preparedAsset.loadTracks(withMediaType: .video).first
+            videoTracks.first
         )
         let formatDescriptions = try await videoTrack.load(
             .formatDescriptions
