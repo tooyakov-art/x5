@@ -276,6 +276,161 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
         )
     }
 
+    func testOneGigabyteSparseVideoUsesNativeFallbackWithoutReselection() async throws {
+        let fixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "x5-sparse-one-gigabyte-\(UUID().uuidString).mp4"
+            )
+        try await makeVideoFixture(at: fixture, transform: .identity)
+        try appendSparseFreeAtom(
+            to: fixture,
+            finalSize: 1_024 * 1_024 * 1_024 + 4_096
+        )
+        defer {
+            try? FileManager.default.removeItem(at: fixture)
+            try? FileManager.default.removeItem(
+                at: CourseVideoStaging.preparedUploadURL(for: fixture)
+            )
+        }
+
+        let logicalSize = try XCTUnwrap(
+            fixture.resourceValues(forKeys: [.fileSizeKey]).fileSize
+        )
+        XCTAssertGreaterThanOrEqual(
+            Int64(logicalSize),
+            1_024 * 1_024 * 1_024
+        )
+
+        var primarySourceURLs: [URL] = []
+        let preparer = CourseVideoUploadPreparer(
+            primaryExporter: { request, _ in
+                primarySourceURLs.append(request.sourceURL)
+                throw NSError(
+                    domain: "NextLevelPrimary",
+                    code: -11_800
+                )
+            }
+        )
+
+        let prepared = try await preparer.prepare(fileURL: fixture)
+
+        XCTAssertEqual(primarySourceURLs, [fixture])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.path))
+        XCTAssertNotEqual(
+            prepared.standardizedFileURL,
+            fixture.standardizedFileURL
+        )
+        try await assertPreparedVideoIsH264AndUploadable(
+            prepared,
+            sourceURL: fixture
+        )
+    }
+
+    func testNativeFallbackNormalizesHEVCToH264WhenAvailable() async throws {
+        let fixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "x5-hevc-fallback-\(UUID().uuidString).mp4"
+            )
+        do {
+            try await makeVideoFixture(
+                at: fixture,
+                transform: .identity,
+                codec: .hevc
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: fixture)
+            throw XCTSkip(
+                "HEVC fixture encoding is unavailable on this runner: \(error)"
+            )
+        }
+        try appendSparseFreeAtom(
+            to: fixture,
+            finalSize: CourseVideoUploadPolicy.directUploadLimitBytes + 4_096
+        )
+        defer {
+            try? FileManager.default.removeItem(at: fixture)
+            try? FileManager.default.removeItem(
+                at: CourseVideoStaging.preparedUploadURL(for: fixture)
+            )
+        }
+
+        let preparer = CourseVideoUploadPreparer(
+            primaryExporter: { _, _ in
+                throw NSError(
+                    domain: "NextLevelUnsupportedCodec",
+                    code: -11_821
+                )
+            }
+        )
+        let prepared = try await preparer.prepare(fileURL: fixture)
+
+        try await assertPreparedVideoIsH264AndUploadable(
+            prepared,
+            sourceURL: fixture
+        )
+    }
+
+    func testBothExporterFailuresSurfaceSanitizedDiagnosticsAndKeepSource() async throws {
+        let fixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "x5-export-diagnostics-\(UUID().uuidString).mp4"
+            )
+        try await makeVideoFixture(at: fixture, transform: .identity)
+        try appendSparseFreeAtom(
+            to: fixture,
+            finalSize: CourseVideoUploadPolicy.directUploadLimitBytes + 4_096
+        )
+        defer {
+            try? FileManager.default.removeItem(at: fixture)
+            try? FileManager.default.removeItem(
+                at: CourseVideoStaging.preparedUploadURL(for: fixture)
+            )
+        }
+
+        let privatePath = "/private/var/mobile/secret/video.mov"
+        let preparer = CourseVideoUploadPreparer(
+            primaryExporter: { _, _ in
+                throw NSError(
+                    domain: "NextLevelSessionExporter",
+                    code: -11_800,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "Reader failed at \(privatePath)"
+                    ]
+                )
+            },
+            fallbackExporter: { _, _ in
+                throw NSError(
+                    domain: AVFoundationErrorDomain,
+                    code: -11_821,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "Native export failed at \(privatePath)"
+                    ]
+                )
+            }
+        )
+
+        do {
+            _ = try await preparer.prepare(fileURL: fixture)
+            XCTFail("Both exporter failures must be surfaced")
+        } catch let error as CourseVideoUploadPreparationError {
+            guard case let .exportFailed(primary, fallback) = error else {
+                return XCTFail("Unexpected preparation error: \(error)")
+            }
+            XCTAssertEqual(primary.strategy, .nextLevel)
+            XCTAssertEqual(fallback.strategy, .avFoundation)
+            XCTAssertEqual(primary.underlyingCode, -11_800)
+            XCTAssertEqual(fallback.underlyingCode, -11_821)
+            XCTAssertTrue(error.localizedDescription.contains("nextlevel"))
+            XCTAssertTrue(error.localizedDescription.contains("avfoundation"))
+            XCTAssertFalse(error.localizedDescription.contains(privatePath))
+            XCTAssertFalse(error.localizedDescription.contains(fixture.path))
+        }
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.path))
+    }
+
     private func assertLargeVideoPreparation(
         name: String,
         transform: CGAffineTransform,
@@ -380,13 +535,14 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
 
     private func makeVideoFixture(
         at url: URL,
-        transform: CGAffineTransform
+        transform: CGAffineTransform,
+        codec: AVVideoCodecType = .h264
     ) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let input = AVAssetWriterInput(
             mediaType: .video,
             outputSettings: [
-                AVVideoCodecKey: AVVideoCodecType.h264,
+                AVVideoCodecKey: codec,
                 AVVideoWidthKey: 1_920,
                 AVVideoHeightKey: 1_080
             ]
@@ -590,6 +746,13 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
     }
 
     private func appendFreeAtom(to url: URL, finalSize: Int64) throws {
+        try appendSparseFreeAtom(to: url, finalSize: finalSize)
+    }
+
+    private func appendSparseFreeAtom(
+        to url: URL,
+        finalSize: Int64
+    ) throws {
         let handle = try FileHandle(forWritingTo: url)
         defer { try? handle.close() }
         let currentSize = Int64(try handle.seekToEnd())
@@ -603,18 +766,38 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
             try handle.write(contentsOf: Data($0))
         }
         try handle.write(contentsOf: Data("free".utf8))
+        try handle.truncate(atOffset: UInt64(finalSize))
+    }
 
-        let chunk = Data(count: 1_048_576)
-        var remaining = atomSize - 8
-        while remaining > 0 {
-            let length = min(Int64(chunk.count), remaining)
-            try handle.write(
-                contentsOf: length == Int64(chunk.count)
-                    ? chunk
-                    : Data(count: Int(length))
-            )
-            remaining -= length
+    private func assertPreparedVideoIsH264AndUploadable(
+        _ preparedURL: URL,
+        sourceURL: URL
+    ) async throws {
+        let sourceAsset = AVURLAsset(url: sourceURL)
+        let sourceDuration = try await sourceAsset.load(.duration)
+        let preparedAsset = AVURLAsset(url: preparedURL)
+        let preparedDuration = try await preparedAsset.load(.duration)
+        let videoTrack = try XCTUnwrap(
+            try await preparedAsset.loadTracks(withMediaType: .video).first
+        )
+        let formatDescriptions = try await videoTrack.load(
+            .formatDescriptions
+        )
+        let codecTypes = formatDescriptions.map {
+            CMFormatDescriptionGetMediaSubType($0)
         }
+        XCTAssertTrue(codecTypes.contains(kCMVideoCodecType_H264))
+
+        let preparedSize = try XCTUnwrap(
+            preparedURL.resourceValues(forKeys: [.fileSizeKey]).fileSize
+        )
+        XCTAssertTrue(
+            CourseVideoUploadPolicy.isAcceptablePreparedOutput(
+                fileSizeBytes: Int64(preparedSize),
+                sourceDurationSeconds: sourceDuration.seconds,
+                outputDurationSeconds: preparedDuration.seconds
+            )
+        )
     }
 
     private func fixtureError(_ message: String) -> NSError {

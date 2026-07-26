@@ -84,6 +84,14 @@ class IOSResumableVideoUploadSourceTests(unittest.TestCase):
         self.assertIn("CourseVideoCompositionTransform.make(", preparation)
         self.assertIn("exporter.preserveHDR = false", preparation)
         self.assertIn("isAcceptablePreparedOutput", preparation)
+        self.assertIn("AVAssetExportPresetMediumQuality", preparation)
+        self.assertIn(
+            "fileLengthLimit = CourseVideoUploadPolicy.transcodeTargetBytes",
+            preparation,
+        )
+        self.assertIn("primaryExporter", preparation)
+        self.assertIn("fallbackExporter", preparation)
+        self.assertIn("CourseVideoExportDiagnostic", preparation)
         self.assertGreaterEqual(
             preparation.count("loadTracks("),
             2,
