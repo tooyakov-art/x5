@@ -354,8 +354,18 @@ def create_combined_review(
         app_target,
         *(("inAppPurchaseVersions", version["id"]) for version in iap_versions),
     }
-    actual_targets = load_targets()
-    if actual_targets != expected_targets or len(actual_targets) != 4:
+    actual_targets: set[tuple[str, str]] = set()
+    for attempt in range(1, 31):
+        actual_targets = load_targets()
+        if actual_targets == expected_targets and len(actual_targets) == 4:
+            break
+        print(
+            "Waiting for combined review item readback "
+            f"{attempt}/30: actual targets={sorted(actual_targets)}"
+        )
+        if attempt < 30:
+            time.sleep(2)
+    else:
         raise RuntimeError(
             "Combined review must contain exactly the app version and three "
             f"consumable versions; actual targets={sorted(actual_targets)}"

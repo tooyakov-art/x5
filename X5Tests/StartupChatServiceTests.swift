@@ -348,7 +348,8 @@ private final class StartupChatURLProtocol: URLProtocol {
             return
         }
         do {
-            let (response, data) = try handler(request)
+            let capturedRequest = try request.materializingHTTPBodyForTesting()
+            let (response, data) = try handler(capturedRequest)
             client?.urlProtocol(
                 self,
                 didReceive: response,

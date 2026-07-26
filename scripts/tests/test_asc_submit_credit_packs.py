@@ -2,6 +2,7 @@ import importlib.util
 import pathlib
 import sys
 import unittest
+from unittest import mock
 
 
 SCRIPT = pathlib.Path(__file__).parents[1] / "asc_submit_credit_packs.py"
@@ -239,6 +240,87 @@ class CreditPackSubmissionTests(unittest.TestCase):
         self.assertEqual(submission_id, "submission-1")
         self.assertTrue(api.submitted)
         api.assert_exact_targets()
+
+    def test_ready_submission_waits_for_eventual_exact_target_readback(self):
+        expected_targets = {
+            ("appStoreVersions", "version-1"),
+            ("inAppPurchaseVersions", "iap-1"),
+            ("inAppPurchaseVersions", "iap-2"),
+            ("inAppPurchaseVersions", "iap-3"),
+        }
+
+        class FakeAPI:
+            def __init__(self):
+                self.target_readbacks = [
+                    expected_targets,
+                    set(),
+                    expected_targets,
+                ]
+                self.submitted = False
+
+            def request(self, method, path, expected=(200,), payload=None):
+                if method == "GET" and "?filter[app]=" in path:
+                    return {
+                        "data": [
+                            {
+                                "id": "submission-ready",
+                                "attributes": {"state": "READY_FOR_REVIEW"},
+                            }
+                        ]
+                    }
+                if method == "GET" and "?include=items" in path:
+                    targets = self.target_readbacks.pop(0)
+                    included = []
+                    for index, (resource_type, resource_id) in enumerate(
+                        sorted(targets)
+                    ):
+                        relationship = (
+                            "appStoreVersion"
+                            if resource_type == "appStoreVersions"
+                            else "inAppPurchaseVersion"
+                        )
+                        included.append(
+                            {
+                                "id": f"item-{index}",
+                                "type": "reviewSubmissionItems",
+                                "relationships": {
+                                    relationship: {
+                                        "data": {
+                                            "type": resource_type,
+                                            "id": resource_id,
+                                        }
+                                    }
+                                },
+                            }
+                        )
+                    return {"included": included}
+                if method == "PATCH":
+                    self.submitted = True
+                    return {
+                        "data": {
+                            "id": "submission-ready",
+                            "attributes": {"state": "WAITING_FOR_REVIEW"},
+                        }
+                    }
+                if method == "POST":
+                    raise AssertionError(
+                        "rerun must reuse the ready submission and its items"
+                    )
+                raise AssertionError(f"Unexpected request {method} {path}")
+
+        api = FakeAPI()
+        with mock.patch.object(MODULE.time, "sleep") as sleep:
+            submission_id = MODULE.create_combined_review(
+                api,
+                "app-1",
+                "version-1",
+                [{"id": "iap-1"}, {"id": "iap-2"}, {"id": "iap-3"}],
+            )
+
+        self.assertEqual(submission_id, "submission-ready")
+        self.assertTrue(api.submitted)
+        self.assertEqual(api.target_readbacks, [])
+        sleep.assert_called_once_with(2)
 
     def test_replace_workflow_delegates_final_submission_to_combined_script(self):
         workflow = (
