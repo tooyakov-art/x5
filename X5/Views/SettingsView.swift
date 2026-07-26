@@ -329,7 +329,7 @@ struct SettingsView: View {
     private var versionString: String {
         let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
-        return "Xfive marketing · v\(v) (\(b))"
+        return "X five marketing · v\(v) (\(b))"
     }
 
     private func restoreSubscriptions() {

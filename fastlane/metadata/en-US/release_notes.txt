@@ -1,10 +1,14 @@
-This update improves courses, Hub filters, portfolio safety and purchases.
+This update introduces the redesigned AI home and improves courses, Hub,
+portfolio safety and purchases.
 
 New in this version:
-- Select several task categories and return to the complete Hub category grid.
+- Create images, short vertical or landscape AI videos, and editable
+  three-scene Live Fruits stories from the new home.
+- Work through a business idea with Startup Chat.
+- Filter Hub tasks instantly by the categories saved in your profile.
 - Open a course author's public profile and select the correct author while managing a course.
 - Choose lesson and submission videos from the photo library with clearer preparation and upload progress.
 - Keep course modules and videos intact while editing.
 - View course videos full screen with zoom controls.
 - Automatic portfolio image safety checks and a protected developer review queue.
-- More reliable one-time credit delivery and restored image generation.
+- More reliable, repeatable one-time credit-pack delivery and restored image generation.

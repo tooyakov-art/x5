@@ -15,9 +15,18 @@ on:
       - "supabase/functions/google-play-notifications/**"
       - "supabase/functions/generate-image/**"
       - "supabase/functions/moderate-portfolio/**"
+      - "supabase/functions/generate-video/**"
+      - "supabase/functions/startup-chat/**"
+      - "supabase/functions/fruit-story/**"
       - "supabase/tests/image_generation_reliability_contract_test.mjs"
+      - "supabase/tests/video_generation_backend_contract_test.mjs"
+      - "supabase/tests/video_generation_openai_provider_contract_test.mjs"
+      - "supabase/tests/startup_chat_backend_contract_test.mjs"
+      - "supabase/tests/startup_chat_rate_limit_contract_test.mjs"
+      - "supabase/tests/fruit_story_backend_contract_test.mjs"
       - "supabase/migrations/**apple*store*.sql"
       - "supabase/migrations/**/*store*.sql"
+      - "supabase/migrations/**/*video*.sql"
       - "scripts/tests/**"
       - ".github/workflows/ios-course-ci.yml"
   workflow_dispatch:
@@ -41,6 +50,11 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
 
       - name: Verify App Store backend
         working-directory: supabase/functions/verify-app-store-transaction
@@ -82,6 +96,22 @@ jobs:
           deno test --allow-read \
             supabase/functions/generate-image/economy.test.mjs \
             supabase/tests/image_generation_reliability_contract_test.mjs
+
+      - name: Verify AI Home backends
+        run: |
+          deno check \
+            supabase/functions/generate-video/index.ts \
+            supabase/functions/startup-chat/index.ts \
+            supabase/functions/fruit-story/index.ts
+          node --test \
+            supabase/functions/generate-video/*.test.mjs \
+            supabase/functions/startup-chat/*.test.mjs \
+            supabase/functions/fruit-story/tests/*.test.mjs \
+            supabase/tests/video_generation_backend_contract_test.mjs \
+            supabase/tests/video_generation_openai_provider_contract_test.mjs \
+            supabase/tests/startup_chat_backend_contract_test.mjs \
+            supabase/tests/startup_chat_rate_limit_contract_test.mjs \
+            supabase/tests/fruit_story_backend_contract_test.mjs
 
       - name: Verify release automation contracts
         run: python3 -m unittest discover -s scripts/tests -p "test_*.py"

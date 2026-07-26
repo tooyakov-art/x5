@@ -1,10 +1,36 @@
 import SwiftUI
 
+enum HomeRoute: Hashable, Identifiable {
+    case imageGeneration(ImageGenerationCategory)
+    case startupChat
+    case hub
+    case videoGeneration
+    case liveFruits
+    case tool(String)
+
+    var id: String {
+        switch self {
+        case .imageGeneration(let category):
+            return "image_generation:\(category.id)"
+        case .startupChat:
+            return "startup_chat"
+        case .hub:
+            return "hub"
+        case .videoGeneration:
+            return "video_generation"
+        case .liveFruits:
+            return "live_fruits"
+        case .tool(let id):
+            return "tool:\(id)"
+        }
+    }
+}
+
 /// Home uses an AI-studio layout: hero, tool grid, trend rail, and creator feed.
 struct HomeView: View {
     @EnvironmentObject private var loc: LocalizationService
 
-    @State private var openTool: HomeTool?
+    @State private var activeRoute: HomeRoute?
     @State private var openImageCategory: ImageGenerationCategory?
     @State private var showingGeneratedGallery = false
     @State private var selectedFeed = "Для тебя"
@@ -18,6 +44,7 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     heroBanner
+                    promoCards
                     quickToolsGrid
                     trendsSection
                     feedSection
@@ -30,14 +57,14 @@ struct HomeView: View {
             }
             .scrollIndicators(.hidden)
             .background { X5Background() }
-            .navigationTitle("")
+            .navigationTitle("X five marketing")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
-                        openTool = developmentTool(id: "search", title: "Поиск", icon: "magnifyingglass")
+                        activeRoute = .tool("search")
                     } label: {
                         Image(systemName: "magnifyingglass")
                     }
@@ -46,14 +73,13 @@ struct HomeView: View {
                     Button {
                         showingGeneratedGallery = true
                     } label: {
-                        Text("Мои креативы")
-                            .font(.system(size: 13, weight: .bold))
+                        Image(systemName: "photo.stack")
                     }
                     .accessibilityLabel(loc.t("gen_gallery"))
                 }
             }
-            .sheet(item: $openTool) { tool in
-                ToolDetailView(tool: tool)
+            .sheet(item: $activeRoute) { route in
+                sheetDestination(for: route)
             }
             .navigationDestination(isPresented: imageCategoryNavigationBinding) {
                 if let category = openImageCategory {
@@ -88,12 +114,12 @@ struct HomeView: View {
         [
             HeroSlide(
                 id: "studio",
-                eyebrow: "X Five AI Studio",
-                title: "Генерируй креативы для бизнеса",
-                subtitle: "Картинки, видео, сторис, карточки товара и трендовые форматы",
-                assetName: "HomeUtilityVideo",
-                systemImage: "sparkles",
-                action: .video
+                eyebrow: "X five marketing",
+                title: "Генерация изображений",
+                subtitle: "Создай рекламный креатив, фото товара или пост",
+                assetName: "HomeCoverTargetAds",
+                systemImage: "photo.badge.plus",
+                action: .imageGeneration(ImageGenerationCatalog.custom)
             ),
             HeroSlide(
                 id: "influencer",
@@ -120,9 +146,42 @@ struct HomeView: View {
                 subtitle: "Фрукты, напитки и товарные ролики для ленты",
                 assetName: "HomeTrendFruitVideo",
                 systemImage: "play.tv",
-                action: .video
+                action: .liveFruits
             )
         ]
+    }
+
+    private var promos: [HomePromo] {
+        [
+            HomePromo(
+                id: "startup_chat",
+                title: "Стартап чат",
+                subtitle: "AI-наставник для бизнеса",
+                systemImage: "sparkles.rectangle.stack",
+                action: .startupChat
+            ),
+            HomePromo(
+                id: "hub",
+                title: "Hub",
+                subtitle: "Специалисты и задачи",
+                systemImage: "briefcase",
+                action: .hub
+            )
+        ]
+    }
+
+    private var promoCards: some View {
+        HStack(spacing: 12) {
+            ForEach(promos) { promo in
+                Button {
+                    handle(promo.action)
+                } label: {
+                    HomePromoCard(promo: promo)
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+            }
+        }
     }
 
     private var quickToolsGrid: some View {
@@ -218,7 +277,7 @@ struct HomeView: View {
                 .foregroundColor(.white)
             Spacer()
             Button {
-                openTool = developmentTool(id: "more_\(title)", title: title, icon: "ellipsis")
+                activeRoute = .tool("more_\(title)")
             } label: {
                 HStack(spacing: 5) {
                     Text(trailing)
@@ -234,12 +293,12 @@ struct HomeView: View {
 
     private var quickTools: [StudioTool] {
         [
-            StudioTool(id: "image_to_video", title: "Image to Video", icon: "photo", badge: nil, action: .video),
-            StudioTool(id: "text_to_video", title: "Text to Video", icon: "text.bubble", badge: nil, action: .video),
+            StudioTool(id: "image_to_video", title: "Image to Video", icon: "photo", badge: nil, action: .videoGeneration),
+            StudioTool(id: "text_to_video", title: "Text to Video", icon: "text.bubble", badge: nil, action: .videoGeneration),
             StudioTool(id: "avatar", title: "Avatar 2.0", icon: "person.crop.circle", badge: nil, action: .tool("ai_influencer")),
             StudioTool(id: "motion", title: "Motion Control", icon: "scope", badge: nil, action: .tool("video_creative")),
-            StudioTool(id: "text_to_image", title: "AI Image", icon: "photo.badge.plus", badge: nil, action: .image(ImageGenerationCatalog.custom)),
-            StudioTool(id: "ai_video", title: "AI Video", icon: "video", badge: "Motion", action: .video),
+            StudioTool(id: "text_to_image", title: "AI Image", icon: "photo.badge.plus", badge: nil, action: .imageGeneration(ImageGenerationCatalog.custom)),
+            StudioTool(id: "ai_video", title: "AI Video", icon: "video", badge: "Motion", action: .videoGeneration),
             StudioTool(id: "elements", title: "Карточки", icon: "rectangle.grid.2x2", badge: nil, action: imageAction("product_cards")),
             StudioTool(id: "restyle", title: "Restyle", icon: "paintpalette", badge: nil, action: imageAction("insta_pack")),
             StudioTool(id: "effects", title: "Effects", icon: "wand.and.sparkles", badge: nil, action: imageAction("story")),
@@ -248,7 +307,7 @@ struct HomeView: View {
             StudioTool(id: "post", title: "Пост", icon: "square.grid.2x2", badge: nil, action: imageAction("post")),
             StudioTool(id: "product", title: "Фото товара", icon: "shippingbox", badge: nil, action: imageAction("product")),
             StudioTool(id: "packaging", title: "Упаковка", icon: "cube.box", badge: nil, action: imageAction("packaging")),
-            StudioTool(id: "startup", title: "Startup Chat", icon: "sparkles.rectangle.stack", badge: nil, action: .tool("startup_chat"))
+            StudioTool(id: "startup", title: "Startup Chat", icon: "sparkles.rectangle.stack", badge: nil, action: .startupChat)
         ]
     }
 
@@ -259,9 +318,9 @@ struct HomeView: View {
     private var trendCards: [VisualCardItem] {
         [
             VisualCardItem(id: "ai_influencer", title: "AI-инфлюенсер", subtitle: "Персонаж для роликов", assetName: "HomeTrendInfluencer", systemImage: "person.crop.square", action: .tool("ai_influencer"), showsPlay: false),
-            VisualCardItem(id: "fruit_video", title: "Живые фрукты", subtitle: "Видео для Reels", assetName: "HomeTrendFruitVideo", systemImage: "play.tv", action: .video, showsPlay: true),
+            VisualCardItem(id: "fruit_video", title: "Живые фрукты", subtitle: "Видео для Reels", assetName: "HomeTrendFruitVideo", systemImage: "play.tv", action: .liveFruits, showsPlay: true),
             VisualCardItem(id: "trend_post", title: "Пост-тренд", subtitle: "Идея для ленты", assetName: "HomeTrendPost", systemImage: "sparkles", action: imageAction("post"), showsPlay: false),
-            VisualCardItem(id: "live_video", title: "Видео тренды", subtitle: "Shorts и TikTok", assetName: "HomeTrendLiveVideo", systemImage: "film.stack", action: .video, showsPlay: true),
+            VisualCardItem(id: "live_video", title: "Видео тренды", subtitle: "Shorts и TikTok", assetName: "HomeTrendLiveVideo", systemImage: "film.stack", action: .videoGeneration, showsPlay: true),
             VisualCardItem(id: "target", title: "Таргет", subtitle: "Креативы теста", assetName: "HomeCoverTargetAds", systemImage: "scope", action: imageAction("target_ad"), showsPlay: false)
         ]
     }
@@ -270,43 +329,81 @@ struct HomeView: View {
         [
             VisualCardItem(id: "youtube", title: "Обложка YouTube", subtitle: "Превью с высоким CTR", assetName: "HomeCoverYoutube", systemImage: "play.rectangle", action: imageAction("youtube_cover"), showsPlay: false),
             VisualCardItem(id: "product_cards", title: "Карточки товара", subtitle: "Маркетплейс и сайт", assetName: "HomeCoverProductCards", systemImage: "rectangle.grid.2x2", action: imageAction("product_cards"), showsPlay: false),
-            VisualCardItem(id: "video", title: "AI Video", subtitle: "Фото или текст в ролик", assetName: "HomeUtilityVideo", systemImage: "video", action: .video, showsPlay: true),
+            VisualCardItem(id: "video", title: "AI Video", subtitle: "Фото или текст в ролик", assetName: "HomeUtilityVideo", systemImage: "video", action: .videoGeneration, showsPlay: true),
             VisualCardItem(id: "insta", title: "Упаковка Instagram", subtitle: "Посты и сторис", assetName: "HomeUtilityInstaPack", systemImage: "square.stack.3d.up", action: imageAction("insta_pack"), showsPlay: false),
             VisualCardItem(id: "product", title: "Фото товара", subtitle: "Кадр для рекламы", assetName: "HomeUtilityProduct", systemImage: "shippingbox", action: imageAction("product"), showsPlay: false),
             VisualCardItem(id: "logo", title: "Лого", subtitle: "Знак для бренда", assetName: "HomeUtilityLogo", systemImage: "seal", action: imageAction("logo"), showsPlay: false)
         ]
     }
 
-    private func imageAction(_ categoryId: String) -> StudioAction {
+    private func imageAction(_ categoryId: String) -> HomeRoute {
         let categories = Dictionary(uniqueKeysWithValues: ImageGenerationCatalog.categories.map { ($0.id, $0) })
-        return categories[categoryId].map(StudioAction.image) ?? .image(ImageGenerationCatalog.custom)
+        return categories[categoryId].map(HomeRoute.imageGeneration)
+            ?? .imageGeneration(ImageGenerationCatalog.custom)
     }
 
-    private func handle(_ action: StudioAction) {
-        switch action {
-        case .image(let category):
+    private func handle(_ route: HomeRoute) {
+        switch route {
+        case .imageGeneration(let category):
             DiagnosticLogger.log(event: "home_studio_\(category.id)_tap")
             openImageCategory = category
-        case .video:
+        case .hub:
+            DiagnosticLogger.log(event: "home_hub_promo_tap")
+            NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "hub"])
+        case .videoGeneration:
             DiagnosticLogger.log(event: "home_studio_video_tap")
-            openVideoTool()
+            activeRoute = route
+        case .liveFruits:
+            DiagnosticLogger.log(event: "home_live_fruits_tap")
+            activeRoute = route
+        case .startupChat:
+            DiagnosticLogger.log(event: "home_startup_chat_tap")
+            activeRoute = route
         case .tool(let id):
             DiagnosticLogger.log(event: "home_studio_\(id)_tap")
-            openTool = HomeContent.tools.first(where: { $0.id == id })
-                ?? developmentTool(id: id, title: developmentTitle(for: id))
+            activeRoute = route
         }
     }
 
-    private func openVideoTool() {
-        openTool = HomeContent.tools.first(where: { $0.id == "video_gen" })
-            ?? developmentTool(id: "video_gen", title: "AI Video", icon: "video")
+    @ViewBuilder
+    private func sheetDestination(for route: HomeRoute) -> some View {
+        switch route {
+        case .videoGeneration:
+            VideoGeneratorView()
+        case .startupChat:
+            StartupChatView()
+        case .liveFruits:
+            LiveFruitsView()
+        case .tool:
+            ToolDetailView(tool: placeholderTool(for: route))
+        case .imageGeneration, .hub:
+            EmptyView()
+        }
+    }
+
+    private func placeholderTool(for route: HomeRoute) -> HomeTool {
+        switch route {
+        case .startupChat:
+            return developmentTool(id: "startup_assistant", title: "Стартап чат", icon: "sparkles.rectangle.stack")
+        case .videoGeneration:
+            return developmentTool(id: "video_generation", title: "Генерация видео", icon: "video")
+        case .liveFruits:
+            return developmentTool(id: "live_fruits", title: "Живые фрукты", icon: "play.tv")
+        case .tool(let id):
+            return HomeContent.tools.first(where: { $0.id == id })
+                ?? developmentTool(id: id, title: developmentTitle(for: id))
+        case .imageGeneration:
+            return developmentTool(id: "image", title: "Генерация изображений", icon: "photo.badge.plus")
+        case .hub:
+            return developmentTool(id: "hub", title: "Hub", icon: "briefcase")
+        }
     }
 
     private func developmentTool(id: String, title: String, icon: String = "hammer.fill") -> HomeTool {
         HomeTool(
             id: id,
             title: title,
-            subtitle: "Скоро добавим полный запуск внутри Xfive marketing.",
+            subtitle: "Скоро добавим полный запуск внутри X five marketing.",
             icon: icon,
             videoFile: nil,
             gradientStart: Color.accentColor.opacity(0.34),
@@ -339,12 +436,6 @@ struct HomeView: View {
     }
 }
 
-private enum StudioAction {
-    case image(ImageGenerationCategory)
-    case video
-    case tool(String)
-}
-
 private struct HeroSlide: Identifiable {
     let id: String
     let eyebrow: String
@@ -352,7 +443,15 @@ private struct HeroSlide: Identifiable {
     let subtitle: String
     let assetName: String
     let systemImage: String
-    let action: StudioAction
+    let action: HomeRoute
+}
+
+private struct HomePromo: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let action: HomeRoute
 }
 
 private struct StudioTool: Identifiable {
@@ -360,7 +459,7 @@ private struct StudioTool: Identifiable {
     let title: String
     let icon: String
     let badge: String?
-    let action: StudioAction
+    let action: HomeRoute
 }
 
 private struct VisualCardItem: Identifiable {
@@ -369,7 +468,7 @@ private struct VisualCardItem: Identifiable {
     let subtitle: String
     let assetName: String
     let systemImage: String
-    let action: StudioAction
+    let action: HomeRoute
     let showsPlay: Bool
 }
 
@@ -422,6 +521,48 @@ private struct HeroSlideCard: View {
         }
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
+    }
+}
+
+private struct HomePromoCard: View {
+    let promo: HomePromo
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: promo.systemImage)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 40, height: 40)
+                .background(Color.white.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(promo.title)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+
+                Text(promo.subtitle)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.58))
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.white.opacity(0.48))
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 72)
+        .background(Color.white.opacity(0.055))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(Color.white.opacity(0.10), lineWidth: 1)
         )
     }

@@ -1,32 +1,35 @@
-Xfive marketing is a creator workspace for marketers, entrepreneurs and creative specialists.
+X five marketing is a creator workspace for marketers, entrepreneurs and creative specialists.
 
-Organize your portfolio, learn from courses, find specialists in Hub, post tasks and keep client conversations in one app.
+Organize your portfolio, learn from courses, find specialists in Hub, create marketing media, post tasks and keep client conversations in one app.
 
 KEY FEATURES
-• Hub — browse specialists, post tasks and respond to client requests.
-• Chats — direct messaging with text, photos, voice messages, search, replies, archive, mute, pin, report and block controls.
+• AI Image — create logos, stories, posts, product photos, packaging concepts and other marketing visuals.
+• AI Video — turn a text prompt or selected photo into a short vertical or landscape video.
+• Live Fruits — answer a short questionnaire, edit a three-scene storyboard, generate consistent frames and turn the story into a vertical video.
+• Startup Chat — work through a business idea, audience, offer, demand test and next action with an AI mentor.
+• Hub — browse specialists, filter tasks by the categories saved in your profile, post tasks and respond to client requests.
+• Chats — direct messaging with text, photos and voice messages, plus search, replies, archive, mute, pin, report and block controls.
 • Portfolio — show photos and videos in your public profile, with likes, comments and pinned work.
-• CourseUP — watch creator and marketing lessons.
+• CourseUP — watch creator and marketing lessons. Authorized developer accounts can publish and maintain courses.
 • Profile — choose your role, edit public visibility, add social links and enable a verified badge.
-• Image generation — create marketing visuals such as logos, stories, posts, product photos and packaging concepts.
 • Sign in with Apple, Google or email.
 • Russian, English and Kazakh interface.
 
 WHO IT'S FOR
-SMM managers, designers, photographers, video editors, copywriters, marketers, founders and creators who need learning tools, client chats and a public work profile.
+SMM managers, designers, photographers, video editors, copywriters, marketers, founders and creators who need AI tools, learning, client chats and a public work profile.
 
 IN-APP PURCHASES
-The Store offers optional one-time packs of 1,000, 2,000 or 5,000 credits. Credits are added to the signed-in Xfive marketing account and can be used for credit-based creator features and courses. These consumable purchases do not activate a subscription.
+The Store offers optional one-time consumable packs of 1,000, 2,000 or 5,000 credits. Credits are added to the signed-in X five marketing account and can be used for credit-based creator features and courses. Each pack can be purchased again whenever the user chooses; credit packs are not subscriptions.
 
 The verified badge is a separate optional monthly auto-renewable subscription. It does not include credits.
 
-Payment is charged to your Apple ID at confirmation of purchase. The verified badge subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel it in your App Store account settings.
+Payment is charged to your Apple ID at purchase confirmation. The verified badge subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel it in your App Store account settings.
 
 SAFETY
-Chats include report and block controls. Users can delete their account from Settings. Portfolio images, text and generated video preview contact sheets are screened for prohibited content; failed or inconclusive checks can be reviewed by the developer accounts.
+AI video and Live Fruits requests are screened automatically before provider submission. Flagged text or selected reference images are rejected before credits are reserved. Chats include report and block controls. Users can delete their account from Settings.
 
 PRIVACY
-Authentication uses Sign in with Apple, Google or email. Profile data, chats, tasks and portfolio items are stored through Supabase. User-selected portfolio images, generated three-frame video previews, titles and descriptions may be sent from our Supabase Edge Function to OpenAI solely for content moderation. Actual portfolio video files are not sent to OpenAI. Xfive marketing does not use third-party advertising trackers.
+Authentication, profiles, chats, tasks, courses, balances and portfolio items are stored through Supabase. AI Image, Startup Chat, Live Fruits and AI Video send only the inputs needed for the requested feature from a Supabase Edge Function to the configured AI provider. AI video inputs and results use private storage and short-lived signed links. OpenAI is used for Startup Chat, storyboard creation and automatic moderation. Short AI-video requests can be processed by fal Kling Video or Google Gemini Omni Flash, depending on configured provider availability. X five marketing does not use third-party advertising trackers.
 
 Terms of Service: https://tooyakov-art.github.io/x5site/terms.html
 Privacy Policy: https://tooyakov-art.github.io/x5site/privacy.html

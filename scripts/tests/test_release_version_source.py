@@ -26,13 +26,13 @@ class ReleaseVersionSourceTests(unittest.TestCase):
         runtime_build_number = re.search(
             r'CURRENT_PROJECT_VERSION:\s*"([^"]+)"', project
         ).group(1)
-        pending_review_build_number = "189"
+        pending_review_build_number = "191"
         fastlane_version = re.search(
             r'APP_VERSION\s*=\s*"([^"]+)"', fastfile
         ).group(1)
 
         self.assertEqual(marketing_version, "1.1.6")
-        self.assertEqual(runtime_build_number, "190")
+        self.assertEqual(runtime_build_number, "191")
         self.assertEqual(fastlane_version, marketing_version)
         self.assertIn(
             f"Version {marketing_version} build {pending_review_build_number}",

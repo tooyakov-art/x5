@@ -447,7 +447,7 @@ struct ChatThreadView: View {
     private func report() {
         let otherId = chat.otherParticipantId(currentUser: auth.userId ?? "") ?? "unknown"
         let subject = "Report user \(otherId)"
-        let body = "Hi Xfive marketing team,\n\nI'd like to report this user. Please review their content.\n\nUser ID: \(otherId)\nChat ID: \(chat.id)\n"
+        let body = "Hi X five marketing team,\n\nI'd like to report this user. Please review their content.\n\nUser ID: \(otherId)\nChat ID: \(chat.id)\n"
         if let s = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
            let b = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
            let url = URL(string: "mailto:support@x5studio.app?subject=\(s)&body=\(b)") {

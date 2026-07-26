@@ -740,7 +740,7 @@ private struct PortfolioInstagramPostPage: View {
                     Image(systemName: "person.crop.circle.fill")
                         .foregroundColor(.white.opacity(0.5))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(comment.userName?.isEmpty == false ? comment.userName! : "Xfive marketing")
+                        Text(comment.userName?.isEmpty == false ? comment.userName! : "X five marketing")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(.white.opacity(0.65))
                         Text(comment.text)
@@ -934,7 +934,7 @@ private struct PortfolioPostViewer: View {
                     Image(systemName: "person.crop.circle.fill")
                         .foregroundColor(.white.opacity(0.5))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(comment.userName?.isEmpty == false ? comment.userName! : "Xfive marketing")
+                        Text(comment.userName?.isEmpty == false ? comment.userName! : "X five marketing")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(.white.opacity(0.65))
                         Text(comment.text)

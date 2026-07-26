@@ -21,7 +21,7 @@ REVIEWED_STATES = {
     "IN_REVIEW",
 }
 TARGET_VERSION = "1.1.6"
-TARGET_BUILD = "189"
+TARGET_BUILD = "191"
 EDITABLE_APP_STATES = {
     "PREPARE_FOR_SUBMISSION",
     "READY_FOR_REVIEW",
@@ -93,6 +93,25 @@ def submit_review_payload(submission_id: str) -> dict[str, Any]:
             "attributes": {"submitted": True},
         }
     }
+
+
+def review_item_targets(
+    review_payload: dict[str, Any],
+) -> set[tuple[str, str]]:
+    targets: set[tuple[str, str]] = set()
+    for item in review_payload.get("included", []):
+        if item.get("type") != "reviewSubmissionItems":
+            continue
+        relationships = item.get("relationships", {})
+        for relationship in ("appStoreVersion", "inAppPurchaseVersion"):
+            target = relationships.get(relationship, {}).get("data")
+            if not isinstance(target, dict):
+                continue
+            resource_type = target.get("type")
+            resource_id = target.get("id")
+            if isinstance(resource_type, str) and isinstance(resource_id, str):
+                targets.add((resource_type, resource_id))
+    return targets
 
 
 def single_ready_submission(
@@ -293,32 +312,55 @@ def create_combined_review(
         print(f"Created combined ReviewSubmission {submission['id']}")
     submission_id = submission["id"]
 
-    api.request(
-        "POST",
-        "/v1/reviewSubmissionItems",
-        expected=(201,),
-        payload=review_item_payload(
-            submission_id,
-            "appStoreVersion",
-            "appStoreVersions",
-            app_version_id,
-        ),
-    )
-    print(f"Attached App Store version {TARGET_VERSION} build {TARGET_BUILD}")
+    def load_targets() -> set[tuple[str, str]]:
+        payload = api.request(
+            "GET",
+            f"/v1/reviewSubmissions/{submission_id}"
+            "?include=items&limit[items]=50",
+        )
+        return review_item_targets(payload)
 
-    for version in iap_versions:
+    existing_targets = load_targets()
+    app_target = ("appStoreVersions", app_version_id)
+    if app_target not in existing_targets:
         api.request(
             "POST",
             "/v1/reviewSubmissionItems",
             expected=(201,),
             payload=review_item_payload(
                 submission_id,
-                "inAppPurchaseVersion",
-                "inAppPurchaseVersions",
-                version["id"],
+                "appStoreVersion",
+                *app_target,
             ),
         )
+    print(f"Attached App Store version {TARGET_VERSION} build {TARGET_BUILD}")
+
+    for version in iap_versions:
+        target = ("inAppPurchaseVersions", version["id"])
+        if target not in existing_targets:
+            api.request(
+                "POST",
+                "/v1/reviewSubmissionItems",
+                expected=(201,),
+                payload=review_item_payload(
+                    submission_id,
+                    "inAppPurchaseVersion",
+                    *target,
+                ),
+            )
         print(f"Attached IAP version {version['id']}")
+
+    expected_targets = {
+        app_target,
+        *(("inAppPurchaseVersions", version["id"]) for version in iap_versions),
+    }
+    actual_targets = load_targets()
+    if actual_targets != expected_targets or len(actual_targets) != 4:
+        raise RuntimeError(
+            "Combined review must contain exactly the app version and three "
+            f"consumable versions; actual targets={sorted(actual_targets)}"
+        )
+    print("Verified combined review contains exactly 4 expected items")
 
     submitted = api.request(
         "PATCH",

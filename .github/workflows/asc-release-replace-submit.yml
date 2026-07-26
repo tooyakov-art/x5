@@ -3,7 +3,9 @@ name: ASC replace pending release with latest build
 on:
   workflow_dispatch:
   push:
-    branches: [codex/x5-cleanup-from-restore-clean]
+    branches:
+      - codex/x5-cleanup-from-restore-clean
+      - codex/x5-course-client-fixes-20260714
     paths:
       - ".github/workflows/asc-release-replace-submit.yml"
       - "fastlane/metadata/review_information/notes.txt"
@@ -17,8 +19,8 @@ jobs:
       ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
       ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
       BUNDLE_ID: com.x5studio.app
-      EXPECTED_VERSION: "1.1.5"
-      EXPECTED_BUILD: "184"
+      EXPECTED_VERSION: "1.1.6"
+      EXPECTED_BUILD: "191"
     steps:
       - uses: actions/checkout@v4
 
@@ -51,6 +53,98 @@ jobs:
           )
           path.write_text(text, encoding="utf-8")
           print(f"Review notes stamped for build {os.environ['EXPECTED_BUILD']}")
+          PY
+
+      - name: Wait for expected build before changing review
+        run: |
+          python <<'PY'
+          import base64
+          import os
+          import sys
+          import time
+
+          import jwt
+          import requests
+
+          BASE = "https://api.appstoreconnect.apple.com/v1"
+
+          def headers():
+              now = int(time.time())
+              token = jwt.encode(
+                  {
+                      "iss": os.environ["ASC_API_ISSUER_ID"],
+                      "iat": now,
+                      "exp": now + 600,
+                      "aud": "appstoreconnect-v1",
+                  },
+                  base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+                  algorithm="ES256",
+                  headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+              )
+              return {"Authorization": f"Bearer {token}"}
+
+          def get(path):
+              response = requests.get(
+                  path if path.startswith("http") else f"{BASE}{path}",
+                  headers=headers(),
+                  timeout=60,
+              )
+              if response.status_code >= 300:
+                  print(f"GET {response.url} -> HTTP {response.status_code}")
+                  print(response.text[:3000])
+                  raise SystemExit(1)
+              return response.json()
+
+          apps = get(
+              f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}"
+          ).get("data", [])
+          if len(apps) != 1:
+              sys.exit(
+                  f"Expected one ASC app for {os.environ['BUNDLE_ID']}, "
+                  f"found {len(apps)}"
+              )
+          app_id = apps[0]["id"]
+
+          for attempt in range(1, 121):
+              payload = get(
+                  f"/builds?filter[app]={app_id}"
+                  "&filter[preReleaseVersion.platform]=IOS"
+                  "&limit=200&sort=-uploadedDate"
+              )
+              build = next(
+                  (
+                      row for row in payload.get("data", [])
+                      if row.get("attributes", {}).get("version")
+                      == os.environ["EXPECTED_BUILD"]
+                  ),
+                  None,
+              )
+              if build:
+                  attrs = build.get("attributes", {})
+                  state = attrs.get("processingState")
+                  expired = attrs.get("expired")
+                  print(
+                      f"Build {os.environ['EXPECTED_BUILD']}: "
+                      f"id={build['id']} state={state} expired={expired}"
+                  )
+                  if state == "VALID" and not expired:
+                      print(
+                          "Expected build is valid; review replacement may start."
+                      )
+                      raise SystemExit(0)
+                  if state == "INVALID":
+                      sys.exit(
+                          f"Build {os.environ['EXPECTED_BUILD']} is INVALID"
+                      )
+              print(
+                  f"Build {os.environ['EXPECTED_BUILD']} is not VALID yet; "
+                  f"wait attempt {attempt}/120"
+              )
+              time.sleep(30)
+
+          sys.exit(
+              f"Build {os.environ['EXPECTED_BUILD']} did not become VALID"
+          )
           PY
 
       - name: Developer-reject pending App Store version when replacing old build
@@ -266,7 +360,6 @@ jobs:
           PY
 
       - name: Upload latest review metadata
-        continue-on-error: true
         run: fastlane ios upload
 
       - name: Attach build and submit for review
@@ -421,137 +514,8 @@ jobs:
           if refreshed_state not in READY_TO_SUBMIT:
               restore_previous_build(f"Version is not submittable after build replacement: {refreshed_state}")
 
-          review_payload = api(
-              "GET",
-              f"/reviewSubmissions?filter[app]={app_id}&filter[platform]=IOS&include=items",
-          )
-          submissions = review_payload.get("data", [])
-          open_rows = [
-              row for row in submissions
-              if row.get("attributes", {}).get("state") in {
-                  "READY_FOR_REVIEW", "WAITING_FOR_REVIEW", "IN_REVIEW", "COMPLETING", "UNRESOLVED_ISSUES"
-              }
-          ]
-          if open_rows:
-              active = next(
-                  (
-                      row for row in open_rows
-                      if row.get("attributes", {}).get("state") in REVIEW_ACTIVE
-                  ),
-                  None,
-              )
-              if active:
-                  print(
-                      f"Open review submission already active: {active['id']} "
-                      f"state={active.get('attributes', {}).get('state')}"
-                  )
-                  raise SystemExit(0)
-
-              unresolved = next(
-                  (
-                      row for row in open_rows
-                      if row.get("attributes", {}).get("state") == "UNRESOLVED_ISSUES"
-                  ),
-                  None,
-              )
-              if unresolved:
-                  sys.exit(f"Open review submission has unresolved issues: {unresolved['id']}")
-
-              ready = next(
-                  (
-                      row for row in open_rows
-                      if row.get("attributes", {}).get("state") == "READY_FOR_REVIEW"
-                  ),
-                  None,
-              )
-              if ready:
-                  submission_id = ready["id"]
-                  print(f"Reusing READY_FOR_REVIEW submission: {submission_id}")
-                  item_response = requests.post(
-                      f"{BASE}/reviewSubmissionItems",
-                      headers=json_headers,
-                      json={
-                          "data": {
-                              "type": "reviewSubmissionItems",
-                              "relationships": {
-                                  "reviewSubmission": {
-                                      "data": {"type": "reviewSubmissions", "id": submission_id}
-                                  },
-                                  "appStoreVersion": {
-                                      "data": {"type": "appStoreVersions", "id": version_id}
-                                  },
-                              },
-                          }
-                      },
-                      timeout=60,
-                  )
-                  if item_response.status_code in {201, 409}:
-                      print(f"Existing submission app-version item HTTP {item_response.status_code}")
-                  else:
-                      print(f"Add app-version item HTTP {item_response.status_code}")
-                      print(item_response.text[:3000])
-                      raise SystemExit(1)
-                  submitted = json_api(
-                      "PATCH",
-                      f"/reviewSubmissions/{submission_id}",
-                      {
-                          "data": {
-                              "type": "reviewSubmissions",
-                              "id": submission_id,
-                              "attributes": {"submitted": True},
-                          }
-                      },
-                  )
-                  final_state = submitted["data"]["attributes"].get("state")
-                  print(f"Submitted existing ReviewSubmission: {submission_id} state={final_state}")
-                  if final_state not in {"WAITING_FOR_REVIEW", "IN_REVIEW"}:
-                      sys.exit(f"Unexpected final submission state: {final_state}")
-                  raise SystemExit(0)
-
-          created = json_api(
-              "POST",
-              "/reviewSubmissions",
-              {
-                  "data": {
-                      "type": "reviewSubmissions",
-                      "attributes": {"platform": "IOS"},
-                      "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
-                  }
-              },
-              expected=(201,),
-          )
-          submission_id = created["data"]["id"]
-          print(f"Created ReviewSubmission: {submission_id}")
-
-          json_api(
-              "POST",
-              "/reviewSubmissionItems",
-              {
-                  "data": {
-                      "type": "reviewSubmissionItems",
-                      "relationships": {
-                          "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": submission_id}},
-                          "appStoreVersion": {"data": {"type": "appStoreVersions", "id": version_id}},
-                      },
-                  }
-              },
-              expected=(201,),
-          )
-          print("Attached app version item.")
-
-          submitted = json_api(
-              "PATCH",
-              f"/reviewSubmissions/{submission_id}",
-              {
-                  "data": {
-                      "type": "reviewSubmissions",
-                      "id": submission_id,
-                      "attributes": {"submitted": True},
-                  }
-              },
-          )
-          final_state = submitted["data"]["attributes"].get("state")
-          print(f"Submitted ReviewSubmission: {submission_id} state={final_state}")
-          if final_state not in {"WAITING_FOR_REVIEW", "IN_REVIEW"}:
-              sys.exit(f"Unexpected final submission state: {final_state}")
+          print("Build attachment verified; the next guarded step creates the combined app + IAP review.")
           PY
+
+      - name: Submit one combined app and consumable review
+        run: python scripts/asc_submit_credit_packs.py --action submit
