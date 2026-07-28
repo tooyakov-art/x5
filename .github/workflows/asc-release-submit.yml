@@ -2,10 +2,6 @@ name: ASC release submit
 
 on:
   workflow_dispatch:
-  push:
-    branches: [codex/x5-cleanup-from-restore-clean]
-    paths:
-      - ".github/workflows/asc-release-submit.yml"
 
 jobs:
   submit:

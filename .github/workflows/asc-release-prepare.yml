@@ -2,10 +2,6 @@ name: ASC release prepare
 
 on:
   workflow_dispatch:
-  push:
-    branches: [codex/x5-cleanup-from-restore-clean]
-    paths:
-      - ".github/workflows/asc-release-prepare.yml"
 
 jobs:
   prepare:

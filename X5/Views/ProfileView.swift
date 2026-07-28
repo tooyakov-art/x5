@@ -21,6 +21,9 @@ struct ProfileView: View {
     @State private var showInHubToggle = false
     @State private var savingShowInHub = false
     @State private var selectedSection: ProfileSection = .overview
+    @State private var followCounts: ProfileFollowCounts?
+
+    private let followService = ProfileFollowService()
 
     var body: some View {
         NavigationStack {
@@ -102,6 +105,15 @@ struct ProfileView: View {
                 }
             }
             .onAppear { showInHubToggle = currentUser.profile?.showInHub ?? false }
+            .task(id: currentUser.profile?.id) {
+                await refreshFollowCounts()
+            }
+            .onReceive(
+                NotificationCenter.default.publisher(for: .x5FollowStateDidChange)
+            ) { note in
+                guard followEventAffectsCurrentProfile(note) else { return }
+                Task { await refreshFollowCounts() }
+            }
         }
     }
 
@@ -287,8 +299,14 @@ struct ProfileView: View {
     private var heroStatsRow: some View {
         HStack(spacing: 8) {
             StatBubble(value: "\(currentUser.profile?.credits ?? 0)", label: loc.t("profile_credits"))
-            StatBubble(value: "0", label: loc.t("profile_followers"))
-            StatBubble(value: "0", label: loc.t("profile_following"))
+            StatBubble(
+                value: followCounts?.followers.description ?? "—",
+                label: loc.t("profile_followers")
+            )
+            StatBubble(
+                value: followCounts?.following.description ?? "—",
+                label: loc.t("profile_following")
+            )
         }
     }
 
@@ -350,10 +368,35 @@ struct ProfileView: View {
             return
         }
         await currentUser.load(userId: uid, accessToken: token)
+        await refreshFollowCounts(accessToken: token)
         showInHubToggle = currentUser.profile?.showInHub ?? false
         subscription.sync(from: currentUser.profile)
         try? await Task.sleep(nanoseconds: 450_000_000)
         isRefreshing = false
+    }
+
+    private func refreshFollowCounts(accessToken: String? = nil) async {
+        guard let uid = auth.userId ?? currentUser.profile?.id else { return }
+        let token: String?
+        if let accessToken {
+            token = accessToken
+        } else {
+            token = await auth.freshAccessToken()
+        }
+        if let counts = try? await followService.loadCounts(
+            userId: uid,
+            accessToken: token
+        ) {
+            followCounts = counts
+        }
+    }
+
+    private func followEventAffectsCurrentProfile(_ note: Notification) -> Bool {
+        guard let uid = auth.userId ?? currentUser.profile?.id else { return false }
+        let followerId = note.userInfo?["follower_id"] as? String
+        let followingId = note.userInfo?["following_id"] as? String
+        return followerId?.caseInsensitiveCompare(uid) == .orderedSame ||
+            followingId?.caseInsensitiveCompare(uid) == .orderedSame
     }
 
     private func updateHubVisibility(_ value: Bool) async {

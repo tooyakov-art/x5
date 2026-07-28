@@ -2,13 +2,6 @@ name: ASC replace pending release with latest build
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - codex/x5-cleanup-from-restore-clean
-      - codex/x5-course-client-fixes-20260714
-    paths:
-      - ".github/workflows/asc-release-replace-submit.yml"
-      - "fastlane/metadata/review_information/notes.txt"
 
 jobs:
   replace-submit:

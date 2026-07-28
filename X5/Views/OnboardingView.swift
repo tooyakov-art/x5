@@ -155,14 +155,17 @@ struct OnboardingView: View {
                 HStack {
                     if saving {
                         ProgressView()
+                            .tint(onboardingPrimaryButtonForeground)
                     }
                     Text(saving ? loc.t("onb_saving") : primaryButtonTitle)
                 }
                 .frame(maxWidth: .infinity)
+                .foregroundStyle(onboardingPrimaryButtonForeground)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(!canAdvance || saving)
+            .tint(onboardingPrimaryButtonTint)
+            .disabled(!onboardingPrimaryButtonIsEnabled)
         } footer: {
             if let err = errorMessage {
                 Text(err)
@@ -198,6 +201,24 @@ struct OnboardingView: View {
             return loc.t("onb_finish")
         }
         return loc.t("onb_continue")
+    }
+
+    private var onboardingPrimaryButtonIsEnabled: Bool {
+        canAdvance && !saving
+    }
+
+    private var onboardingPrimaryButtonForeground: Color {
+        if onboardingPrimaryButtonIsEnabled {
+            return .black
+        }
+        return .white.opacity(0.72)
+    }
+
+    private var onboardingPrimaryButtonTint: Color {
+        if onboardingPrimaryButtonIsEnabled {
+            return .accentColor
+        }
+        return .white.opacity(0.22)
     }
 
     private var nameFooter: String {

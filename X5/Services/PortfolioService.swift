@@ -40,7 +40,7 @@ struct PortfolioItem: Codable, Identifiable, Equatable {
         case "rejected": return "Отклонено"
         case "pending", "manual_review", "failed":
             return "Автопроверка повторится"
-        default: return "Автопроверка"
+        default: return "Автопроверка пройдена"
         }
     }
 }

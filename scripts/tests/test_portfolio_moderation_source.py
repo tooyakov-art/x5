@@ -25,6 +25,12 @@ AUTOMATIC_ONLY_MIGRATION = (
     / "migrations"
     / "20260726193000_portfolio_automatic_only_moderation.sql"
 )
+PENDING_DEFAULT_MIGRATION = (
+    ROOT
+    / "supabase"
+    / "migrations"
+    / "20260728121500_portfolio_default_pending.sql"
+)
 PORTFOLIO_SERVICE = ROOT / "X5" / "Services" / "PortfolioService.swift"
 PORTFOLIO_VIEW = ROOT / "X5" / "Views" / "PortfolioView.swift"
 SETTINGS_VIEW = ROOT / "X5" / "Views" / "SettingsView.swift"
@@ -150,7 +156,7 @@ class PortfolioModerationSourceTests(unittest.TestCase):
         self.assertIn("let thumbnailFractions:", view)
         self.assertGreaterEqual(view.count("generator.copyCGImage"), 1)
 
-    def test_video_thumbnail_is_a_three_frame_contact_sheet(self):
+    def test_video_thumbnail_is_a_multi_frame_contact_sheet(self):
         view = PORTFOLIO_VIEW.read_text(encoding="utf-8")
 
         self.assertIn("var frames: [UIImage] = []", view)
@@ -270,6 +276,38 @@ class PortfolioModerationSourceTests(unittest.TestCase):
             "bucket_id = any (array['chat-media', 'avatars'])", source
         )
         self.assertIn("owner_id = (select auth.uid())::text", source)
+
+    def test_video_preview_samples_twelve_points_across_the_video(self):
+        view = PORTFOLIO_VIEW.read_text(encoding="utf-8")
+
+        self.assertIn("let thumbnailSampleCount = 12", view)
+        self.assertIn("0..<thumbnailSampleCount", view)
+        self.assertIn("columns = 4", view)
+
+    def test_portfolio_rows_default_to_pending(self):
+        migration = PENDING_DEFAULT_MIGRATION.read_text(encoding="utf-8")
+        normalized = " ".join(migration.lower().split())
+
+        self.assertIn(
+            "alter column moderation_status set default 'pending'",
+            normalized,
+        )
+
+    def test_pending_or_rejected_media_cannot_be_shared(self):
+        view = PORTFOLIO_VIEW.read_text(encoding="utf-8")
+
+        self.assertGreaterEqual(
+            view.count('if item.moderationStatus == "approved" {'),
+            2,
+        )
+
+    def test_owner_sees_that_automatic_moderation_completed(self):
+        service = PORTFOLIO_SERVICE.read_text(encoding="utf-8")
+        view = PORTFOLIO_VIEW.read_text(encoding="utf-8")
+
+        self.assertIn('default: return "Автопроверка пройдена"', service)
+        self.assertIn("if canEdit || item.needsModerationBadge", view)
+        self.assertIn("PortfolioModerationBadge(item: item)", view)
 
 
 if __name__ == "__main__":

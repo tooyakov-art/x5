@@ -360,6 +360,8 @@ private struct PortfolioModerationBadge: View {
     var body: some View {
         Label(item.moderationBadgeTitle, systemImage: symbol)
             .font(.system(size: 10, weight: .heavy))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
             .foregroundColor(foreground)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
@@ -384,7 +386,7 @@ private struct PortfolioModerationBadge: View {
         switch item.moderationStatus {
         case "rejected": return .red
         case "pending", "manual_review", "failed": return .accentColor
-        default: return .gray
+        default: return Color(red: 0.38, green: 0.88, blue: 0.54)
         }
     }
 }
@@ -446,6 +448,12 @@ private struct PortfolioCell: View {
                 .buttonStyle(.plain)
                 .disabled(likeBusy)
                 .padding(6)
+            }
+        }
+        .overlay(alignment: .bottomLeading) {
+            if canEdit {
+                PortfolioModerationBadge(item: item)
+                    .padding(6)
             }
         }
         .task {
@@ -640,8 +648,10 @@ private struct PortfolioInstagramPostPage: View {
 
             Image(systemName: "bubble.right")
 
-            ShareLink(item: item.mediaUrl ?? "") {
-                Image(systemName: "paperplane")
+            if item.moderationStatus == "approved" {
+                ShareLink(item: item.mediaUrl ?? "") {
+                    Image(systemName: "paperplane")
+                }
             }
 
             Spacer()
@@ -690,12 +700,14 @@ private struct PortfolioInstagramPostPage: View {
 
     private var captionBlock: some View {
         VStack(alignment: .leading, spacing: 5) {
-            if item.needsModerationBadge {
+            if canEdit || item.needsModerationBadge {
                 VStack(alignment: .leading, spacing: 4) {
                     PortfolioModerationBadge(item: item)
-                    Text(item.moderationReason?.isEmpty == false ? item.moderationReason! : "Автоматическая проверка будет повторена.")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.62))
+                    if item.needsModerationBadge {
+                        Text(item.moderationReason?.isEmpty == false ? item.moderationReason! : "Автоматическая проверка будет повторена.")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.62))
+                    }
                 }
                 .padding(.bottom, 4)
             }
@@ -917,8 +929,10 @@ private struct PortfolioPostViewer: View {
 
             Label("\(comments.count)", systemImage: "text.bubble")
 
-            ShareLink(item: item.mediaUrl ?? "") {
-                Label("Поделиться", systemImage: "square.and.arrow.up")
+            if item.moderationStatus == "approved" {
+                ShareLink(item: item.mediaUrl ?? "") {
+                    Label("Поделиться", systemImage: "square.and.arrow.up")
+                }
             }
 
             Spacer()
@@ -1258,7 +1272,9 @@ struct AddPortfolioItemView: View {
 
                 let duration = try await asset.load(.duration)
                 let durationSeconds = duration.seconds
-                let thumbnailFractions: [Double] = [0.1, 0.5, 0.9]
+                let thumbnailSampleCount = 12
+                let thumbnailFractions: [Double] = (0..<thumbnailSampleCount)
+                    .map { (Double($0) + 0.5) / Double(thumbnailSampleCount) }
                 let requestedSeconds = durationSeconds.isFinite && durationSeconds > 0
                     ? thumbnailFractions.map { min(max($0 * durationSeconds, 0), durationSeconds) }
                     : [0.0]
@@ -1278,13 +1294,15 @@ struct AddPortfolioItemView: View {
     }
 
     private func makeVideoContactSheet(from frames: [UIImage]) -> Data? {
-        let previewFrames = Array(frames.prefix(3))
+        let previewFrames = Array(frames.prefix(12))
         guard !previewFrames.isEmpty else { return nil }
 
-        let tileSize = CGSize(width: 400, height: 400)
+        let columns = 4
+        let rows = Int(ceil(Double(previewFrames.count) / Double(columns)))
+        let tileSize = CGSize(width: 300, height: 300)
         let sheetSize = CGSize(
-            width: tileSize.width * CGFloat(previewFrames.count),
-            height: tileSize.height
+            width: tileSize.width * CGFloat(columns),
+            height: tileSize.height * CGFloat(rows)
         )
         let format = UIGraphicsImageRendererFormat()
         format.opaque = true
@@ -1295,8 +1313,8 @@ struct AddPortfolioItemView: View {
 
             for (index, image) in previewFrames.enumerated() {
                 let tile = CGRect(
-                    x: CGFloat(index) * tileSize.width,
-                    y: 0,
+                    x: CGFloat(index % columns) * tileSize.width,
+                    y: CGFloat(index / columns) * tileSize.height,
                     width: tileSize.width,
                     height: tileSize.height
                 )

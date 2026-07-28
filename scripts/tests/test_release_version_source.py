@@ -7,6 +7,26 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ReleaseVersionSourceTests(unittest.TestCase):
+    def test_app_store_replacement_is_manual_only_for_testflight_builds(self):
+        workflows = (
+            "asc-release-prepare.yml",
+            "asc-release-submit.yml",
+            "asc-release-replace-submit.yml",
+        )
+        for name in workflows:
+            with self.subTest(workflow=name):
+                workflow = (
+                    ROOT / ".github" / "workflows" / name
+                ).read_text(encoding="utf-8")
+                trigger_block = workflow.split("jobs:", 1)[0]
+
+                self.assertIn("workflow_dispatch:", trigger_block)
+                self.assertNotIn(
+                    "\n  push:",
+                    trigger_block,
+                    "A TestFlight source push must never alter App Store review.",
+                )
+
     def test_ios_runtime_build_and_pending_review_target_are_intentional(self):
         project = (ROOT / "project.yml").read_text(encoding="utf-8")
         fastfile = (ROOT / "fastlane" / "Fastfile").read_text(encoding="utf-8")
@@ -32,7 +52,7 @@ class ReleaseVersionSourceTests(unittest.TestCase):
         ).group(1)
 
         self.assertEqual(marketing_version, "1.1.6")
-        self.assertEqual(runtime_build_number, "191")
+        self.assertEqual(runtime_build_number, "192")
         self.assertEqual(fastlane_version, marketing_version)
         self.assertIn(
             f"Version {marketing_version} build {pending_review_build_number}",

@@ -454,7 +454,8 @@ final class HubService: ObservableObject {
             "description": description,
             "budget": budget,
             "category": category,
-            "status": "open"
+            "status": "open",
+            "public_visible_at": Self.iso8601String(from: Date())
         ]
         if let n = authorName { body["author_name"] = n }
         if let a = authorAvatar { body["author_avatar"] = a }

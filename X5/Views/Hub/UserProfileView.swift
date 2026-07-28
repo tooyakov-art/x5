@@ -18,12 +18,12 @@ struct UserProfileView: View {
     @State private var portfolioCount: Int = 0
     @State private var isFollowing = false
     @State private var followBusy = false
-    @State private var followersCount: Int?
-    @State private var followingCount: Int?
+    @State private var followCounts: ProfileFollowCounts?
     @State private var isRefreshing = false
 
     private var baseURL: URL { X5Config.supabaseBaseURL }
     private var anonKey: String { X5Config.supabaseAnonKey }
+    private let followService = ProfileFollowService()
     private var heroHeight: CGFloat { max(UIScreen.main.bounds.height * 0.78, 640) }
     private var profileContentWidth: CGFloat { min(UIScreen.main.bounds.width - 32, 390) }
 
@@ -102,6 +102,12 @@ struct UserProfileView: View {
                 return
             }
             await load()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .x5FollowStateDidChange)
+        ) { note in
+            guard !followBusy, followEventAffectsDisplayedProfile(note) else { return }
+            Task { await loadFollowState() }
         }
         .sheet(item: $navigatingChat) { chat in
             NavigationStack { ChatThreadView(chat: chat) }
@@ -256,8 +262,8 @@ struct UserProfileView: View {
         }
     }
 
-    private var followingValue: String { followingCount.map(String.init) ?? "—" }
-    private var followersValue: String { followersCount.map(String.init) ?? "—" }
+    private var followingValue: String { followCounts.map { "\($0.following)" } ?? "—" }
+    private var followersValue: String { followCounts.map { "\($0.followers)" } ?? "—" }
     private var creationsValue: String { "\(portfolioCount)" }
 
     @ViewBuilder
@@ -385,12 +391,15 @@ struct UserProfileView: View {
     }
 
     private func loadFollowState() async {
-        async let followers = countFollowers(column: "following_id", value: userId)
-        async let following = countFollowers(column: "follower_id", value: userId)
-        followersCount = await followers
-        followingCount = await following
+        let token = await auth.freshAccessToken()
+        if let counts = try? await followService.loadCounts(
+            userId: userId,
+            accessToken: token
+        ) {
+            followCounts = counts
+        }
 
-        guard let me = auth.userId, me != userId else { return }
+        guard let me = auth.userId, me != userId, let token else { return }
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/followers"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "follower_id", value: "eq.\(me)"),
@@ -399,34 +408,11 @@ struct UserProfileView: View {
         ]
         var request = URLRequest(url: components.url!)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        if let token = await auth.freshAccessToken() { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let (data, _) = try? await URLSession.shared.data(for: request),
            let rows = try? JSONDecoder().decode([[String: String]].self, from: data) {
             isFollowing = !rows.isEmpty
         }
-    }
-
-    private func countFollowers(column: String, value: String) async -> Int? {
-        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/followers"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: column, value: "eq.\(value)"),
-            URLQueryItem(name: "select", value: "follower_id")
-        ]
-        var request = URLRequest(url: components.url!)
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("count=exact", forHTTPHeaderField: "Prefer")
-        if let (data, response) = try? await URLSession.shared.data(for: request) {
-            if let http = response as? HTTPURLResponse,
-               let range = http.value(forHTTPHeaderField: "Content-Range"),
-               let total = range.split(separator: "/").last.map(String.init),
-               let n = Int(total) {
-                return n
-            }
-            if let rows = try? JSONDecoder().decode([[String: String]].self, from: data) {
-                return rows.count
-            }
-        }
-        return nil
     }
 
     private func toggleFollow() async {
@@ -447,7 +433,12 @@ struct UserProfileView: View {
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 500
                 guard status < 300 else { return }
                 isFollowing = false
-                followersCount = max((followersCount ?? 1) - 1, 0)
+                if var counts = followCounts {
+                    counts.followers = max(counts.followers - 1, 0)
+                    followCounts = counts
+                }
+                postFollowStateChange(followerId: me)
+                await loadFollowState()
             }
         } else {
             var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/followers"))
@@ -461,9 +452,28 @@ struct UserProfileView: View {
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 500
                 guard status < 300 else { return }
                 isFollowing = true
-                followersCount = (followersCount ?? 0) + 1
+                if var counts = followCounts {
+                    counts.followers += 1
+                    followCounts = counts
+                }
+                postFollowStateChange(followerId: me)
+                await loadFollowState()
             }
         }
+    }
+
+    private func postFollowStateChange(followerId: String) {
+        NotificationCenter.default.post(name: .x5FollowStateDidChange, object: nil, userInfo: [
+            "follower_id": followerId,
+            "following_id": userId
+        ])
+    }
+
+    private func followEventAffectsDisplayedProfile(_ note: Notification) -> Bool {
+        let followerId = note.userInfo?["follower_id"] as? String
+        let followingId = note.userInfo?["following_id"] as? String
+        return followerId?.caseInsensitiveCompare(userId) == .orderedSame ||
+            followingId?.caseInsensitiveCompare(userId) == .orderedSame
     }
 
     private func loadPortfolioCount() async {

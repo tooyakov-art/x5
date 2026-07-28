@@ -338,7 +338,7 @@ class CreditPackSubmissionTests(unittest.TestCase):
         )
         self.assertNotIn("Attached app version item.", workflow)
 
-    def test_replace_workflow_can_run_from_the_release_branch(self):
+    def test_replace_workflow_requires_an_explicit_manual_dispatch(self):
         workflow = (
             pathlib.Path(__file__).parents[2]
             / ".github"
@@ -346,10 +346,9 @@ class CreditPackSubmissionTests(unittest.TestCase):
             / "asc-release-replace-submit.yml"
         ).read_text(encoding="utf-8")
 
-        self.assertIn(
-            "- codex/x5-course-client-fixes-20260714",
-            workflow,
-        )
+        trigger_block = workflow.split("jobs:", maxsplit=1)[0]
+        self.assertIn("workflow_dispatch:", trigger_block)
+        self.assertNotIn("\n  push:", trigger_block)
 
     def test_replace_workflow_fails_closed_when_metadata_upload_fails(self):
         workflow = (
