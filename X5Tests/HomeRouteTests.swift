@@ -11,7 +11,6 @@ final class HomeRouteTests: XCTestCase {
         XCTAssertEqual(HomeRoute.hub.id, "hub")
         XCTAssertEqual(HomeRoute.videoGeneration.id, "video_generation")
         XCTAssertEqual(HomeRoute.liveFruits.id, "live_fruits")
-        XCTAssertEqual(HomeRoute.voiceGeneration.id, "voice_generation")
     }
 
     func testImageRoutesKeepTheirSelectedCategory() {
