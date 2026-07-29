@@ -1,22 +1,90 @@
 import AVFoundation
 import SwiftUI
 
+enum HomeMotionSource: Equatable {
+    case bundled(resourceName: String)
+    case remote(url: URL)
+}
+
 struct HomeMotionAsset: Equatable {
-    let resourceName: String
+    let source: HomeMotionSource
     let posterAssetName: String
 }
 
+enum HomeDemoConfiguration {
+    static let imageGenerationVideoURL = URL(
+        string: "https://cdn.higgsfield.ai/card/83522493-66ba-44b9-92f6-ae18cd8ba22b.mp4"
+    )!
+    static let videoGenerationVideoURL = URL(
+        string: "https://static.higgsfield.ai/ai-video-v2/01-mini.mp4"
+    )!
+    static let voiceGenerationVideoURL = URL(
+        string: "https://static.higgsfield.ai/flow-medias/create-audio-22-07-2026.mp4"
+    )!
+
+    static var isEnabled: Bool {
+        #if DEBUG
+        return isEnabled(
+            isDebugBuild: true,
+            environment: ProcessInfo.processInfo.environment
+        )
+        #else
+        return isEnabled(
+            isDebugBuild: false,
+            environment: ProcessInfo.processInfo.environment
+        )
+        #endif
+    }
+
+    static func isEnabled(
+        isDebugBuild: Bool,
+        environment: [String: String]
+    ) -> Bool {
+        guard isDebugBuild else { return false }
+        return environment["X5_HOME_DEMO_MODE"] != "0"
+    }
+}
+
 enum HomeMotionCatalog {
-    static func asset(for imageAssetName: String) -> HomeMotionAsset? {
-        switch imageAssetName {
-        case "HomeCoverTargetAds", "HomeTrendLiveVideo", "HomeUtilityVideo":
+    static func asset(
+        for imageAssetName: String,
+        demoMode: Bool = HomeDemoConfiguration.isEnabled
+    ) -> HomeMotionAsset? {
+        if demoMode, imageAssetName == "HomeCoverTargetAds" {
             return HomeMotionAsset(
-                resourceName: "HomeMotionStudio",
+                source: .remote(url: HomeDemoConfiguration.imageGenerationVideoURL),
+                posterAssetName: "HomeCoverTargetAds"
+            )
+        }
+
+        if demoMode,
+           imageAssetName == "HomeTrendLiveVideo"
+            || imageAssetName == "HomeUtilityVideo" {
+            return HomeMotionAsset(
+                source: .remote(url: HomeDemoConfiguration.videoGenerationVideoURL),
+                posterAssetName: imageAssetName
+            )
+        }
+
+        if demoMode, imageAssetName == "HomeMotionStudioPoster" {
+            return HomeMotionAsset(
+                source: .remote(url: HomeDemoConfiguration.voiceGenerationVideoURL),
+                posterAssetName: "HomeMotionStudioPoster"
+            )
+        }
+
+        switch imageAssetName {
+        case "HomeCoverTargetAds",
+             "HomeTrendLiveVideo",
+             "HomeUtilityVideo",
+             "HomeMotionStudioPoster":
+            return HomeMotionAsset(
+                source: .bundled(resourceName: "HomeMotionStudio"),
                 posterAssetName: "HomeMotionStudioPoster"
             )
         case "HomeTrendFruitVideo":
             return HomeMotionAsset(
-                resourceName: "HomeMotionFruit",
+                source: .bundled(resourceName: "HomeMotionFruit"),
                 posterAssetName: "HomeMotionFruitPoster"
             )
         default:
@@ -39,7 +107,7 @@ enum HomeMotionPlaybackPolicy {
 /// Muted card motion backed by one ordinary AVPlayer.
 /// The poster always remains underneath, so a missing or failed video is harmless.
 struct LoopingVideo: View {
-    let resourceName: String
+    let source: HomeMotionSource
     let posterAssetName: String
     let isActive: Bool
 
@@ -49,12 +117,12 @@ struct LoopingVideo: View {
     @StateObject private var controller: HomeLoopingVideoController
     @State private var isVisible = false
 
-    init(resourceName: String, posterAssetName: String, isActive: Bool) {
-        self.resourceName = resourceName
+    init(source: HomeMotionSource, posterAssetName: String, isActive: Bool) {
+        self.source = source
         self.posterAssetName = posterAssetName
         self.isActive = isActive
         _controller = StateObject(
-            wrappedValue: HomeLoopingVideoController(resourceName: resourceName)
+            wrappedValue: HomeLoopingVideoController(source: source)
         )
     }
 
@@ -126,8 +194,8 @@ private final class HomeLoopingVideoController: ObservableObject {
     private var endObserver: NSObjectProtocol?
     private var statusObservation: NSKeyValueObservation?
 
-    init(resourceName: String, bundle: Bundle = .main) {
-        guard let url = Self.resourceURL(named: resourceName, bundle: bundle) else {
+    init(source: HomeMotionSource, bundle: Bundle = .main) {
+        guard let url = Self.mediaURL(for: source, bundle: bundle) else {
             return
         }
 
@@ -185,12 +253,20 @@ private final class HomeLoopingVideoController: ObservableObject {
         player?.play()
     }
 
-    private static func resourceURL(named name: String, bundle: Bundle) -> URL? {
-        bundle.url(
-            forResource: name,
-            withExtension: "mp4",
-            subdirectory: "HomeMotion"
-        ) ?? bundle.url(forResource: name, withExtension: "mp4")
+    private static func mediaURL(
+        for source: HomeMotionSource,
+        bundle: Bundle
+    ) -> URL? {
+        switch source {
+        case .bundled(let resourceName):
+            return bundle.url(
+                forResource: resourceName,
+                withExtension: "mp4",
+                subdirectory: "HomeMotion"
+            ) ?? bundle.url(forResource: resourceName, withExtension: "mp4")
+        case .remote(let url):
+            return url
+        }
     }
 }
 

@@ -32,6 +32,43 @@
 - Poster derivative:
   `X5/Assets.xcassets/HomeMotionFruitPoster.imageset/HomeMotionFruitPoster.jpg`
 
+## Higgsfield debug-only Home demo references
+
+- Retrieved: 2026-07-29.
+- Scope: temporary client review in local Xcode Debug builds only.
+- Delivery: the files are streamed from the public source URLs. They are not bundled,
+  copied into the repository, or redistributed with the app.
+- Release boundary: `HomeDemoConfiguration` always disables these references in
+  Release builds. Set the Xcode environment variable `X5_HOME_DEMO_MODE=0` to
+  disable them in Debug as well.
+
+### Seedream 5.0 Pro image-generation demo
+
+- Source page: https://higgsfield.ai/ai/image?model=seedream_v5_pro
+- Public landing media:
+  https://cdn.higgsfield.ai/card/83522493-66ba-44b9-92f6-ae18cd8ba22b.mp4
+- Verified landing label: `ByteDance's top-tier reasoning image model`.
+- Use: image-generation hero only. It must not be labelled as video generation,
+  Supercomputer, Academy, After Effects, or App Contest.
+
+### Higgsfield AI Video Generator demo
+
+- Source page: https://higgsfield.ai/ai-video
+- Public landing media:
+  https://static.higgsfield.ai/ai-video-v2/01-mini.mp4
+- Verified page role: the AI Video Generator demonstration for text-to-video
+  and image-to-video models.
+- Use: video-generation cards only. It must not be labelled as image generation.
+
+### Higgsfield Create Audio demo
+
+- Source page: https://higgsfield.ai/
+- Public landing media:
+  https://static.higgsfield.ai/flow-medias/create-audio-22-07-2026.mp4
+- Verified landing role: `AI voiceovers & voice change`.
+- Use: voiceover and voice-generation hero only. It is a visual demo reference;
+  it does not claim that Higgsfield is the production voice provider.
+
 ## TUSKit
 
 - Upstream source: https://github.com/tus/TUSKit
@@ -159,3 +196,47 @@ bundled in the app.
   bounded to the same private-video limit, and copied into private X5 Storage.
   Transport failures, HTTP 408, and HTTP 5xx stay submission-ambiguous and never
   start a second provider request. `OPENAI_API_KEY` remains server-only.
+
+### fal ElevenLabs TTS Eleven v3
+
+- Official API reference:
+  https://fal.ai/models/fal-ai/elevenlabs/tts/eleven-v3
+- Official queue lifecycle:
+  https://fal.ai/docs/documentation/model-apis/inference/queue
+- Official webhook delivery and signature verification:
+  https://fal.ai/docs/documentation/model-apis/inference/webhooks
+- Official storage/lifecycle request headers:
+  https://fal.ai/docs/documentation/model-apis/common-parameters
+- Retrieved: 2026-07-26
+- Use: server-side speech generation from user-supplied text with a selected
+  voice, stability, speed, and optional language hint.
+- Integration: X5 submits once to fal's persistent queue and correlates the
+  provider request ID with an exact-once credit ledger. The callback verifies
+  fal's Ed25519 signature over the untouched request bytes; callback and client
+  retries reuse the same job instead of generating twice. Provider persistence
+  is disabled with `X-Fal-Store-IO: 0`, generated provider objects request a
+  three-hour lifecycle, and `FAL_KEY` remains server-only. The returned MP3 is
+  size- and type-checked, copied into private owner-scoped X5 Storage, and
+  exposed to the app through a short-lived signed URL that is immediately
+  downloaded into an app-managed local file for playback and sharing.
+
+## Course video delivery
+
+### Bunny Stream direct TUS uploads
+
+- Official resumable-upload reference:
+  https://docs.bunny.net/stream/tus-resumable-uploads
+- Official create/list video references:
+  https://docs.bunny.net/api-reference/stream/manage-videos/create-video
+  https://docs.bunny.net/api-reference/stream/manage-videos/list-videos
+- Retrieved: 2026-07-26
+- Service: Bunny Stream is a commercial hosted service governed by Bunny's
+  service terms; no Bunny SDK or provider source code is bundled.
+- Status: quarantined future source only. Build 192 does not compile or route
+  user uploads through Bunny, the server handler is hard-disabled, the draft
+  RPCs are unavailable to API-facing roles, and Bunny secrets are not
+  configured.
+- Planned use: direct resumable upload after private entitlement-checked
+  playback, provider readiness, moderation, cleanup, and server-only ledger
+  access are implemented and reviewed. The preserved prototype's public HLS
+  response is not release-safe and must not be enabled as written.

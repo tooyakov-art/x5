@@ -5,6 +5,7 @@ enum HomeRoute: Hashable, Identifiable {
     case startupChat
     case hub
     case videoGeneration
+    case voiceGeneration
     case liveFruits
     case tool(String)
 
@@ -18,6 +19,8 @@ enum HomeRoute: Hashable, Identifiable {
             return "hub"
         case .videoGeneration:
             return "video_generation"
+        case .voiceGeneration:
+            return "voice_generation"
         case .liveFruits:
             return "live_fruits"
         case .tool(let id):
@@ -111,7 +114,7 @@ struct HomeView: View {
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
-        .frame(height: 136)
+        .frame(height: 244)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
@@ -125,6 +128,24 @@ struct HomeView: View {
                 assetName: "HomeCoverTargetAds",
                 systemImage: "photo.badge.plus",
                 action: .imageGeneration(ImageGenerationCatalog.custom)
+            ),
+            HeroSlide(
+                id: "video_generation",
+                eyebrow: "AI Video",
+                title: "Генерация видео",
+                subtitle: "Преврати текст или фотографию в готовый ролик",
+                assetName: "HomeUtilityVideo",
+                systemImage: "video.fill",
+                action: .videoGeneration
+            ),
+            HeroSlide(
+                id: "voice_generation",
+                eyebrow: "Voice Studio",
+                title: "Озвучка и голоса",
+                subtitle: "Озвучивай текст естественными AI-голосами",
+                assetName: "HomeMotionStudioPoster",
+                systemImage: "waveform",
+                action: .voiceGeneration
             ),
             HeroSlide(
                 id: "influencer",
@@ -159,10 +180,27 @@ struct HomeView: View {
     private var promos: [HomePromo] {
         [
             HomePromo(
+                id: "video_generation",
+                title: "Генерация видео",
+                subtitle: "Текст или фото в ролик",
+                systemImage: "video.fill",
+                accent: Color(red: 0.10, green: 0.72, blue: 0.98),
+                action: .videoGeneration
+            ),
+            HomePromo(
+                id: "voice_generation",
+                title: "Озвучка",
+                subtitle: "Естественные AI-голоса",
+                systemImage: "waveform",
+                accent: Color(red: 0.69, green: 0.28, blue: 0.94),
+                action: .voiceGeneration
+            ),
+            HomePromo(
                 id: "startup_chat",
                 title: "Стартап чат",
                 subtitle: "AI-наставник для бизнеса",
                 systemImage: "sparkles.rectangle.stack",
+                accent: Color(red: 0.11, green: 0.80, blue: 0.58),
                 action: .startupChat
             ),
             HomePromo(
@@ -170,13 +208,20 @@ struct HomeView: View {
                 title: "Hub",
                 subtitle: "Специалисты и задачи",
                 systemImage: "briefcase",
+                accent: Color(red: 0.96, green: 0.29, blue: 0.56),
                 action: .hub
             )
         ]
     }
 
     private var promoCards: some View {
-        HStack(spacing: 12) {
+        LazyVGrid(
+            columns: Array(
+                repeating: GridItem(.flexible(), spacing: 12),
+                count: 2
+            ),
+            spacing: 12
+        ) {
             ForEach(promos) { promo in
                 Button {
                     handle(promo.action)
@@ -307,7 +352,7 @@ struct HomeView: View {
             StudioTool(id: "elements", title: "Карточки", icon: "rectangle.grid.2x2", badge: nil, action: imageAction("product_cards")),
             StudioTool(id: "restyle", title: "Restyle", icon: "paintpalette", badge: nil, action: imageAction("insta_pack")),
             StudioTool(id: "effects", title: "Effects", icon: "wand.and.sparkles", badge: nil, action: imageAction("story")),
-            StudioTool(id: "sound", title: "Sound", icon: "waveform", badge: nil, action: .tool("voice_tts")),
+            StudioTool(id: "sound", title: "Sound", icon: "waveform", badge: nil, action: .voiceGeneration),
             StudioTool(id: "logo", title: "Лого", icon: "seal", badge: nil, action: imageAction("logo")),
             StudioTool(id: "post", title: "Пост", icon: "square.grid.2x2", badge: nil, action: imageAction("post")),
             StudioTool(id: "product", title: "Фото товара", icon: "shippingbox", badge: nil, action: imageAction("product")),
@@ -358,6 +403,9 @@ struct HomeView: View {
         case .videoGeneration:
             DiagnosticLogger.log(event: "home_studio_video_tap")
             activeRoute = route
+        case .voiceGeneration:
+            DiagnosticLogger.log(event: "home_studio_voice_tap")
+            activeRoute = route
         case .liveFruits:
             DiagnosticLogger.log(event: "home_live_fruits_tap")
             activeRoute = route
@@ -375,6 +423,8 @@ struct HomeView: View {
         switch route {
         case .videoGeneration:
             VideoGeneratorView()
+        case .voiceGeneration:
+            VoiceGeneratorView()
         case .startupChat:
             StartupChatView()
         case .liveFruits:
@@ -392,6 +442,8 @@ struct HomeView: View {
             return developmentTool(id: "startup_assistant", title: "Стартап чат", icon: "sparkles.rectangle.stack")
         case .videoGeneration:
             return developmentTool(id: "video_generation", title: "Генерация видео", icon: "video")
+        case .voiceGeneration:
+            return developmentTool(id: "voice_generation", title: "Озвучка", icon: "waveform")
         case .liveFruits:
             return developmentTool(id: "live_fruits", title: "Живые фрукты", icon: "play.tv")
         case .tool(let id):
@@ -456,6 +508,7 @@ private struct HomePromo: Identifiable {
     let title: String
     let subtitle: String
     let systemImage: String
+    let accent: Color
     let action: HomeRoute
 }
 
@@ -536,36 +589,54 @@ private struct HomePromoCard: View {
     let promo: HomePromo
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: promo.systemImage)
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(.white)
-                .frame(width: 40, height: 40)
-                .background(Color.white.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        ZStack(alignment: .bottomLeading) {
+            LinearGradient(
+                colors: [
+                    promo.accent.opacity(0.34),
+                    promo.accent.opacity(0.10),
+                    Color.white.opacity(0.04)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
 
-            VStack(alignment: .leading, spacing: 3) {
+            Circle()
+                .fill(promo.accent.opacity(0.30))
+                .frame(width: 92, height: 92)
+                .blur(radius: 30)
+                .offset(x: 78, y: -46)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: promo.systemImage)
+                        .font(.system(size: 21, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 42, height: 42)
+                        .background(promo.accent.opacity(0.55))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundColor(.white.opacity(0.82))
+                }
+
                 Text(promo.title)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 17, weight: .black))
                     .foregroundColor(.white)
-                    .lineLimit(1)
+                    .lineLimit(2)
                     .minimumScaleFactor(0.78)
 
                 Text(promo.subtitle)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white.opacity(0.58))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.64))
                     .lineLimit(2)
             }
-
-            Spacer(minLength: 0)
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(.white.opacity(0.48))
+            .padding(14)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 72)
-        .background(Color.white.opacity(0.055))
+        .frame(maxWidth: .infinity, minHeight: 132, alignment: .bottomLeading)
+        .background(Color.white.opacity(0.045))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -740,7 +811,7 @@ private struct CardMedia: View {
     var body: some View {
         if isMotionActive, let motion = HomeMotionCatalog.asset(for: assetName) {
             LoopingVideo(
-                resourceName: motion.resourceName,
+                source: motion.source,
                 posterAssetName: motion.posterAssetName,
                 isActive: true
             )

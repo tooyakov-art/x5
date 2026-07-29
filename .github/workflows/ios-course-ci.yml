@@ -16,17 +16,27 @@ on:
       - "supabase/functions/generate-image/**"
       - "supabase/functions/moderate-portfolio/**"
       - "supabase/functions/generate-video/**"
+      - "supabase/functions/generate-voice/**"
+      - "supabase/functions/voice-generation-webhook/**"
+      - "supabase/functions/account-deletion-cleanup/**"
+      - "supabase/config.toml"
+      - "supabase/functions/create-course-video-upload/**"
       - "supabase/functions/startup-chat/**"
       - "supabase/functions/fruit-story/**"
       - "supabase/tests/image_generation_reliability_contract_test.mjs"
       - "supabase/tests/video_generation_backend_contract_test.mjs"
       - "supabase/tests/video_generation_openai_provider_contract_test.mjs"
+      - "supabase/tests/voice_generation_backend_contract_test.mjs"
+      - "supabase/tests/20260726_voice_generation_exact_once_test.sql"
+      - "supabase/tests/course_video_upload_slot_contract_test.mjs"
       - "supabase/tests/startup_chat_backend_contract_test.mjs"
       - "supabase/tests/startup_chat_rate_limit_contract_test.mjs"
       - "supabase/tests/fruit_story_backend_contract_test.mjs"
       - "supabase/migrations/**apple*store*.sql"
       - "supabase/migrations/**/*store*.sql"
       - "supabase/migrations/**/*video*.sql"
+      - "supabase/migrations/**/*voice*.sql"
+      - "supabase/migrations/20260726222900_revoke_account_delete_helper_acl.sql"
       - "scripts/tests/**"
       - ".github/workflows/ios-course-ci.yml"
   workflow_dispatch:
@@ -100,19 +110,43 @@ jobs:
 
       - name: Verify AI Home backends
         run: |
+          deno fmt --check \
+            supabase/functions/generate-voice \
+            supabase/functions/voice-generation-webhook \
+            supabase/functions/account-deletion-cleanup
+          deno lint \
+            supabase/functions/generate-voice \
+            supabase/functions/voice-generation-webhook \
+            supabase/functions/account-deletion-cleanup
           deno check \
             supabase/functions/generate-video/index.ts \
+            supabase/functions/generate-voice/index.ts \
+            supabase/functions/voice-generation-webhook/index.ts \
+            supabase/functions/account-deletion-cleanup/index.ts \
             supabase/functions/startup-chat/index.ts \
             supabase/functions/fruit-story/index.ts
           node --test \
             supabase/functions/generate-video/*.test.mjs \
+            supabase/functions/generate-voice/*.test.mjs \
+            supabase/functions/voice-generation-webhook/*.test.mjs \
+            supabase/functions/account-deletion-cleanup/*.test.mjs \
             supabase/functions/startup-chat/*.test.mjs \
             supabase/functions/fruit-story/tests/*.test.mjs \
             supabase/tests/video_generation_backend_contract_test.mjs \
             supabase/tests/video_generation_openai_provider_contract_test.mjs \
+            supabase/tests/voice_generation_backend_contract_test.mjs \
             supabase/tests/startup_chat_backend_contract_test.mjs \
             supabase/tests/startup_chat_rate_limit_contract_test.mjs \
             supabase/tests/fruit_story_backend_contract_test.mjs
+
+      - name: Verify quarantined Bunny course video source
+        run: |
+          deno fmt --check supabase/functions/create-course-video-upload
+          deno lint supabase/functions/create-course-video-upload
+          deno check supabase/functions/create-course-video-upload/index.ts
+          node --test \
+            supabase/functions/create-course-video-upload/*.test.mjs \
+            supabase/tests/course_video_upload_slot_contract_test.mjs
 
       - name: Verify release automation contracts
         run: python3 -m unittest discover -s scripts/tests -p "test_*.py"

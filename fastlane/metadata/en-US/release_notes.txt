@@ -1,14 +1,15 @@
-This update introduces the redesigned AI home and improves courses, Hub,
-portfolio safety and purchases.
+This build refreshes the AI home, purchases and portfolio safety in X five
+marketing.
 
-New in this version:
-- Create images, short vertical or landscape AI videos, and editable
-  three-scene Live Fruits stories from the new home.
-- Work through a business idea with Startup Chat.
-- Filter Hub tasks instantly by the categories saved in your profile.
-- Open a course author's public profile and select the correct author while managing a course.
-- Choose lesson and submission videos from the photo library with clearer preparation and upload progress.
-- Keep course modules and videos intact while editing.
-- View course videos full screen with zoom controls.
-- Automatic portfolio image safety checks and a protected developer review queue.
-- More reliable, repeatable one-time credit-pack delivery and restored image generation.
+- One-time 1,000/2,000/5,000 credit packs stay consumable and can be purchased
+  again. Interrupted delivery retries safely after relaunch.
+- Portfolio photos and video previews are checked automatically before
+  publication. There is no manual-review queue.
+- The Verified Badge action keeps readable black text on its bright button.
+- Muted Home card previews pause offscreen, while the app is inactive or when
+  Reduce Motion is enabled; static posters remain as a safe fallback.
+- AI Video adds Seedance 1.5 Pro for text/image video, 480p/720p/1080p choices
+  and optional native audio.
+- AI Voice generates speech with ElevenLabs Eleven v3 through a protected
+  server-side route.
+- Course, Hub and author-profile fixes from version 1.1.6 remain included.

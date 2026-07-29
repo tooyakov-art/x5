@@ -1,71 +1,66 @@
-X five marketing is a creator workspace and marketplace. Version 1.1.6 build 191
-adds the new AI home, Startup Chat, AI Video, the Live Fruits storyboard,
-course-upload reliability improvements, Hub category filtering and purchase
-delivery fixes.
+X five marketing is a creator workspace and marketplace. Version 1.1.6 build 192
+adds safer Home motion, Seedance video, AI Voice, repeatable credit packs,
+and automatic portfolio moderation.
 
 Demo account:
-Use the Apple Demo Account credentials for appreview@x5studio.app. The account
-has sample content, chats and credits.
+Use the Apple Demo Account credentials for appreview@x5studio.app.
 
 Quick test:
 1. Sign in.
 2. Home -> AI Image: enter a prompt, optionally add references, choose
-   size/quantity and generate. Results can be previewed, saved and shared.
-3. Home -> Startup Chat: ask a business question.
-4. Home -> AI Video: enter a prompt, optionally select a photo, choose 5 or 10
-   seconds and submit. Progress remains in Recent generations after relaunch.
-5. Home -> Live Fruits: complete the six short fields, generate the exact
-   three-scene storyboard, edit/reorder scenes, generate a character reference
-   and frames, then create the 9:16 video.
-6. Hub -> Tasks: tap "Tasks for my categories" next to All. Categories saved in
+   size/quantity and generate.
+3. Home -> AI Video: select Seedance 1.5 Pro, enter a prompt, optionally select
+   a photo, choose 480p/720p/1080p and optional native audio, then generate.
+4. Home -> AI Voice: enter text, choose voice/language/speed, generate, preview
+   and share the audio.
+5. Home -> Startup Chat: ask a business question.
+6. Home -> Live Fruits: complete the fields, create/edit the three-scene
+   storyboard, then generate its reference and video.
+7. Hub -> Tasks: tap "Tasks for my categories" next to All. Categories saved in
    the signed-in profile are applied immediately.
-7. Chats: send text/photo/voice; reply, search, pin, mute, archive, report or
-   block.
-8. Portfolio/Profile: add a photo or video from the photo library. Automatic
-   safety checks prevent prohibited media from becoming public.
-9. CourseUP: open a course, tap the author to open that exact public profile,
+8. CourseUP: open a course, tap the author to open that exact public profile,
    preview a lesson and buy a paid course. The two authorized developer
-   accounts can select authors and manage lesson videos with resumable uploads.
-10. Profile -> Store: buy one-time 1,000/2,000/5,000-credit packs. Each item is
-    an Apple consumable and remains repurchasable. Get verified opens the
-    separate monthly verified-badge subscription.
-11. Settings: language, Face ID lock, notifications, sign out and Delete
-    Account.
+   accounts can select authors and manage lessons.
+9. Portfolio/Profile: add a photo or video. Photos and video previews are
+   checked automatically; pending or rejected items never become public.
+10. Chats: send text/photo/voice; report or block another user.
+11. Profile -> Store: buy one-time 1,000/2,000/5,000-credit packs. Each is an
+    Apple consumable and remains repurchasable. Get verified opens a separate
+    monthly subscription; its bright action button now uses black text.
+12. Settings: change language or delete the account.
+
+Home motion:
+Muted card previews pause offscreen, in the background or with Reduce Motion.
+A static poster remains if motion cannot play.
 
 AI processing and automatic moderation:
-- AI Image sends the prompt and optional selected reference images through the
-  Supabase Edge Function generate-image to the selected image provider.
-- Startup Chat sends the displayed conversation to OpenAI Responses with
-  server-side authentication and storage disabled.
-- Live Fruits sends the questionnaire to OpenAI Moderations and Responses to
-  produce the structured three-scene storyboard. Generated frames reuse the
-  existing image-generation service.
-- AI Video sends the prompt and optional selected reference image first to
-  OpenAI Moderations. A flagged request is rejected before credits are
-  reserved. Accepted requests are processed asynchronously by fal Kling Video,
-  Google Gemini Omni Flash, or OpenAI Sora, depending on configured provider
-  availability. Inputs/results are private and the app receives only
-  short-lived signed result URLs.
+- AI Image uses the authenticated generate-image Supabase Edge Function.
+- AI Video first sends prompt/reference input to OpenAI Moderations. Accepted
+  Seedance 1.5 Pro requests run through the server-side fal route; credentials
+  are never included in the app.
+- AI Voice sends entered text through the authenticated generate-voice Edge
+  Function to the ElevenLabs Eleven v3 model via fal. Result audio is stored
+  privately and returned through a short-lived signed URL.
+- Startup Chat uses OpenAI Responses with storage disabled. Live Fruits uses
+  OpenAI Moderations and Responses.
+- Portfolio moderation is automatic-only through OpenAI Moderations. There is
+  no developer/manual review queue. Provider failures stay private and retry.
 - The app does not use third-party advertising trackers.
 
 In-app purchases:
 - com.x5studio.app.credits.1000 / .2000 / .5000 are consumables.
 - com.x5studio.app.verified.monthly is an auto-renewable subscription.
 Credit packs are delivered exactly once from Apple's signed transaction.
-Unfinished delivery survives relaunch and is retried.
+Unfinished delivery survives relaunch and retries without double crediting.
 The verified badge is separate and does not include credits.
-
-Existing Lite/Pro/Max subscriptions remain recognized for current subscribers
-but are not offered in the new Store.
 
 UGC safety:
 Chat users, Hub users and task authors can be reported; chat users can be
 blocked. Account deletion is available in Settings.
 
 Permissions:
-Photos: course videos/covers, avatars, portfolio, chats, AI references and
-saving generated images/videos.
-Microphone: chat voice messages. APNs: message/proposal/optional promo alerts.
+Photos: course media, avatars, portfolio, chats, AI references and saving
+generated media. Microphone: chat voice messages. APNs: notifications.
 
 Privacy: https://tooyakov-art.github.io/x5site/privacy.html
 Terms: https://tooyakov-art.github.io/x5site/terms.html

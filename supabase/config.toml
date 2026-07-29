@@ -3,3 +3,9 @@ verify_jwt = false
 
 [functions.app-store-notifications]
 verify_jwt = false
+
+[functions.voice-generation-webhook]
+verify_jwt = false
+
+[functions.account-deletion-cleanup]
+verify_jwt = false

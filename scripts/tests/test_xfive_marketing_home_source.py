@@ -67,10 +67,29 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             encoding="utf-8"
         )
 
+        self.assertIn('title: "Генерация видео"', home)
+        self.assertIn("action: .videoGeneration", home)
+        self.assertIn('title: "Озвучка"', home)
+        self.assertIn("action: .voiceGeneration", home)
         self.assertIn('title: "Стартап чат"', home)
         self.assertIn("action: .startupChat", home)
         self.assertIn('title: "Hub"', home)
         self.assertIn("action: .hub", home)
+        self.assertIn("LazyVGrid(", home)
+        self.assertIn("count: 2", home)
+
+    def test_image_video_and_voice_heroes_use_distinct_media_surfaces(self):
+        home = (ROOT / "X5" / "Views" / "Home" / "HomeView.swift").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('title: "Генерация изображений"', home)
+        self.assertIn('assetName: "HomeCoverTargetAds"', home)
+        self.assertIn('title: "Генерация видео"', home)
+        self.assertIn('assetName: "HomeUtilityVideo"', home)
+        self.assertIn('title: "Озвучка и голоса"', home)
+        self.assertIn('assetName: "HomeMotionStudioPoster"', home)
+        self.assertIn(".frame(height: 244)", home)
 
     def test_video_route_opens_real_generator_instead_of_placeholder(self):
         home = (ROOT / "X5" / "Views" / "Home" / "HomeView.swift").read_text(

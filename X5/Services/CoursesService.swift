@@ -464,6 +464,13 @@ final class CoursesService: ObservableObject {
         baseURL: baseURL,
         anonKey: anonKey
     )
+    #if X5_ENABLE_BUNNY_COURSE_VIDEO_UPLOAD
+    private lazy var bunnyStreamVideoUploader =
+        BunnyStreamResumableVideoUploader(
+            baseURL: baseURL,
+            anonKey: anonKey
+        )
+    #endif
     private lazy var videoUploadPreparer = CourseVideoUploadPreparer()
 
     func loadCourses(includeHidden: Bool = false, accessToken: String? = nil) async {
@@ -720,6 +727,47 @@ final class CoursesService: ObservableObject {
         }
 
         videoUploadProgress = 0
+        #if X5_ENABLE_BUNNY_COURSE_VIDEO_UPLOAD
+        let sourceSize: Int64
+        do {
+            sourceSize = try videoFileSize(at: fileURL)
+        } catch {
+            self.error = "Видео заявки не загружено: \(error.localizedDescription)"
+            return nil
+        }
+        let sourceUploadIdentity = CourseVideoUploadIdentity.stableToken(
+            for: fileURL
+        )
+        if CourseLessonVideoUploadRoute.shouldUseBunny(
+            fileSizeBytes: sourceSize
+        ) {
+            do {
+                let playbackURL = try await bunnyStreamVideoUploader.upload(
+                    sourceFileURL: fileURL,
+                    uploadIdentity: sourceUploadIdentity,
+                    purpose: .courseSubmission,
+                    resourceID: "submission-\(sourceUploadIdentity)",
+                    title: "Course submission",
+                    contentType: videoMimeType(
+                        for: normalizedVideoExtension(from: fileURL)
+                    ),
+                    accessToken: accessToken,
+                    accessTokenProvider: accessTokenProvider
+                ) { [weak self] fraction in
+                    Task { @MainActor in
+                        self?.videoUploadProgress = fraction
+                    }
+                }
+                videoUploadProgress = 1
+                return playbackURL.absoluteString
+            } catch {
+                self.error =
+                    "Видео заявки не загружено: \(error.localizedDescription)"
+                return nil
+            }
+        }
+        #endif
+
         let uploadFileURL: URL
         do {
             uploadFileURL = try await videoUploadPreparer.prepare(
@@ -818,6 +866,50 @@ final class CoursesService: ObservableObject {
         }
 
         videoUploadProgress = 0
+        #if X5_ENABLE_BUNNY_COURSE_VIDEO_UPLOAD
+        let sourceSize: Int64
+        do {
+            sourceSize = try videoFileSize(at: fileURL)
+        } catch {
+            self.error = "Видео не загружено: \(error.localizedDescription)"
+            return nil
+        }
+        let sourceUploadIdentity = CourseVideoUploadIdentity.stableToken(
+            for: fileURL
+        )
+        if CourseLessonVideoUploadRoute.shouldUseBunny(
+            fileSizeBytes: sourceSize
+        ) {
+            do {
+                let playbackURL = try await bunnyStreamVideoUploader.upload(
+                    sourceFileURL: fileURL,
+                    uploadIdentity: sourceUploadIdentity,
+                    purpose: .lessonVideo,
+                    resourceID: bunnyLessonResourceID(
+                        courseID: courseId,
+                        lessonID: lessonId,
+                        uploadIdentity: sourceUploadIdentity
+                    ),
+                    title: "Course lesson",
+                    contentType: videoMimeType(
+                        for: normalizedVideoExtension(from: fileURL)
+                    ),
+                    accessToken: accessToken,
+                    accessTokenProvider: accessTokenProvider
+                ) { [weak self] fraction in
+                    Task { @MainActor in
+                        self?.videoUploadProgress = fraction
+                    }
+                }
+                videoUploadProgress = 1
+                return playbackURL.absoluteString
+            } catch {
+                self.error = "Видео не загружено: \(error.localizedDescription)"
+                return nil
+            }
+        }
+        #endif
+
         let uploadFileURL: URL
         do {
             uploadFileURL = try await videoUploadPreparer.prepare(
@@ -911,4 +1003,32 @@ final class CoursesService: ObservableObject {
         default: return "video/mp4"
         }
     }
+
+    #if X5_ENABLE_BUNNY_COURSE_VIDEO_UPLOAD
+    private func videoFileSize(at url: URL) throws -> Int64 {
+        guard let size = try url.resourceValues(
+            forKeys: [.fileSizeKey]
+        ).fileSize,
+              size > 0
+        else {
+            throw BunnyStreamVideoUploadError.invalidFile
+        }
+        return Int64(size)
+    }
+
+    private func bunnyLessonResourceID(
+        courseID: String,
+        lessonID: String,
+        uploadIdentity: String
+    ) -> String {
+        let raw = "lesson-\(courseID)-\(lessonID)-\(uploadIdentity)"
+        let allowed = CharacterSet.alphanumerics.union(
+            CharacterSet(charactersIn: "._:-")
+        )
+        let normalized = raw.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? String(scalar) : "-"
+        }.joined()
+        return String(normalized.prefix(160))
+    }
+    #endif
 }
