@@ -35,7 +35,7 @@ class IOSVoiceGenerationSourceTests(unittest.TestCase):
         )
 
         visible_collections = home[
-            home.index("private var heroSlides") : home.index("private func imageAction")
+            home.index("private var trendItems") : home.index("private func imageAction")
         ]
         self.assertNotIn(
             "action: .voiceGeneration",

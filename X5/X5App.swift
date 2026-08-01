@@ -35,7 +35,7 @@ struct X5App: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            appRoot
                 .environmentObject(auth)
                 .environmentObject(history)
                 .environmentObject(brand)
@@ -71,6 +71,19 @@ struct X5App: App {
                     Task { await syncStoreKitAndProfile(source: "store_refund") }
                 }
         }
+    }
+
+    @ViewBuilder
+    private var appRoot: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["X5_HOME_QA_PREVIEW"] == "1" {
+            AppTabView()
+        } else {
+            ContentView()
+        }
+        #else
+        ContentView()
+        #endif
     }
 
     private func syncPushRegistrationIfNeeded() {

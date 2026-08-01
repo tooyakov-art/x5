@@ -7,6 +7,7 @@ LOOPING_VIDEO = ROOT / "X5" / "Views" / "Home" / "LoopingVideo.swift"
 HOME_VIEW = ROOT / "X5" / "Views" / "Home" / "HomeView.swift"
 PROJECT = ROOT / "project.yml"
 SOURCES = ROOT / "THIRD_PARTY_SOURCES.md"
+PROVENANCE = ROOT / "docs" / "home-media-provenance.md"
 MOTION_DIR = ROOT / "X5" / "Resources" / "HomeMotion"
 ASSETS = ROOT / "X5" / "Assets.xcassets"
 
@@ -30,38 +31,53 @@ class HomeMotionSourceTests(unittest.TestCase):
         self.assertIn("HomeMotionPlaybackPolicy.shouldPlay(", source)
         self.assertIn("isVisible", source)
         self.assertIn("player?.pause()", source)
-        self.assertIn("Image(posterAssetName)", source)
+        self.assertIn("if let posterAssetName", source)
 
-    def test_home_only_activates_video_marked_trend_cards(self):
+    def test_release_accepts_only_x5_owned_remote_trend_media(self):
+        loop = LOOPING_VIDEO.read_text(encoding="utf-8")
+        home = HOME_VIEW.read_text(encoding="utf-8")
+
+        self.assertIn("case remote(url: URL)", loop)
+        self.assertIn("case .remote(let url):", loop)
+        self.assertIn(
+            'url.path.hasPrefix("/storage/v1/object/public/videos/home/")',
+            loop,
+        )
+        self.assertIn(
+            "https://afwznqjpshybmqhlewmy.supabase.co/storage/v1/object/public/videos/home",
+            home,
+        )
+        for name in ("transitions.mp4", "lipsync.mp4", "ai-stylist.mp4", "face-swap.mp4"):
+            self.assertIn(name, home)
+        for forbidden in (
+            "static.higgsfield.ai",
+            "cdn.higgsfield.ai",
+            "instagram.com/reel",
+            "http://",
+        ):
+            self.assertNotIn(forbidden, home)
+            self.assertNotIn(forbidden, loop)
+
+    def test_only_one_trend_video_can_be_active(self):
         source = HOME_VIEW.read_text(encoding="utf-8")
 
-        self.assertIn("pageIndex: index", source)
-        self.assertIn("CardMedia(assetName: slide.assetName, isMotionActive: false)", source)
-        self.assertIn("CardMedia(assetName: item.assetName, isMotionActive: item.showsPlay)", source)
+        self.assertIn("@State private var activeTrendVideoID: String?", source)
+        self.assertIn("activeTrendVideoID == item.id", source)
+        self.assertIn("activeTrendVideoID = activeTrendVideoID == item.id ? nil : item.id", source)
+        self.assertNotIn("isMotionActive: item.showsPlay", source)
 
-    def test_no_remote_demo_media_is_referenced(self):
+    def test_bundled_motion_fallbacks_remain_available(self):
         source = LOOPING_VIDEO.read_text(encoding="utf-8")
 
-        self.assertNotIn("http://", source)
-        self.assertNotIn("https://", source)
-        self.assertNotIn("case remote", source)
-        self.assertNotIn("Higgsfield", source)
-
-    def test_motion_video_is_bundled_into_the_app(self):
-        source = LOOPING_VIDEO.read_text(encoding="utf-8")
-
-        self.assertIn("enum HomeMotionSource", source)
         self.assertIn("case bundled(resourceName: String)", source)
-        self.assertNotIn("case remote(url: URL)", source)
         self.assertIn("HomeLoopingVideoController(source: source)", source)
-
         bundled_names = {path.name for path in MOTION_DIR.glob("*.mp4")}
         self.assertEqual(
             bundled_names,
             {"HomeMotionStudio.mp4", "HomeMotionFruit.mp4"},
         )
 
-    def test_optimized_loops_and_posters_are_bundled(self):
+    def test_optimized_fallback_loops_and_posters_are_bundled(self):
         expected_videos = {
             "HomeMotionStudio.mp4": 1_500_000,
             "HomeMotionFruit.mp4": 1_500_000,
@@ -82,48 +98,18 @@ class HomeMotionSourceTests(unittest.TestCase):
         project = PROJECT.read_text(encoding="utf-8")
         self.assertIn("- path: X5/Resources/HomeMotion", project)
 
-    def test_pexels_provenance_and_license_are_recorded(self):
+    def test_release_and_legacy_media_provenance_are_recorded(self):
         sources = SOURCES.read_text(encoding="utf-8")
+        provenance = PROVENANCE.read_text(encoding="utf-8")
 
-        self.assertIn(
-            "https://www.pexels.com/video/"
-            "digital-projection-of-abstract-geometrical-lines-3129671/",
-            sources,
-        )
-        self.assertIn(
-            "https://www.pexels.com/video/"
-            "close-up-view-of-fruits-in-a-bowl-6989164/",
-            sources,
-        )
         self.assertIn("https://www.pexels.com/legal-pages/license/", sources)
-        self.assertIn("Retrieved: 2026-07-26", sources)
-        self.assertIn("H.264", sources)
-        self.assertIn("audio removed", sources)
-
-    def test_higgsfield_demo_provenance_and_release_boundary_are_recorded(self):
-        sources = SOURCES.read_text(encoding="utf-8")
-
-        self.assertIn("Seedream 5.0 Pro", sources)
-        self.assertIn("https://higgsfield.ai/ai/image?model=seedream_v5_pro", sources)
-        self.assertIn(
-            "https://cdn.higgsfield.ai/card/"
-            "83522493-66ba-44b9-92f6-ae18cd8ba22b.mp4",
-            sources,
-        )
-        self.assertIn("https://higgsfield.ai/ai-video", sources)
-        self.assertIn(
-            "https://static.higgsfield.ai/ai-video-v2/01-mini.mp4",
-            sources,
-        )
-        self.assertIn(
-            "https://static.higgsfield.ai/flow-medias/"
-            "create-audio-22-07-2026.mp4",
-            sources,
-        )
-        self.assertIn("AI voiceovers & voice change", sources)
         self.assertIn("debug-only", sources.lower())
-        self.assertIn("not bundled", sources.lower())
-        self.assertIn("release builds", sources.lower())
+        self.assertIn("X5-owned", provenance)
+        self.assertIn("Higgsfield", provenance)
+        self.assertIn("transitions.mp4", provenance)
+        self.assertIn("face-swap.mp4", provenance)
+        self.assertIn("one active video", provenance.lower())
+        self.assertIn("Instagram", provenance)
 
 
 if __name__ == "__main__":

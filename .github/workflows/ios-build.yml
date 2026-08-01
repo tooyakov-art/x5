@@ -25,6 +25,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Restore approved private Home artwork
+        env:
+          X5_HOME_ART_KEY: ${{ secrets.X5_HOME_ART_KEY }}
+        run: scripts/decrypt_client_home_art.sh
+
       - name: Select Xcode
         run: |
           sudo xcode-select -s /Applications/Xcode_26.app || sudo xcode-select -s /Applications/Xcode.app
@@ -142,14 +147,6 @@ jobs:
             -exportOptionsPlist ExportOptions.plist \
             -allowProvisioningUpdates
 
-      - name: Upload IPA artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: X5-ipa
-          path: ${{ env.EXPORT_PATH }}/*.ipa
-          if-no-files-found: error
-          retention-days: 14
-
       - name: Write App Store Connect API key
         env:
           ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
@@ -179,3 +176,7 @@ jobs:
           if grep -E "UPLOAD FAILED|Failed to upload package|STATE_ERROR|Validation failed" "$LOG"; then
             exit 1
           fi
+
+      - name: Remove restored private Home artwork
+        if: always()
+        run: rm -f X5/Assets.xcassets/HomeApprovedReference.imageset/HomeApprovedReference.png

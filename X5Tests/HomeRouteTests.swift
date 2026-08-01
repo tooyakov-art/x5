@@ -10,6 +10,7 @@ final class HomeRouteTests: XCTestCase {
         XCTAssertEqual(HomeRoute.startupChat.id, "startup_chat")
         XCTAssertEqual(HomeRoute.hub.id, "hub")
         XCTAssertEqual(HomeRoute.videoGeneration.id, "video_generation")
+        XCTAssertEqual(HomeRoute.voiceGeneration.id, "voice_generation")
         XCTAssertEqual(HomeRoute.liveFruits.id, "live_fruits")
     }
 

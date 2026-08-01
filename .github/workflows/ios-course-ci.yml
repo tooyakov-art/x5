@@ -77,6 +77,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Restore approved private Home artwork
+        env:
+          X5_HOME_ART_KEY: ${{ secrets.X5_HOME_ART_KEY }}
+        run: scripts/decrypt_client_home_art.sh
+
       - name: Set up Deno
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
@@ -258,6 +263,10 @@ jobs:
             -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}' \
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO
+
+      - name: Remove restored private Home artwork
+        if: always()
+        run: rm -f X5/Assets.xcassets/HomeApprovedReference.imageset/HomeApprovedReference.png
 
       - name: Run private portfolio media privacy regression explicitly
         run: |

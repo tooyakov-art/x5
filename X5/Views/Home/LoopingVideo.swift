@@ -3,6 +3,7 @@ import SwiftUI
 
 enum HomeMotionSource: Equatable {
     case bundled(resourceName: String)
+    case remote(url: URL)
 }
 
 struct HomeMotionAsset: Equatable {
@@ -48,7 +49,7 @@ enum HomeMotionPlaybackPolicy {
 /// The poster always remains underneath, so a missing or failed video is harmless.
 struct LoopingVideo: View {
     let source: HomeMotionSource
-    let posterAssetName: String
+    let posterAssetName: String?
     let isActive: Bool
 
     @Environment(\.scenePhase) private var scenePhase
@@ -58,7 +59,7 @@ struct LoopingVideo: View {
     @State private var isVisible = false
     @State private var lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
 
-    init(source: HomeMotionSource, posterAssetName: String, isActive: Bool) {
+    init(source: HomeMotionSource, posterAssetName: String? = nil, isActive: Bool) {
         self.source = source
         self.posterAssetName = posterAssetName
         self.isActive = isActive
@@ -70,11 +71,13 @@ struct LoopingVideo: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                Image(posterAssetName)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .clipped()
+                if let posterAssetName {
+                    Image(posterAssetName)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                }
 
                 if controller.isReady, let player = controller.player {
                     HomePlayerLayerView(player: player)
@@ -209,6 +212,14 @@ private final class HomeLoopingVideoController: ObservableObject {
                 withExtension: "mp4",
                 subdirectory: "HomeMotion"
             ) ?? bundle.url(forResource: resourceName, withExtension: "mp4")
+        case .remote(let url):
+            guard url.scheme?.lowercased() == "https",
+                  url.host?.lowercased() == "afwznqjpshybmqhlewmy.supabase.co",
+                  url.path.hasPrefix("/storage/v1/object/public/videos/home/")
+            else {
+                return nil
+            }
+            return url
         }
     }
 }

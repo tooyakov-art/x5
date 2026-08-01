@@ -12,7 +12,7 @@ on:
       build_number:
         description: "Build number to inspect"
         required: true
-        default: "193"
+        default: "194"
       action:
         description: "Read only, or guarded assignment to internal groups 123 and 321"
         required: true
@@ -123,8 +123,6 @@ jobs:
           if rg.status_code == 200:
               testers = rg.json().get("data", [])
               print(f"\n=== Individual testers on build: {len(testers)} ===")
-              for t in testers[:5]:
-                  print(f"  {t.get('attributes', {}).get('email', '?')}")
 
           # 5. App-level beta groups
           rb = requests.get(f"{base}/apps/{app_id}/betaGroups?limit=20", headers=h)
