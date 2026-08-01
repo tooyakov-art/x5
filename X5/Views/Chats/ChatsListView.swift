@@ -5,11 +5,14 @@ struct ChatsListView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = ChatsService()
+    @StateObject private var deepLinkRouter = AppDeepLinkRouter.shared
     @State private var profiles: [String: UserProfile] = [:]
     /// Bumped to force `visibleChats` recomputation after archive/mute/hide.
     /// `ChatsLocalState` is a static enum so the view doesn't observe it.
     @State private var localStateTick: Int = 0
     @State private var showArchive: Bool = false
+    @State private var deepLinkedChat: ChatRoom?
+    @State private var deepLinkError: String?
 
     var body: some View {
         NavigationStack {
@@ -31,7 +34,31 @@ struct ChatsListView: View {
             .navigationTitle(loc.t("chats_title"))
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .task { await reload() }
+            .task {
+                service.configureAccessTokenProvider(auth: auth)
+                await reload()
+            }
+            .onChange(of: deepLinkRouter.pendingChatID) { chatID in
+                guard chatID != nil else { return }
+                Task { await openPendingChatIfNeeded() }
+            }
+            .navigationDestination(isPresented: Binding(
+                get: { deepLinkedChat != nil },
+                set: { if !$0 { deepLinkedChat = nil } }
+            )) {
+                if let chat = deepLinkedChat {
+                    let peerID = chat.otherParticipantId(currentUser: auth.userId ?? "") ?? ""
+                    ChatThreadView(chat: chat, initialOther: profiles[peerID])
+                }
+            }
+            .alert("Чат не открылся", isPresented: Binding(
+                get: { deepLinkError != nil },
+                set: { if !$0 { deepLinkError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(deepLinkError ?? "")
+            }
         }
     }
 
@@ -206,6 +233,30 @@ struct ChatsListView: View {
                 profiles[otherId] = p
             }
         }
+        await openPendingChatIfNeeded()
+    }
+
+    private func openPendingChatIfNeeded() async {
+        guard let chatID = deepLinkRouter.pendingChatID,
+              let uid = auth.userId,
+              let token = await auth.freshAccessToken()
+        else { return }
+        let room: ChatRoom?
+        if let loadedRoom = service.chats.first(where: { $0.id == chatID }) {
+            room = loadedRoom
+        } else {
+            room = await service.loadChat(chatId: chatID, accessToken: token)
+        }
+        guard let room, room.isValidPeerChat(currentUser: uid) else {
+            deepLinkError = "Чат недоступен или был удалён."
+            deepLinkRouter.consumeChat(id: chatID)
+            return
+        }
+        if let peerID = room.otherParticipantId(currentUser: uid), profiles[peerID] == nil {
+            profiles[peerID] = await service.loadPublicProfile(userId: peerID, accessToken: token)
+        }
+        deepLinkedChat = room
+        deepLinkRouter.consumeChat(id: chatID)
     }
 }
 

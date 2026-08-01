@@ -282,15 +282,59 @@ final class CurrentUser: ObservableObject {
         ]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        if let (data, response) = try? await URLSession.shared.data(for: request),
-           let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-           let rows = try? JSONDecoder().decode([UserProfile].self, from: data),
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode)
+        else {
+            error = "Profile creation failed"
+            return false
+        }
+
+        if let rows = try? JSONDecoder().decode([UserProfile].self, from: data),
            let row = rows.first {
+            self.profile = row
+            return true
+        }
+
+        // With `resolution=ignore-duplicates`, a concurrent trigger or another
+        // client can win the insert and PostgREST legitimately returns an empty
+        // representation. Resolve that successful race with one bounded GET;
+        // never recurse back into profile creation.
+        if let row = await refetchProfileAfterIgnoredInsert(
+            userId: userId,
+            accessToken: accessToken
+        ) {
             self.profile = row
             return true
         }
         error = "Profile refresh returned no data"
         return false
+    }
+
+    private func refetchProfileAfterIgnoredInsert(
+        userId: String,
+        accessToken: String
+    ) async -> UserProfile? {
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("rest/v1/profiles"),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = [
+            URLQueryItem(name: "id", value: "eq.\(userId)"),
+            URLQueryItem(name: "select", value: "*"),
+            URLQueryItem(name: "limit", value: "1")
+        ]
+        var request = URLRequest(url: components.url!)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let rows = try? JSONDecoder().decode([UserProfile].self, from: data)
+        else { return nil }
+        return rows.first
     }
 
     /// Uploads an avatar JPEG to Supabase Storage and patches profiles.avatar to the public URL.

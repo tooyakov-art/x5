@@ -2,11 +2,13 @@ import XCTest
 @testable import X5
 
 final class HubTaskBrowseStateTests: XCTestCase {
-    func testInitialStateShowsCategoryTiles() {
+    func testInitialStateShowsEveryTaskWithoutAFilter() {
         let state = HubTaskBrowseState()
 
-        XCTAssertFalse(state.isShowingResults)
+        XCTAssertTrue(state.isShowingResults)
         XCTAssertEqual(state.selectedCategoryIds, [])
+        XCTAssertTrue(state.includes(categoryId: "marketing"))
+        XCTAssertTrue(state.includes(categoryId: "legal"))
     }
 
     func testAllResultsCanReturnToCategoryTiles() {
@@ -69,12 +71,12 @@ final class HubTaskBrowseStateTests: XCTestCase {
         XCTAssertFalse(state.includes(categoryId: "seo"))
     }
 
-    func testCategoryFilterWithoutASelectionStaysOnGrid() {
+    func testCategoryFilterWithoutASelectionKeepsDefaultFeed() {
         var state = HubTaskBrowseState()
 
         state.applyCategoryFilter([])
 
-        XCTAssertFalse(state.isShowingResults)
+        XCTAssertTrue(state.isShowingResults)
         XCTAssertEqual(state.selectedCategoryIds, [])
     }
 
@@ -106,6 +108,44 @@ final class HubTaskBrowseStateTests: XCTestCase {
             XCTAssertFalse(state.isShowingResults)
             XCTAssertEqual(state.selectedCategoryIds, [])
         }
+    }
+
+    func testProfileCategoriesApplyAutomaticallyOnFirstHubEntry() {
+        var state = HubTaskBrowseState()
+
+        XCTAssertTrue(state.applyProfileCategoriesOnEntry(["Marketing", "UI/UX"]))
+        XCTAssertEqual(state.selectedCategoryIds, [])
+        XCTAssertEqual(state.preferredCategoryIds, ["marketing", "ui_ux"])
+        XCTAssertTrue(state.includes(categoryId: "seo"))
+        XCTAssertFalse(state.hasManualOverride)
+    }
+
+    func testDelayedProfileCanApplyAfterInitialEmptyValue() {
+        var state = HubTaskBrowseState()
+
+        XCTAssertFalse(state.applyProfileCategoriesOnEntry(nil))
+        XCTAssertTrue(state.applyProfileCategoriesOnEntry(["SEO"]))
+        XCTAssertEqual(state.selectedCategoryIds, [])
+        XCTAssertEqual(state.preferredCategoryIds, ["seo"])
+    }
+
+    func testManualChoiceBeforeProfileLoadIsPreserved() {
+        var state = HubTaskBrowseState()
+
+        state.showResults(for: "ugc")
+        XCTAssertFalse(state.applyProfileCategoriesOnEntry(["marketing"]))
+        XCTAssertEqual(state.selectedCategoryIds, ["ugc"])
+    }
+
+    func testManualChoiceAfterAutomaticFilterIsPreservedOnProfileRefresh() {
+        var state = HubTaskBrowseState()
+
+        XCTAssertTrue(state.applyProfileCategoriesOnEntry(["marketing"]))
+        state.showAllResults()
+        XCTAssertFalse(state.applyProfileCategoriesOnEntry(["seo"]))
+        XCTAssertEqual(state.selectedCategoryIds, [])
+        XCTAssertEqual(state.preferredCategoryIds, ["marketing"])
+        XCTAssertTrue(state.hasManualOverride)
     }
 
     func testProfileCategoryNormalizationReturnsOnlyKnownHubCategoryIds() {

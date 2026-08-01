@@ -1,6 +1,8 @@
 import SwiftUI
 import PhotosUI
 import AVFoundation
+import AVKit
+import UniformTypeIdentifiers
 
 struct ChatThreadView: View {
     let chat: ChatRoom
@@ -17,8 +19,9 @@ struct ChatThreadView: View {
     @State private var showingProfile: Bool = false
     @State private var showingMenu: Bool = false
     @State private var confirmBlock: Bool = false
-    @State private var photoItem: PhotosPickerItem?
+    @State private var mediaItem: PhotosPickerItem?
     @State private var attachmentError: String?
+    @State private var attachmentUploadProgress: Double?
     @State private var roomUnread: [String: Int] = [:]
     @State private var messageStateTick: Int = 0
     @State private var replyingTo: ChatMessageRow?
@@ -31,6 +34,10 @@ struct ChatThreadView: View {
     @State private var searchActive: Bool = false
     @State private var searchQuery: String = ""
     @State private var showingStickers: Bool = false
+    @State private var hasOlderMessages: Bool = false
+    @State private var loadingOlderMessages: Bool = false
+    @State private var pendingMessageIDs: Set<String> = []
+    @State private var failedTextMessages: [String: FailedTextMessage] = [:]
     /// Bumped when ChatsLocalState mutations happen via the header menu so the
     /// view rereads `isMuted/isPinned` for icon toggles without observing.
     @State private var chatStateTick: Int = 0
@@ -169,9 +176,12 @@ struct ChatThreadView: View {
         } message: {
             Text(loc.t("chat_block_message"))
         }
-        .onChange(of: photoItem) { newValue in
+        .onChange(of: mediaItem) { newValue in
             guard let newValue else { return }
-            Task { await sendPhoto(newValue); photoItem = nil }
+            Task {
+                await sendSelectedMedia(newValue)
+                mediaItem = nil
+            }
         }
         .alert("Не отправилось", isPresented: Binding(
             get: { attachmentError != nil },
@@ -190,6 +200,7 @@ struct ChatThreadView: View {
             .preferredColorScheme(.dark)
         }
         .task {
+            service.configureAccessTokenProvider(auth: auth)
             roomUnread = chat.unread ?? [:]
             // Paint cached messages instantly so the chat doesn't appear
             // blank during the fetch — Telegram-style.
@@ -200,6 +211,11 @@ struct ChatThreadView: View {
             await reload()
             await markThreadRead()
             await loadOther()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard !Task.isCancelled else { break }
+                await pollNewMessages()
+            }
         }
     }
 
@@ -217,6 +233,22 @@ struct ChatThreadView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
+                    if hasOlderMessages {
+                        Button {
+                            Task { await loadOlderMessages() }
+                        } label: {
+                            HStack(spacing: 8) {
+                                if loadingOlderMessages { ProgressView().tint(.white) }
+                                Text("Показать более ранние сообщения")
+                            }
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.72))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(loadingOlderMessages)
+                    }
                     ForEach(Array(visibleMessages.enumerated()), id: \.element.id) { pair in
                         messageRow(message: pair.element, index: pair.offset)
                     }
@@ -242,12 +274,16 @@ struct ChatThreadView: View {
         }
         Bubble(
             message: message,
+            chatID: chat.id,
+            service: service,
             isMine: message.senderId == auth.userId,
             isRead: isReadByPeer(message),
             isPinned: MessagesLocalState.isPinned(message.id),
+            deliveryState: deliveryState(for: message),
             onReply: { replyingTo = message },
             onTogglePin: { toggleMessagePin(message) },
             onAskStartupChat: { askStartupChat(about: message) },
+            onRetry: { retry(messageID: message.id) },
             onDeleteForMe: {
                 MessagesLocalState.hide(message.id)
                 messageStateTick &+= 1
@@ -299,12 +335,24 @@ struct ChatThreadView: View {
 
     private var inputBar: some View {
         HStack(spacing: 8) {
-            PhotosPicker(selection: $photoItem, matching: .images) {
-                Image(systemName: "paperclip")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.55))
-                    .frame(width: 36, height: 36)
+            PhotosPicker(
+                selection: $mediaItem,
+                matching: .any(of: [.images, .videos])
+            ) {
+                ZStack {
+                    if let attachmentUploadProgress {
+                        ProgressView(value: attachmentUploadProgress)
+                            .progressViewStyle(.circular)
+                            .tint(.accentColor)
+                    } else {
+                        Image(systemName: "paperclip")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.55))
+                    }
+                }
+                .frame(width: 36, height: 36)
             }
+            .disabled(sending)
 
             if recorder.isRecording {
                 recordingIndicator
@@ -380,6 +428,17 @@ struct ChatThreadView: View {
         }
     }
 
+    private func sendSelectedMedia(_ item: PhotosPickerItem) async {
+        let isVideo = item.supportedContentTypes.contains { type in
+            type.conforms(to: .movie)
+        }
+        if isVideo {
+            await sendVideo(item)
+        } else {
+            await sendPhoto(item)
+        }
+    }
+
     private func sendPhoto(_ item: PhotosPickerItem) async {
         guard let token = await auth.freshAccessToken(), let uid = auth.userId else { return }
         sending = true
@@ -390,7 +449,14 @@ struct ChatThreadView: View {
             attachmentError = "Не удалось прочитать фото."
             return
         }
-        guard let url = await service.uploadAttachment(chatId: chat.id, data: jpeg, mime: "image/jpeg", ext: "jpg", accessToken: token) else {
+        guard let url = await service.uploadAttachment(
+            chatId: chat.id,
+            currentUserId: uid,
+            data: jpeg,
+            mime: "image/jpeg",
+            ext: "jpg",
+            accessToken: token
+        ) else {
             attachmentError = service.error ?? "Не удалось загрузить фото."
             return
         }
@@ -399,7 +465,104 @@ struct ChatThreadView: View {
             service.persistMessageCache(chatId: chat.id, rows: messages)
             incrementPeerUnread()
         } else {
+            await service.deleteUploadedAttachment(
+                canonicalURL: url,
+                chatId: chat.id,
+                currentUserId: uid,
+                accessToken: token
+            )
             attachmentError = service.error ?? "Не удалось отправить фото."
+        }
+    }
+
+    private func sendVideo(_ item: PhotosPickerItem) async {
+        guard let initialToken = await auth.accessTokenForUpload(),
+              let uid = auth.userId
+        else {
+            attachmentError = "Сессия истекла. Войдите снова и повторите отправку."
+            return
+        }
+
+        sending = true
+        attachmentUploadProgress = 0
+        defer {
+            sending = false
+            attachmentUploadProgress = nil
+        }
+
+        let picked: CourseGalleryVideo
+        do {
+            guard let loaded = try await item.loadTransferable(
+                type: CourseGalleryVideo.self
+            ) else {
+                attachmentError = "Не удалось прочитать видео."
+                return
+            }
+            picked = loaded
+        } catch {
+            attachmentError = "Не удалось подготовить видео: \(error.localizedDescription)"
+            return
+        }
+        defer { CourseVideoStaging.removeIfManaged(picked.fileURL) }
+
+        let format = chatVideoFormat(for: picked.fileURL)
+        guard let mediaURL = await service.uploadVideoAttachment(
+            chatId: chat.id,
+            currentUserId: uid,
+            fileURL: picked.fileURL,
+            mime: format.mime,
+            ext: format.ext,
+            accessToken: initialToken,
+            accessTokenProvider: { [weak auth] in
+                await auth?.accessTokenForUpload()
+            },
+            progress: { progress in
+                Task { @MainActor in
+                    attachmentUploadProgress = progress
+                }
+            }
+        ) else {
+            attachmentError = service.error ?? "Не удалось загрузить видео."
+            return
+        }
+
+        guard let postUploadToken = await auth.freshAccessToken() else {
+            await service.deleteUploadedAttachment(
+                canonicalURL: mediaURL,
+                chatId: chat.id,
+                currentUserId: uid,
+                accessToken: initialToken
+            )
+            attachmentError = "Видео загружено, но сессия истекла до отправки сообщения. Повторите отправку."
+            return
+        }
+        if let inserted = await service.sendMedia(
+            chatId: chat.id,
+            currentUserId: uid,
+            type: "video",
+            mediaUrl: mediaURL,
+            mime: format.mime,
+            accessToken: postUploadToken
+        ) {
+            messages.append(inserted)
+            service.persistMessageCache(chatId: chat.id, rows: messages)
+            incrementPeerUnread()
+        } else {
+            await service.deleteUploadedAttachment(
+                canonicalURL: mediaURL,
+                chatId: chat.id,
+                currentUserId: uid,
+                accessToken: postUploadToken
+            )
+            attachmentError = service.error ?? "Не удалось отправить видео."
+        }
+    }
+
+    private func chatVideoFormat(for url: URL) -> (mime: String, ext: String) {
+        switch url.pathExtension.lowercased() {
+        case "mov": return ("video/quicktime", "mov")
+        case "m4v": return ("video/x-m4v", "m4v")
+        default: return ("video/mp4", "mp4")
         }
     }
 
@@ -417,7 +580,14 @@ struct ChatThreadView: View {
 
         sending = true
         defer { sending = false }
-        guard let url = await service.uploadAttachment(chatId: chat.id, data: result.data, mime: result.mime, ext: result.ext, accessToken: token) else {
+        guard let url = await service.uploadAttachment(
+            chatId: chat.id,
+            currentUserId: uid,
+            data: result.data,
+            mime: result.mime,
+            ext: result.ext,
+            accessToken: token
+        ) else {
             clearVoiceFingerprint(fingerprint)
             attachmentError = service.error ?? "Не удалось загрузить голосовое."
             return
@@ -428,6 +598,12 @@ struct ChatThreadView: View {
             incrementPeerUnread()
         } else {
             clearVoiceFingerprint(fingerprint)
+            await service.deleteUploadedAttachment(
+                canonicalURL: url,
+                chatId: chat.id,
+                currentUserId: uid,
+                accessToken: token
+            )
             attachmentError = service.error ?? "Не удалось отправить голосовое."
         }
     }
@@ -468,6 +644,41 @@ struct ChatThreadView: View {
         guard let token = await auth.freshAccessToken(), let uid = auth.userId else { return }
         let hasUnread = chat.unreadCount(for: uid) > 0
         messages = await service.loadMessages(chatId: chat.id, accessToken: token, forceRefresh: hasUnread)
+        hasOlderMessages = messages.count >= ChatsService.messagePageSize
+    }
+
+    private func loadOlderMessages() async {
+        guard !loadingOlderMessages,
+              let oldest = messages.first(where: { !$0.id.hasPrefix("local-") })?.createdAt,
+              let token = await auth.freshAccessToken()
+        else { return }
+        loadingOlderMessages = true
+        defer { loadingOlderMessages = false }
+        let page = await service.loadOlderMessages(
+            chatId: chat.id,
+            before: oldest,
+            accessToken: token
+        )
+        messages = ChatMessageTimeline.merge(messages, with: page.rows)
+        hasOlderMessages = page.hasMore
+        service.persistMessageCache(chatId: chat.id, rows: messages)
+    }
+
+    private func pollNewMessages() async {
+        guard let latest = messages.last(where: { !$0.id.hasPrefix("local-") })?.createdAt,
+              let token = await auth.freshAccessToken()
+        else { return }
+        let incoming = await service.loadNewerMessages(
+            chatId: chat.id,
+            after: latest,
+            accessToken: token
+        )
+        guard !incoming.isEmpty else { return }
+        messages = ChatMessageTimeline.merge(messages, with: incoming)
+        service.persistMessageCache(chatId: chat.id, rows: messages)
+        if incoming.contains(where: { $0.senderId != auth.userId }) {
+            await markThreadRead()
+        }
     }
 
     private func loadOther() async {
@@ -586,6 +797,7 @@ struct ChatThreadView: View {
         switch message.type {
         case "image": return loc.t("chats_preview_photo")
         case "audio": return loc.t("chat_voice_message")
+        case "video": return "Видео"
         default: return loc.t("chats_no_messages")
         }
     }
@@ -632,30 +844,92 @@ struct ChatThreadView: View {
         guard let uid = auth.userId else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        let reply = replyingTo
-        let outboundText = encodedReplyText(text, replyingTo: reply)
+        let outboundText = encodedReplyText(text, replyingTo: replyingTo)
+        let localID = "local-\(UUID().uuidString)"
+        let localMessage = ChatMessageRow(
+            id: localID,
+            chatId: chat.id,
+            senderId: uid,
+            type: "text",
+            content: outboundText,
+            mediaUrl: nil,
+            mediaMime: nil,
+            createdAt: ISO8601DateFormatter().string(from: Date())
+        )
+        messages = ChatMessageTimeline.merge(messages, with: [localMessage])
+        pendingMessageIDs.insert(localID)
+        failedTextMessages[localID] = nil
+        service.persistMessageCache(chatId: chat.id, rows: messages)
         draft = ""
+        replyingTo = nil
         inputFocused = false
         sending = true
         Task {
-            guard let token = await auth.freshAccessToken() else {
-                sending = false
-                return
-            }
-            if let inserted = await service.sendText(
-                chatId: chat.id,
-                currentUserId: uid,
-                text: outboundText,
-                accessToken: token,
+            await deliverText(
+                localID: localID,
+                currentUserID: uid,
+                outboundText: outboundText,
                 previewText: text
-            ) {
-                messages.append(inserted)
-                service.persistMessageCache(chatId: chat.id, rows: messages)
-                incrementPeerUnread()
-                replyingTo = nil
-            }
+            )
             sending = false
         }
+    }
+
+    private func deliveryState(for message: ChatMessageRow) -> ChatDeliveryState {
+        if pendingMessageIDs.contains(message.id) { return .sending }
+        if failedTextMessages[message.id] != nil { return .failed }
+        return .sent
+    }
+
+    private func retry(messageID: String) {
+        guard let failed = failedTextMessages[messageID],
+              let uid = auth.userId,
+              !pendingMessageIDs.contains(messageID)
+        else { return }
+        failedTextMessages[messageID] = nil
+        pendingMessageIDs.insert(messageID)
+        sending = true
+        Task {
+            await deliverText(
+                localID: messageID,
+                currentUserID: uid,
+                outboundText: failed.outboundText,
+                previewText: failed.previewText
+            )
+            sending = false
+        }
+    }
+
+    private func deliverText(
+        localID: String,
+        currentUserID: String,
+        outboundText: String,
+        previewText: String
+    ) async {
+        guard let token = await auth.freshAccessToken(),
+              let inserted = await service.sendText(
+                chatId: chat.id,
+                currentUserId: currentUserID,
+                text: outboundText,
+                accessToken: token,
+                previewText: previewText
+              )
+        else {
+            pendingMessageIDs.remove(localID)
+            failedTextMessages[localID] = FailedTextMessage(
+                outboundText: outboundText,
+                previewText: previewText
+            )
+            attachmentError = service.error ?? "Сообщение не отправилось. Нажмите на красный значок, чтобы повторить."
+            return
+        }
+
+        pendingMessageIDs.remove(localID)
+        failedTextMessages[localID] = nil
+        messages.removeAll { $0.id == localID }
+        messages = ChatMessageTimeline.merge(messages, with: [inserted])
+        service.persistMessageCache(chatId: chat.id, rows: messages)
+        incrementPeerUnread()
     }
 
     private func sendSticker(_ sticker: String) {
@@ -684,6 +958,17 @@ struct ChatThreadView: View {
 
 private let replyLinePrefix = "↪ "
 private let stickerLinePrefix = "x5_sticker:"
+
+private struct FailedTextMessage {
+    let outboundText: String
+    let previewText: String
+}
+
+private enum ChatDeliveryState: Equatable {
+    case sending
+    case sent
+    case failed
+}
 
 private struct ChatHeaderButton: View {
     let profile: UserProfile?
@@ -818,13 +1103,17 @@ private struct DateDivider: View {
 
 private struct Bubble: View {
     let message: ChatMessageRow
+    let chatID: String
+    let service: ChatsService
     let isMine: Bool
     let isRead: Bool
     let isPinned: Bool
+    let deliveryState: ChatDeliveryState
     var onCopy: (() -> Void)? = nil
     var onReply: (() -> Void)? = nil
     var onTogglePin: (() -> Void)? = nil
     var onAskStartupChat: (() -> Void)? = nil
+    var onRetry: (() -> Void)? = nil
     var onDeleteForMe: (() -> Void)? = nil
     @EnvironmentObject private var loc: LocalizationService
 
@@ -833,6 +1122,12 @@ private struct Bubble: View {
             if isMine { Spacer(minLength: 40) }
             content
                 .contextMenu {
+                    if deliveryState == .failed {
+                        Button { onRetry?() } label: {
+                            Label("Отправить снова", systemImage: "arrow.clockwise")
+                        }
+                        Divider()
+                    }
                     Button { onReply?() } label: {
                         Label(loc.t("chats_msg_reply"), systemImage: "arrowshape.turn.up.left")
                     }
@@ -846,7 +1141,8 @@ private struct Bubble: View {
                         Label(loc.t("chats_msg_ask_startupchat"), systemImage: "sparkles")
                     }
                     Divider()
-                    if !copyText.isEmpty, message.type != "image", message.type != "audio" {
+                    if !copyText.isEmpty,
+                       !["image", "audio", "video"].contains(message.type) {
                         Button {
                             UIPasteboard.general.string = copyText
                             onCopy?()
@@ -890,7 +1186,7 @@ private struct Bubble: View {
                 messageStatus
             }
         }
-        .padding(message.type == "image" ? 4 : (stickerText == nil ? (message.type == "task_card" ? 8 : 10) : 2))
+        .padding(["image", "video"].contains(message.type) ? 4 : (stickerText == nil ? (message.type == "task_card" ? 8 : 10) : 2))
         .background(stickerText == nil ? bubbleColor : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
@@ -903,9 +1199,11 @@ private struct Bubble: View {
     private var payload: some View {
         switch message.type {
         case "image":
-            imageBubble
+            PrivateChatImageBubble(message: message, chatID: chatID, service: service)
         case "audio":
-            AudioBubble(url: message.mediaUrl)
+            PrivateChatAudioBubble(message: message, chatID: chatID, service: service)
+        case "video":
+            PrivateChatVideoBubble(message: message, chatID: chatID, service: service)
         case "task_card":
             if let card = message.taskCard {
                 TaskCardBubble(card: card)
@@ -940,7 +1238,18 @@ private struct Bubble: View {
                 Text(stamp)
             }
             if isMine {
-                ReadReceipt(isRead: isRead)
+                switch deliveryState {
+                case .sending:
+                    Image(systemName: "clock")
+                case .failed:
+                    Button { onRetry?() } label: {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundColor(.red)
+                    }
+                    .buttonStyle(.plain)
+                case .sent:
+                    ReadReceipt(isRead: isRead)
+                }
             }
         }
         .font(.system(size: 10, weight: .medium))
@@ -973,19 +1282,6 @@ private struct Bubble: View {
         return dayFmt.string(from: date)
     }
 
-    @ViewBuilder
-    private var imageBubble: some View {
-        if let s = message.mediaUrl, let url = URL(string: s) {
-            CachedAsyncImage(url: url) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                Color.white.opacity(0.06).overlay(ProgressView().tint(.white.opacity(0.5)))
-            }
-            .frame(maxWidth: 360, maxHeight: 480)
-            .aspectRatio(3/4, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-    }
 }
 
 private struct ReplyPreview: View {
@@ -1107,49 +1403,299 @@ private struct ReadReceipt: View {
     }
 }
 
-private struct AudioBubble: View {
-    let url: String?
+private struct PrivateChatImageBubble: View {
+    let message: ChatMessageRow
+    let chatID: String
+    let service: ChatsService
+
+    @EnvironmentObject private var auth: Auth
+    @State private var image: UIImage?
+    @State private var isLoading = true
+    @State private var failed = false
+    @State private var requestVersion = 0
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else if isLoading {
+                Color.white.opacity(0.06)
+                    .overlay(ProgressView().tint(.white.opacity(0.5)))
+            } else {
+                Button {
+                    requestVersion &+= 1
+                } label: {
+                    VStack(spacing: 7) {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Повторить")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundColor(.white.opacity(0.75))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.white.opacity(0.06))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: 360, maxHeight: 480)
+        .aspectRatio(3/4, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .task(id: requestVersion) {
+            await load(forceRefresh: requestVersion > 0)
+        }
+        .accessibilityLabel(failed ? "Вложение не загрузилось" : "Фото")
+    }
+
+    private func load(forceRefresh: Bool) async {
+        guard let canonicalURL = message.mediaUrl,
+              let currentUserID = auth.userId,
+              let token = await auth.freshAccessToken()
+        else {
+            isLoading = false
+            failed = true
+            return
+        }
+
+        isLoading = true
+        failed = false
+        var signedURL = await service.signedMediaURL(
+            canonicalURL: canonicalURL,
+            chatId: chatID,
+            currentUserId: currentUserID,
+            accessToken: token,
+            forceRefresh: forceRefresh
+        )
+        var loaded: UIImage?
+        if let signedURL {
+            loaded = await ImageCache.shared.image(for: signedURL)
+        }
+
+        // A signed URL can expire between resolving and downloading. Force one
+        // fresh signature automatically; subsequent failure stays user-retryable.
+        if loaded == nil, !forceRefresh, let freshToken = await auth.freshAccessToken() {
+            service.invalidateSignedMedia(
+                canonicalURL: canonicalURL,
+                chatId: chatID,
+                currentUserId: currentUserID
+            )
+            signedURL = await service.signedMediaURL(
+                canonicalURL: canonicalURL,
+                chatId: chatID,
+                currentUserId: currentUserID,
+                accessToken: freshToken,
+                forceRefresh: true
+            )
+            if let signedURL {
+                loaded = await ImageCache.shared.image(for: signedURL)
+            }
+        }
+
+        guard !Task.isCancelled else { return }
+        image = loaded
+        failed = loaded == nil
+        isLoading = false
+    }
+}
+
+private struct PrivateChatVideoBubble: View {
+    let message: ChatMessageRow
+    let chatID: String
+    let service: ChatsService
+
+    @EnvironmentObject private var auth: Auth
+    @State private var player: AVPlayer?
+    @State private var isLoading = true
+    @State private var failed = false
+    @State private var requestVersion = 0
+
+    var body: some View {
+        Group {
+            if let player {
+                VideoPlayer(player: player)
+                    .background(Color.black)
+            } else if isLoading {
+                Color.black
+                    .overlay(ProgressView().tint(.white.opacity(0.65)))
+            } else {
+                Button {
+                    requestVersion &+= 1
+                } label: {
+                    VStack(spacing: 8) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 22, weight: .semibold))
+                        Text("Повторить загрузку видео")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundColor(.white.opacity(0.8))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: 360)
+        .aspectRatio(16 / 9, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .task(id: requestVersion) {
+            await resolvePlayer(forceRefresh: requestVersion > 0)
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: .AVPlayerItemFailedToPlayToEndTime
+            )
+        ) { note in
+            guard let item = note.object as? AVPlayerItem,
+                  item === player?.currentItem
+            else { return }
+            player?.pause()
+            player = nil
+            failed = true
+            isLoading = false
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
+        }
+        .accessibilityLabel(failed ? "Видео не загрузилось" : "Видео")
+    }
+
+    private func resolvePlayer(forceRefresh: Bool) async {
+        guard let canonicalURL = message.mediaUrl,
+              let currentUserID = auth.userId,
+              let token = await auth.freshAccessToken()
+        else {
+            isLoading = false
+            failed = true
+            return
+        }
+
+        isLoading = true
+        failed = false
+        if forceRefresh {
+            service.invalidateSignedMedia(
+                canonicalURL: canonicalURL,
+                chatId: chatID,
+                currentUserId: currentUserID
+            )
+        }
+        guard let signedURL = await service.signedMediaURL(
+            canonicalURL: canonicalURL,
+            chatId: chatID,
+            currentUserId: currentUserID,
+            accessToken: token,
+            forceRefresh: forceRefresh
+        ) else {
+            isLoading = false
+            failed = true
+            return
+        }
+        guard !Task.isCancelled else { return }
+        player = AVPlayer(url: signedURL)
+        isLoading = false
+    }
+}
+
+private struct PrivateChatAudioBubble: View {
+    let message: ChatMessageRow
+    let chatID: String
+    let service: ChatsService
+
     @EnvironmentObject private var loc: LocalizationService
+    @EnvironmentObject private var auth: Auth
     @State private var player: AVPlayer?
     @State private var isPlaying = false
+    @State private var isLoading = false
+    @State private var failed = false
+    @State private var retriedExpiredURL = false
 
     var body: some View {
         HStack(spacing: 10) {
             Button {
-                togglePlay()
+                Task { await togglePlay() }
             } label: {
-                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                Image(systemName: isLoading ? "clock" : (isPlaying ? "pause.circle.fill" : "play.circle.fill"))
                     .font(.system(size: 32))
                     .foregroundColor(.white)
             }
             .buttonStyle(.plain)
+            .disabled(isLoading)
             Text(loc.t("chat_voice_message"))
                 .font(.system(size: 13))
                 .foregroundColor(.white.opacity(0.85))
+            if failed {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.65))
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { note in
+            guard let item = note.object as? AVPlayerItem, item === player?.currentItem else { return }
+            isPlaying = false
+            player?.seek(to: .zero)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemFailedToPlayToEndTime)) { note in
+            guard let item = note.object as? AVPlayerItem, item === player?.currentItem else { return }
+            isPlaying = false
+            failed = true
+            guard !retriedExpiredURL else { return }
+            retriedExpiredURL = true
+            Task { await startPlayback(forceRefresh: true) }
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
+            isPlaying = false
         }
     }
 
-    private func togglePlay() {
-        guard let s = url, let u = URL(string: s) else { return }
-        if player == nil {
-            try? AVAudioSession.sharedInstance().setCategory(.playback)
-            try? AVAudioSession.sharedInstance().setActive(true)
-            player = AVPlayer(url: u)
-            NotificationCenter.default.addObserver(
-                forName: .AVPlayerItemDidPlayToEndTime,
-                object: player?.currentItem,
-                queue: .main
-            ) { _ in
-                isPlaying = false
-                player?.seek(to: .zero)
-            }
-        }
+    private func togglePlay() async {
         if isPlaying {
             player?.pause()
             isPlaying = false
         } else {
-            player?.play()
-            isPlaying = true
+            await startPlayback(forceRefresh: failed)
         }
+    }
+
+    private func startPlayback(forceRefresh: Bool) async {
+        guard let canonicalURL = message.mediaUrl,
+              let currentUserID = auth.userId,
+              let token = await auth.freshAccessToken()
+        else {
+            failed = true
+            return
+        }
+        isLoading = true
+        if forceRefresh {
+            service.invalidateSignedMedia(
+                canonicalURL: canonicalURL,
+                chatId: chatID,
+                currentUserId: currentUserID
+            )
+        }
+        guard let signedURL = await service.signedMediaURL(
+            canonicalURL: canonicalURL,
+            chatId: chatID,
+            currentUserId: currentUserID,
+            accessToken: token,
+            forceRefresh: forceRefresh
+        ) else {
+            isLoading = false
+            failed = true
+            return
+        }
+
+        try? AVAudioSession.sharedInstance().setCategory(.playback)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        let currentURL = (player?.currentItem?.asset as? AVURLAsset)?.url
+        if player == nil || currentURL != signedURL {
+            player = AVPlayer(url: signedURL)
+        }
+        player?.play()
+        isPlaying = true
+        isLoading = false
+        failed = false
     }
 }

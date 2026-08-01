@@ -29,18 +29,14 @@ enum HomeRoute: Hashable, Identifiable {
     }
 }
 
-/// Home uses an AI-studio layout: hero, tool grid, trend rail, and creator feed.
+/// Client-approved Home layout. Every visible card opens a working route.
 struct HomeView: View {
     @EnvironmentObject private var loc: LocalizationService
 
     @State private var activeRoute: HomeRoute?
     @State private var openImageCategory: ImageGenerationCategory?
     @State private var showingGeneratedGallery = false
-    @State private var selectedFeed = "Для тебя"
     @State private var activeHeroPage = 0
-    @State private var activeToolsPage = 0
-
-    private let feedTabs = ["Для тебя", "Shorts", "Реклама", "UGC", "4K"]
 
     var body: some View {
         NavigationStack {
@@ -48,9 +44,8 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     heroBanner
                     promoCards
-                    quickToolsGrid
                     trendsSection
-                    feedSection
+                    businessSection
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 2)
@@ -65,14 +60,7 @@ struct HomeView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        activeRoute = .tool("search")
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                    }
-                    .accessibilityLabel("Поиск")
-
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingGeneratedGallery = true
                     } label: {
@@ -139,24 +127,6 @@ struct HomeView: View {
                 action: .videoGeneration
             ),
             HeroSlide(
-                id: "voice_generation",
-                eyebrow: "Voice Studio",
-                title: "Озвучка и голоса",
-                subtitle: "Озвучивай текст естественными AI-голосами",
-                assetName: "HomeMotionStudioPoster",
-                systemImage: "waveform",
-                action: .voiceGeneration
-            ),
-            HeroSlide(
-                id: "influencer",
-                eyebrow: "Trend Studio",
-                title: "AI-инфлюенсер для Reels",
-                subtitle: "Собери персонажа и запускай ролики без съемки",
-                assetName: "HomeTrendInfluencer",
-                systemImage: "person.crop.square",
-                action: .tool("ai_influencer")
-            ),
-            HeroSlide(
                 id: "commerce",
                 eyebrow: "Business Pack",
                 title: "Карточки и фото товара",
@@ -179,22 +149,6 @@ struct HomeView: View {
 
     private var promos: [HomePromo] {
         [
-            HomePromo(
-                id: "video_generation",
-                title: "Генерация видео",
-                subtitle: "Текст или фото в ролик",
-                systemImage: "video.fill",
-                accent: Color(red: 0.10, green: 0.72, blue: 0.98),
-                action: .videoGeneration
-            ),
-            HomePromo(
-                id: "voice_generation",
-                title: "Озвучка",
-                subtitle: "Естественные AI-голоса",
-                systemImage: "waveform",
-                accent: Color(red: 0.69, green: 0.28, blue: 0.94),
-                action: .voiceGeneration
-            ),
             HomePromo(
                 id: "startup_chat",
                 title: "Стартап чат",
@@ -234,37 +188,9 @@ struct HomeView: View {
         }
     }
 
-    private var quickToolsGrid: some View {
-        VStack(spacing: 8) {
-            TabView(selection: $activeToolsPage) {
-                ForEach(Array(quickToolPages.enumerated()), id: \.offset) { pageIndex, page in
-                    LazyVGrid(
-                        columns: Array(repeating: GridItem(.flexible(minimum: 52), spacing: 10), count: 4),
-                        spacing: 10
-                    ) {
-                        ForEach(page) { tool in
-                            Button {
-                                handle(tool.action)
-                            } label: {
-                                StudioToolButton(tool: tool)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .tag(pageIndex)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 160)
-
-            PageDots(active: activeToolsPage, count: quickToolPages.count)
-            .frame(maxWidth: .infinity)
-        }
-    }
-
     private var trendsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeader(title: "Тренды", trailing: "Еще")
+            sectionHeader(title: "Тренды")
 
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 12) {
@@ -282,24 +208,14 @@ struct HomeView: View {
         }
     }
 
-    private var feedSection: some View {
+    private var businessSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 22) {
-                    ForEach(feedTabs, id: \.self) { tab in
-                        Button {
-                            selectedFeed = tab
-                            X5Feedback.selection()
-                        } label: {
-                            Text(tab)
-                                .font(.system(size: 20, weight: selectedFeed == tab ? .heavy : .semibold))
-                                .foregroundColor(selectedFeed == tab ? .white : .white.opacity(0.38))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 1)
+            sectionHeader(title: "Дизайн для бизнеса")
+
+            Button { handle(imageAction("insta_pack")) } label: {
+                InstagramFeatureCard()
             }
+            .buttonStyle(.plain)
 
             LazyVGrid(
                 columns: [
@@ -320,56 +236,19 @@ struct HomeView: View {
         }
     }
 
-    private func sectionHeader(title: String, trailing: String) -> some View {
+    private func sectionHeader(title: String) -> some View {
         HStack {
             Text(title)
-                .font(.system(size: 22, weight: .black))
+                .font(.system(size: 27, weight: .black))
                 .foregroundColor(.white)
             Spacer()
-            Button {
-                activeRoute = .tool("more_\(title)")
-            } label: {
-                HStack(spacing: 5) {
-                    Text(trailing)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
-                }
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.white.opacity(0.48))
-            }
-            .buttonStyle(.plain)
         }
-    }
-
-    private var quickTools: [StudioTool] {
-        [
-            StudioTool(id: "image_to_video", title: "Image to Video", icon: "photo", badge: nil, action: .videoGeneration),
-            StudioTool(id: "text_to_video", title: "Text to Video", icon: "text.bubble", badge: nil, action: .videoGeneration),
-            StudioTool(id: "avatar", title: "Avatar 2.0", icon: "person.crop.circle", badge: nil, action: .tool("ai_influencer")),
-            StudioTool(id: "motion", title: "Motion Control", icon: "scope", badge: nil, action: .tool("video_creative")),
-            StudioTool(id: "text_to_image", title: "AI Image", icon: "photo.badge.plus", badge: nil, action: .imageGeneration(ImageGenerationCatalog.custom)),
-            StudioTool(id: "ai_video", title: "AI Video", icon: "video", badge: "Motion", action: .videoGeneration),
-            StudioTool(id: "elements", title: "Карточки", icon: "rectangle.grid.2x2", badge: nil, action: imageAction("product_cards")),
-            StudioTool(id: "restyle", title: "Restyle", icon: "paintpalette", badge: nil, action: imageAction("insta_pack")),
-            StudioTool(id: "effects", title: "Effects", icon: "wand.and.sparkles", badge: nil, action: imageAction("story")),
-            StudioTool(id: "sound", title: "Sound", icon: "waveform", badge: nil, action: .voiceGeneration),
-            StudioTool(id: "logo", title: "Лого", icon: "seal", badge: nil, action: imageAction("logo")),
-            StudioTool(id: "post", title: "Пост", icon: "square.grid.2x2", badge: nil, action: imageAction("post")),
-            StudioTool(id: "product", title: "Фото товара", icon: "shippingbox", badge: nil, action: imageAction("product")),
-            StudioTool(id: "packaging", title: "Упаковка", icon: "cube.box", badge: nil, action: imageAction("packaging")),
-            StudioTool(id: "startup", title: "Startup Chat", icon: "sparkles.rectangle.stack", badge: nil, action: .startupChat)
-        ]
-    }
-
-    private var quickToolPages: [[StudioTool]] {
-        quickTools.chunked(into: 8)
     }
 
     private var trendCards: [VisualCardItem] {
         [
-            VisualCardItem(id: "ai_influencer", title: "AI-инфлюенсер", subtitle: "Персонаж для роликов", assetName: "HomeTrendInfluencer", systemImage: "person.crop.square", action: .tool("ai_influencer"), showsPlay: false),
             VisualCardItem(id: "fruit_video", title: "Живые фрукты", subtitle: "Видео для Reels", assetName: "HomeTrendFruitVideo", systemImage: "play.tv", action: .liveFruits, showsPlay: true),
-            VisualCardItem(id: "trend_post", title: "Пост-тренд", subtitle: "Идея для ленты", assetName: "HomeTrendPost", systemImage: "sparkles", action: imageAction("post"), showsPlay: false),
+            VisualCardItem(id: "nano_banana", title: "Nano Banana + GPT Image", subtitle: "AI-креативы", assetName: "HomeTrendNanoBanana", systemImage: "sparkles", action: .imageGeneration(ImageGenerationCatalog.custom), showsPlay: false),
             VisualCardItem(id: "live_video", title: "Видео тренды", subtitle: "Shorts и TikTok", assetName: "HomeTrendLiveVideo", systemImage: "film.stack", action: .videoGeneration, showsPlay: true),
             VisualCardItem(id: "target", title: "Таргет", subtitle: "Креативы теста", assetName: "HomeCoverTargetAds", systemImage: "scope", action: imageAction("target_ad"), showsPlay: false)
         ]
@@ -379,10 +258,10 @@ struct HomeView: View {
         [
             VisualCardItem(id: "youtube", title: "Обложка YouTube", subtitle: "Превью с высоким CTR", assetName: "HomeCoverYoutube", systemImage: "play.rectangle", action: imageAction("youtube_cover"), showsPlay: false),
             VisualCardItem(id: "product_cards", title: "Карточки товара", subtitle: "Маркетплейс и сайт", assetName: "HomeCoverProductCards", systemImage: "rectangle.grid.2x2", action: imageAction("product_cards"), showsPlay: false),
-            VisualCardItem(id: "video", title: "AI Video", subtitle: "Фото или текст в ролик", assetName: "HomeUtilityVideo", systemImage: "video", action: .videoGeneration, showsPlay: true),
-            VisualCardItem(id: "insta", title: "Упаковка Instagram", subtitle: "Посты и сторис", assetName: "HomeUtilityInstaPack", systemImage: "square.stack.3d.up", action: imageAction("insta_pack"), showsPlay: false),
             VisualCardItem(id: "product", title: "Фото товара", subtitle: "Кадр для рекламы", assetName: "HomeUtilityProduct", systemImage: "shippingbox", action: imageAction("product"), showsPlay: false),
-            VisualCardItem(id: "logo", title: "Лого", subtitle: "Знак для бренда", assetName: "HomeUtilityLogo", systemImage: "seal", action: imageAction("logo"), showsPlay: false)
+            VisualCardItem(id: "logo", title: "Лого", subtitle: "Знак для бренда", assetName: "HomeUtilityLogo", systemImage: "seal", action: imageAction("logo"), showsPlay: false),
+            VisualCardItem(id: "packaging", title: "Упаковка", subtitle: "Единый стиль бренда", assetName: "HomeUtilityPackaging", systemImage: "cube.box", action: imageAction("packaging"), showsPlay: false),
+            VisualCardItem(id: "target", title: "Креативы для рекламы", subtitle: "Статика для тестов", assetName: "HomeCoverTargetAds", systemImage: "scope", action: imageAction("target_ad"), showsPlay: false)
         ]
     }
 
@@ -512,14 +391,6 @@ private struct HomePromo: Identifiable {
     let action: HomeRoute
 }
 
-private struct StudioTool: Identifiable {
-    let id: String
-    let title: String
-    let icon: String
-    let badge: String?
-    let action: HomeRoute
-}
-
 private struct VisualCardItem: Identifiable {
     let id: String
     let title: String
@@ -538,7 +409,7 @@ private struct HeroSlideCard: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            CardMedia(assetName: slide.assetName, isMotionActive: activePage == pageIndex)
+            CardMedia(assetName: slide.assetName, isMotionActive: false)
 
             LinearGradient(
                 colors: [
@@ -590,58 +461,43 @@ private struct HomePromoCard: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            LinearGradient(
-                colors: [
-                    promo.accent.opacity(0.34),
-                    promo.accent.opacity(0.10),
-                    Color.white.opacity(0.04)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            Circle()
-                .fill(promo.accent.opacity(0.30))
-                .frame(width: 92, height: 92)
-                .blur(radius: 30)
-                .offset(x: 78, y: -46)
-
+            Color.white
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Image(systemName: promo.systemImage)
                         .font(.system(size: 21, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.black)
                         .frame(width: 42, height: 42)
-                        .background(promo.accent.opacity(0.55))
+                        .background(Color.black.opacity(0.06))
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                     Spacer(minLength: 0)
 
                     Image(systemName: "arrow.up.right")
                         .font(.system(size: 13, weight: .black))
-                        .foregroundColor(.white.opacity(0.82))
+                        .foregroundColor(X5Style.blue)
                 }
 
                 Text(promo.title)
                     .font(.system(size: 17, weight: .black))
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
                     .lineLimit(2)
                     .minimumScaleFactor(0.78)
 
                 Text(promo.subtitle)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.64))
+                    .foregroundColor(.black.opacity(0.55))
                     .lineLimit(2)
             }
             .padding(14)
         }
         .frame(maxWidth: .infinity, minHeight: 132, alignment: .bottomLeading)
-        .background(Color.white.opacity(0.045))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                .stroke(Color.white.opacity(0.85), lineWidth: 1)
         )
+        .shadow(color: Color.black.opacity(0.22), radius: 13, x: 0, y: 8)
     }
 }
 
@@ -659,49 +515,6 @@ private struct PageDots: View {
             }
         }
         .accessibilityHidden(true)
-    }
-}
-
-private struct StudioToolButton: View {
-    let tool: StudioTool
-
-    var body: some View {
-        VStack(spacing: 8) {
-            ZStack(alignment: .topTrailing) {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color.white.opacity(0.055))
-                    .frame(width: 48, height: 48)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                    )
-
-                Image(systemName: tool.icon)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.92))
-                    .frame(width: 48, height: 48)
-
-                if let badge = tool.badge {
-                    Text(badge)
-                        .font(.system(size: 8, weight: .black))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 3)
-                        .background(Color.white)
-                        .clipShape(Capsule())
-                        .offset(x: 9, y: -7)
-                }
-            }
-
-            Text(tool.title)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.white.opacity(0.88))
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.76)
-                .frame(height: 24, alignment: .top)
-        }
-        .frame(maxWidth: .infinity)
     }
 }
 
@@ -738,11 +551,69 @@ private struct TrendCard: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
         }
-        .frame(width: 148, height: 178)
+        // The client-supplied Nano Banana artwork is landscape and contains
+        // important center-aligned labels. Give it enough width to keep those
+        // labels readable instead of applying a destructive portrait crop.
+        .frame(width: item.id == "nano_banana" ? 236 : 148, height: 178)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
+    }
+}
+
+private struct InstagramFeatureCard: View {
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                LinearGradient(
+                    colors: [.white, Color(red: 0.94, green: 0.91, blue: 1.0)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                Image("HomeUtilityInstaPack")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: proxy.size.width * 0.57, height: proxy.size.height)
+                    .clipped()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                    .mask(
+                        LinearGradient(
+                            colors: [.clear, .black.opacity(0.88), .black],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Оформление")
+                        .font(.system(size: 26, weight: .black))
+                        .foregroundColor(.black.opacity(0.86))
+                    Text("Instagram")
+                        .font(.system(size: 34, weight: .black))
+                        .italic()
+                        .foregroundColor(Color(red: 0.48, green: 0.30, blue: 0.78))
+                    Text("Посты и сторис\nв едином стиле")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.black.opacity(0.60))
+                    Text("СОЗДАТЬ")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundColor(.black)
+                        .frame(width: 82, height: 28)
+                        .background(X5Style.blue)
+                        .clipShape(Capsule())
+                        .padding(.top, 6)
+                }
+                .padding(20)
+            }
+        }
+        .frame(height: 218)
+        .clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 23, style: .continuous)
+                .stroke(Color.white.opacity(0.64), lineWidth: 1)
         )
     }
 }
@@ -829,14 +700,5 @@ private struct PlayBadge: View {
             .frame(width: 32, height: 32)
             .background(.ultraThinMaterial)
             .clipShape(Circle())
-    }
-}
-
-private extension Array {
-    func chunked(into size: Int) -> [[Element]] {
-        guard size > 0 else { return [self] }
-        return stride(from: 0, to: count, by: size).map {
-            Array(self[$0..<Swift.min($0 + size, count)])
-        }
     }
 }

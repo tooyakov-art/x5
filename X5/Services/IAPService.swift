@@ -225,6 +225,24 @@ enum IAPProductCatalog {
     }
 }
 
+enum IAPProductAvailability {
+    static func missingCreditPackIDs<S: Sequence>(
+        loadedProductIDs: S
+    ) -> [String] where S.Element == String {
+        let loaded = Set(loadedProductIDs)
+        return IAPProductCatalog.visibleCreditPacks
+            .map(\.productID)
+            .filter { !loaded.contains($0) }
+    }
+
+    static func hasAnyCreditPack<S: Sequence>(
+        loadedProductIDs: S
+    ) -> Bool where S.Element == String {
+        missingCreditPackIDs(loadedProductIDs: loadedProductIDs).count
+            < IAPProductCatalog.visibleCreditPacks.count
+    }
+}
+
 enum IAPSettingsPurchaseVisibilityPolicy {
     static let shouldShowRestorePurchases = true
 
@@ -280,6 +298,7 @@ final class IAPService: ObservableObject {
     @Published private(set) var activeSubscriptionSnapshot = IAPActiveSubscriptionSnapshot(
         productIDs: [String]()
     )
+    @Published private(set) var isLoadingProducts: Bool = false
     @Published private(set) var isPurchasing: Bool = false
     @Published var lastError: String?
 
@@ -322,10 +341,18 @@ final class IAPService: ObservableObject {
     }
 
     func loadProducts() async {
+        guard !isLoadingProducts else { return }
+        isLoadingProducts = true
         lastError = nil
+        defer { isLoadingProducts = false }
         do {
             let loaded = try await Product.products(for: Self.allProductIDs)
             products = Dictionary(uniqueKeysWithValues: loaded.map { ($0.id, $0) })
+            if !IAPProductAvailability.hasAnyCreditPack(
+                loadedProductIDs: products.keys
+            ) {
+                lastError = LocalizationService.shared.t("iap_products_unavailable")
+            }
             await syncCurrentEntitlements(source: "load")
         } catch {
             lastError = error.localizedDescription
@@ -349,7 +376,10 @@ final class IAPService: ObservableObject {
 
     func purchase(productID: String) async -> Bool {
         lastError = nil
-        guard let product = products[productID] else { return false }
+        guard let product = products[productID] else {
+            lastError = LocalizationService.shared.t("iap_products_unavailable")
+            return false
+        }
         guard let appUserToken = currentUserToken() else {
             lastError = LocalizationService.shared.t("iap_signin_first")
             return false

@@ -20,6 +20,7 @@ concurrency:
 jobs:
   reconcile:
     runs-on: ubuntu-latest
+    environment: google-play-production
     timeout-minutes: 10
     env:
       ENDPOINT: https://afwznqjpshybmqhlewmy.supabase.co/functions/v1/google-play-notifications

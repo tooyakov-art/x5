@@ -69,6 +69,8 @@ enum CourseVideoUploadPolicy {
     static let directUploadLimitBytes: Int64 = 47_000_000
     static let transcodeTargetBytes: Int64 = 45_000_000
 
+    static let uploadGuidance = "До 47 МБ загружается напрямую. Большие файлы автоматически сжимаются примерно до 45 МБ и затем отправляются возобновляемой загрузкой. Очень длинное видео лучше разделить на уроки."
+
     private static let targetPayloadFraction = 0.90
     private static let audioBitRate = 48_000
     private static let minimumVideoBitRate = 64_000

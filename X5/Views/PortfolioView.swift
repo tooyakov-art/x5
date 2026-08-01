@@ -78,12 +78,12 @@ struct PortfolioGrid: View {
             }
         }
         .task {
-            guard let token = auth.accessToken else { return }
+            guard let token = await auth.freshAccessToken() else { return }
             await service.load(userId: userId, accessToken: token, includeUnapproved: canEdit)
         }
         .sheet(isPresented: $showingAdd) {
             AddPortfolioItemView { data, mediaType, mime, ext, thumbnailData, title, desc in
-                guard let token = auth.accessToken else { return false }
+                guard let token = await auth.freshAccessToken() else { return false }
                 return await service.addMedia(
                     data: data,
                     type: mediaType,
@@ -104,8 +104,10 @@ struct PortfolioGrid: View {
                 initialIndex: selectedIndex ?? 0,
                 canEdit: canEdit,
                 onDelete: { item in
-                    guard let token = auth.accessToken else { return }
-                    Task { await service.delete(itemId: item.id, accessToken: token) }
+                    Task {
+                        guard let token = await auth.freshAccessToken() else { return }
+                        await service.delete(itemId: item.id, accessToken: token)
+                    }
                     showingPostViewer = false
                 },
                 onTogglePin: { item in
@@ -113,28 +115,34 @@ struct PortfolioGrid: View {
                     pinnedTick += 1
                 },
                 onUpdateDetails: { item, title, description in
-                    guard let token = auth.accessToken else { return nil }
+                    guard let token = await auth.freshAccessToken() else { return nil }
                     return await service.updateDetails(itemId: item.id, title: title, description: description, accessToken: token)
                 },
                 isPinned: { item in
                     PortfolioPinnedStore.isPinned(item.id)
                 },
                 onLoadLike: { item in
-                    guard let token = auth.accessToken, let uid = auth.userId else {
+                    guard let uid = auth.userId,
+                          let token = await auth.freshAccessToken()
+                    else {
                         return PortfolioLikeState(isLiked: false, count: 0)
                     }
                     return await service.likeState(itemId: item.id, currentUserId: uid, accessToken: token)
                 },
                 onSetLiked: { item, liked in
-                    guard let token = auth.accessToken, let uid = auth.userId else { return false }
+                    guard let uid = auth.userId,
+                          let token = await auth.freshAccessToken()
+                    else { return false }
                     return await service.setLiked(itemId: item.id, liked: liked, currentUserId: uid, accessToken: token)
                 },
                 onLoadComments: { item in
-                    guard let token = auth.accessToken else { return [] }
+                    guard let token = await auth.freshAccessToken() else { return [] }
                     return await service.loadComments(itemId: item.id, accessToken: token)
                 },
                 onAddComment: { item, text in
-                    guard let token = auth.accessToken, let uid = auth.userId else { return nil }
+                    guard let uid = auth.userId,
+                          let token = await auth.freshAccessToken()
+                    else { return nil }
                     return await service.addComment(itemId: item.id,
                                                     userId: uid,
                                                     userName: auth.userEmail,
@@ -251,8 +259,8 @@ private struct PortfolioGridCell: View {
     }
 
     private var imageURLString: String? {
-        if let thumbnail = item.thumbnailUrl, !thumbnail.isEmpty { return thumbnail }
-        return item.mediaUrl
+        if let thumbnail = item.displayThumbnailUrl, !thumbnail.isEmpty { return thumbnail }
+        return item.displayMediaUrl
     }
 }
 
@@ -274,7 +282,7 @@ private struct PortfolioFeedCard: View {
                         Image(systemName: "play.circle.fill")
                             .font(.system(size: 52, weight: .semibold))
                             .foregroundColor(.white.opacity(0.9))
-                    } else if let s = item.mediaUrl, let url = URL(string: s) {
+                    } else if let s = item.displayMediaUrl, let url = URL(string: s) {
                         CachedAsyncImage(url: url) { image in
                             image.resizable().scaledToFill()
                         } placeholder: {
@@ -411,7 +419,7 @@ private struct PortfolioCell: View {
                     Image(systemName: "play.circle.fill")
                         .font(.system(size: 34, weight: .semibold))
                         .foregroundColor(.white.opacity(0.88))
-                } else if let s = item.mediaUrl, let url = URL(string: s) {
+                } else if let s = item.displayMediaUrl, let url = URL(string: s) {
                     CachedAsyncImage(url: url) { image in
                         image.resizable().scaledToFill()
                     } placeholder: {
@@ -593,7 +601,7 @@ private struct PortfolioInstagramPostPage: View {
         .task {
             likeState = await onLoadLike()
             comments = await onLoadComments()
-            if item.type == "video", let s = item.mediaUrl, let url = URL(string: s) {
+            if item.type == "video", let s = item.displayMediaUrl, let url = URL(string: s) {
                 player = AVPlayer(url: url)
             }
         }
@@ -623,7 +631,7 @@ private struct PortfolioInstagramPostPage: View {
     private var media: some View {
         if item.type == "video", let player {
             VideoPlayer(player: player)
-        } else if let s = item.mediaUrl, let url = URL(string: s) {
+        } else if let s = item.displayMediaUrl, let url = URL(string: s) {
             CachedAsyncImage(url: url) { image in
                 image.resizable().scaledToFit()
             } placeholder: {
@@ -649,7 +657,7 @@ private struct PortfolioInstagramPostPage: View {
             Image(systemName: "bubble.right")
 
             if item.moderationStatus == "approved" {
-                ShareLink(item: item.mediaUrl ?? "") {
+                ShareLink(item: item.displayMediaUrl ?? "") {
                     Image(systemName: "paperplane")
                 }
             }
@@ -868,7 +876,7 @@ private struct PortfolioPostViewer: View {
             .task {
                 likeState = await onLoadLike()
                 comments = await onLoadComments()
-                if item.type == "video", let s = item.mediaUrl, let url = URL(string: s) {
+                if item.type == "video", let s = item.displayMediaUrl, let url = URL(string: s) {
                     player = AVPlayer(url: url)
                 }
             }
@@ -904,7 +912,7 @@ private struct PortfolioPostViewer: View {
     private var media: some View {
         if item.type == "video", let player {
             VideoPlayer(player: player)
-        } else if let s = item.mediaUrl, let url = URL(string: s) {
+        } else if let s = item.displayMediaUrl, let url = URL(string: s) {
             CachedAsyncImage(url: url) { image in
                 image.resizable().scaledToFit()
             } placeholder: {
@@ -930,7 +938,7 @@ private struct PortfolioPostViewer: View {
             Label("\(comments.count)", systemImage: "text.bubble")
 
             if item.moderationStatus == "approved" {
-                ShareLink(item: item.mediaUrl ?? "") {
+                ShareLink(item: item.displayMediaUrl ?? "") {
                     Label("Поделиться", systemImage: "square.and.arrow.up")
                 }
             }
@@ -1257,43 +1265,52 @@ struct AddPortfolioItemView: View {
 
     private func makeVideoThumbnail(from data: Data, fileExtension: String) async -> Data? {
         await Task.detached(priority: .userInitiated) {
-            let safeExtension = fileExtension.isEmpty ? "mov" : fileExtension
-            let fileURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("portfolio-preview-\(UUID().uuidString)")
-                .appendingPathExtension(safeExtension)
-            defer { try? FileManager.default.removeItem(at: fileURL) }
-
-            do {
-                try data.write(to: fileURL, options: .atomic)
-                let asset = AVURLAsset(url: fileURL)
-                let generator = AVAssetImageGenerator(asset: asset)
-                generator.appliesPreferredTrackTransform = true
-                generator.maximumSize = CGSize(width: 1280, height: 1280)
-
-                let duration = try await asset.load(.duration)
-                let durationSeconds = duration.seconds
-                let thumbnailSampleCount = 12
-                let thumbnailFractions: [Double] = (0..<thumbnailSampleCount)
-                    .map { (Double($0) + 0.5) / Double(thumbnailSampleCount) }
-                let requestedSeconds = durationSeconds.isFinite && durationSeconds > 0
-                    ? thumbnailFractions.map { min(max($0 * durationSeconds, 0), durationSeconds) }
-                    : [0.0]
-
-                var frames: [UIImage] = []
-                for seconds in requestedSeconds {
-                    let time = CMTime(seconds: seconds, preferredTimescale: 600)
-                    if let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) {
-                        frames.append(UIImage(cgImage: cgImage))
-                    }
-                }
-                return makeVideoContactSheet(from: frames)
-            } catch {
-                return nil
-            }
+            await Self.generateVideoThumbnail(from: data, fileExtension: fileExtension)
         }.value
     }
 
-    private func makeVideoContactSheet(from frames: [UIImage]) -> Data? {
+    /// This pipeline owns every UIKit value inside one detached task and only
+    /// crosses the actor boundary with immutable Data.
+    nonisolated private static func generateVideoThumbnail(
+        from data: Data,
+        fileExtension: String
+    ) async -> Data? {
+        let safeExtension = fileExtension.isEmpty ? "mov" : fileExtension
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("portfolio-preview-\(UUID().uuidString)")
+            .appendingPathExtension(safeExtension)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        do {
+            try data.write(to: fileURL, options: .atomic)
+            let asset = AVURLAsset(url: fileURL)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 1280, height: 1280)
+
+            let duration = try await asset.load(.duration)
+            let durationSeconds = duration.seconds
+            let thumbnailSampleCount = 12
+            let thumbnailFractions: [Double] = (0..<thumbnailSampleCount)
+                .map { (Double($0) + 0.5) / Double(thumbnailSampleCount) }
+            let requestedSeconds = durationSeconds.isFinite && durationSeconds > 0
+                ? thumbnailFractions.map { min(max($0 * durationSeconds, 0), durationSeconds) }
+                : [0.0]
+
+            var frames: [UIImage] = []
+            for seconds in requestedSeconds {
+                let time = CMTime(seconds: seconds, preferredTimescale: 600)
+                if let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) {
+                    frames.append(UIImage(cgImage: cgImage))
+                }
+            }
+            return makeVideoContactSheet(from: frames)
+        } catch {
+            return nil
+        }
+    }
+
+    nonisolated private static func makeVideoContactSheet(from frames: [UIImage]) -> Data? {
         let previewFrames = Array(frames.prefix(12))
         guard !previewFrames.isEmpty else { return nil }
 

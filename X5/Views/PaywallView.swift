@@ -70,6 +70,27 @@ struct PaywallView: View {
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
                     }
+
+                    if didLoadProducts && (hasMissingCreditPacks || iap.lastError != nil) {
+                        Button {
+                            Task { await reloadProducts() }
+                        } label: {
+                            Group {
+                                if iap.isLoadingProducts {
+                                    ProgressView().tint(.black)
+                                } else {
+                                    Text(loc.t("btn_retry"))
+                                        .font(.system(size: 15, weight: .bold))
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: 24)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.accentColor)
+                        .foregroundStyle(.black)
+                        .disabled(iap.isLoadingProducts || iap.isPurchasing)
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 28)
@@ -90,8 +111,7 @@ struct PaywallView: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .task {
-            await iap.loadProducts()
-            didLoadProducts = true
+            await reloadProducts()
         }
         .alert(loc.t("credit_store_success_title"), isPresented: $showSuccess) {
             Button(loc.t("btn_done")) { dismiss() }
@@ -201,6 +221,18 @@ struct PaywallView: View {
             X5Feedback.success()
             showSuccess = true
         }
+    }
+
+    private var hasMissingCreditPacks: Bool {
+        !IAPProductAvailability.missingCreditPackIDs(
+            loadedProductIDs: iap.products.keys
+        ).isEmpty
+    }
+
+    private func reloadProducts() async {
+        didLoadProducts = false
+        await iap.loadProducts()
+        didLoadProducts = true
     }
 
     private func refreshProfile() async -> Bool {

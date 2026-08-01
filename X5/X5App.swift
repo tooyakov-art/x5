@@ -78,7 +78,12 @@ struct X5App: App {
             PushNotifications.shared.bootstrap()
             PushNotifications.shared.currentUserDidChange(
                 userId: auth.userId,
-                accessToken: auth.accessToken
+                accessToken: auth.accessToken,
+                freshAccessTokenProvider: { [weak auth] in
+                    await auth?.freshAccessToken(
+                        invalidateSessionOnCredentialFailure: false
+                    )
+                }
             )
         } else {
             PushNotifications.shared.cancelPromoLoop()

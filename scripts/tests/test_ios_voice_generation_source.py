@@ -23,14 +23,26 @@ class IOSVoiceGenerationSourceTests(unittest.TestCase):
         self.assertIn("VoiceGenerationLocalStore", source)
         self.assertIn("pendingRequestID", source)
 
-    def test_home_routes_sound_to_real_voice_generator(self):
+    def test_voice_route_stays_implemented_but_is_not_exposed_without_backend_gate(self):
         self.assertTrue(VIEW.is_file())
         home = HOME.read_text(encoding="utf-8")
 
         self.assertIn("case voiceGeneration", home)
         self.assertIn('return "voice_generation"', home)
-        self.assertIn('action: .voiceGeneration', home)
-        self.assertIn("VoiceGeneratorView()", home)
+        self.assertRegex(
+            home,
+            r"case \.voiceGeneration:\s+VoiceGeneratorView\(\)",
+        )
+
+        visible_collections = home[
+            home.index("private var heroSlides") : home.index("private func imageAction")
+        ]
+        self.assertNotIn(
+            "action: .voiceGeneration",
+            visible_collections,
+            "Voice must not be shown as a working Home card until the deployed "
+            "backend availability gate exists.",
+        )
 
     def test_voice_ui_has_native_input_playback_and_sharing(self):
         self.assertTrue(VIEW.is_file())

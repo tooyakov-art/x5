@@ -54,6 +54,23 @@ final class IAPCreditStoreTests: XCTestCase {
         XCTAssertTrue(IAPProductCatalog.kind(for: IAPService.proMonthlyProductID).activatesLegacyPro)
     }
 
+    func testProductAvailabilityReportsMissingPacksInCatalogOrder() {
+        let loaded = [
+            "com.x5studio.app.credits.2000",
+            IAPService.verifiedMonthlyProductID
+        ]
+
+        XCTAssertEqual(
+            IAPProductAvailability.missingCreditPackIDs(loadedProductIDs: loaded),
+            [
+                "com.x5studio.app.credits.1000",
+                "com.x5studio.app.credits.5000"
+            ]
+        )
+        XCTAssertTrue(IAPProductAvailability.hasAnyCreditPack(loadedProductIDs: loaded))
+        XCTAssertFalse(IAPProductAvailability.hasAnyCreditPack(loadedProductIDs: [String]()))
+    }
+
     func testUnfinishedReplayIncludesConsumablesAndOnlyRevokedVerification() {
         for pack in IAPProductCatalog.visibleCreditPacks {
             XCTAssertTrue(
@@ -158,6 +175,7 @@ final class IAPCreditStoreTests: XCTestCase {
             "credit_store_success_title",
             "credit_store_success_message",
             "credit_store_success_refresh_pending",
+            "iap_products_unavailable",
             "profile_store_title",
             "profile_store_subtitle",
             "settings_restore_subscriptions",

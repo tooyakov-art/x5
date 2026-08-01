@@ -158,6 +158,7 @@ extension LocalizationService {
             "iap_purchase_unverified": "App Store не подтвердил покупку.",
             "iap_purchase_pending": "Покупка ожидает подтверждения App Store.",
             "iap_delivery_pending": "Покупка пока не начислена. Мы повторим доставку, когда сервер будет доступен.",
+            "iap_products_unavailable": "Товары App Store не загрузились. Проверь подключение и попробуй снова.",
             "iap_account_mismatch": "Эта покупка принадлежит другому аккаунту X five marketing. Войди в него, чтобы завершить начисление.",
 
             // Tabs
@@ -351,6 +352,7 @@ extension LocalizationService {
             "paywall_subscription_terms": "X Five Lite, X Five Pro и X Five Max — автоматически продлеваемые ежемесячные подписки от 1000 ₸ до 5000 ₸. Синяя галочка покупается отдельно через App Store. Оплата списывается с Apple ID при подтверждении покупки. Подписки продлеваются автоматически, если не отменить их минимум за 24 часа до окончания периода. Управлять и отменить можно в Настройках Apple ID. Любая неиспользованная часть бесплатного периода (если есть) сгорает при покупке подписки.",
             "paywall_restore": "Восстановить покупки",
 
+            "hub_tasks_load_error": "Не удалось обновить задания. Показаны последние загруженные данные.",
             "credit_store_title": "Магазин",
             "credit_store_description": "Пополняй баланс разовыми пакетами для AI-инструментов и курсов.",
             "credit_store_balance": "Текущий баланс",
@@ -707,6 +709,7 @@ extension LocalizationService {
             "iap_purchase_unverified": "The App Store could not verify this purchase.",
             "iap_purchase_pending": "This purchase is awaiting App Store approval.",
             "iap_delivery_pending": "The purchase has not been delivered yet. We will retry when the server is available.",
+            "iap_products_unavailable": "App Store products could not be loaded. Check your connection and try again.",
             "iap_account_mismatch": "This purchase belongs to another X five marketing account. Sign in to that account to finish delivery.",
 
             "tab_home": "Home",
@@ -895,6 +898,7 @@ extension LocalizationService {
             "paywall_subscription_terms": "X Five Lite, X Five Pro, and X Five Max are auto-renewing monthly subscriptions from 1000 ₸ to 5000 ₸. The blue verified badge is purchased separately through the App Store. Payment will be charged to your Apple ID at purchase confirmation. Subscriptions auto-renew unless cancelled at least 24 hours before the end of the current period. Manage or cancel anytime in your Apple ID settings. Any unused portion of a free trial period, if offered, will be forfeited when you purchase a subscription.",
             "paywall_restore": "Restore purchases",
 
+            "hub_tasks_load_error": "Tasks could not be refreshed. The last loaded data is still shown.",
             "credit_store_title": "Store",
             "credit_store_description": "Top up once with credit packs for AI tools and courses.",
             "credit_store_balance": "Current balance",
@@ -1248,6 +1252,7 @@ extension LocalizationService {
             "iap_purchase_unverified": "App Store бұл сатып алуды растамады.",
             "iap_purchase_pending": "Сатып алу App Store растауын күтуде.",
             "iap_delivery_pending": "Сатып алу әлі есептелмеді. Сервер қолжетімді болғанда қайта жеткіземіз.",
+            "iap_products_unavailable": "App Store тауарлары жүктелмеді. Байланысты тексеріп, қайта көріңіз.",
             "iap_account_mismatch": "Бұл сатып алу басқа X five marketing аккаунтына тиесілі. Есептеуді аяқтау үшін сол аккаунтқа кіріңіз.",
 
             "tab_home": "Басты",
@@ -1436,6 +1441,7 @@ extension LocalizationService {
             "paywall_subscription_terms": "X Five Lite, X Five Pro және X Five Max — 1000 ₸-ден 5000 ₸-ге дейінгі автоматты жаңартылатын айлық жазылымдар. Көк растау белгісі App Store арқылы бөлек сатып алынады. Төлем сатып алуды растаған кезде Apple ID-ге жазылады. Ағымдағы кезеңнің аяқталуына кемінде 24 сағат қалғанда тоқтатылмаса, жазылым автоматты түрде жаңарады. Жазылымды Apple ID параметрлерінде басқаруға және тоқтатуға болады.",
             "paywall_restore": "Сатып алуларды қалпына келтіру",
 
+            "hub_tasks_load_error": "Тапсырмаларды жаңарту мүмкін болмады. Соңғы жүктелген деректер көрсетіліп тұр.",
             "credit_store_title": "Дүкен",
             "credit_store_description": "AI-құралдар мен курстар үшін балансты бір реттік кредит пакеттерімен толтыр.",
             "credit_store_balance": "Ағымдағы баланс",

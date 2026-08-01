@@ -143,6 +143,173 @@ extension ChatMessageRow {
     }
 }
 
+struct ChatMessagePage: Equatable {
+    let rows: [ChatMessageRow]
+    let hasMore: Bool
+}
+
+enum ChatMessageTimeline {
+    static func merge(_ current: [ChatMessageRow], with incoming: [ChatMessageRow]) -> [ChatMessageRow] {
+        var byID: [String: ChatMessageRow] = [:]
+        for row in current { byID[row.id] = row }
+        for row in incoming { byID[row.id] = row }
+        return byID.values.sorted { lhs, rhs in
+            let left = date(lhs.createdAt)
+            let right = date(rhs.createdAt)
+            if left == right { return lhs.id < rhs.id }
+            return left < right
+        }
+    }
+
+    private static func date(_ value: String?) -> Date {
+        guard let value else { return .distantPast }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value)
+            ?? ISO8601DateFormatter().date(from: value)
+            ?? .distantPast
+    }
+}
+
+enum ChatMediaPolicy {
+    static let maximumImageBytes = 12 * 1_024 * 1_024
+    static let maximumAudioBytes = 20 * 1_024 * 1_024
+    /// The current Supabase project is on the 50 MB Storage tier. Keep the
+    /// same safety boundary as CourseUP so protocol overhead never turns an
+    /// otherwise valid video into a late 413 response.
+    static let maximumVideoBytes = 47_000_000
+    static let bucket = "chat-media"
+    static let canonicalPublicPathPrefix = "/storage/v1/object/public/\(bucket)/"
+    static let canonicalAuthenticatedPathPrefix = "/storage/v1/object/authenticated/\(bucket)/"
+
+    static func accepts(byteCount: Int, mime: String) -> Bool {
+        guard byteCount > 0 else { return false }
+        switch mime.lowercased() {
+        case "image/jpeg", "image/png", "image/heic":
+            return byteCount <= maximumImageBytes
+        case "audio/m4a", "audio/mp4", "audio/aac", "audio/mpeg":
+            return byteCount <= maximumAudioBytes
+        case "video/mp4", "video/quicktime", "video/x-m4v":
+            return byteCount <= maximumVideoBytes
+        default:
+            return false
+        }
+    }
+
+    static func safePathComponent(_ value: String) -> String? {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        guard !value.isEmpty,
+              value.count <= 200,
+              value.unicodeScalars.allSatisfy(allowed.contains)
+        else { return nil }
+        return value
+    }
+
+    /// Extracts the private Storage object name from the public-shaped URL kept
+    /// in `messages.media_url`. Only the app's Supabase host and the exact
+    /// `chat-media` bucket are accepted; ambiguous encoded paths are rejected.
+    static func objectPath(
+        fromCanonicalURL rawValue: String,
+        expectedHost: String = "afwznqjpshybmqhlewmy.supabase.co",
+        expectedChatID: String? = nil
+    ) -> String? {
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard value == rawValue,
+              let components = URLComponents(string: value),
+              components.scheme?.lowercased() == "https",
+              components.host?.lowercased() == expectedHost.lowercased(),
+              components.port == nil,
+              components.user == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil
+        else { return nil }
+
+        let encodedPath = components.percentEncodedPath
+        let prefix: String
+        if encodedPath.hasPrefix(canonicalPublicPathPrefix) {
+            prefix = canonicalPublicPathPrefix
+        } else if encodedPath.hasPrefix(canonicalAuthenticatedPathPrefix) {
+            // Accepted for rows written during the short authenticated-URL
+            // transition; the database normalises new rows to the public form.
+            prefix = canonicalAuthenticatedPathPrefix
+        } else {
+            return nil
+        }
+
+        let encodedObjectPath = String(encodedPath.dropFirst(prefix.count))
+        guard let decodedObjectPath = encodedObjectPath.removingPercentEncoding,
+              decodedObjectPath == encodedObjectPath,
+              isValidObjectPath(decodedObjectPath)
+        else { return nil }
+
+        if let expectedChatID {
+            guard let safeChatID = safePathComponent(expectedChatID) else { return nil }
+            let pathComponents = decodedObjectPath
+                .split(separator: "/", omittingEmptySubsequences: false)
+                .map(String.init)
+            let isCanonicalLayout = pathComponents.first == safeChatID
+            // Android legacy rows used `chats/<chat_id>/...`. Keep this as a
+            // read-only compatibility path; all new iOS uploads use
+            // `<chat_id>/<user_id>/<file>`.
+            let isLegacyAndroidLayout = pathComponents.count >= 3
+                && pathComponents[0] == "chats"
+                && pathComponents[1] == safeChatID
+            guard isCanonicalLayout || isLegacyAndroidLayout else { return nil }
+        }
+        return decodedObjectPath
+    }
+
+    static func uploadObjectPath(
+        chatID: String,
+        userID: String,
+        fileExtension: String,
+        timestamp: Int = Int(Date().timeIntervalSince1970),
+        nonce: String = UUID().uuidString
+    ) -> String? {
+        guard timestamp > 0,
+              let safeChatID = safePathComponent(chatID),
+              let safeUserID = safePathComponent(userID),
+              let safeExtension = safePathComponent(fileExtension.lowercased()),
+              let safeNonce = safePathComponent(nonce)
+        else { return nil }
+        let path = "\(safeChatID)/\(safeUserID)/\(timestamp)-\(safeNonce.prefix(12)).\(safeExtension)"
+        return isValidObjectPath(path) ? path : nil
+    }
+
+    static func canonicalURL(objectPath: String, baseURL: URL) -> URL? {
+        guard isValidObjectPath(objectPath),
+              var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
+              components.scheme?.lowercased() == "https",
+              components.host != nil
+        else { return nil }
+        components.path = canonicalPublicPathPrefix + objectPath
+        components.query = nil
+        components.fragment = nil
+        return components.url
+    }
+
+    private static func isValidObjectPath(_ value: String) -> Bool {
+        guard !value.isEmpty,
+              value.count <= 1_024,
+              !value.hasPrefix("/"),
+              !value.hasSuffix("/"),
+              !value.contains("//"),
+              !value.contains(".."),
+              !value.contains("\\")
+        else { return false }
+
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
+        let components = value.split(separator: "/", omittingEmptySubsequences: false)
+        guard components.count >= 2 else { return false }
+        return components.allSatisfy { component in
+            !component.isEmpty
+                && component.count <= 255
+                && component.unicodeScalars.allSatisfy(allowed.contains)
+        }
+    }
+}
+
 // MARK: - Service
 
 @MainActor
@@ -151,8 +318,49 @@ final class ChatsService: ObservableObject {
     @Published private(set) var isLoading: Bool = false
     @Published var error: String?
 
-    private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
-    private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
+    private let baseURL: URL
+    private let anonKey: String
+    private let session: URLSession
+    private let signedMediaCacheTTL: TimeInterval
+    private let signedMediaLifetimeSeconds = 600
+    private var unauthorizedAccessTokenProvider: ((String) async -> String?)?
+
+    private struct CachedSignedMedia {
+        let url: URL
+        let expiresAt: Date
+        var lastAccessAt: Date
+    }
+    private static var signedMediaCache: [String: CachedSignedMedia] = [:]
+    private static let signedMediaCacheLimit = 128
+
+    init(
+        session: URLSession = .shared,
+        baseURL: URL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!,
+        anonKey: String = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0",
+        signedMediaCacheTTL: TimeInterval = 540
+    ) {
+        self.session = session
+        self.baseURL = baseURL
+        self.anonKey = anonKey
+        self.signedMediaCacheTTL = min(max(signedMediaCacheTTL, 0), 540)
+    }
+
+    func configureAccessTokenProvider(auth: Auth) {
+        let expectedUserId = auth.userId
+        unauthorizedAccessTokenProvider = { [weak auth] rejectedToken in
+            guard let auth, let expectedUserId else { return nil }
+            return await auth.accessTokenAfterUnauthorized(
+                rejectedAccessToken: rejectedToken,
+                expectedUserId: expectedUserId
+            )
+        }
+    }
+
+    func configureAccessTokenProvider(
+        _ provider: @escaping (String) async -> String?
+    ) {
+        unauthorizedAccessTokenProvider = provider
+    }
 
     // MARK: - Peer profile cache
     //
@@ -196,6 +404,7 @@ final class ChatsService: ObservableObject {
     private static var messageMemoryCache: [String: [ChatMessageRow]] = [:]
     private static var messageLastRefreshAt: [String: Date] = [:]
     private let messageRefreshTTL: TimeInterval = 30
+    static let messagePageSize = 60
 
     nonisolated private static func cacheRoot() -> URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -234,6 +443,7 @@ final class ChatsService: ObservableObject {
         peerCache.removeAll()
         messageMemoryCache.removeAll()
         messageLastRefreshAt.removeAll()
+        signedMediaCache.removeAll()
     }
 
     /// Synchronous read of cached messages — returns memory layer first,
@@ -249,6 +459,9 @@ final class ChatsService: ObservableObject {
     }
 
     func persistMessageCache(chatId: String, rows: [ChatMessageRow]) {
+        // Optimistic rows are view-local and have retry metadata outside the
+        // wire model. Never persist them as if the server accepted them.
+        let rows = rows.filter { !$0.id.hasPrefix("local-") }
         Self.messageMemoryCache[chatId] = rows
         let url = messageCacheURL(chatId: chatId)
         // Detach so disk write doesn't block the actor. Prune-after-write
@@ -297,13 +510,18 @@ final class ChatsService: ObservableObject {
     /// Surfaces a human error to `self.error` on any non-2xx response.
     private func sendAuthed(_ request: URLRequest, accessToken: String) async -> (Data, HTTPURLResponse)? {
         do {
-            let (data, resp) = try await URLSession.shared.data(for: request)
+            let (data, resp) = try await session.data(for: request)
             if let http = resp as? HTTPURLResponse, http.statusCode == 401 {
-                // Try to refresh the session via the global SupabaseClient instance.
-                if let newToken = await refreshGlobalToken() {
+                // Refresh only through the shared Auth/SupabaseClient
+                // single-flight session. Never rotate a Keychain token behind
+                // Auth's in-memory session.
+                if let unauthorizedAccessTokenProvider,
+                   let newToken = await unauthorizedAccessTokenProvider(accessToken),
+                   !newToken.isEmpty,
+                   newToken != accessToken {
                     var retry = request
                     retry.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
-                    let (rdata, rresp) = try await URLSession.shared.data(for: retry)
+                    let (rdata, rresp) = try await session.data(for: retry)
                     guard let rhttp = rresp as? HTTPURLResponse else { return nil }
                     if !(200..<300).contains(rhttp.statusCode) {
                         let body = String(data: rdata, encoding: .utf8) ?? ""
@@ -325,30 +543,6 @@ final class ChatsService: ObservableObject {
             self.error = "Сеть: \(error.localizedDescription)"
             return nil
         }
-    }
-
-    /// Pulls the current refresh token from UserDefaults, calls Supabase /token?grant_type=refresh_token,
-    /// stores the new tokens back. Returns the new access token or nil.
-    private func refreshGlobalToken() async -> String? {
-        guard let refresh = Keychain.string(for: "x5.session.refresh_token") else { return nil }
-        var c = URLComponents(url: baseURL.appendingPathComponent("auth/v1/token"), resolvingAgainstBaseURL: false)!
-        c.queryItems = [URLQueryItem(name: "grant_type", value: "refresh_token")]
-        var req = URLRequest(url: c.url!)
-        req.httpMethod = "POST"
-        req.setValue(anonKey, forHTTPHeaderField: "apikey")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: ["refresh_token": refresh])
-        guard let (data, resp) = try? await URLSession.shared.data(for: req),
-              let http = resp as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let access = json["access_token"] as? String
-        else { return nil }
-        Keychain.set(access, for: "x5.session.access_token")
-        if let newRefresh = json["refresh_token"] as? String {
-            Keychain.set(newRefresh, for: "x5.session.refresh_token")
-        }
-        return access
     }
 
     /// Load minimal public profile for any user by ID (used in chat header / row).
@@ -447,7 +641,8 @@ final class ChatsService: ObservableObject {
         components.queryItems = [
             URLQueryItem(name: "chat_id", value: "eq.\(chatId)"),
             URLQueryItem(name: "select", value: "*"),
-            URLQueryItem(name: "order", value: "created_at.asc")
+            URLQueryItem(name: "order", value: "created_at.desc"),
+            URLQueryItem(name: "limit", value: String(Self.messagePageSize))
         ]
         var request = URLRequest(url: components.url!)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -457,10 +652,59 @@ final class ChatsService: ObservableObject {
             // Network failed — return whatever's cached so the UI still has bubbles.
             return cachedMessages(chatId: chatId)
         }
-        let rows = (try? JSONDecoder().decode([ChatMessageRow].self, from: data)) ?? []
+        let rows = ((try? JSONDecoder().decode([ChatMessageRow].self, from: data)) ?? []).reversed()
+        let orderedRows = Array(rows)
         Self.messageLastRefreshAt[chatId] = Date()
-        persistMessageCache(chatId: chatId, rows: rows)
-        return rows
+        persistMessageCache(chatId: chatId, rows: orderedRows)
+        return orderedRows
+    }
+
+    func loadOlderMessages(
+        chatId: String,
+        before createdAt: String,
+        accessToken: String
+    ) async -> ChatMessagePage {
+        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/messages"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "chat_id", value: "eq.\(chatId)"),
+            URLQueryItem(name: "created_at", value: "lt.\(createdAt)"),
+            URLQueryItem(name: "select", value: "*"),
+            URLQueryItem(name: "order", value: "created_at.desc"),
+            URLQueryItem(name: "limit", value: String(Self.messagePageSize))
+        ]
+        var request = URLRequest(url: components.url!)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (data, http) = await sendAuthed(request, accessToken: accessToken),
+              (200..<300).contains(http.statusCode) else {
+            return ChatMessagePage(rows: [], hasMore: false)
+        }
+        let descending = (try? JSONDecoder().decode([ChatMessageRow].self, from: data)) ?? []
+        return ChatMessagePage(
+            rows: Array(descending.reversed()),
+            hasMore: descending.count == Self.messagePageSize
+        )
+    }
+
+    func loadNewerMessages(
+        chatId: String,
+        after createdAt: String,
+        accessToken: String
+    ) async -> [ChatMessageRow] {
+        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/messages"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "chat_id", value: "eq.\(chatId)"),
+            URLQueryItem(name: "created_at", value: "gt.\(createdAt)"),
+            URLQueryItem(name: "select", value: "*"),
+            URLQueryItem(name: "order", value: "created_at.asc"),
+            URLQueryItem(name: "limit", value: "100")
+        ]
+        var request = URLRequest(url: components.url!)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (data, http) = await sendAuthed(request, accessToken: accessToken),
+              (200..<300).contains(http.statusCode) else { return [] }
+        return (try? JSONDecoder().decode([ChatMessageRow].self, from: data)) ?? []
     }
 
     func loadChat(chatId: String, accessToken: String) async -> ChatRoom? {
@@ -573,12 +817,29 @@ final class ChatsService: ObservableObject {
         return created
     }
 
-    /// Uploads a binary attachment (image / audio) to Supabase Storage `chat-media` bucket
-    /// and returns the public URL. Caller then sends a message with `media_url`.
-    /// Requires: bucket `chat-media` to exist (public read) in Supabase Storage.
-    func uploadAttachment(chatId: String, data: Data, mime: String, ext: String, accessToken: String) async -> String? {
-        let path = "\(chatId)/\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(6)).\(ext)"
-        let uploadURL = baseURL.appendingPathComponent("storage/v1/object/chat-media/\(path)")
+    /// Uploads a binary attachment to the private `chat-media` bucket. The
+    /// database stores a stable public-shaped identifier; reads always exchange
+    /// that identifier for a short-lived signed URL.
+    func uploadAttachment(
+        chatId: String,
+        currentUserId: String,
+        data: Data,
+        mime: String,
+        ext: String,
+        accessToken: String
+    ) async -> String? {
+        guard ChatMediaPolicy.accepts(byteCount: data.count, mime: mime) else {
+            error = "Файл пустой, слишком большой или имеет неподдерживаемый формат."
+            return nil
+        }
+        guard let path = ChatMediaPolicy.uploadObjectPath(
+            chatID: chatId,
+            userID: currentUserId,
+            fileExtension: ext
+        ), let uploadURL = storageURL(pathPrefix: "/storage/v1/object/chat-media/", objectPath: path) else {
+            error = "Некорректный путь вложения."
+            return nil
+        }
         var req = URLRequest(url: uploadURL)
         req.httpMethod = "POST"
         req.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -588,16 +849,236 @@ final class ChatsService: ObservableObject {
         req.httpBody = data
         guard let (_, http) = await sendAuthed(req, accessToken: accessToken),
               (200..<300).contains(http.statusCode) else {
-            if error == nil { error = "Не удалось загрузить файл. Создай bucket chat-media в Supabase Storage." }
+            if error == nil { error = "Не удалось загрузить файл." }
             return nil
         }
-        return baseURL.appendingPathComponent("storage/v1/object/public/chat-media/\(path)").absoluteString
+        return ChatMediaPolicy.canonicalURL(objectPath: path, baseURL: baseURL)?.absoluteString
     }
 
-    /// Inserts a message of `type` ("image" / "audio" / "file") with the given media URL.
+    /// Video attachments use the same pinned TUS implementation as CourseUP.
+    /// It resumes interrupted transfers and asks the caller for a fresh JWT on
+    /// every request instead of freezing one token for a long upload.
+    func uploadVideoAttachment(
+        chatId: String,
+        currentUserId: String,
+        fileURL: URL,
+        mime: String,
+        ext: String,
+        accessToken: String,
+        accessTokenProvider: @escaping SupabaseResumableVideoUploader.AccessTokenProvider,
+        progress: @escaping SupabaseResumableVideoUploader.ProgressHandler
+    ) async -> String? {
+        error = nil
+        guard fileURL.isFileURL,
+              let byteCount = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+              ChatMediaPolicy.accepts(byteCount: byteCount, mime: mime)
+        else {
+            error = "Видео пустое, превышает 47 МБ или имеет неподдерживаемый формат."
+            return nil
+        }
+        guard let objectPath = ChatMediaPolicy.uploadObjectPath(
+            chatID: chatId,
+            userID: currentUserId,
+            fileExtension: ext
+        ) else {
+            error = "Некорректный путь вложения."
+            return nil
+        }
+
+        do {
+            let uploader = SupabaseResumableVideoUploader(
+                baseURL: baseURL,
+                anonKey: anonKey
+            )
+            return try await uploader.upload(
+                fileURL: fileURL,
+                bucketName: ChatMediaPolicy.bucket,
+                objectName: objectPath,
+                contentType: mime,
+                accessToken: accessToken,
+                accessTokenProvider: accessTokenProvider,
+                progress: progress
+            ).absoluteString
+        } catch {
+            self.error = error.localizedDescription
+            return nil
+        }
+    }
+
+    /// Exchanges the stable media identifier stored in Postgres for a signed
+    /// Storage URL. The cache is user-scoped, short-lived and bounded so a
+    /// previous account's token can never be reused after sign-out.
+    func signedMediaURL(
+        canonicalURL: String,
+        chatId: String,
+        currentUserId: String,
+        accessToken: String,
+        forceRefresh: Bool = false
+    ) async -> URL? {
+        error = nil
+        guard let host = baseURL.host,
+              let objectPath = ChatMediaPolicy.objectPath(
+                fromCanonicalURL: canonicalURL,
+                expectedHost: host,
+                expectedChatID: chatId
+              ),
+              ChatMediaPolicy.safePathComponent(currentUserId) != nil
+        else {
+            error = "Небезопасная ссылка вложения."
+            return nil
+        }
+
+        let cacheKey = "\(currentUserId)|\(objectPath)"
+        let now = Date()
+        if forceRefresh {
+            Self.signedMediaCache.removeValue(forKey: cacheKey)
+        } else if var cached = Self.signedMediaCache[cacheKey], cached.expiresAt > now {
+            cached.lastAccessAt = now
+            Self.signedMediaCache[cacheKey] = cached
+            return cached.url
+        } else {
+            Self.signedMediaCache.removeValue(forKey: cacheKey)
+        }
+
+        guard let signURL = storageURL(
+            pathPrefix: "/storage/v1/object/sign/chat-media/",
+            objectPath: objectPath
+        ) else {
+            error = "Некорректный путь вложения."
+            return nil
+        }
+        var request = URLRequest(url: signURL)
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(
+            withJSONObject: ["expiresIn": signedMediaLifetimeSeconds]
+        )
+
+        guard let (data, http) = await sendAuthed(request, accessToken: accessToken),
+              (200..<300).contains(http.statusCode),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rawSignedURL = (payload["signedURL"] as? String) ?? (payload["signedUrl"] as? String),
+              let signedURL = validatedSignedURL(rawSignedURL, objectPath: objectPath)
+        else {
+            if error == nil { error = "Не удалось открыть вложение." }
+            return nil
+        }
+
+        Self.signedMediaCache[cacheKey] = CachedSignedMedia(
+            url: signedURL,
+            expiresAt: now.addingTimeInterval(signedMediaCacheTTL),
+            lastAccessAt: now
+        )
+        pruneSignedMediaCache()
+        return signedURL
+    }
+
+    func invalidateSignedMedia(canonicalURL: String, chatId: String, currentUserId: String) {
+        guard let host = baseURL.host,
+              let objectPath = ChatMediaPolicy.objectPath(
+                fromCanonicalURL: canonicalURL,
+                expectedHost: host,
+                expectedChatID: chatId
+              )
+        else { return }
+        Self.signedMediaCache.removeValue(forKey: "\(currentUserId)|\(objectPath)")
+    }
+
+    /// Removes a newly uploaded canonical object when the subsequent message
+    /// insert fails. Legacy paths are deliberately excluded: cleanup must
+    /// never delete another client's historical attachment by accident.
+    func deleteUploadedAttachment(
+        canonicalURL: String,
+        chatId: String,
+        currentUserId: String,
+        accessToken: String
+    ) async {
+        guard let host = baseURL.host,
+              let objectPath = ChatMediaPolicy.objectPath(
+                fromCanonicalURL: canonicalURL,
+                expectedHost: host,
+                expectedChatID: chatId
+              )
+        else { return }
+        let components = objectPath.split(separator: "/").map(String.init)
+        guard components.count == 3,
+              components[0] == ChatMediaPolicy.safePathComponent(chatId),
+              components[1] == ChatMediaPolicy.safePathComponent(currentUserId),
+              let deleteURL = storageURL(
+                pathPrefix: "/storage/v1/object/chat-media/",
+                objectPath: objectPath
+              )
+        else { return }
+
+        var request = URLRequest(url: deleteURL)
+        request.httpMethod = "DELETE"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        _ = await sendAuthed(request, accessToken: accessToken)
+    }
+
+    private func storageURL(pathPrefix: String, objectPath: String) -> URL? {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else { return nil }
+        components.path = pathPrefix + objectPath
+        components.query = nil
+        components.fragment = nil
+        return components.url
+    }
+
+    private func validatedSignedURL(_ rawValue: String, objectPath: String) -> URL? {
+        let absoluteValue: String
+        if rawValue.hasPrefix("https://") {
+            absoluteValue = rawValue
+        } else if rawValue.hasPrefix("/storage/v1/") {
+            absoluteValue = baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + rawValue
+        } else if rawValue.hasPrefix("/object/sign/") {
+            absoluteValue = baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/storage/v1" + rawValue
+        } else {
+            return nil
+        }
+
+        guard let components = URLComponents(string: absoluteValue),
+              components.scheme?.lowercased() == "https",
+              components.host?.lowercased() == baseURL.host?.lowercased(),
+              components.port == baseURL.port,
+              components.user == nil,
+              components.password == nil,
+              components.fragment == nil,
+              components.percentEncodedPath == "/storage/v1/object/sign/chat-media/\(objectPath)",
+              components.queryItems?.contains(where: { $0.name == "token" && $0.value?.isEmpty == false }) == true
+        else { return nil }
+        return components.url
+    }
+
+    private func pruneSignedMediaCache() {
+        let now = Date()
+        Self.signedMediaCache = Self.signedMediaCache.filter { $0.value.expiresAt > now }
+        guard Self.signedMediaCache.count > Self.signedMediaCacheLimit else { return }
+        let overflow = Self.signedMediaCache.count - Self.signedMediaCacheLimit
+        let oldestKeys = Self.signedMediaCache
+            .sorted { $0.value.lastAccessAt < $1.value.lastAccessAt }
+            .prefix(overflow)
+            .map(\.key)
+        for key in oldestKeys { Self.signedMediaCache.removeValue(forKey: key) }
+    }
+
+    /// Inserts an image, audio or video message with a canonical media URL.
     @discardableResult
     func sendMedia(chatId: String, currentUserId: String, type: String, mediaUrl: String, mime: String, accessToken: String) async -> ChatMessageRow? {
         error = nil
+        guard ["image", "audio", "video"].contains(type),
+              let host = baseURL.host,
+              ChatMediaPolicy.objectPath(
+                fromCanonicalURL: mediaUrl,
+                expectedHost: host,
+                expectedChatID: chatId
+              ) != nil
+        else {
+            error = "Небезопасная ссылка вложения."
+            return nil
+        }
         var post = URLRequest(url: baseURL.appendingPathComponent("rest/v1/messages"))
         post.httpMethod = "POST"
         post.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -621,7 +1102,9 @@ final class ChatsService: ObservableObject {
             return nil
         }
         // Bump chat preview
-        let preview = type == "image" ? "📷 Фото" : type == "audio" ? "🎤 Голосовое" : "📎 Файл"
+        let preview = type == "image"
+            ? "📷 Фото"
+            : type == "audio" ? "🎤 Голосовое" : "🎬 Видео"
         var pURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/chats"), resolvingAgainstBaseURL: false)!
         pURL.queryItems = [URLQueryItem(name: "id", value: "eq.\(chatId)")]
         var patch = URLRequest(url: pURL.url!)

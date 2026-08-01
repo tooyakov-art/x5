@@ -9,6 +9,7 @@ extension Notification.Name {
 /// Home / Courses / Chats / Hub / Profile.
 struct AppTabView: View {
     @EnvironmentObject private var loc: LocalizationService
+    @StateObject private var deepLinkRouter = AppDeepLinkRouter.shared
     @State private var selectedTab: Int = 0
 
     var body: some View {
@@ -50,6 +51,16 @@ struct AppTabView: View {
             case "profile": selectedTab = 4
             default: break
             }
+        }
+        .onChange(of: deepLinkRouter.pendingHubTaskID) { taskID in
+            if taskID != nil { selectedTab = 3 }
+        }
+        .onChange(of: deepLinkRouter.pendingChatID) { chatID in
+            if chatID != nil { selectedTab = 2 }
+        }
+        .onAppear {
+            if deepLinkRouter.pendingHubTaskID != nil { selectedTab = 3 }
+            else if deepLinkRouter.pendingChatID != nil { selectedTab = 2 }
         }
     }
 }

@@ -62,23 +62,31 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             home,
         )
 
-    def test_home_has_startup_chat_and_hub_promos(self):
+    def test_home_has_exact_functional_startup_chat_and_hub_promos(self):
         home = (ROOT / "X5" / "Views" / "Home" / "HomeView.swift").read_text(
             encoding="utf-8"
         )
+        promos = home[
+            home.index("private var promos") : home.index("private var promoCards")
+        ]
 
-        self.assertIn('title: "Генерация видео"', home)
-        self.assertIn("action: .videoGeneration", home)
-        self.assertIn('title: "Озвучка"', home)
-        self.assertIn("action: .voiceGeneration", home)
-        self.assertIn('title: "Стартап чат"', home)
-        self.assertIn("action: .startupChat", home)
-        self.assertIn('title: "Hub"', home)
-        self.assertIn("action: .hub", home)
+        self.assertEqual(promos.count("HomePromo("), 2)
+        self.assertIn('id: "startup_chat"', promos)
+        self.assertIn('title: "Стартап чат"', promos)
+        self.assertIn("action: .startupChat", promos)
+        self.assertIn('id: "hub"', promos)
+        self.assertIn('title: "Hub"', promos)
+        self.assertIn("action: .hub", promos)
+        self.assertRegex(home, r"case \.startupChat:\s+StartupChatView\(\)")
+        self.assertIn(
+            'NotificationCenter.default.post(name: .x5SwitchTab, '
+            'object: nil, userInfo: ["tab": "hub"])',
+            home,
+        )
         self.assertIn("LazyVGrid(", home)
         self.assertIn("count: 2", home)
 
-    def test_image_video_and_voice_heroes_use_distinct_media_surfaces(self):
+    def test_image_and_video_heroes_use_distinct_static_media_surfaces(self):
         home = (ROOT / "X5" / "Views" / "Home" / "HomeView.swift").read_text(
             encoding="utf-8"
         )
@@ -87,8 +95,8 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertIn('assetName: "HomeCoverTargetAds"', home)
         self.assertIn('title: "Генерация видео"', home)
         self.assertIn('assetName: "HomeUtilityVideo"', home)
-        self.assertIn('title: "Озвучка и голоса"', home)
-        self.assertIn('assetName: "HomeMotionStudioPoster"', home)
+        self.assertNotIn('title: "Озвучка и голоса"', home)
+        self.assertIn("CardMedia(assetName: slide.assetName, isMotionActive: false)", home)
         self.assertIn(".frame(height: 244)", home)
 
     def test_video_route_opens_real_generator_instead_of_placeholder(self):
@@ -123,6 +131,28 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             r"case \.liveFruits:\s+LiveFruitsView\(\)",
         )
         self.assertNotIn("case .liveFruits, .tool:", home)
+
+    def test_client_supplied_nano_banana_art_is_bundled_and_routes_to_image_generation(self):
+        home = (ROOT / "X5" / "Views" / "Home" / "HomeView.swift").read_text(
+            encoding="utf-8"
+        )
+        asset = (
+            ROOT
+            / "X5"
+            / "Assets.xcassets"
+            / "HomeTrendNanoBanana.imageset"
+            / "HomeTrendNanoBanana.jpg"
+        )
+
+        self.assertTrue(asset.is_file())
+        self.assertGreater(asset.stat().st_size, 100_000)
+        self.assertIn('assetName: "HomeTrendNanoBanana"', home)
+        self.assertIn('title: "Nano Banana + GPT Image"', home)
+        self.assertIn(
+            "action: .imageGeneration(ImageGenerationCatalog.custom)",
+            home,
+        )
+        self.assertIn('item.id == "nano_banana" ? 236 : 148', home)
 
 
 if __name__ == "__main__":

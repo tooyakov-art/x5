@@ -27,7 +27,7 @@ class ReleaseVersionSourceTests(unittest.TestCase):
                     "A TestFlight source push must never alter App Store review.",
                 )
 
-    def test_ios_runtime_build_and_pending_review_target_are_intentional(self):
+    def test_ios_runtime_build_and_release_target_are_identical(self):
         project = (ROOT / "project.yml").read_text(encoding="utf-8")
         fastfile = (ROOT / "fastlane" / "Fastfile").read_text(encoding="utf-8")
         review_notes = (
@@ -46,16 +46,16 @@ class ReleaseVersionSourceTests(unittest.TestCase):
         runtime_build_number = re.search(
             r'CURRENT_PROJECT_VERSION:\s*"([^"]+)"', project
         ).group(1)
-        pending_review_build_number = "191"
+        release_build_number = runtime_build_number
         fastlane_version = re.search(
             r'APP_VERSION\s*=\s*"([^"]+)"', fastfile
         ).group(1)
 
         self.assertEqual(marketing_version, "1.1.6")
-        self.assertEqual(runtime_build_number, "192")
+        self.assertEqual(runtime_build_number, "193")
         self.assertEqual(fastlane_version, marketing_version)
         self.assertIn(
-            f"Version {marketing_version} build {pending_review_build_number}",
+            f"Version {marketing_version} build {release_build_number}",
             review_notes,
         )
         self.assertIn(
@@ -63,7 +63,7 @@ class ReleaseVersionSourceTests(unittest.TestCase):
             submit_workflow,
         )
         self.assertIn(
-            f'EXPECTED_BUILD: "{pending_review_build_number}"',
+            f'EXPECTED_BUILD: "{release_build_number}"',
             submit_workflow,
         )
         self.assertIn(
@@ -71,7 +71,7 @@ class ReleaseVersionSourceTests(unittest.TestCase):
             prepare_workflow,
         )
         self.assertIn(
-            f'BUILD_NUMBER: "{pending_review_build_number}"',
+            f'BUILD_NUMBER: "{release_build_number}"',
             prepare_workflow,
         )
 

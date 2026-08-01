@@ -307,6 +307,9 @@ final class HubService: ObservableObject {
     }
 
     func loadTasks(accessToken: String? = nil) async {
+        isLoading = true
+        error = nil
+        defer { isLoading = false }
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/tasks"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "select", value: "*"),
@@ -319,10 +322,40 @@ final class HubService: ObservableObject {
             if let accessToken {
                 request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
             }
-            let (data, _) = try await URLSession.shared.data(for: request)
-            tasks = (try? JSONDecoder().decode([HubTask].self, from: data)) ?? []
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw HubTaskServiceError.invalidResponse
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                throw HubTaskServiceError.httpStatus(http.statusCode)
+            }
+            tasks = try JSONDecoder().decode([HubTask].self, from: data)
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    /// Resolves a notification/deep-link target independently of the open-task
+    /// list, so completed or in-progress tasks still open when RLS permits it.
+    func loadTask(id: String, accessToken: String) async -> HubTask? {
+        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/tasks"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "id", value: "eq.\(id)"),
+            URLQueryItem(name: "select", value: "*"),
+            URLQueryItem(name: "limit", value: "1")
+        ]
+        do {
+            var request = URLRequest(url: components.url!)
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode)
+            else { return nil }
+            return try JSONDecoder().decode([HubTask].self, from: data).first
+        } catch {
+            self.error = error.localizedDescription
+            return nil
         }
     }
 
@@ -502,36 +535,54 @@ final class HubService: ObservableObject {
         return rows.first
     }
 
-    /// Marks a response accepted and the task in_progress.
-    func acceptResponse(taskId: String, responseId: String, specialistId: String, specialistName: String?, accessToken: String) async {
-        // 1. Patch response status
-        var rURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/task_responses"), resolvingAgainstBaseURL: false)!
-        rURL.queryItems = [URLQueryItem(name: "id", value: "eq.\(responseId)")]
-        var rReq = URLRequest(url: rURL.url!)
-        rReq.httpMethod = "PATCH"
-        rReq.setValue(anonKey, forHTTPHeaderField: "apikey")
-        rReq.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        rReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        rReq.httpBody = try? JSONSerialization.data(withJSONObject: ["status": "accepted"])
-        _ = try? await URLSession.shared.data(for: rReq)
+    /// Atomically accepts the response through the authenticated database RPC.
+    /// The server derives the specialist identity from the locked response row;
+    /// client-supplied names or user IDs are intentionally not accepted.
+    @discardableResult
+    func acceptResponse(
+        taskId: String,
+        responseId: String,
+        accessToken: String
+    ) async -> HubTask? {
+        error = nil
+        var request = URLRequest(
+            url: baseURL.appendingPathComponent("rest/v1/rpc/x5_accept_task_response")
+        )
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // 2. Patch task
-        var tURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/tasks"), resolvingAgainstBaseURL: false)!
-        tURL.queryItems = [URLQueryItem(name: "id", value: "eq.\(taskId)")]
-        var tReq = URLRequest(url: tURL.url!)
-        tReq.httpMethod = "PATCH"
-        tReq.setValue(anonKey, forHTTPHeaderField: "apikey")
-        tReq.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        tReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        var body: [String: Any] = [
-            "status": "in_progress",
-            "accepted_response_id": responseId,
-            "accepted_specialist_id": specialistId
-        ]
-        if let n = specialistName { body["accepted_specialist_name"] = n }
-        tReq.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        _ = try? await URLSession.shared.data(for: tReq)
-        await loadTasks(accessToken: accessToken)
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "p_task_id": taskId,
+                "p_response_id": responseId
+            ])
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw HubTaskServiceError.invalidResponse
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                throw HubTaskServiceError.httpStatus(http.statusCode)
+            }
+
+            let acceptedTask: HubTask
+            if let row = try? JSONDecoder().decode(HubTask.self, from: data) {
+                acceptedTask = row
+            } else if let rows = try? JSONDecoder().decode([HubTask].self, from: data),
+                      let row = rows.first {
+                acceptedTask = row
+            } else {
+                throw HubTaskServiceError.invalidResponse
+            }
+
+            tasks.removeAll(where: { $0.id == acceptedTask.id })
+            replaceManagedTask(acceptedTask)
+            return acceptedTask
+        } catch {
+            self.error = error.localizedDescription
+            return nil
+        }
     }
 
     func loadResponses(taskId: String) async -> [TaskResponse] {

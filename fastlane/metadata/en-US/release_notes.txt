@@ -1,10 +1,18 @@
-This build refreshes the AI home, purchases and portfolio safety in X five
-marketing.
+This build completes the requested course, notification, chat, Home, purchase
+and portfolio fixes in X five marketing.
+
+- Full-length lesson videos upload without truncation. Oversized sources are
+  prepared locally and continue through resumable private upload.
+- Task notifications open the exact task; message notifications open the exact
+  chat even after a cold launch.
+- Chat photo, video and voice media use private storage and short-lived links.
+- Portfolio photos and video previews use private storage and are checked
+  automatically before publication. There is no manual-review queue.
+- CourseUP management remains restricted to the two authorized developer
+  accounts, with corrected typography and retry-safe uploads.
 
 - One-time 1,000/2,000/5,000 credit packs stay consumable and can be purchased
   again. Interrupted delivery retries safely after relaunch.
-- Portfolio photos and video previews are checked automatically before
-  publication. There is no manual-review queue.
 - The Verified Badge action keeps readable black text on its bright button.
 - Muted Home card previews pause offscreen, while the app is inactive or when
   Reduce Motion is enabled; static posters remain as a safe fallback.

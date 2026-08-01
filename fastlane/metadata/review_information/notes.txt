@@ -1,6 +1,7 @@
-X five marketing is a creator workspace and marketplace. Version 1.1.6 build 192
-adds safer Home motion, Seedance video, AI Voice, repeatable credit packs,
-and automatic portfolio moderation.
+X five marketing is a creator workspace and marketplace. Version 1.1.6 build 193
+adds reliable full-length course uploads, exact task/chat notification routing,
+private chat and portfolio media, safer automatic portfolio moderation,
+AI Voice, repeatable credit packs, and the updated Home experience.
 
 Demo account:
 Use the Apple Demo Account credentials for appreview@x5studio.app.

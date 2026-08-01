@@ -16,6 +16,7 @@ test("safe automatic moderation is approved", () => {
   }, { raw: "payload" });
 
   assert.equal(decision.status, "approved");
+  assert.match(decision.reason, /автомат/i);
   assert.equal(decision.error, null);
   assert.equal(decision.result.raw, "payload");
 });

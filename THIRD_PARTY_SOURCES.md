@@ -1,5 +1,20 @@
 # Third-party sources
 
+## Client-supplied Home artwork
+
+### Nano Banana + GPT Image trend card
+
+- Supplied directly by the client on 2026-07-26 with an explicit request to
+  use it in place of the previous Home artwork.
+- Bundled asset:
+  `X5/Assets.xcassets/HomeTrendNanoBanana.imageset/HomeTrendNanoBanana.jpg`
+- Use: static Home trend card linking to the existing image generator.
+- Provenance: client-supplied finished artwork; X5 did not generate or claim
+  authorship of the image.
+- Release condition: the artwork includes third-party product names and marks.
+  The client's ownership and public/commercial-use rights must be confirmed
+  before external release. No third-party endorsement is implied.
+
 ## Pexels Home motion clips
 
 - Pexels license: https://www.pexels.com/legal-pages/license/
@@ -207,7 +222,7 @@ bundled in the app.
   https://fal.ai/docs/documentation/model-apis/inference/webhooks
 - Official storage/lifecycle request headers:
   https://fal.ai/docs/documentation/model-apis/common-parameters
-- Retrieved: 2026-07-26
+- Retrieved: 2026-07-26; model API reverified: 2026-08-01
 - Use: server-side speech generation from user-supplied text with a selected
   voice, stability, speed, and optional language hint.
 - Integration: X5 submits once to fal's persistent queue and correlates the
@@ -219,6 +234,60 @@ bundled in the app.
   size- and type-checked, copied into private owner-scoped X5 Storage, and
   exposed to the app through a short-lived signed URL that is immediately
   downloaded into an app-managed local file for playback and sharing.
+
+## Push delivery infrastructure
+
+### Supabase JavaScript client and Deno JWT
+
+- Supabase JS source/version: https://github.com/supabase/supabase-js/tree/v2.110.3
+- Deno djwt source/version: https://github.com/Zaubrik/djwt/tree/v3.0.2
+- Versions: `@supabase/supabase-js` 2.110.3; `djwt` 3.0.2.
+- Licenses: MIT for both projects; no attribution UI is required. Verified:
+  2026-08-01.
+- Integration: exact versions are imported only by server-side Edge Functions.
+  The affected function folders contain frozen Deno v5 lockfiles with npm
+  SHA-512 integrity values and remote-module hashes. Supabase JS performs
+  canonical database/RPC access; djwt signs APNs and Google OAuth assertions.
+  No dependency is shipped in the mobile app.
+
+### Supabase private Storage and signed URLs
+
+- Official access-control guide:
+  https://supabase.com/docs/guides/storage/security/access-control
+- Official signed URL API:
+  https://supabase.com/docs/reference/javascript/storage-from-createsignedurl
+- Verified: 2026-08-01.
+- Integration: `chat-media` and `portfolio` are private buckets. Database rows
+  retain canonical object identifiers; authorized clients request short-lived
+  signed URLs. Rejected portfolio media and stale orphans are deleted through
+  the Storage API, not by mutating `storage.objects` directly.
+
+### Apple Push Notification service
+
+- Official provider-server guide:
+  https://developer.apple.com/documentation/usernotifications/setting-up-a-remote-notification-server
+- Official request contract:
+  https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns
+- Verified: 2026-08-01
+- Service: Apple-hosted APNs; no Apple SDK source or redistributable asset is
+  bundled for the server path.
+- Integration: the server uses token authentication, a UUID `apns-id`, and a
+  bounded `apns-collapse-id`. Keys remain server-only.
+
+### Firebase Cloud Messaging HTTP v1
+
+- Official HTTP v1 send and OAuth guide:
+  https://firebase.google.com/docs/cloud-messaging/send/v1-api
+- Official server-environment guide:
+  https://firebase.google.com/docs/cloud-messaging/server-environment
+- Verified: 2026-08-01
+- Documentation/code-sample terms: Google documentation is CC BY 4.0 and its
+  samples are Apache 2.0; this integration reuses the protocol, not copied SDK
+  source.
+- Integration: the server mints a short-lived OAuth token from a dedicated
+  service account and calls the project-scoped HTTP v1 endpoint. The retired
+  legacy server-key endpoint is not used, and the service-account JSON remains
+  server-only.
 
 ## Course video delivery
 

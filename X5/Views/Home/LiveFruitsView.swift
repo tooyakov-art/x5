@@ -1477,7 +1477,7 @@ struct LiveFruitsView: View {
             return true
         case .serverError(let status, _):
             return status == 425 || (500...599).contains(status)
-        case .notAuthenticated:
+        case .notAuthenticated, .staleSession, .invalidMediaPayload:
             return false
         }
     }

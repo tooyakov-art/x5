@@ -22,7 +22,7 @@ SOURCES = ROOT / "THIRD_PARTY_SOURCES.md"
 RELEASE_METADATA = (
     ROOT / "fastlane" / "metadata" / "en-US" / "release_notes.txt",
     ROOT / "fastlane" / "metadata" / "ru" / "release_notes.txt",
-    ROOT / "docs" / "release-notes" / "1.1.6-build-192" / "kk.txt",
+    ROOT / "docs" / "release-notes" / "1.1.6-build-193" / "kk.txt",
     ROOT / "fastlane" / "metadata" / "review_information" / "notes.txt",
 )
 

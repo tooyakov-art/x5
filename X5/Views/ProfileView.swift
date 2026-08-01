@@ -7,6 +7,7 @@ struct ProfileView: View {
     @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     var showsDoneButton: Bool = true
 
@@ -106,6 +107,13 @@ struct ProfileView: View {
             }
             .onAppear { showInHubToggle = currentUser.profile?.showInHub ?? false }
             .task(id: currentUser.profile?.id) {
+                await refreshFollowCounts()
+            }
+            // Cross-device follow changes do not emit this process's local
+            // notification. Refresh whenever the app returns to the foreground;
+            // SwiftUI cancels this task automatically when the view disappears.
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
                 await refreshFollowCounts()
             }
             .onReceive(

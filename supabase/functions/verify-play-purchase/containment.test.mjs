@@ -96,6 +96,16 @@ test("verifier finalizes Google Play only after the exact-once ledger", () => {
   assert.match(source, /play_finalization_pending/);
   assert.match(source, /retryable: true/);
   assert.match(source, /entitlement_applied: true/);
+  assert.match(
+    source,
+    /ok:\s*true,[\s\S]*warning:\s*"play_finalization_pending"/,
+  );
+  assert.match(source, /store_finalized:\s*false/);
+  assert.match(source, /finalization_pending:\s*true/);
+  assert.doesNotMatch(
+    source,
+    /warning:\s*"play_finalization_pending"[\s\S]{0,400}\},\s*503\)/,
+  );
   assert.match(source, /recoverKnownConsumedPurchase/);
   assert.match(source, /isGooglePlayFinalizationRace/);
   assert.match(source, /isGooglePlayPurchaseGone/);

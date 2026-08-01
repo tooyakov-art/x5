@@ -76,15 +76,19 @@ final class Auth: ObservableObject {
         defaults.set(true, forKey: migrationFlag)
     }
 
-    func signInWithApple(authorization: ASAuthorization) async throws {
-        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+    func signInWithApple(authorization: ASAuthorization, rawNonce: String) async throws {
+        guard !rawNonce.isEmpty,
+              let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
               let tokenData = credential.identityToken,
               let identityToken = String(data: tokenData, encoding: .utf8)
         else {
             throw AuthError.invalidCredential
         }
 
-        let session = try await supabase.signInWithApple(identityToken: identityToken)
+        let session = try await supabase.signInWithApple(
+            identityToken: identityToken,
+            nonce: rawNonce
+        )
         store(session: session)
     }
 
@@ -108,6 +112,18 @@ final class Auth: ObservableObject {
     }
 
     func signOut() async {
+        let pushUnregistered: Bool
+        if let userId, let accessToken {
+            pushUnregistered = await PushNotifications.shared.unregisterCurrentDevice(
+                userId: userId,
+                accessToken: accessToken
+            )
+        } else {
+            pushUnregistered = true
+        }
+        if !pushUnregistered {
+            PushNotifications.shared.disableRemoteNotificationsAfterFailedUnregister()
+        }
         clearStorage()
         supabase.accessToken = nil
         supabase.refreshToken = nil
@@ -128,11 +144,29 @@ final class Auth: ObservableObject {
         NotificationCenter.default.post(name: .x5UserDidSignOut, object: nil)
     }
 
-    func freshAccessToken() async -> String? {
-        if supabase.refreshToken == nil { return accessToken }
+    func freshAccessToken(
+        minimumValidity: TimeInterval = 60,
+        invalidateSessionOnCredentialFailure: Bool = true
+    ) async -> String? {
+        guard let token = accessToken else { return nil }
+        guard JWTAccessTokenValidity.needsRefresh(
+            token,
+            minimumValidity: minimumValidity
+        ) else { return token }
+        guard supabase.refreshToken != nil else {
+            // A short request can still attempt its current token, matching the
+            // previous-session behavior. Long uploads must not start with a JWT
+            // that cannot cover their requested validity window.
+            return minimumValidity <= 60 ? token : nil
+        }
         do {
             let session = try await supabase.refreshSession()
             return session.accessToken
+        } catch let error as SupabaseError where error.invalidatesSession {
+            if invalidateSessionOnCredentialFailure {
+                await signOut()
+            }
+            return nil
         } catch {
             return nil
         }
@@ -141,14 +175,41 @@ final class Auth: ObservableObject {
     /// Supplies long-running uploads with a token that will remain valid for
     /// the next several chunks, refreshing only when the JWT is near expiry.
     func accessTokenForUpload(minimumValidity: TimeInterval = 10 * 60) async -> String? {
-        guard let token = accessToken else { return nil }
-        guard JWTAccessTokenValidity.needsRefresh(
-            token,
-            minimumValidity: minimumValidity
-        ) else {
-            return token
+        await freshAccessToken(minimumValidity: minimumValidity)
+    }
+
+    /// Handles a server-rejected JWT through the same SupabaseClient
+    /// single-flight refresh used by every other authenticated feature. The
+    /// expected user prevents an old chat request from retrying as a newly
+    /// signed-in account.
+    func accessTokenAfterUnauthorized(
+        rejectedAccessToken: String,
+        expectedUserId: String
+    ) async -> String? {
+        guard userId == expectedUserId,
+              let currentToken = accessToken
+        else { return nil }
+        if currentToken != rejectedAccessToken {
+            // Another request already rotated the token for the same account.
+            return currentToken
         }
-        return await freshAccessToken()
+        guard supabase.refreshToken != nil else {
+            await signOut()
+            return nil
+        }
+        do {
+            let session = try await supabase.refreshSession()
+            guard userId == expectedUserId else { return nil }
+            return session.accessToken
+        } catch let error as SupabaseError where error.invalidatesSession {
+            guard userId == expectedUserId,
+                  accessToken == rejectedAccessToken
+            else { return nil }
+            await signOut()
+            return nil
+        } catch {
+            return nil
+        }
     }
 
     func deleteAccount() async throws {

@@ -14,6 +14,7 @@ struct TaskDetailView: View {
     @State private var accepting: String?
     @State private var confirmBlock = false
     @State private var openingChat = false
+    @State private var acceptError: String?
 
     private var isAuthor: Bool { auth.userId == task.authorId }
     private var hasRespondedAlready: Bool {
@@ -175,7 +176,18 @@ struct TaskDetailView: View {
         } message: {
             Text(loc.t("hub_block_author_message"))
         }
-        .task { responses = await service.loadResponses(taskId: task.id) }
+        .alert("Не удалось принять отклик", isPresented: Binding(
+            get: { acceptError != nil },
+            set: { if !$0 { acceptError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(acceptError ?? "")
+        }
+        .task {
+            chats.configureAccessTokenProvider(auth: auth)
+            responses = await service.loadResponses(taskId: task.id)
+        }
         .sheet(item: $navigatingChat) { chat in
             NavigationStack { ChatThreadView(chat: chat) }
                 .preferredColorScheme(.dark)
@@ -270,16 +282,17 @@ struct TaskDetailView: View {
     }
 
     private func accept(_ r: TaskResponse) async {
-        guard let token = auth.accessToken, let me = auth.userId else { return }
+        guard let token = await auth.freshAccessToken(), let me = auth.userId else { return }
         accepting = r.id
         defer { accepting = nil }
-        await service.acceptResponse(
+        guard await service.acceptResponse(
             taskId: task.id,
             responseId: r.id,
-            specialistId: r.specialistId,
-            specialistName: r.specialistName,
             accessToken: token
-        )
+        ) != nil else {
+            acceptError = service.error ?? "Сервер не подтвердил принятие отклика."
+            return
+        }
         if let chat = await chats.ensureChat(
             otherUserId: r.specialistId,
             currentUserId: me,

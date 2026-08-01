@@ -1146,10 +1146,14 @@ private struct LessonEditorSheet: View {
                         .foregroundStyle(.secondary)
                     }
 
+                    Text(CourseVideoUploadPolicy.uploadGuidance)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
                 } header: {
                     Text("Видео")
                 } footer: {
-                    Text("Видео и обложка остаются черновиком до сохранения всего курса. Текущая опубликованная ссылка не удаляется, пока новый файл не загрузится успешно.")
+                    Text("Видео и обложка остаются черновиком до сохранения всего курса. При обрыве сети загрузка продолжится с подтвержденного блока; опубликованная ссылка не меняется до полного успеха.")
                 }
 
                 Section {

@@ -8,6 +8,7 @@ struct UserProfileView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var chats = ChatsService()
 
     @State private var profile: UserProfile?
@@ -96,12 +97,19 @@ struct UserProfileView: View {
             Text(loc.t("hub_block_user_message"))
         }
         .task {
+            chats.configureAccessTokenProvider(auth: auth)
             if isMe {
                 NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
                 dismiss()
                 return
             }
             await load()
+        }
+        // Refresh server counts after returning from another app/device path.
+        // A task keyed to ScenePhase has view-bound cancellation semantics.
+        .task(id: scenePhase) {
+            guard scenePhase == .active, !isMe else { return }
+            await loadFollowState()
         }
         .onReceive(
             NotificationCenter.default.publisher(for: .x5FollowStateDidChange)
