@@ -52,8 +52,7 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertIn("struct ApprovedHomeCrop", home)
         self.assertIn("static let referenceSize = CGSize(width: 740, height: 1600)", home)
         self.assertIn("static let hero = CGRect(x: 28, y: 145", home)
-        self.assertNotIn("HomeCoverTargetAds", home)
-        self.assertNotIn("HomeTrendNanoBanana", home)
+        self.assertIn("ApprovedHomeCrop(rect: HomeApprovedLayout.hero)", home)
 
     def test_primary_hero_opens_existing_image_generator(self):
         home = HOME.read_text(encoding="utf-8")
@@ -74,6 +73,7 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             "case startupChat",
             "case hub",
             "case videoGeneration",
+            "case voiceGeneration",
             "case liveFruits",
         ):
             self.assertIn(route, home)
@@ -148,6 +148,29 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertIn('Text("Еще")', home)
         self.assertIn('Image(systemName: "chevron.right")', home)
         self.assertIn("handle(.videoGeneration)", home)
+        self.assertIn('HomeSearchItem(title: "Озвучка"', home)
+
+    def test_hero_keeps_approved_first_page_and_restores_functional_pages(self):
+        home = HOME.read_text(encoding="utf-8")
+
+        self.assertIn("TabView(selection: $activeHeroPage)", home)
+        self.assertIn(".tabViewStyle(.page(indexDisplayMode: .never))", home)
+        self.assertIn('accessibilityIdentifier("x5.home.hero.image")', home)
+        self.assertIn('assetName: "HomeUtilityVideo"', home)
+        self.assertIn('assetName: "HomeTrendFruitVideo"', home)
+        self.assertIn("action: .videoGeneration", home)
+        self.assertIn("action: .liveFruits", home)
+
+    def test_every_trend_keeps_video_preview_and_opens_a_real_route(self):
+        home = HOME.read_text(encoding="utf-8")
+
+        self.assertIn("handle(item.action)", home)
+        self.assertIn('accessibilityIdentifier("x5.home.trend.\\(item.id)")', home)
+        self.assertIn('accessibilityIdentifier("x5.home.trend.\\(item.id).preview")', home)
+        self.assertIn('id: "strawberry"', home)
+        self.assertIn("action: .liveFruits", home)
+        self.assertIn('id: "wildberries"', home)
+        self.assertIn('action: imageAction("product_cards")', home)
 
     def test_search_waits_for_sheet_dismissal_before_routing(self):
         home = HOME.read_text(encoding="utf-8")
@@ -170,26 +193,23 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         source = TAB_VIEW.read_text(encoding="utf-8")
 
         self.assertIn("X5BottomTabBar", source)
-        self.assertIn("ZStack(alignment: .bottom)", source)
         self.assertIn("TabView(selection: $selectedTab)", source)
         self.assertIn(".toolbar(.hidden, for: .tabBar)", source)
-        self.assertGreaterEqual(
-            source.count(".toolbar(.hidden, for: .tabBar)"),
-            6,
-            "Every tab content must hide the native iOS 26 tab bar.",
-        )
         self.assertIn(".safeAreaInset(edge: .bottom, spacing: 0)", source)
-        self.assertIn(".ignoresSafeArea(.container, edges: .bottom)", source)
+        self.assertNotIn(".offset(y: proxy.safeAreaInsets.bottom)", source)
+        self.assertNotIn(".ignoresSafeArea(.container, edges: .bottom)", source)
         self.assertIn(
             "private let itemCenters: [CGFloat] = [138, 260, 372, 473, 576]",
             source,
         )
         for key in ("tab_home", "tab_courses", "tab_chats", "tab_hub", "tab_profile"):
-            self.assertIn(f'titleKey: "{key}"', source)
-        self.assertIn("Text(loc.t(item.titleKey))", source)
+            self.assertIn(f'return "{key}"', source)
+        self.assertIn("Text(loc.t(tab.titleKey))", source)
         self.assertIn("@ScaledMetric(relativeTo: .caption2)", source)
         self.assertIn("@ScaledMetric(relativeTo: .body)", source)
-        self.assertNotIn(".tabItem", source)
+        self.assertEqual(source.count(".tabItem"), 5)
+        self.assertIn("enum X5AppTab: Int, CaseIterable, Identifiable", source)
+        self.assertIn('accessibilityIdentifier("x5.tab.\\(tab.notificationKey)")', source)
         self.assertNotIn("private var selectedContent", source)
         self.assertIn(".frame(minHeight: 44, alignment: .bottom)", source)
 

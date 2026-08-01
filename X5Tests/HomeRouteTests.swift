@@ -23,4 +23,22 @@ final class HomeRouteTests: XCTestCase {
 
         XCTAssertEqual(routedCategory, category)
     }
+
+    func testBottomNavigationKeepsAllFiveFunctionalTabs() {
+        XCTAssertEqual(
+            X5AppTab.allCases.map(\.notificationKey),
+            ["home", "courses", "chats", "hub", "profile"]
+        )
+        XCTAssertEqual(
+            X5AppTab.allCases.map(\.titleKey),
+            ["tab_home", "tab_courses", "tab_chats", "tab_hub", "tab_profile"]
+        )
+    }
+
+    func testTabNotificationKeysRoundTrip() {
+        for tab in X5AppTab.allCases {
+            XCTAssertEqual(X5AppTab(notificationKey: tab.notificationKey), tab)
+        }
+        XCTAssertNil(X5AppTab(notificationKey: "unknown"))
+    }
 }

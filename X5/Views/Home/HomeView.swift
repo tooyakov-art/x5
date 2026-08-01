@@ -37,6 +37,7 @@ struct HomeView: View {
     @State private var showingGeneratedGallery = false
     @State private var showingSearch = false
     @State private var pendingSearchRoute: HomeRoute?
+    @State private var activeHeroPage = 0
     @State private var activeTrendVideoID: String?
     @State private var lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
 
@@ -151,20 +152,66 @@ struct HomeView: View {
     }
 
     private var heroBanner: some View {
-        Button {
-            handle(.imageGeneration(ImageGenerationCatalog.custom))
-        } label: {
-            ApprovedHomeCrop(rect: HomeApprovedLayout.hero)
-                .aspectRatio(HomeApprovedLayout.hero.width / HomeApprovedLayout.hero.height, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
-                )
+        TabView(selection: $activeHeroPage) {
+            Button {
+                handle(.imageGeneration(ImageGenerationCatalog.custom))
+            } label: {
+                ApprovedHomeCrop(rect: HomeApprovedLayout.hero)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("x5.home.hero.image")
+            .accessibilityLabel("Генерация изображений. Создать")
+            .accessibilityHint("Открывает генератор изображений")
+            .tag(0)
+
+            ForEach(Array(heroSlides.enumerated()), id: \.element.id) { index, slide in
+                Button {
+                    handle(slide.action)
+                } label: {
+                    FunctionalHeroSlideCard(
+                        slide: slide,
+                        pageIndex: index + 1,
+                        pageCount: heroSlides.count + 1
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("x5.home.hero.\(slide.id)")
+                .accessibilityLabel(slide.title)
+                .accessibilityHint(slide.subtitle)
+                .tag(index + 1)
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Генерация изображений. Создать")
-        .accessibilityHint("Открывает генератор изображений")
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .aspectRatio(
+            HomeApprovedLayout.hero.width / HomeApprovedLayout.hero.height,
+            contentMode: .fit
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+        )
+    }
+
+    private var heroSlides: [HomeHeroSlide] {
+        [
+            HomeHeroSlide(
+                id: "video",
+                eyebrow: "X FIVE • AI VIDEO",
+                title: "Генерация видео",
+                subtitle: "Текст или фото в готовый ролик",
+                assetName: "HomeUtilityVideo",
+                action: .videoGeneration
+            ),
+            HomeHeroSlide(
+                id: "live_products",
+                eyebrow: "X FIVE • VIDEO TREND",
+                title: "Живые продукты",
+                subtitle: "Видео для Reels и коротких форматов",
+                assetName: "HomeTrendFruitVideo",
+                action: .liveFruits
+            )
+        ]
     }
 
     private var promoCards: some View {
@@ -217,31 +264,46 @@ struct HomeView: View {
 
                 HStack(spacing: 0) {
                     ForEach(Array(trendItems.enumerated()), id: \.element.id) { index, item in
-                        Button {
-                            if motionPreviewAllowed {
-                                activeTrendVideoID = activeTrendVideoID == item.id ? nil : item.id
-                            } else {
-                                handle(.videoGeneration)
+                        ZStack(alignment: .topTrailing) {
+                            Button {
+                                handle(item.action)
+                            } label: {
+                                TrendArtworkCard(
+                                    item: item,
+                                    isActive: motionPreviewAllowed && activeTrendVideoID == item.id
+                                )
                             }
-                            X5Feedback.selection()
-                        } label: {
-                            TrendArtworkCard(
-                                item: item,
-                                isActive: motionPreviewAllowed && activeTrendVideoID == item.id
-                            )
-                            .frame(
-                                width: item.crop.width * scale,
-                                height: HomeApprovedLayout.trendRailHeight * scale
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("x5.home.trend.\(item.id)")
+                            .accessibilityLabel(item.title)
+                            .accessibilityHint("Открывает соответствующий инструмент")
+
+                            Button {
+                                if motionPreviewAllowed {
+                                    activeTrendVideoID = activeTrendVideoID == item.id ? nil : item.id
+                                    X5Feedback.selection()
+                                } else {
+                                    handle(item.action)
+                                }
+                            } label: {
+                                Color.clear
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("x5.home.trend.\(item.id).preview")
+                            .accessibilityLabel("Видео: \(item.title)")
+                            .accessibilityHint(
+                                !motionPreviewAllowed
+                                    ? "Открывает соответствующий инструмент"
+                                    : activeTrendVideoID == item.id
+                                    ? "Остановить воспроизведение"
+                                    : "Воспроизвести без звука"
                             )
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("\(item.title). Видео")
-                        .accessibilityHint(
-                            !motionPreviewAllowed
-                                ? "Открывает генератор видео"
-                                : activeTrendVideoID == item.id
-                                ? "Остановить воспроизведение"
-                                : "Воспроизвести без звука"
+                        .frame(
+                            width: item.crop.width * scale,
+                            height: HomeApprovedLayout.trendRailHeight * scale
                         )
 
                         if index < HomeApprovedLayout.trendGaps.count {
@@ -312,25 +374,29 @@ struct HomeView: View {
                 id: "strawberry",
                 title: "Измена клубнички",
                 crop: HomeApprovedLayout.trendStrawberry,
-                videoURL: HomeApprovedLayout.videoURL("transitions.mp4")
+                videoURL: HomeApprovedLayout.videoURL("transitions.mp4"),
+                action: .liveFruits
             ),
             HomeTrendItem(
                 id: "tokayev",
                 title: "С Токаевым",
                 crop: HomeApprovedLayout.trendTokayev,
-                videoURL: HomeApprovedLayout.videoURL("lipsync.mp4")
+                videoURL: HomeApprovedLayout.videoURL("lipsync.mp4"),
+                action: .videoGeneration
             ),
             HomeTrendItem(
                 id: "wildberries",
                 title: "Карточки WB",
                 crop: HomeApprovedLayout.trendWildberries,
-                videoURL: HomeApprovedLayout.videoURL("ai-stylist.mp4")
+                videoURL: HomeApprovedLayout.videoURL("ai-stylist.mp4"),
+                action: imageAction("product_cards")
             ),
             HomeTrendItem(
                 id: "celebrity",
                 title: "Со знаменитостью",
                 crop: HomeApprovedLayout.trendCelebrity,
-                videoURL: HomeApprovedLayout.videoURL("face-swap.mp4")
+                videoURL: HomeApprovedLayout.videoURL("face-swap.mp4"),
+                action: .videoGeneration
             )
         ]
     }
@@ -464,11 +530,101 @@ private struct HomeApprovedBackground: View {
     }
 }
 
+private struct HomeHeroSlide: Identifiable {
+    let id: String
+    let eyebrow: String
+    let title: String
+    let subtitle: String
+    let assetName: String
+    let action: HomeRoute
+}
+
+/// Reuses the functional build 193 hero treatment for the extra carousel pages.
+/// The first visible page remains the exact approved client artwork.
+private struct FunctionalHeroSlideCard: View {
+    let slide: HomeHeroSlide
+    let pageIndex: Int
+    let pageCount: Int
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .bottomLeading) {
+                Image(slide.assetName)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.04),
+                        Color.black.opacity(0.34),
+                        Color.black.opacity(0.88)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(slide.eyebrow)
+                        .font(.system(size: 10, weight: .bold))
+                        .tracking(1.2)
+                        .foregroundColor(X5Style.blue)
+
+                    Text(slide.title)
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.78)
+
+                    Text(slide.subtitle)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.72))
+                        .lineLimit(2)
+
+                    Text("Создать")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 15)
+                        .frame(height: 30)
+                        .background(X5Style.blue)
+                        .clipShape(Capsule())
+                        .padding(.top, 4)
+                }
+                .padding(20)
+                .padding(.trailing, 54)
+
+                HomePageDots(active: pageIndex, count: pageCount)
+                    .padding(17)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }
+        }
+        .background(Color.black)
+    }
+}
+
+private struct HomePageDots: View {
+    let active: Int
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<count, id: \.self) { index in
+                Capsule()
+                    .fill(index == active ? Color.white : Color.white.opacity(0.42))
+                    .frame(width: index == active ? 23 : 7, height: 7)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 private struct HomeTrendItem: Identifiable {
     let id: String
     let title: String
     let crop: CGRect
     let videoURL: URL
+    let action: HomeRoute
 }
 
 private struct ApprovedHomeCrop: View {
@@ -588,6 +744,7 @@ private struct HomeSearchSheet: View {
             HomeSearchItem(title: "Генерация изображений", subtitle: "Креативы, товары и посты", icon: "photo.badge.plus", route: .imageGeneration(ImageGenerationCatalog.custom)),
             HomeSearchItem(title: "Стартап чат", subtitle: "AI-наставник для бизнеса", icon: "sparkles.rectangle.stack", route: .startupChat),
             HomeSearchItem(title: "Генерация видео", subtitle: "AI-ролики для соцсетей", icon: "video.fill", route: .videoGeneration),
+            HomeSearchItem(title: "Озвучка", subtitle: "Текст в естественный голос", icon: "waveform", route: .voiceGeneration),
             HomeSearchItem(title: "Живые фрукты", subtitle: "Сценарий и ролик для Reels", icon: "play.tv.fill", route: .liveFruits),
             HomeSearchItem(title: "Hub", subtitle: "Специалисты и задачи", icon: "briefcase.fill", route: .hub)
         ]
