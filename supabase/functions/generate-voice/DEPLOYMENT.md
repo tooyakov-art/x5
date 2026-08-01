@@ -13,16 +13,15 @@ Required server-only environment:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `FAL_KEY`
 
-No value is supplied by this repository. Confirm the fal account has billing
-and access to `fal-ai/elevenlabs/tts/eleven-v3`; never substitute a client key,
+No value is supplied by this repository. Confirm the fal account has billing and
+access to `fal-ai/elevenlabs/tts/eleven-v3`; never substitute a client key,
 invent a credential, or copy `FAL_KEY` into the app.
 
 Mandatory order:
 
 1. Apply `20260726222900_revoke_account_delete_helper_acl.sql`.
-2. Provision and health-check the account cleanup worker and its dedicated
-   Vault secret exactly as documented in
-   `../account-deletion-cleanup/DEPLOYMENT.md`.
+2. Provision and health-check the account cleanup worker and its dedicated Vault
+   secret exactly as documented in `../account-deletion-cleanup/DEPLOYMENT.md`.
 3. Apply `20260726223000_voice_generation_exact_once.sql`.
 4. Apply `20260726224500_account_deletion_voice_cleanup.sql`. Its secret
    preflight must pass before it changes the account-deletion RPC.
