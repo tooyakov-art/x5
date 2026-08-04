@@ -10,24 +10,18 @@ enum HomeRoute: Hashable, Identifiable {
 
     var id: String {
         switch self {
-        case .imageGeneration(let category):
-            return "image_generation:\(category.id)"
-        case .startupChat:
-            return "startup_chat"
-        case .hub:
-            return "hub"
-        case .videoGeneration:
-            return "video_generation"
-        case .voiceGeneration:
-            return "voice_generation"
-        case .liveFruits:
-            return "live_fruits"
+        case .imageGeneration(let category): return "image_generation:\(category.id)"
+        case .startupChat: return "startup_chat"
+        case .hub: return "hub"
+        case .videoGeneration: return "video_generation"
+        case .voiceGeneration: return "voice_generation"
+        case .liveFruits: return "live_fruits"
         }
     }
 }
 
-/// The approved 740 x 1600 client mockup is the visual source of truth.
-/// Cards reuse its exact artwork while navigation, playback and accessibility stay native.
+/// Native Home composition. Photography and video posters are content-only assets;
+/// labels, controls, card chrome, navigation and layout are SwiftUI views.
 struct HomeView: View {
     @EnvironmentObject private var loc: LocalizationService
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -44,29 +38,43 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    compactHeader
+                VStack(alignment: .leading, spacing: 22) {
                     heroBanner
-                        .padding(.top, 0)
-                        .offset(y: 0.6)
                     promoCards
-                        .padding(.top, 7)
-                        .offset(x: 1.2)
                     trendsSection
-                        .padding(.top, 0)
                     businessSection
-                        .padding(.top, 3.4)
                 }
-                .padding(.horizontal, 16.65)
-                .padding(.top, 42)
-                .padding(.bottom, 10)
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 24)
                 .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity)
             }
-            .ignoresSafeArea(.container, edges: .top)
             .scrollIndicators(.hidden)
-            .background { HomeApprovedBackground() }
-            .toolbar(.hidden, for: .navigationBar)
+            .background { NativeHomeBackground() }
+            .navigationTitle("X five marketing")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        showingSearch = true
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                    }
+                    .accessibilityIdentifier("x5.home.search")
+                    .accessibilityLabel("Поиск инструментов")
+
+                    Button {
+                        showingGeneratedGallery = true
+                    } label: {
+                        Image(systemName: "photo.stack")
+                    }
+                    .accessibilityIdentifier("x5.home.gallery")
+                    .accessibilityLabel(loc.t("gen_gallery"))
+                }
+            }
             .sheet(item: $activeRoute) { route in
                 sheetDestination(for: route)
             }
@@ -79,19 +87,14 @@ struct HomeView: View {
             .sheet(isPresented: $showingGeneratedGallery) {
                 GeneratedGalleryView()
             }
-            .sheet(
-                isPresented: $showingSearch,
-                onDismiss: completePendingSearchRoute
-            ) {
+            .sheet(isPresented: $showingSearch, onDismiss: completePendingSearchRoute) {
                 HomeSearchSheet { route in
                     pendingSearchRoute = route
                     showingSearch = false
                 }
             }
         }
-        .onDisappear {
-            activeTrendVideoID = nil
-        }
+        .onDisappear { activeTrendVideoID = nil }
         .onChange(of: motionPreviewAllowed) { isAllowed in
             if !isAllowed { activeTrendVideoID = nil }
         }
@@ -100,113 +103,51 @@ struct HomeView: View {
         }
     }
 
-    private var compactHeader: some View {
-        HStack(spacing: 12) {
-            Text("X five marketing")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.white)
-                .lineLimit(1)
-                .padding(.leading, 2)
-
-            Spacer(minLength: 10)
-
-            HStack(spacing: 0) {
-                Button {
-                    showingSearch = true
-                } label: {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 21, weight: .medium))
-                        .foregroundColor(X5Style.blue)
-                        .frame(width: 52, height: 44)
-                }
-                .accessibilityLabel("Поиск инструментов")
-
-                Rectangle()
-                    .fill(Color.white.opacity(0.12))
-                    .frame(width: 1, height: 25)
-                    .padding(.horizontal, 0.8)
-                    .accessibilityHidden(true)
-
-                Button {
-                    showingGeneratedGallery = true
-                } label: {
-                    Image(systemName: "photo.stack.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(X5Style.blue)
-                        .frame(width: 52, height: 44)
-                }
-                .accessibilityLabel(loc.t("gen_gallery"))
-            }
-            .background {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color(red: 0.075, green: 0.078, blue: 0.10))
-                    .frame(height: 40)
-            }
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                    .frame(height: 40)
-            )
-        }
-        .frame(height: 44)
-    }
-
     private var heroBanner: some View {
         TabView(selection: $activeHeroPage) {
-            Button {
-                handle(.imageGeneration(ImageGenerationCatalog.custom))
-            } label: {
-                ApprovedHomeCrop(rect: HomeApprovedLayout.hero)
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("x5.home.hero.image")
-            .accessibilityLabel("Генерация изображений. Создать")
-            .accessibilityHint("Открывает генератор изображений")
-            .tag(0)
-
             ForEach(Array(heroSlides.enumerated()), id: \.element.id) { index, slide in
-                Button {
-                    handle(slide.action)
-                } label: {
-                    FunctionalHeroSlideCard(
-                        slide: slide,
-                        pageIndex: index + 1,
-                        pageCount: heroSlides.count + 1
-                    )
-                }
-                .buttonStyle(.plain)
+                NativeHomeHeroCard(
+                    slide: slide,
+                    pageIndex: index,
+                    pageCount: heroSlides.count,
+                    action: { handle(slide.action) }
+                )
                 .accessibilityIdentifier("x5.home.hero.\(slide.id)")
-                .accessibilityLabel(slide.title)
-                .accessibilityHint(slide.subtitle)
-                .tag(index + 1)
+                .tag(index)
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
-        .aspectRatio(
-            HomeApprovedLayout.hero.width / HomeApprovedLayout.hero.height,
-            contentMode: .fit
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.16), lineWidth: 1)
-        )
+        .frame(height: 250)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                .allowsHitTesting(false)
+        }
     }
 
-    private var heroSlides: [HomeHeroSlide] {
+    private var heroSlides: [NativeHomeHero] {
         [
-            HomeHeroSlide(
+            NativeHomeHero(
+                id: "image",
+                eyebrow: "X FIVE • AI STUDIO",
+                title: "Генерация\nизображений",
+                subtitle: "Креативы, товары и посты за минуту",
+                assetName: "HomeCoverTargetAds",
+                action: .imageGeneration(ImageGenerationCatalog.custom)
+            ),
+            NativeHomeHero(
                 id: "video",
                 eyebrow: "X FIVE • AI VIDEO",
-                title: "Генерация видео",
+                title: "Генерация\nвидео",
                 subtitle: "Текст или фото в готовый ролик",
                 assetName: "HomeUtilityVideo",
                 action: .videoGeneration
             ),
-            HomeHeroSlide(
+            NativeHomeHero(
                 id: "live_products",
                 eyebrow: "X FIVE • VIDEO TREND",
-                title: "Живые продукты",
+                title: "Живые\nпродукты",
                 subtitle: "Видео для Reels и коротких форматов",
                 assetName: "HomeTrendFruitVideo",
                 action: .liveFruits
@@ -215,27 +156,30 @@ struct HomeView: View {
     }
 
     private var promoCards: some View {
-        HStack(spacing: 5) {
-            ApprovedArtworkButton(
-                rect: HomeApprovedLayout.startupPromo,
-                cornerRadius: 16,
-                accessibilityLabel: "Стартап чат. AI-наставник",
+        HStack(spacing: 10) {
+            NativeHomePromoCard(
+                title: "Стартап чат",
+                subtitle: "AI-наставник",
+                icon: "message.badge",
                 action: { handle(.startupChat) }
             )
-            ApprovedArtworkButton(
-                rect: HomeApprovedLayout.hubPromo,
-                cornerRadius: 16,
-                accessibilityLabel: "Hub. Специалисты и задачи",
+            .accessibilityIdentifier("x5.home.promo.startup")
+
+            NativeHomePromoCard(
+                title: "Hub",
+                subtitle: "Специалисты\nи задачи",
+                icon: "briefcase.fill",
                 action: { handle(.hub) }
             )
+            .accessibilityIdentifier("x5.home.promo.hub")
         }
     }
 
     private var trendsSection: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Тренды")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.title2.weight(.bold))
                     .foregroundColor(.white)
 
                 Spacer()
@@ -243,159 +187,148 @@ struct HomeView: View {
                 Button {
                     handle(.videoGeneration)
                 } label: {
-                    HStack(spacing: 3) {
-                        Text("Еще")
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .semibold))
-                    }
+                    Label("Еще", systemImage: "chevron.right")
+                        .labelStyle(.titleAndIcon)
                 }
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.white.opacity(0.56))
-                .buttonStyle(.plain)
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
-                .accessibilityLabel("Еще")
+                .font(.subheadline.weight(.medium))
+                .foregroundColor(.white.opacity(0.68))
+                .accessibilityIdentifier("x5.home.trends.more")
                 .accessibilityHint("Открывает генератор видео")
             }
-            .frame(height: 24)
 
-            GeometryReader { proxy in
-                let scale = proxy.size.width / HomeApprovedLayout.trendRailWidth
-
-                HStack(spacing: 0) {
-                    ForEach(Array(trendItems.enumerated()), id: \.element.id) { index, item in
-                        ZStack(alignment: .topTrailing) {
-                            Button {
-                                handle(item.action)
-                            } label: {
-                                TrendArtworkCard(
-                                    item: item,
-                                    isActive: motionPreviewAllowed && activeTrendVideoID == item.id
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("x5.home.trend.\(item.id)")
-                            .accessibilityLabel(item.title)
-                            .accessibilityHint("Открывает соответствующий инструмент")
-
-                            Button {
-                                if motionPreviewAllowed {
-                                    activeTrendVideoID = activeTrendVideoID == item.id ? nil : item.id
-                                    X5Feedback.selection()
-                                } else {
-                                    handle(item.action)
-                                }
-                            } label: {
-                                Color.clear
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("x5.home.trend.\(item.id).preview")
-                            .accessibilityLabel("Видео: \(item.title)")
-                            .accessibilityHint(
-                                !motionPreviewAllowed
-                                    ? "Открывает соответствующий инструмент"
-                                    : activeTrendVideoID == item.id
-                                    ? "Остановить воспроизведение"
-                                    : "Воспроизвести без звука"
-                            )
-                        }
-                        .frame(
-                            width: item.crop.width * scale,
-                            height: HomeApprovedLayout.trendRailHeight * scale
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 10) {
+                    ForEach(trendItems) { item in
+                        NativeHomeTrendCard(
+                            item: item,
+                            isPlaying: motionPreviewAllowed && activeTrendVideoID == item.id,
+                            onOpen: { handle(item.action) },
+                            onPreview: { togglePreview(for: item) }
                         )
-
-                        if index < HomeApprovedLayout.trendGaps.count {
-                            Color.clear
-                                .frame(width: HomeApprovedLayout.trendGaps[index] * scale)
-                                .accessibilityHidden(true)
-                        }
+                        .accessibilityIdentifier("x5.home.trend.\(item.id)")
                     }
                 }
+                .padding(.horizontal, 1)
             }
-            .aspectRatio(
-                HomeApprovedLayout.trendRailWidth / HomeApprovedLayout.trendRailHeight,
-                contentMode: .fit
-            )
+            .accessibilityLabel("Тренды")
         }
     }
 
     private var businessSection: some View {
-        VStack(alignment: .leading, spacing: 5.2) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("Дизайн для бизнеса")
-                .font(.system(size: 20, weight: .bold))
+                .font(.title2.weight(.bold))
                 .foregroundColor(.white)
-                .padding(.leading, 2)
 
-            BusinessArtworkButton(
-                rect: HomeApprovedLayout.instagramBanner,
-                title: "Оформление Instagram",
+            NativeHomeBusinessCard(
+                title: "Оформление\nInstagram",
+                subtitle: "Стильные посты и сторис для твоего бренда",
+                assetName: "HomeUtilityInstaPack",
+                accent: Color(red: 0.67, green: 0.45, blue: 0.95),
+                actionTitle: "X5",
                 action: { handle(imageAction("insta_pack")) }
             )
+            .accessibilityIdentifier("x5.home.business.instagram")
 
-            HStack(spacing: 5) {
-                BusinessArtworkButton(
-                    rect: HomeApprovedLayout.youtube,
-                    title: "Обложки YouTube",
-                    action: { handle(imageAction("youtube_cover")) }
-                )
-                BusinessArtworkButton(
-                    rect: HomeApprovedLayout.logo,
-                    title: "Логотипы",
-                    action: { handle(imageAction("logo")) }
-                )
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                spacing: 10
+            ) {
+                ForEach(businessItems) { item in
+                    NativeHomeBusinessCard(
+                        title: item.title,
+                        subtitle: item.subtitle,
+                        assetName: item.assetName,
+                        accent: item.accent,
+                        actionTitle: nil,
+                        action: { handle(item.action) }
+                    )
+                    .accessibilityIdentifier("x5.home.business.\(item.id)")
+                }
             }
 
-            HStack(spacing: 5) {
-                BusinessArtworkButton(
-                    rect: HomeApprovedLayout.brandbook,
-                    title: "Брендбук",
-                    action: { handle(.imageGeneration(ImageGenerationCatalog.custom)) }
-                )
-                BusinessArtworkButton(
-                    rect: HomeApprovedLayout.influencer,
-                    title: "AI-инфлюенсер",
-                    action: { handle(.videoGeneration) }
-                )
-            }
-
-            BusinessArtworkButton(
-                rect: HomeApprovedLayout.productCards,
+            NativeHomeBusinessCard(
                 title: "Карточки товара",
+                subtitle: "Готовые визуалы для маркетплейсов",
+                assetName: "HomeCoverProductCards",
+                accent: X5Style.blue,
+                actionTitle: nil,
+                compact: true,
                 action: { handle(imageAction("product_cards")) }
             )
+            .accessibilityIdentifier("x5.home.business.product_cards")
         }
     }
 
-    private var trendItems: [HomeTrendItem] {
+    private var trendItems: [NativeHomeTrend] {
         [
-            HomeTrendItem(
+            NativeHomeTrend(
                 id: "strawberry",
                 title: "Измена клубнички",
-                crop: HomeApprovedLayout.trendStrawberry,
-                videoURL: HomeApprovedLayout.videoURL("transitions.mp4"),
+                subtitle: "С бананом • мультсериал",
+                assetName: "HomeTrendLiveVideo",
+                videoURL: HomeMotionURLs.video("transitions.mp4"),
                 action: .liveFruits
             ),
-            HomeTrendItem(
+            NativeHomeTrend(
                 id: "tokayev",
                 title: "С Токаевым",
-                crop: HomeApprovedLayout.trendTokayev,
-                videoURL: HomeApprovedLayout.videoURL("lipsync.mp4"),
+                subtitle: "AI-пародия • VIP на матче",
+                assetName: "HomeTrendPost",
+                videoURL: HomeMotionURLs.video("lipsync.mp4"),
                 action: .videoGeneration
             ),
-            HomeTrendItem(
+            NativeHomeTrend(
                 id: "wildberries",
                 title: "Карточки WB",
-                crop: HomeApprovedLayout.trendWildberries,
-                videoURL: HomeApprovedLayout.videoURL("ai-stylist.mp4"),
+                subtitle: "Добавь свои товары",
+                assetName: "HomeTrendNanoBanana",
+                videoURL: HomeMotionURLs.video("ai-stylist.mp4"),
                 action: imageAction("product_cards")
             ),
-            HomeTrendItem(
+            NativeHomeTrend(
                 id: "celebrity",
                 title: "Со знаменитостью",
-                crop: HomeApprovedLayout.trendCelebrity,
-                videoURL: HomeApprovedLayout.videoURL("face-swap.mp4"),
+                subtitle: "Добавь себя в сцену",
+                assetName: "HomeTrendInfluencer",
+                videoURL: HomeMotionURLs.video("face-swap.mp4"),
+                action: .videoGeneration
+            )
+        ]
+    }
+
+    private var businessItems: [NativeHomeBusiness] {
+        [
+            NativeHomeBusiness(
+                id: "youtube",
+                title: "Обложки YouTube",
+                subtitle: "Больше кликов",
+                assetName: "HomeCoverYoutube",
+                accent: .red,
+                action: imageAction("youtube_cover")
+            ),
+            NativeHomeBusiness(
+                id: "logo",
+                title: "Логотипы",
+                subtitle: "Знак для бренда",
+                assetName: "HomeUtilityLogo",
+                accent: X5Style.blue,
+                action: imageAction("logo")
+            ),
+            NativeHomeBusiness(
+                id: "brandbook",
+                title: "Брендбук",
+                subtitle: "Единый стиль",
+                assetName: "HomeUtilityPackaging",
+                accent: Color(red: 0.68, green: 0.44, blue: 0.95),
+                action: .imageGeneration(ImageGenerationCatalog.custom)
+            ),
+            NativeHomeBusiness(
+                id: "influencer",
+                title: "AI-инфлюенсер",
+                subtitle: "Персонаж для бренда",
+                assetName: "HomeTrendInfluencer",
+                accent: Color(red: 0.68, green: 0.44, blue: 0.95),
                 action: .videoGeneration
             )
         ]
@@ -407,6 +340,15 @@ struct HomeView: View {
         )
         return categories[categoryID].map(HomeRoute.imageGeneration)
             ?? .imageGeneration(ImageGenerationCatalog.custom)
+    }
+
+    private func togglePreview(for item: NativeHomeTrend) {
+        guard motionPreviewAllowed else {
+            handle(item.action)
+            return
+        }
+        activeTrendVideoID = activeTrendVideoID == item.id ? nil : item.id
+        X5Feedback.selection()
     }
 
     private func handle(_ route: HomeRoute) {
@@ -446,16 +388,11 @@ struct HomeView: View {
     @ViewBuilder
     private func sheetDestination(for route: HomeRoute) -> some View {
         switch route {
-        case .videoGeneration:
-            VideoGeneratorView()
-        case .voiceGeneration:
-            VoiceGeneratorView()
-        case .startupChat:
-            StartupChatView()
-        case .liveFruits:
-            LiveFruitsView()
-        case .imageGeneration, .hub:
-            EmptyView()
+        case .videoGeneration: VideoGeneratorView()
+        case .voiceGeneration: VoiceGeneratorView()
+        case .startupChat: StartupChatView()
+        case .liveFruits: LiveFruitsView()
+        case .imageGeneration, .hub: EmptyView()
         }
     }
 
@@ -469,68 +406,7 @@ struct HomeView: View {
     }
 }
 
-private enum HomeApprovedLayout {
-    static let referenceSize = CGSize(width: 740, height: 1600)
-
-    static let hero = CGRect(x: 28, y: 145, width: 684, height: 354)
-    static let startupPromo = CGRect(x: 29, y: 510, width: 339, height: 90)
-    static let hubPromo = CGRect(x: 376, y: 510, width: 337, height: 90)
-
-    static let trendStrawberry = CGRect(x: 28, y: 649, width: 176, height: 265)
-    static let trendTokayev = CGRect(x: 213, y: 649, width: 188, height: 265)
-    static let trendWildberries = CGRect(x: 412, y: 649, width: 160, height: 265)
-    static let trendCelebrity = CGRect(x: 579, y: 649, width: 133, height: 265)
-    static let trendRailWidth: CGFloat = 684
-    static let trendRailHeight: CGFloat = 265
-    static let trendGaps: [CGFloat] = [9, 11, 7]
-
-    static let instagramBanner = CGRect(x: 28, y: 969, width: 684, height: 204)
-    static let youtube = CGRect(x: 28, y: 1181, width: 338, height: 129)
-    static let logo = CGRect(x: 374, y: 1181, width: 338, height: 129)
-    static let brandbook = CGRect(x: 28, y: 1319, width: 338, height: 120)
-    static let influencer = CGRect(x: 374, y: 1319, width: 338, height: 120)
-    static let productCards = CGRect(x: 28, y: 1448, width: 684, height: 96)
-
-    private static let videoBase =
-        "https://afwznqjpshybmqhlewmy.supabase.co/storage/v1/object/public/videos/home"
-
-    static func videoURL(_ filename: String) -> URL {
-        URL(string: "\(videoBase)/\(filename)")!
-    }
-}
-
-/// Home-only backdrop from the approved black/violet composition.
-/// Global X5 screens keep their existing blue theme.
-private struct HomeApprovedBackground: View {
-    var body: some View {
-        ZStack {
-            Color(red: 0.004, green: 0.006, blue: 0.014)
-
-            RadialGradient(
-                colors: [
-                    Color(red: 0.28, green: 0.035, blue: 0.58).opacity(0.34),
-                    .clear
-                ],
-                center: .init(x: -0.08, y: 0.66),
-                startRadius: 6,
-                endRadius: 360
-            )
-
-            RadialGradient(
-                colors: [
-                    Color(red: 0.035, green: 0.16, blue: 0.28).opacity(0.24),
-                    .clear
-                ],
-                center: .init(x: 0.48, y: -0.05),
-                startRadius: 8,
-                endRadius: 420
-            )
-        }
-        .ignoresSafeArea()
-    }
-}
-
-private struct HomeHeroSlide: Identifiable {
+private struct NativeHomeHero: Identifiable {
     let id: String
     let eyebrow: String
     let title: String
@@ -539,12 +415,58 @@ private struct HomeHeroSlide: Identifiable {
     let action: HomeRoute
 }
 
-/// Reuses the functional build 193 hero treatment for the extra carousel pages.
-/// The first visible page remains the exact approved client artwork.
-private struct FunctionalHeroSlideCard: View {
-    let slide: HomeHeroSlide
+private struct NativeHomeTrend: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let assetName: String
+    let videoURL: URL
+    let action: HomeRoute
+}
+
+private struct NativeHomeBusiness: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let assetName: String
+    let accent: Color
+    let action: HomeRoute
+}
+
+private enum HomeMotionURLs {
+    private static let base = "https://afwznqjpshybmqhlewmy.supabase.co/storage/v1/object/public/videos/home"
+
+    static func video(_ filename: String) -> URL {
+        URL(string: "\(base)/\(filename)")!
+    }
+}
+
+private struct NativeHomeBackground: View {
+    var body: some View {
+        ZStack {
+            Color(red: 0.004, green: 0.006, blue: 0.014)
+            RadialGradient(
+                colors: [Color(red: 0.30, green: 0.05, blue: 0.58).opacity(0.34), .clear],
+                center: .init(x: -0.08, y: 0.68),
+                startRadius: 8,
+                endRadius: 370
+            )
+            RadialGradient(
+                colors: [Color(red: 0.03, green: 0.18, blue: 0.32).opacity(0.28), .clear],
+                center: .init(x: 0.62, y: 0.04),
+                startRadius: 8,
+                endRadius: 450
+            )
+        }
+        .ignoresSafeArea()
+    }
+}
+
+private struct NativeHomeHeroCard: View {
+    let slide: NativeHomeHero
     let pageIndex: Int
     let pageCount: Int
+    let action: () -> Void
 
     var body: some View {
         GeometryReader { proxy in
@@ -556,54 +478,237 @@ private struct FunctionalHeroSlideCard: View {
                     .clipped()
 
                 LinearGradient(
-                    colors: [
-                        Color.black.opacity(0.04),
-                        Color.black.opacity(0.34),
-                        Color.black.opacity(0.88)
-                    ],
+                    colors: [Color.black.opacity(0.04), Color.black.opacity(0.30), Color.black.opacity(0.88)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
 
-                VStack(alignment: .leading, spacing: 7) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(slide.eyebrow)
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1.2)
+                        .font(.caption2.weight(.bold))
+                        .tracking(1.4)
                         .foregroundColor(X5Style.blue)
 
                     Text(slide.title)
-                        .font(.system(size: 24, weight: .bold))
+                        .font(.title2.weight(.bold))
                         .foregroundColor(.white)
                         .lineLimit(2)
                         .minimumScaleFactor(0.78)
 
                     Text(slide.subtitle)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.72))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(.white.opacity(0.76))
                         .lineLimit(2)
+                        .minimumScaleFactor(0.82)
 
-                    Text("Создать")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 15)
-                        .frame(height: 30)
-                        .background(X5Style.blue)
-                        .clipShape(Capsule())
-                        .padding(.top, 4)
+                    Button(action: action) {
+                        Text("Создать")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 20)
+                            .frame(minHeight: 42)
+                            .background(X5Style.blue, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("x5.home.hero.\(slide.id).create")
+                    .accessibilityLabel("\(slide.title.replacingOccurrences(of: "\n", with: " ")). Создать")
                 }
                 .padding(20)
-                .padding(.trailing, 54)
+                .padding(.trailing, 52)
 
-                HomePageDots(active: pageIndex, count: pageCount)
-                    .padding(17)
+                NativeHomePageDots(active: pageIndex, count: pageCount)
+                    .padding(18)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             }
         }
-        .background(Color.black)
+        .background(.black)
+        .accessibilityElement(children: .contain)
     }
 }
 
-private struct HomePageDots: View {
+private struct NativeHomePromoCard: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: icon)
+                        .font(.title3.weight(.bold))
+                        .foregroundColor(.black)
+                        .frame(width: 42, height: 42)
+                        .background(Color.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    Spacer(minLength: 4)
+                    Image(systemName: "arrow.up.right")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(X5Style.blue)
+                }
+
+                Text(title)
+                    .font(.headline.weight(.bold))
+                    .foregroundColor(.black)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.76)
+
+                Text(subtitle)
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(.black.opacity(0.58))
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, minHeight: 130, alignment: .topLeading)
+            .padding(14)
+            .background(.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title). \(subtitle)")
+    }
+}
+
+private struct NativeHomeTrendCard: View {
+    let item: NativeHomeTrend
+    let isPlaying: Bool
+    let onOpen: () -> Void
+    let onPreview: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            Button(action: onOpen) {
+                ZStack(alignment: .bottomLeading) {
+                    Image(item.assetName)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 164, height: 238)
+                        .clipped()
+
+                    if isPlaying {
+                        LoopingVideo(source: .remote(url: item.videoURL), posterAssetName: item.assetName, isActive: true)
+                            .transition(.opacity)
+                            .allowsHitTesting(false)
+                    }
+
+                    LinearGradient(
+                        colors: [.clear, Color.black.opacity(0.82)],
+                        startPoint: .center,
+                        endPoint: .bottom
+                    )
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.title)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                        Text(item.subtitle)
+                            .font(.caption2.weight(.medium))
+                            .foregroundColor(.white.opacity(0.74))
+                            .lineLimit(2)
+                        Text("VIDEO")
+                            .font(.caption2.weight(.bold))
+                            .foregroundColor(X5Style.blue)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.black.opacity(0.52), in: Capsule())
+                    }
+                    .padding(12)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Открывает соответствующий инструмент")
+
+            Button(action: onPreview) {
+                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Color.black.opacity(0.58), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("x5.home.trend.\(item.id).preview")
+            .accessibilityLabel("Видео: \(item.title)")
+            .accessibilityHint(isPlaying ? "Остановить воспроизведение" : "Воспроизвести без звука")
+            .padding(10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        }
+        .frame(width: 164, height: 238)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+        }
+        .accessibilityLabel(item.title)
+    }
+}
+
+private struct NativeHomeBusinessCard: View {
+    let title: String
+    let subtitle: String
+    let assetName: String
+    let accent: Color
+    let actionTitle: String?
+    var compact = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: .bottomLeading) {
+                Image(assetName)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity, minHeight: compact ? 118 : 156)
+                    .clipped()
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.03), Color.black.opacity(0.83)],
+                    startPoint: .center,
+                    endPoint: .bottom
+                )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(compact ? .headline.weight(.bold) : .title3.weight(.bold))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.78)
+                    Text(subtitle)
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(.white.opacity(0.76))
+                        .lineLimit(2)
+                    if let actionTitle {
+                        Text(actionTitle)
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 32)
+                            .background(accent, in: Capsule())
+                            .padding(.top, 4)
+                    }
+                }
+                .padding(14)
+
+                Image(systemName: "arrow.right")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.black)
+                    .frame(width: 34, height: 34)
+                    .background(accent, in: Circle())
+                    .padding(12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }
+            .frame(maxWidth: .infinity, minHeight: compact ? 118 : 156)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.white.opacity(0.16), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title). \(subtitle)")
+        .accessibilityHint("Открывает соответствующий инструмент")
+    }
+}
+
+private struct NativeHomePageDots: View {
     let active: Int
     let count: Int
 
@@ -611,125 +716,11 @@ private struct HomePageDots: View {
         HStack(spacing: 6) {
             ForEach(0..<count, id: \.self) { index in
                 Capsule()
-                    .fill(index == active ? Color.white : Color.white.opacity(0.42))
-                    .frame(width: index == active ? 23 : 7, height: 7)
+                    .fill(index == active ? .white : .white.opacity(0.42))
+                    .frame(width: index == active ? 22 : 7, height: 7)
             }
         }
         .accessibilityHidden(true)
-    }
-}
-
-private struct HomeTrendItem: Identifiable {
-    let id: String
-    let title: String
-    let crop: CGRect
-    let videoURL: URL
-    let action: HomeRoute
-}
-
-private struct ApprovedHomeCrop: View {
-    let rect: CGRect
-
-    var body: some View {
-        GeometryReader { proxy in
-            let widthScale = proxy.size.width / rect.width
-            let heightScale = proxy.size.height / rect.height
-            let scale = max(widthScale, heightScale)
-            let renderedSize = CGSize(
-                width: HomeApprovedLayout.referenceSize.width * scale,
-                height: HomeApprovedLayout.referenceSize.height * scale
-            )
-            let visibleSize = CGSize(
-                width: rect.width * scale,
-                height: rect.height * scale
-            )
-
-            Image("HomeApprovedReference")
-                .resizable()
-                .frame(width: renderedSize.width, height: renderedSize.height)
-                .position(
-                    x: renderedSize.width / 2
-                        - rect.minX * scale
-                        + (proxy.size.width - visibleSize.width) / 2,
-                    y: renderedSize.height / 2
-                        - rect.minY * scale
-                        + (proxy.size.height - visibleSize.height) / 2
-                )
-        }
-        .clipped()
-        .background(Color.black)
-    }
-}
-
-private struct ApprovedArtworkButton: View {
-    let rect: CGRect
-    let cornerRadius: CGFloat
-    let accessibilityLabel: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            ApprovedHomeCrop(rect: rect)
-                .aspectRatio(rect.width / rect.height, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel)
-    }
-}
-
-private struct TrendArtworkCard: View {
-    let item: HomeTrendItem
-    let isActive: Bool
-
-    var body: some View {
-        ZStack {
-            ApprovedHomeCrop(rect: item.crop)
-
-            if isActive {
-                LoopingVideo(
-                    source: .remote(url: item.videoURL),
-                    posterAssetName: nil,
-                    isActive: true
-                )
-                .transition(.opacity)
-
-                Image(systemName: "pause.fill")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 28, height: 28)
-                    .background(Color.black.opacity(0.52))
-                    .clipShape(Circle())
-                    .padding(5)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.white.opacity(0.14), lineWidth: 0.7)
-        )
-    }
-}
-
-private struct BusinessArtworkButton: View {
-    let rect: CGRect
-    let title: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            ApprovedHomeCrop(rect: rect)
-                .aspectRatio(rect.width / rect.height, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color.white.opacity(0.13), lineWidth: 0.7)
-                )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityHint("Открывает соответствующий инструмент")
     }
 }
 
@@ -750,12 +741,7 @@ private struct HomeSearchSheet: View {
         ]
         items.append(
             contentsOf: ImageGenerationCatalog.categories.map { category in
-                HomeSearchItem(
-                    title: category.title,
-                    subtitle: category.subtitle,
-                    icon: category.icon,
-                    route: .imageGeneration(category)
-                )
+                HomeSearchItem(title: category.title, subtitle: category.subtitle, icon: category.icon, route: .imageGeneration(category))
             }
         )
         return items
@@ -773,30 +759,20 @@ private struct HomeSearchSheet: View {
     var body: some View {
         NavigationStack {
             List(filteredItems) { item in
-                Button {
-                    onSelect(item.route)
-                } label: {
+                Button { onSelect(item.route) } label: {
                     HStack(spacing: 13) {
                         Image(systemName: item.icon)
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundColor(X5Style.blue)
                             .frame(width: 38, height: 38)
-                            .background(Color.white.opacity(0.07))
-                            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-
+                            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(item.title)
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.white)
-                            Text(item.subtitle)
-                                .font(.system(size: 12))
-                                .foregroundColor(.white.opacity(0.58))
+                            Text(item.title).font(.body.weight(.semibold)).foregroundColor(.white)
+                            Text(item.subtitle).font(.caption).foregroundColor(.white.opacity(0.58))
                         }
-
                         Spacer()
-
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.caption.weight(.bold))
                             .foregroundColor(.white.opacity(0.28))
                     }
                     .frame(minHeight: 48)
@@ -811,8 +787,7 @@ private struct HomeSearchSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Готово") { dismiss() }
-                        .foregroundColor(X5Style.blue)
+                    Button("Готово") { dismiss() }.foregroundColor(X5Style.blue)
                 }
             }
         }
