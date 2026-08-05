@@ -110,6 +110,37 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertIn("NativeHomeBusinessCard", home)
         self.assertIn("NativeHomeTrendCard", home)
 
+    def test_home_uses_compact_reference_proportions_instead_of_oversized_cards(self):
+        home = HOME.read_text(encoding="utf-8")
+
+        for required in (
+            "private enum HomeLayout",
+            "static let heroHeight: CGFloat = 198",
+            "static let promoHeight: CGFloat = 78",
+            "static let trendCardSize = CGSize(width: 96, height: 148)",
+            ".font(.system(size: 10.5, weight: .bold))",
+            ".minimumScaleFactor(0.65)",
+            ".allowsTightening(true)",
+            "static let businessFeatureHeight: CGFloat = 154",
+            "static let businessTileHeight: CGFloat = 112",
+            ".frame(height: HomeLayout.heroHeight)",
+            ".frame(height: HomeLayout.promoHeight)",
+            ".frame(width: HomeLayout.trendCardSize.width",
+        ):
+            self.assertIn(required, home)
+
+        self.assertNotIn("minHeight: 130", home)
+        self.assertNotIn("width: 164, height: 238", home)
+
+    def test_compact_promo_buttons_do_not_force_bad_wraps_on_small_iphones(self):
+        home = HOME.read_text(encoding="utf-8")
+
+        self.assertIn('subtitle: "Специалисты и задачи"', home)
+        self.assertIn(".frame(width: 34, height: 34)", home)
+        self.assertIn(".font(.system(size: 14, weight: .bold))", home)
+        self.assertIn(".font(.system(size: 11, weight: .medium))", home)
+        self.assertNotIn('subtitle: "Специалисты\\nи задачи"', home)
+
     def test_header_search_gallery_and_more_are_working_surfaces(self):
         home = HOME.read_text(encoding="utf-8")
 

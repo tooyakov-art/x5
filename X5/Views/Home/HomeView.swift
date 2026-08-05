@@ -20,6 +20,17 @@ enum HomeRoute: Hashable, Identifiable {
     }
 }
 
+private enum HomeLayout {
+    static let heroHeight: CGFloat = 198
+    static let promoHeight: CGFloat = 78
+    static let trendCardSize = CGSize(width: 96, height: 148)
+    static let businessFeatureHeight: CGFloat = 154
+    static let businessTileHeight: CGFloat = 112
+    static let businessWideHeight: CGFloat = 104
+    static let sectionSpacing: CGFloat = 14
+    static let cardSpacing: CGFloat = 8
+}
+
 /// Native Home composition. Photography and video posters are content-only assets;
 /// labels, controls, card chrome, navigation and layout are SwiftUI views.
 struct HomeView: View {
@@ -38,15 +49,15 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: HomeLayout.sectionSpacing) {
                     heroBanner
                     promoCards
                     trendsSection
                     businessSection
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
-                .padding(.bottom, 24)
+                .padding(.horizontal, 14)
+                .padding(.top, 6)
+                .padding(.bottom, 18)
                 .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity)
             }
@@ -117,10 +128,10 @@ struct HomeView: View {
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
-        .frame(height: 250)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .frame(height: HomeLayout.heroHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(Color.white.opacity(0.18), lineWidth: 1)
                 .allowsHitTesting(false)
         }
@@ -156,7 +167,7 @@ struct HomeView: View {
     }
 
     private var promoCards: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: HomeLayout.cardSpacing) {
             NativeHomePromoCard(
                 title: "Стартап чат",
                 subtitle: "AI-наставник",
@@ -167,7 +178,7 @@ struct HomeView: View {
 
             NativeHomePromoCard(
                 title: "Hub",
-                subtitle: "Специалисты\nи задачи",
+                subtitle: "Специалисты и задачи",
                 icon: "briefcase.fill",
                 action: { handle(.hub) }
             )
@@ -176,7 +187,7 @@ struct HomeView: View {
     }
 
     private var trendsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Тренды")
                     .font(.title2.weight(.bold))
@@ -197,7 +208,7 @@ struct HomeView: View {
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 10) {
+                LazyHStack(spacing: HomeLayout.cardSpacing) {
                     ForEach(trendItems) { item in
                         NativeHomeTrendCard(
                             item: item,
@@ -215,7 +226,7 @@ struct HomeView: View {
     }
 
     private var businessSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: HomeLayout.cardSpacing) {
             Text("Дизайн для бизнеса")
                 .font(.title2.weight(.bold))
                 .foregroundColor(.white)
@@ -231,8 +242,11 @@ struct HomeView: View {
             .accessibilityIdentifier("x5.home.business.instagram")
 
             LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
-                spacing: 10
+                columns: [
+                    GridItem(.flexible(), spacing: HomeLayout.cardSpacing),
+                    GridItem(.flexible(), spacing: HomeLayout.cardSpacing)
+                ],
+                spacing: HomeLayout.cardSpacing
             ) {
                 ForEach(businessItems) { item in
                     NativeHomeBusinessCard(
@@ -327,7 +341,7 @@ struct HomeView: View {
                 id: "influencer",
                 title: "AI-инфлюенсер",
                 subtitle: "Персонаж для бренда",
-                assetName: "HomeTrendInfluencer",
+                assetName: "HomeUtilityCustom",
                 accent: Color(red: 0.68, green: 0.44, blue: 0.95),
                 action: .videoGeneration
             )
@@ -444,18 +458,18 @@ private enum HomeMotionURLs {
 private struct NativeHomeBackground: View {
     var body: some View {
         ZStack {
-            Color(red: 0.004, green: 0.006, blue: 0.014)
+            Color(red: 0.016, green: 0.020, blue: 0.045)
             RadialGradient(
-                colors: [Color(red: 0.30, green: 0.05, blue: 0.58).opacity(0.34), .clear],
-                center: .init(x: -0.08, y: 0.68),
+                colors: [Color(red: 0.40, green: 0.10, blue: 0.72).opacity(0.42), .clear],
+                center: .init(x: -0.10, y: 0.62),
                 startRadius: 8,
-                endRadius: 370
+                endRadius: 340
             )
             RadialGradient(
-                colors: [Color(red: 0.03, green: 0.18, blue: 0.32).opacity(0.28), .clear],
+                colors: [Color(red: 0.04, green: 0.22, blue: 0.38).opacity(0.34), .clear],
                 center: .init(x: 0.62, y: 0.04),
                 startRadius: 8,
-                endRadius: 450
+                endRadius: 390
             )
         }
         .ignoresSafeArea()
@@ -483,41 +497,41 @@ private struct NativeHomeHeroCard: View {
                     endPoint: .bottom
                 )
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text(slide.eyebrow)
                         .font(.caption2.weight(.bold))
                         .tracking(1.4)
                         .foregroundColor(X5Style.blue)
 
                     Text(slide.title)
-                        .font(.title2.weight(.bold))
+                        .font(.system(size: 25, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(2)
                         .minimumScaleFactor(0.78)
 
                     Text(slide.subtitle)
-                        .font(.subheadline.weight(.medium))
+                        .font(.caption.weight(.medium))
                         .foregroundColor(.white.opacity(0.76))
                         .lineLimit(2)
                         .minimumScaleFactor(0.82)
 
                     Button(action: action) {
                         Text("Создать")
-                            .font(.subheadline.weight(.bold))
+                            .font(.caption.weight(.bold))
                             .foregroundColor(.black)
-                            .padding(.horizontal, 20)
-                            .frame(minHeight: 42)
+                            .padding(.horizontal, 18)
+                            .frame(minHeight: 38)
                             .background(X5Style.blue, in: Capsule())
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("x5.home.hero.\(slide.id).create")
                     .accessibilityLabel("\(slide.title.replacingOccurrences(of: "\n", with: " ")). Создать")
                 }
-                .padding(20)
-                .padding(.trailing, 52)
+                .padding(16)
+                .padding(.trailing, 48)
 
                 NativeHomePageDots(active: pageIndex, count: pageCount)
-                    .padding(18)
+                    .padding(14)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             }
         }
@@ -534,33 +548,40 @@ private struct NativeHomePromoCard: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: icon)
-                        .font(.title3.weight(.bold))
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.black)
+                    .frame(width: 34, height: 34)
+                    .background(
+                        Color.black.opacity(0.07),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.black)
-                        .frame(width: 42, height: 42)
-                        .background(Color.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                    Spacer(minLength: 4)
-                    Image(systemName: "arrow.up.right")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundColor(X5Style.blue)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
+
+                    Text(subtitle)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.black.opacity(0.56))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.68)
                 }
 
-                Text(title)
-                    .font(.headline.weight(.bold))
-                    .foregroundColor(.black)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.76)
+                Spacer(minLength: 0)
 
-                Text(subtitle)
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(.black.opacity(0.58))
-                    .lineLimit(2)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(X5Style.blue)
             }
-            .frame(maxWidth: .infinity, minHeight: 130, alignment: .topLeading)
-            .padding(14)
-            .background(.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .padding(.horizontal, 9)
+            .frame(maxWidth: .infinity)
+            .frame(height: HomeLayout.promoHeight)
+            .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(title). \(subtitle)")
@@ -580,7 +601,10 @@ private struct NativeHomeTrendCard: View {
                     Image(item.assetName)
                         .resizable()
                         .scaledToFill()
-                        .frame(width: 164, height: 238)
+                        .frame(
+                            width: HomeLayout.trendCardSize.width,
+                            height: HomeLayout.trendCardSize.height
+                        )
                         .clipped()
 
                     if isPlaying {
@@ -597,11 +621,13 @@ private struct NativeHomeTrendCard: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(item.title)
-                            .font(.subheadline.weight(.bold))
+                            .font(.system(size: 10.5, weight: .bold))
                             .foregroundColor(.white)
                             .lineLimit(2)
+                            .minimumScaleFactor(0.65)
+                            .allowsTightening(true)
                         Text(item.subtitle)
-                            .font(.caption2.weight(.medium))
+                            .font(.system(size: 9, weight: .medium))
                             .foregroundColor(.white.opacity(0.74))
                             .lineLimit(2)
                         Text("VIDEO")
@@ -611,7 +637,7 @@ private struct NativeHomeTrendCard: View {
                             .padding(.vertical, 3)
                             .background(Color.black.opacity(0.52), in: Capsule())
                     }
-                    .padding(12)
+                    .padding(8)
                 }
             }
             .buttonStyle(.plain)
@@ -621,20 +647,20 @@ private struct NativeHomeTrendCard: View {
                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                     .font(.caption.weight(.bold))
                     .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 34, height: 34)
                     .background(Color.black.opacity(0.58), in: Circle())
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("x5.home.trend.\(item.id).preview")
             .accessibilityLabel("Видео: \(item.title)")
             .accessibilityHint(isPlaying ? "Остановить воспроизведение" : "Воспроизвести без звука")
-            .padding(10)
+            .padding(6)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
-        .frame(width: 164, height: 238)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .frame(width: HomeLayout.trendCardSize.width, height: HomeLayout.trendCardSize.height)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Color.white.opacity(0.16), lineWidth: 1)
         }
         .accessibilityLabel(item.title)
@@ -650,13 +676,20 @@ private struct NativeHomeBusinessCard: View {
     var compact = false
     let action: () -> Void
 
+    private var cardHeight: CGFloat {
+        if compact { return HomeLayout.businessWideHeight }
+        if actionTitle != nil { return HomeLayout.businessFeatureHeight }
+        return HomeLayout.businessTileHeight
+    }
+
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .bottomLeading) {
                 Image(assetName)
                     .resizable()
                     .scaledToFill()
-                    .frame(maxWidth: .infinity, minHeight: compact ? 118 : 156)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: cardHeight)
                     .clipped()
 
                 LinearGradient(
@@ -667,12 +700,12 @@ private struct NativeHomeBusinessCard: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(compact ? .headline.weight(.bold) : .title3.weight(.bold))
+                        .font(compact ? .subheadline.weight(.bold) : .headline.weight(.bold))
                         .foregroundColor(.white)
                         .lineLimit(2)
                         .minimumScaleFactor(0.78)
                     Text(subtitle)
-                        .font(.caption.weight(.medium))
+                        .font(.caption2.weight(.medium))
                         .foregroundColor(.white.opacity(0.76))
                         .lineLimit(2)
                     if let actionTitle {
@@ -680,25 +713,26 @@ private struct NativeHomeBusinessCard: View {
                             .font(.caption.weight(.bold))
                             .foregroundColor(.black)
                             .padding(.horizontal, 14)
-                            .frame(minHeight: 32)
+                            .frame(minHeight: 28)
                             .background(accent, in: Capsule())
                             .padding(.top, 4)
                     }
                 }
-                .padding(14)
+                .padding(11)
 
                 Image(systemName: "arrow.right")
                     .font(.subheadline.weight(.bold))
                     .foregroundColor(.black)
-                    .frame(width: 34, height: 34)
+                    .frame(width: 30, height: 30)
                     .background(accent, in: Circle())
-                    .padding(12)
+                    .padding(9)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             }
-            .frame(maxWidth: .infinity, minHeight: compact ? 118 : 156)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(maxWidth: .infinity)
+            .frame(height: cardHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(Color.white.opacity(0.16), lineWidth: 1)
             }
         }
