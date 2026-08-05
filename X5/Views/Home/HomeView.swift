@@ -24,7 +24,8 @@ private enum HomeLayout {
     static let heroHeight: CGFloat = 198
     static let promoHeight: CGFloat = 78
     static let trendCardSize = CGSize(width: 96, height: 148)
-    static let businessFeatureHeight: CGFloat = 154
+    static let businessFeatureHeight: CGFloat = 198
+    static let businessFeatureOverflow: CGFloat = 38
     static let businessTileHeight: CGFloat = 112
     static let businessWideHeight: CGFloat = 104
     static let sectionSpacing: CGFloat = 14
@@ -231,12 +232,7 @@ struct HomeView: View {
                 .font(.title2.weight(.bold))
                 .foregroundColor(.white)
 
-            NativeHomeBusinessCard(
-                title: "Оформление\nInstagram",
-                subtitle: "Стильные посты и сторис для твоего бренда",
-                assetName: "HomeUtilityInstaPack",
-                accent: Color(red: 0.67, green: 0.45, blue: 0.95),
-                actionTitle: "X5",
+            NativeHomeInstagramFeatureCard(
                 action: { handle(imageAction("insta_pack")) }
             )
             .accessibilityIdentifier("x5.home.business.instagram")
@@ -664,6 +660,107 @@ private struct NativeHomeTrendCard: View {
                 .stroke(Color.white.opacity(0.16), lineWidth: 1)
         }
         .accessibilityLabel(item.title)
+    }
+}
+
+private struct NativeHomeInstagramFeatureCard: View {
+    let action: () -> Void
+
+    private let cornerRadius: CGFloat = 20
+
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: .bottom) {
+                cardSurface
+                    .frame(height: HomeLayout.businessFeatureHeight)
+
+                Image("HomeInstagramModelCutout")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(
+                        width: 205,
+                        height: HomeLayout.businessFeatureHeight
+                            + HomeLayout.businessFeatureOverflow + 8
+                    )
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .offset(x: 18, y: 2)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+            .frame(
+                height: HomeLayout.businessFeatureHeight
+                    + HomeLayout.businessFeatureOverflow
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Оформление Instagram. Стильные посты и сторис для твоего бренда")
+        .accessibilityHint("Открывает генератор оформления Instagram")
+    }
+
+    private var cardSurface: some View {
+        ZStack(alignment: .leading) {
+            LinearGradient(
+                colors: [
+                    Color.white,
+                    Color(red: 0.94, green: 0.90, blue: 1.00),
+                    Color(red: 0.73, green: 0.58, blue: 0.96)
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+
+            HStack(spacing: 8) {
+                Spacer(minLength: 180)
+
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(0.42))
+                    .frame(width: 72, height: 132)
+                    .rotationEffect(.degrees(-7))
+
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(red: 0.56, green: 0.36, blue: 0.86).opacity(0.24))
+                    .frame(width: 72, height: 142)
+                    .rotationEffect(.degrees(6))
+            }
+            .padding(.trailing, 12)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Оформление")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.black)
+
+                Text("Instagram")
+                    .font(.system(size: 30, weight: .bold))
+                    .italic()
+                    .foregroundColor(Color(red: 0.48, green: 0.26, blue: 0.80))
+
+                Text("Стильные посты и сторис\nдля твоего бренда")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.black.opacity(0.58))
+                    .lineSpacing(1)
+                    .padding(.top, 5)
+
+                Text("X5")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 17)
+                    .frame(minHeight: 30)
+                    .background(X5Style.blue, in: Capsule())
+                    .padding(.top, 9)
+            }
+            .padding(.leading, 16)
+            .padding(.vertical, 14)
+            .frame(maxWidth: 188, maxHeight: .infinity, alignment: .leading)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(Color.white.opacity(0.72), lineWidth: 1)
+        }
+        .shadow(color: Color(red: 0.49, green: 0.23, blue: 0.82).opacity(0.30), radius: 16, y: 8)
     }
 }
 

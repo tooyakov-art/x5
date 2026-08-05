@@ -58,3 +58,11 @@ The Home screen reuses four existing X5-owned Higgsfield exports from the projec
 - Prompt restrictions: no text, no buttons, no app UI, no navigation, no third-party logos, and no watermarks.
 - Rights: generated specifically for the X5 project and used subject to the applicable OpenAI account terms. No external stock assets were imported.
 - Trend posters: `HomeTrendLiveVideo.jpg`, `HomeTrendPost.jpg`, `HomeTrendNanoBanana.jpg`, and `HomeTrendInfluencer.jpg` are thumbnails generated locally from the four X5-owned fallback videos listed above, so preview art matches the actual playable media.
+
+## Instagram feature cutout
+
+- Generated: 2026-08-05 with OpenAI's built-in image generation tool, derived from the existing X5-owned `HomeUtilityInstaPack.jpg` fashion direction.
+- File: `HomeInstagramModelCutout.png` in `HomeInstagramModelCutout.imageset`.
+- Usage: content-only model layer that overlaps the top edge of the native SwiftUI Instagram feature card. The card surface, text, CTA, route, hit target, and accessibility remain code-native.
+- Processing: generated on a flat chroma-key background, converted locally to an RGBA PNG with the maintained imagegen chroma-key helper, and validated for transparent corners and a bounded visible subject.
+- Restrictions: one original AI-generated adult model, no third-party person, logo, text, interface, or watermark.

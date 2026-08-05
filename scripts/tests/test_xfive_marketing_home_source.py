@@ -96,7 +96,8 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             "С Токаевым",
             "Карточки WB",
             "Со знаменитостью",
-            "Оформление\\nInstagram",
+            'Text("Оформление")',
+            'Text("Instagram")',
             "Обложки YouTube",
             "Логотипы",
             "Брендбук",
@@ -110,6 +111,27 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertIn("NativeHomeBusinessCard", home)
         self.assertIn("NativeHomeTrendCard", home)
 
+    def test_instagram_feature_is_a_native_overflow_card_after_trends(self):
+        home = HOME.read_text(encoding="utf-8")
+        cutout = (
+            ROOT
+            / "X5"
+            / "Assets.xcassets"
+            / "HomeInstagramModelCutout.imageset"
+            / "HomeInstagramModelCutout.png"
+        )
+
+        self.assertIn("struct NativeHomeInstagramFeatureCard", home)
+        self.assertIn('Image("HomeInstagramModelCutout")', home)
+        self.assertIn('Text("Оформление")', home)
+        self.assertIn('Text("Instagram")', home)
+        self.assertIn('Text("X5")', home)
+        self.assertIn("static let businessFeatureHeight: CGFloat = 198", home)
+        self.assertIn("static let businessFeatureOverflow: CGFloat = 38", home)
+        self.assertIn('.accessibilityIdentifier("x5.home.business.instagram")', home)
+        self.assertLess(home.index("trendsSection"), home.index("businessSection"))
+        self.assertTrue(cutout.exists(), "The overflow model must be a separate content asset")
+
     def test_home_uses_compact_reference_proportions_instead_of_oversized_cards(self):
         home = HOME.read_text(encoding="utf-8")
 
@@ -121,7 +143,7 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             ".font(.system(size: 10.5, weight: .bold))",
             ".minimumScaleFactor(0.65)",
             ".allowsTightening(true)",
-            "static let businessFeatureHeight: CGFloat = 154",
+            "static let businessFeatureHeight: CGFloat = 198",
             "static let businessTileHeight: CGFloat = 112",
             ".frame(height: HomeLayout.heroHeight)",
             ".frame(height: HomeLayout.promoHeight)",
