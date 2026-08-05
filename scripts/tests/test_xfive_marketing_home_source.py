@@ -162,29 +162,21 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertIn("if !isAllowed { activeTrendVideoID = nil }", home)
         self.assertIn("handle(.videoGeneration)", home)
 
-    def test_custom_tab_bar_matches_approved_compact_layout(self):
+    def test_system_tab_bar_is_native_and_never_replaced(self):
         source = TAB_VIEW.read_text(encoding="utf-8")
 
-        self.assertIn("X5BottomTabBar", source)
         self.assertIn("TabView(selection: $selectedTab)", source)
-        self.assertIn(".toolbar(.hidden, for: .tabBar)", source)
-        self.assertIn(".safeAreaInset(edge: .bottom, spacing: 0)", source)
-        self.assertNotIn(".offset(y: proxy.safeAreaInsets.bottom)", source)
-        self.assertNotIn(".ignoresSafeArea(.container, edges: .bottom)", source)
-        self.assertIn(
-            "private let itemCenters: [CGFloat] = [138, 260, 372, 473, 576]",
-            source,
-        )
+        self.assertIn(".tint(X5Style.blue)", source)
+        self.assertNotIn("X5BottomTabBar", source)
+        self.assertNotIn(".toolbar(.hidden, for: .tabBar)", source)
+        self.assertNotIn(".safeAreaInset(edge: .bottom", source)
+        self.assertNotIn("itemCenters", source)
+        self.assertNotIn("GeometryReader", source)
         for key in ("tab_home", "tab_courses", "tab_chats", "tab_hub", "tab_profile"):
             self.assertIn(f'return "{key}"', source)
-        self.assertIn("Text(loc.t(tab.titleKey))", source)
-        self.assertIn("@ScaledMetric(relativeTo: .caption2)", source)
-        self.assertIn("@ScaledMetric(relativeTo: .body)", source)
         self.assertEqual(source.count(".tabItem"), 5)
         self.assertIn("enum X5AppTab: Int, CaseIterable, Identifiable", source)
-        self.assertIn('accessibilityIdentifier("x5.tab.\\(tab.notificationKey)")', source)
         self.assertNotIn("private var selectedContent", source)
-        self.assertIn(".frame(minHeight: 44, alignment: .bottom)", source)
 
 
 if __name__ == "__main__":
