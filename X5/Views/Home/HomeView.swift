@@ -700,36 +700,11 @@ private struct NativeHomeInstagramFeatureCard: View {
 
     private var cardSurface: some View {
         ZStack(alignment: .leading) {
-            LinearGradient(
-                colors: [
-                    Color.white,
-                    Color(red: 0.94, green: 0.90, blue: 1.00),
-                    Color(red: 0.73, green: 0.58, blue: 0.96)
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-
-            HStack(spacing: 8) {
-                Spacer(minLength: 180)
-
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.white.opacity(0.42))
-                    .frame(width: 72, height: 132)
-                    .rotationEffect(.degrees(-7))
-
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color(red: 0.56, green: 0.36, blue: 0.86).opacity(0.24))
-                    .frame(width: 72, height: 142)
-                    .rotationEffect(.degrees(6))
-            }
-            .padding(.trailing, 12)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+            NativeHomeInstagramBackdrop()
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Оформление")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: 22, weight: .bold))
                     .foregroundColor(.black)
 
                 Text("Instagram")
@@ -753,7 +728,7 @@ private struct NativeHomeInstagramFeatureCard: View {
             }
             .padding(.leading, 16)
             .padding(.vertical, 14)
-            .frame(maxWidth: 188, maxHeight: .infinity, alignment: .leading)
+            .frame(maxWidth: 172, maxHeight: .infinity, alignment: .leading)
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .overlay {
@@ -761,6 +736,67 @@ private struct NativeHomeInstagramFeatureCard: View {
                 .stroke(Color.white.opacity(0.72), lineWidth: 1)
         }
         .shadow(color: Color(red: 0.49, green: 0.23, blue: 0.82).opacity(0.30), radius: 16, y: 8)
+    }
+}
+
+private struct NativeHomeInstagramBackdrop: View {
+    private let lightPanelFraction: CGFloat = 0.42
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.29, green: 0.12, blue: 0.47),
+                        Color(red: 0.16, green: 0.06, blue: 0.29),
+                        Color(red: 0.07, green: 0.03, blue: 0.13)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color(red: 0.76, green: 0.54, blue: 1.00).opacity(0.72),
+                                .clear
+                            ],
+                            center: .center,
+                            startRadius: 2,
+                            endRadius: 104
+                        )
+                    )
+                    .frame(width: 208, height: 208)
+                    .offset(x: proxy.size.width * 0.49, y: -28)
+
+                ZStack(alignment: .bottomLeading) {
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.99, green: 0.98, blue: 1.00),
+                            Color(red: 0.91, green: 0.84, blue: 0.99)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+
+                    Capsule()
+                        .fill(Color(red: 0.57, green: 0.35, blue: 0.86).opacity(0.18))
+                        .frame(width: 210, height: 54)
+                        .rotationEffect(.degrees(-13))
+                        .offset(x: 16, y: 34)
+                }
+                .frame(width: proxy.size.width * lightPanelFraction)
+
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white.opacity(0.13))
+                    .frame(width: 82, height: 136)
+                    .rotationEffect(.degrees(7))
+                    .offset(x: proxy.size.width * 0.66, y: 22)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

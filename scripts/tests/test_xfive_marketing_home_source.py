@@ -132,6 +132,13 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertLess(home.index("trendsSection"), home.index("businessSection"))
         self.assertTrue(cutout.exists(), "The overflow model must be a separate content asset")
 
+    def test_instagram_feature_limits_the_light_panel_to_reference_proportions(self):
+        home = HOME.read_text(encoding="utf-8")
+
+        self.assertIn("struct NativeHomeInstagramBackdrop", home)
+        self.assertIn("private let lightPanelFraction: CGFloat = 0.42", home)
+        self.assertIn("NativeHomeInstagramBackdrop()", home)
+
     def test_home_uses_compact_reference_proportions_instead_of_oversized_cards(self):
         home = HOME.read_text(encoding="utf-8")
 
