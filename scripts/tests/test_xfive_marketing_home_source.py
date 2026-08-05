@@ -139,6 +139,15 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertIn("private let lightPanelFraction: CGFloat = 0.42", home)
         self.assertIn("NativeHomeInstagramBackdrop()", home)
 
+    def test_instagram_feature_draws_native_post_elements_behind_the_model(self):
+        home = HOME.read_text(encoding="utf-8")
+
+        self.assertIn("struct NativeHomeInstagramPostStack", home)
+        self.assertIn("NativeHomeInstagramPostStack()", home)
+        self.assertIn('Image(systemName: "heart.fill")', home)
+        self.assertIn('Image(systemName: "bubble.right.fill")', home)
+        self.assertNotIn("InstagramPostMockup", home)
+
     def test_home_uses_compact_reference_proportions_instead_of_oversized_cards(self):
         home = HOME.read_text(encoding="utf-8")
 

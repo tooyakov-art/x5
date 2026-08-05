@@ -788,15 +788,89 @@ private struct NativeHomeInstagramBackdrop: View {
                 }
                 .frame(width: proxy.size.width * lightPanelFraction)
 
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.white.opacity(0.13))
-                    .frame(width: 82, height: 136)
-                    .rotationEffect(.degrees(7))
-                    .offset(x: proxy.size.width * 0.66, y: 22)
+                NativeHomeInstagramPostStack()
+                    .frame(width: 150, height: 164)
+                    .offset(x: proxy.size.width * 0.52, y: 10)
             }
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+private struct NativeHomeInstagramPostStack: View {
+    var body: some View {
+        ZStack {
+            postCard(
+                colors: [
+                    Color(red: 0.76, green: 0.55, blue: 1.00),
+                    Color(red: 0.37, green: 0.18, blue: 0.64)
+                ]
+            )
+            .frame(width: 78, height: 126)
+            .rotationEffect(.degrees(-8))
+            .offset(x: -31, y: 14)
+            .opacity(0.82)
+
+            postCard(
+                colors: [
+                    Color(red: 0.98, green: 0.66, blue: 0.85),
+                    Color(red: 0.48, green: 0.28, blue: 0.78)
+                ]
+            )
+            .frame(width: 86, height: 138)
+            .rotationEffect(.degrees(7))
+            .offset(x: 38, y: -4)
+        }
+    }
+
+    private func postCard(colors: [Color]) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Color.white.opacity(0.92))
+                    .frame(width: 11, height: 11)
+                Capsule()
+                    .fill(Color.white.opacity(0.72))
+                    .frame(width: 26, height: 4)
+                Spacer(minLength: 0)
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundColor(.white.opacity(0.80))
+            }
+
+            LinearGradient(
+                colors: colors,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .overlay {
+                Circle()
+                    .fill(Color.white.opacity(0.18))
+                    .frame(width: 42, height: 42)
+                    .offset(x: 14, y: -10)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            HStack(spacing: 7) {
+                Image(systemName: "heart.fill")
+                Image(systemName: "bubble.right.fill")
+                Image(systemName: "paperplane.fill")
+            }
+            .font(.system(size: 8, weight: .semibold))
+            .foregroundColor(.white.opacity(0.92))
+
+            Capsule()
+                .fill(Color.white.opacity(0.58))
+                .frame(width: 42, height: 3)
+        }
+        .padding(7)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(Color.white.opacity(0.34), lineWidth: 0.8)
+        }
+        .shadow(color: .black.opacity(0.28), radius: 8, y: 5)
     }
 }
 
