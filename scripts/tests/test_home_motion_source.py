@@ -66,6 +66,21 @@ class HomeMotionSourceTests(unittest.TestCase):
         self.assertIn("activeTrendVideoID = activeTrendVideoID == item.id ? nil : item.id", source)
         self.assertNotIn("isMotionActive: item.showsPlay", source)
 
+    def test_trend_preview_is_explicit_playback_not_blocked_by_power_mode(self):
+        home = HOME_VIEW.read_text(encoding="utf-8")
+        loop = LOOPING_VIDEO.read_text(encoding="utf-8")
+
+        self.assertIn("isUserInitiated: true", home)
+        self.assertIn("isUserInitiated: Bool = false", loop)
+        self.assertIn("isUserInitiated || (!reduceMotion && !lowPowerMode)", loop)
+        self.assertNotIn("guard motionPreviewAllowed", home)
+
+    def test_motion_visibility_uses_live_geometry_instead_of_null_preference_frame(self):
+        source = LOOPING_VIDEO.read_text(encoding="utf-8")
+
+        self.assertIn(".onGeometryChange(for: Bool.self)", source)
+        self.assertNotIn("HomeMotionFramePreferenceKey", source)
+
     def test_bundled_motion_fallbacks_remain_available(self):
         source = LOOPING_VIDEO.read_text(encoding="utf-8")
 

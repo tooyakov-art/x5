@@ -39,9 +39,13 @@ enum HomeMotionPlaybackPolicy {
         isVisible: Bool,
         appIsActive: Bool,
         reduceMotion: Bool,
-        lowPowerMode: Bool
+        lowPowerMode: Bool,
+        isUserInitiated: Bool = false
     ) -> Bool {
-        isActive && isVisible && appIsActive && !reduceMotion && !lowPowerMode
+        isActive
+            && isVisible
+            && appIsActive
+            && (isUserInitiated || (!reduceMotion && !lowPowerMode))
     }
 }
 
@@ -51,6 +55,7 @@ struct LoopingVideo: View {
     let source: HomeMotionSource
     let posterAssetName: String?
     let isActive: Bool
+    let isUserInitiated: Bool
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -59,10 +64,16 @@ struct LoopingVideo: View {
     @State private var isVisible = false
     @State private var lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
 
-    init(source: HomeMotionSource, posterAssetName: String? = nil, isActive: Bool) {
+    init(
+        source: HomeMotionSource,
+        posterAssetName: String? = nil,
+        isActive: Bool,
+        isUserInitiated: Bool = false
+    ) {
         self.source = source
         self.posterAssetName = posterAssetName
         self.isActive = isActive
+        self.isUserInitiated = isUserInitiated
         _controller = StateObject(
             wrappedValue: HomeLoopingVideoController(source: source)
         )
@@ -86,19 +97,16 @@ struct LoopingVideo: View {
                         .transition(.opacity)
                 }
             }
-            .background(
-                Color.clear.preference(
-                    key: HomeMotionFramePreferenceKey.self,
-                    value: proxy.frame(in: .global)
-                )
-            )
         }
         .background(Color.white.opacity(0.06))
-        .onPreferenceChange(HomeMotionFramePreferenceKey.self) { frame in
+        .onGeometryChange(for: Bool.self) { proxy in
+            let frame = proxy.frame(in: .global)
             let screen = UIScreen.main.bounds.insetBy(dx: 0, dy: -32)
-            isVisible = frame.width > 0
+            return frame.width > 0
                 && frame.height > 0
                 && frame.intersects(screen)
+        } action: { isVisible in
+            self.isVisible = isVisible
         }
         .onAppear {
             controller.setShouldPlay(playbackShouldRun)
@@ -121,16 +129,9 @@ struct LoopingVideo: View {
             isVisible: isVisible,
             appIsActive: scenePhase == .active,
             reduceMotion: reduceMotion,
-            lowPowerMode: lowPowerMode
+            lowPowerMode: lowPowerMode,
+            isUserInitiated: isUserInitiated
         )
-    }
-}
-
-private struct HomeMotionFramePreferenceKey: PreferenceKey {
-    static var defaultValue: CGRect = .null
-
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        value = nextValue()
     }
 }
 

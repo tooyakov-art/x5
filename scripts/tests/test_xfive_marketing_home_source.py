@@ -5,6 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 HOME = ROOT / "X5" / "Views" / "Home" / "HomeView.swift"
+LOOPING_VIDEO = ROOT / "X5" / "Views" / "Home" / "LoopingVideo.swift"
 TAB_VIEW = ROOT / "X5" / "Views" / "AppTabView.swift"
 class XFiveMarketingHomeSourceTests(unittest.TestCase):
     def test_visible_brand_uses_exact_client_name(self):
@@ -222,14 +223,15 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertIn("pendingSearchRoute = route", home)
         self.assertIn("showingSearch = false", home)
 
-    def test_motion_restrictions_never_show_a_false_playing_state(self):
+    def test_explicit_trend_playback_uses_the_live_player_state(self):
         home = HOME.read_text(encoding="utf-8")
+        looping_video = LOOPING_VIDEO.read_text(encoding="utf-8")
 
-        self.assertIn("@Environment(\\.accessibilityReduceMotion)", home)
-        self.assertIn("ProcessInfo.processInfo.isLowPowerModeEnabled", home)
-        self.assertIn("motionPreviewAllowed && activeTrendVideoID == item.id", home)
-        self.assertIn("if !isAllowed { activeTrendVideoID = nil }", home)
-        self.assertIn("handle(.videoGeneration)", home)
+        self.assertIn("activeTrendVideoID == item.id", home)
+        self.assertIn("isUserInitiated: true", home)
+        self.assertNotIn("motionPreviewAllowed", home)
+        self.assertIn("isUserInitiated || (!reduceMotion && !lowPowerMode)", looping_video)
+        self.assertIn(".onGeometryChange(for: Bool.self)", looping_video)
 
     def test_system_tab_bar_is_native_and_never_replaced(self):
         source = TAB_VIEW.read_text(encoding="utf-8")

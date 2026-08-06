@@ -91,4 +91,17 @@ final class HomeMotionPolicyTests: XCTestCase {
             )
         )
     }
+
+    func testUserInitiatedPlaybackRunsWithReduceMotionAndLowPowerEnabled() {
+        XCTAssertTrue(
+            HomeMotionPlaybackPolicy.shouldPlay(
+                isActive: true,
+                isVisible: true,
+                appIsActive: true,
+                reduceMotion: true,
+                lowPowerMode: true,
+                isUserInitiated: true
+            )
+        )
+    }
 }

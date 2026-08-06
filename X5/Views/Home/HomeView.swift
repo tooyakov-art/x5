@@ -36,7 +36,6 @@ private enum HomeLayout {
 /// labels, controls, card chrome, navigation and layout are SwiftUI views.
 struct HomeView: View {
     @EnvironmentObject private var loc: LocalizationService
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var activeRoute: HomeRoute?
     @State private var openImageCategory: ImageGenerationCategory?
@@ -45,7 +44,6 @@ struct HomeView: View {
     @State private var pendingSearchRoute: HomeRoute?
     @State private var activeHeroPage = 0
     @State private var activeTrendVideoID: String?
-    @State private var lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     var body: some View {
         NavigationStack {
@@ -107,12 +105,6 @@ struct HomeView: View {
             }
         }
         .onDisappear { activeTrendVideoID = nil }
-        .onChange(of: motionPreviewAllowed) { isAllowed in
-            if !isAllowed { activeTrendVideoID = nil }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
-            lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
-        }
     }
 
     private var heroBanner: some View {
@@ -213,7 +205,7 @@ struct HomeView: View {
                     ForEach(trendItems) { item in
                         NativeHomeTrendCard(
                             item: item,
-                            isPlaying: motionPreviewAllowed && activeTrendVideoID == item.id,
+                            isPlaying: activeTrendVideoID == item.id,
                             onOpen: { handle(item.action) },
                             onPreview: { togglePreview(for: item) }
                         )
@@ -353,10 +345,6 @@ struct HomeView: View {
     }
 
     private func togglePreview(for item: NativeHomeTrend) {
-        guard motionPreviewAllowed else {
-            handle(item.action)
-            return
-        }
         activeTrendVideoID = activeTrendVideoID == item.id ? nil : item.id
         X5Feedback.selection()
     }
@@ -383,10 +371,6 @@ struct HomeView: View {
             DiagnosticLogger.log(event: "home_startup_chat_tap")
             activeRoute = route
         }
-    }
-
-    private var motionPreviewAllowed: Bool {
-        !reduceMotion && !lowPowerMode
     }
 
     private func completePendingSearchRoute() {
@@ -604,7 +588,12 @@ private struct NativeHomeTrendCard: View {
                         .clipped()
 
                     if isPlaying {
-                        LoopingVideo(source: .remote(url: item.videoURL), posterAssetName: item.assetName, isActive: true)
+                        LoopingVideo(
+                            source: .remote(url: item.videoURL),
+                            posterAssetName: item.assetName,
+                            isActive: true,
+                            isUserInitiated: true
+                        )
                             .transition(.opacity)
                             .allowsHitTesting(false)
                     }
