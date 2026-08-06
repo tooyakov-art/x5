@@ -269,7 +269,7 @@ struct HomeView: View {
                 title: "Измена клубнички",
                 subtitle: "С бананом • мультсериал",
                 assetName: "HomeTrendLiveVideo",
-                videoURL: HomeMotionURLs.video("transitions.mp4"),
+                videoSource: .bundled(resourceName: "HomeTrendTransitions"),
                 action: .liveFruits
             ),
             NativeHomeTrend(
@@ -277,7 +277,7 @@ struct HomeView: View {
                 title: "С Токаевым",
                 subtitle: "AI-пародия • VIP на матче",
                 assetName: "HomeTrendPost",
-                videoURL: HomeMotionURLs.video("lipsync.mp4"),
+                videoSource: .bundled(resourceName: "HomeTrendLipSync"),
                 action: .videoGeneration
             ),
             NativeHomeTrend(
@@ -285,7 +285,7 @@ struct HomeView: View {
                 title: "Карточки WB",
                 subtitle: "Добавь свои товары",
                 assetName: "HomeTrendNanoBanana",
-                videoURL: HomeMotionURLs.video("ai-stylist.mp4"),
+                videoSource: .bundled(resourceName: "HomeTrendAIStylist"),
                 action: imageAction("product_cards")
             ),
             NativeHomeTrend(
@@ -293,7 +293,7 @@ struct HomeView: View {
                 title: "Со знаменитостью",
                 subtitle: "Добавь себя в сцену",
                 assetName: "HomeTrendInfluencer",
-                videoURL: HomeMotionURLs.video("face-swap.mp4"),
+                videoSource: .bundled(resourceName: "HomeTrendFaceSwap"),
                 action: .videoGeneration
             )
         ]
@@ -414,7 +414,7 @@ private struct NativeHomeTrend: Identifiable {
     let title: String
     let subtitle: String
     let assetName: String
-    let videoURL: URL
+    let videoSource: HomeMotionSource
     let action: HomeRoute
 }
 
@@ -425,14 +425,6 @@ private struct NativeHomeBusiness: Identifiable {
     let assetName: String
     let accent: Color
     let action: HomeRoute
-}
-
-private enum HomeMotionURLs {
-    private static let base = "https://afwznqjpshybmqhlewmy.supabase.co/storage/v1/object/public/videos/home"
-
-    static func video(_ filename: String) -> URL {
-        URL(string: "\(base)/\(filename)")!
-    }
 }
 
 private struct NativeHomeBackground: View {
@@ -589,7 +581,7 @@ private struct NativeHomeTrendCard: View {
 
                     if isPlaying {
                         LoopingVideo(
-                            source: .remote(url: item.videoURL),
+                            source: item.videoSource,
                             posterAssetName: item.assetName,
                             isActive: true,
                             isUserInitiated: true

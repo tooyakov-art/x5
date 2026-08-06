@@ -33,7 +33,7 @@ class HomeMotionSourceTests(unittest.TestCase):
         self.assertIn("player?.pause()", source)
         self.assertIn("if let posterAssetName", source)
 
-    def test_release_accepts_only_x5_owned_remote_trend_media(self):
+    def test_release_uses_bundled_x5_owned_trend_media(self):
         loop = LOOPING_VIDEO.read_text(encoding="utf-8")
         home = HOME_VIEW.read_text(encoding="utf-8")
 
@@ -43,12 +43,16 @@ class HomeMotionSourceTests(unittest.TestCase):
             'url.path.hasPrefix("/storage/v1/object/public/videos/home/")',
             loop,
         )
-        self.assertIn(
-            "https://afwznqjpshybmqhlewmy.supabase.co/storage/v1/object/public/videos/home",
-            home,
-        )
-        for name in ("transitions.mp4", "lipsync.mp4", "ai-stylist.mp4", "face-swap.mp4"):
+        self.assertIn("let videoSource: HomeMotionSource", home)
+        for name in (
+            "HomeTrendTransitions",
+            "HomeTrendLipSync",
+            "HomeTrendAIStylist",
+            "HomeTrendFaceSwap",
+        ):
             self.assertIn(name, home)
+        self.assertNotIn("HomeMotionURLs", home)
+        self.assertNotIn("source: .remote(url: item.videoURL)", home)
         for forbidden in (
             "static.higgsfield.ai",
             "cdn.higgsfield.ai",
@@ -89,13 +93,24 @@ class HomeMotionSourceTests(unittest.TestCase):
         bundled_names = {path.name for path in MOTION_DIR.glob("*.mp4")}
         self.assertEqual(
             bundled_names,
-            {"HomeMotionStudio.mp4", "HomeMotionFruit.mp4"},
+            {
+                "HomeMotionStudio.mp4",
+                "HomeMotionFruit.mp4",
+                "HomeTrendTransitions.mp4",
+                "HomeTrendLipSync.mp4",
+                "HomeTrendAIStylist.mp4",
+                "HomeTrendFaceSwap.mp4",
+            },
         )
 
     def test_optimized_fallback_loops_and_posters_are_bundled(self):
         expected_videos = {
             "HomeMotionStudio.mp4": 1_500_000,
             "HomeMotionFruit.mp4": 1_500_000,
+            "HomeTrendTransitions.mp4": 750_000,
+            "HomeTrendLipSync.mp4": 300_000,
+            "HomeTrendAIStylist.mp4": 300_000,
+            "HomeTrendFaceSwap.mp4": 100_000,
         }
         for filename, maximum_bytes in expected_videos.items():
             path = MOTION_DIR / filename

@@ -19,14 +19,17 @@
 
 The Home screen reuses four existing X5-owned Higgsfield exports from the project's established Supabase `videos/home` bucket. The same bucket and filenames are already used by the X5 web client. These files are functional motion fallbacks selected by tool type; they are not represented as the exact people or scenes shown in the approved posters.
 
-| Card | Existing object | Transfer size checked 2026-08-05 |
-|---|---|---:|
-| Измена клубнички | `transitions.mp4` | 662 KiB |
-| С Токаевым | `lipsync.mp4` | 235 KiB |
-| Карточки WB | `ai-stylist.mp4` | 218 KiB |
-| Со знаменитостью | `face-swap.mp4` | 66 KiB |
+| Card | Existing object | Bundled file | SHA-256 |
+|---|---|---|---|
+| Измена клубнички | `transitions.mp4` | `HomeTrendTransitions.mp4` | `1f6aaef391948bfa91b65639642a98f79ce4ae09e4cb840ad67f29d8d932941e` |
+| С Токаевым | `lipsync.mp4` | `HomeTrendLipSync.mp4` | `5455bb6fe0243dfc6442ad136fccad3ac06422c83a0969b587ad6071faab6f24` |
+| Карточки WB | `ai-stylist.mp4` | `HomeTrendAIStylist.mp4` | `ff0fa0fa1805af7e09d72cd1940d6b920a950233cb59f9eed8d6b32b386fa8d7` |
+| Со знаменитостью | `face-swap.mp4` | `HomeTrendFaceSwap.mp4` | `4e7a3fd2eb6a2517487a883cee0a30243173a0687abaca75f65bebdab0f5a75a` |
 
 - Delivery base: `https://afwznqjpshybmqhlewmy.supabase.co/storage/v1/object/public/videos/home`
+- Release delivery: the four verified objects are bundled under
+  `X5/Resources/HomeMotion`, so every Trend preview works without a network
+  request. Total added size is 1,210,982 bytes.
 - Existing code provenance: X5 web `src/views/HomeView.tsx` defines the same bucket and names it as the Home video source.
 - Provider rights: Higgsfield's current Terms of Use, section 4.4, state that
   Higgsfield does not claim ownership of a user's outputs and does not restrict
@@ -45,9 +48,10 @@ The Home screen reuses four existing X5-owned Higgsfield exports from the projec
   downloaded, bundled, proxied, or redistributed.
 - Restriction: do not substitute arbitrary Higgsfield community media or Instagram Reels. A Reel may be embedded only after the X5 client supplies a durable file and confirms permission from the rights holder and any depicted people.
 - Performance: only one active video player is created at a time; all other cards remain the approved static poster.
-- Accessibility: each preview has a native button label and remains usable with Reduce Motion or failed network playback.
-- Maintenance: content posters remain the offline fallback. Video URL changes
-  are centralized in `HomeView.swift`.
+- Accessibility: each preview has a native button label and remains usable with Reduce Motion or failed video decoding.
+- Maintenance: content posters remain the decode fallback. Bundled resource
+  names are centralized in `HomeView.swift`; the remote source allowlist remains
+  restricted to the X5 Supabase bucket for future approved replacements.
 
 ## Native Home V2 content artwork
 
