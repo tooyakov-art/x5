@@ -26,7 +26,7 @@ jobs:
   status:
     runs-on: ubuntu-latest
     environment: app-store-production
-    timeout-minutes: 5
+    timeout-minutes: 15
     env:
       ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
       ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
