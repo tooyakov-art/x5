@@ -62,19 +62,19 @@ class HomeMotionSourceTests(unittest.TestCase):
             self.assertNotIn(forbidden, home)
             self.assertNotIn(forbidden, loop)
 
-    def test_only_one_trend_video_can_be_active(self):
+    def test_visible_trend_videos_are_automatic_and_do_not_need_tap_state(self):
         source = HOME_VIEW.read_text(encoding="utf-8")
 
-        self.assertIn("@State private var activeTrendVideoID: String?", source)
-        self.assertIn("activeTrendVideoID == item.id", source)
-        self.assertIn("activeTrendVideoID = activeTrendVideoID == item.id ? nil : item.id", source)
+        self.assertIn("isActive: true", source)
+        self.assertNotIn("@State private var activeTrendVideoID: String?", source)
+        self.assertNotIn("activeTrendVideoID == item.id", source)
         self.assertNotIn("isMotionActive: item.showsPlay", source)
 
-    def test_trend_preview_is_explicit_playback_not_blocked_by_power_mode(self):
+    def test_trend_autoplay_respects_motion_and_power_preferences(self):
         home = HOME_VIEW.read_text(encoding="utf-8")
         loop = LOOPING_VIDEO.read_text(encoding="utf-8")
 
-        self.assertIn("isUserInitiated: true", home)
+        self.assertIn("isUserInitiated: false", home)
         self.assertIn("isUserInitiated: Bool = false", loop)
         self.assertIn("isUserInitiated || (!reduceMotion && !lowPowerMode)", loop)
         self.assertNotIn("guard motionPreviewAllowed", home)
@@ -138,7 +138,7 @@ class HomeMotionSourceTests(unittest.TestCase):
         self.assertIn("Higgsfield", provenance)
         self.assertIn("transitions.mp4", provenance)
         self.assertIn("face-swap.mp4", provenance)
-        self.assertIn("one active video", provenance.lower())
+        self.assertIn("visible cards", provenance.lower())
         self.assertIn("Instagram", provenance)
 
 

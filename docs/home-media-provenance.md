@@ -47,7 +47,7 @@ The Home screen reuses four existing X5-owned Higgsfield exports from the projec
   did not expose durable video files or a reuse license. Neither Reel is
   downloaded, bundled, proxied, or redistributed.
 - Restriction: do not substitute arbitrary Higgsfield community media or Instagram Reels. A Reel may be embedded only after the X5 client supplies a durable file and confirms permission from the rights holder and any depicted people.
-- Performance: only one active video player is created at a time; all other cards remain the approved static poster.
+- Performance: only visible cards are eligible for playback; every preview pauses off-screen, in the background, with Reduce Motion, or in Low Power Mode.
 - Accessibility: each preview has a native button label and remains usable with Reduce Motion or failed video decoding.
 - Maintenance: content posters remain the decode fallback. Bundled resource
   names are centralized in `HomeView.swift`; the remote source allowlist remains
@@ -70,3 +70,13 @@ The Home screen reuses four existing X5-owned Higgsfield exports from the projec
 - Usage: content-only model layer that overlaps the top edge of the native SwiftUI Instagram feature card. The card surface, text, CTA, route, hit target, and accessibility remain code-native.
 - Processing: generated on a flat chroma-key background, converted locally to an RGBA PNG with the maintained imagegen chroma-key helper, and validated for transparent corners and a bounded visible subject.
 - Restrictions: one original AI-generated adult model, no third-party person, logo, text, interface, or watermark.
+
+## Client product-card infographics
+
+- Source: three product-card designs supplied by the X5 client in the Adilkhan project conversation and recovered from the archived client reference set on 2026-08-08.
+- Files: `ClientProductStepper.jpg`, `ClientProductHeadphones.jpg`, and `ClientProductGamepad.jpg`.
+- Adaptation: exact design pixels are preserved. Only the surrounding WhatsApp viewer chrome was removed; the product imagery, typography, offers, icons, and embedded infographic text were not redrawn or overlaid.
+- SHA-256: `d0998f9ac1b73d9f5825b4534776bd1e64ebaa0f4df6eced7d9cacc4aee10d92`, `e05ce4d2c9751870ef332eb90330a9f3c8ee1b6d00f4fb6590a38f4c2bf28b5c`, and `4ee263dc04440ddbe36d3d255edc3bf874d592f6bf7130e91193971de5617667` respectively.
+- Rights: client-supplied product creatives authorized for display inside X5. The repository contains only the three cropped, app-resolution designs; the surrounding conversation screenshots, names, avatars, and WhatsApp interface are excluded.
+- Repository handling: the three cropped app assets are checked by SHA-256. Do not reuse them outside the X5 product-card showcase without renewed client approval.
+- Runtime presentation: the three original infographics appear unobstructed in the Home product-card strip. SwiftUI adds only a short caption underneath the artwork and the navigation arrow.

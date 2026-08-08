@@ -100,8 +100,6 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             "Обложки YouTube",
             "AI-инфлюенсер",
             "Карточки товара",
-            "Рекламные",
-            "БАННЕРЫ С ГОТОВЫМИ",
         ):
             self.assertIn(text, home)
 
@@ -122,7 +120,7 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
 
         self.assertIn("struct NativeHomeAIInfluencerFeatureCard", home)
         self.assertIn('Image("HomeAIInfluencerFeature")', home)
-        self.assertIn('Text("AI-инфлюенсер")', home)
+        self.assertIn('Text("AI-\\nинфлюенсер")', home)
         self.assertIn('Text("X5")', home)
         self.assertIn("static let businessFeatureHeight: CGFloat = 198", home)
         self.assertIn("static let businessFeatureOverflow: CGFloat = 38", home)
@@ -134,8 +132,18 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         home = HOME.read_text(encoding="utf-8")
 
         self.assertIn("struct NativeHomeSalesBannerCard", home)
-        self.assertIn('Image("HomeSalesBannerFeature")', home)
-        self.assertIn('salesLabel("Рекламные"', home)
+        for asset_name in (
+            "ClientProductStepper",
+            "ClientProductHeadphones",
+            "ClientProductGamepad",
+        ):
+            self.assertIn(f'"{asset_name}"', home)
+            imageset = ROOT / "X5" / "Assets.xcassets" / f"{asset_name}.imageset"
+            self.assertTrue((imageset / "Contents.json").exists(), asset_name)
+            self.assertTrue((imageset / f"{asset_name}.jpg").exists(), asset_name)
+        self.assertNotIn('Image("HomeSalesBannerFeature")', home)
+        self.assertNotIn("salesLabel(", home)
+        self.assertIn('Text("Карточки товаров")', home)
         self.assertIn('handle(imageAction("target_ad"))', home)
 
     def test_ai_feature_keeps_copy_and_action_as_native_elements(self):
@@ -144,7 +152,7 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             "private struct NativeHomeAIInfluencerFeatureCard", 1
         )[1].split("private struct NativeHomeInstagramBackdrop", 1)[0]
 
-        self.assertIn('Text("AI-инфлюенсер")', ai_card)
+        self.assertIn('Text("AI-\\nинфлюенсер")', ai_card)
         self.assertIn("LinearGradient(", ai_card)
         self.assertIn('Text("X5")', ai_card)
         self.assertIn("Button(action: action)", ai_card)
@@ -156,15 +164,16 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             "private enum HomeLayout",
             "static let heroHeight: CGFloat = 198",
             "static let promoHeight: CGFloat = 78",
-            "static let trendCardSize = CGSize(width: 96, height: 148)",
-            ".font(.system(size: 10.5, weight: .bold))",
-            ".minimumScaleFactor(0.65)",
+            "static let trendCardSize = CGSize(width: 112, height: 178)",
+            "static let trendMediaHeight: CGFloat = 146",
+            ".font(.system(size: 11, weight: .semibold, design: .rounded))",
+            ".minimumScaleFactor(0.76)",
             ".allowsTightening(true)",
             "static let businessFeatureHeight: CGFloat = 198",
             "static let businessTileHeight: CGFloat = 112",
             ".frame(height: HomeLayout.heroHeight)",
             ".frame(height: HomeLayout.promoHeight)",
-            ".frame(width: HomeLayout.trendCardSize.width",
+            "width: HomeLayout.trendCardSize.width",
         ):
             self.assertIn(required, home)
 
@@ -218,16 +227,54 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertIn("action: .videoGeneration", home)
         self.assertIn("action: .liveFruits", home)
 
-    def test_every_trend_keeps_video_preview_and_opens_a_real_route(self):
+    def test_every_trend_autoplays_video_and_opens_a_real_route(self):
         home = HOME.read_text(encoding="utf-8")
 
         self.assertIn("handle(item.action)", home)
         self.assertIn('accessibilityIdentifier("x5.home.trend.\\(item.id)")', home)
-        self.assertIn('accessibilityIdentifier("x5.home.trend.\\(item.id).preview")', home)
+        self.assertNotIn('accessibilityIdentifier("x5.home.trend.\\(item.id).preview")', home)
         self.assertIn('id: "strawberry"', home)
         self.assertIn("action: .liveFruits", home)
         self.assertIn('id: "wildberries"', home)
         self.assertIn('action: imageAction("product_cards")', home)
+
+    def test_trends_autoplay_clean_video_with_only_a_caption_below(self):
+        home = HOME.read_text(encoding="utf-8")
+        card = home.split("private struct NativeHomeTrendCard", 1)[1].split(
+            "private struct NativeHomeAIInfluencerFeatureCard", 1
+        )[0]
+
+        self.assertIn("LoopingVideo(", card)
+        self.assertIn("isActive: true", card)
+        self.assertIn("Text(item.title)", card)
+        self.assertNotIn("if isPlaying", card)
+        self.assertNotIn("Text(item.subtitle)", card)
+        self.assertNotIn('Text("VIDEO")', card)
+        self.assertNotIn('Image(systemName: isPlaying ? "pause.fill" : "play.fill")', card)
+        self.assertNotIn("LinearGradient(", card)
+
+    def test_ai_influencer_title_is_explicitly_complete(self):
+        home = HOME.read_text(encoding="utf-8")
+        card = home.split(
+            "private struct NativeHomeAIInfluencerFeatureCard", 1
+        )[1].split("private struct NativeHomeInstagramBackdrop", 1)[0]
+
+        self.assertIn('Text("AI-\\nинфлюенсер")', card)
+        self.assertIn(".lineLimit(2)", card)
+        self.assertIn(".minimumScaleFactor(0.8)", card)
+
+    def test_business_section_and_sales_banner_use_clean_native_chrome(self):
+        home = HOME.read_text(encoding="utf-8")
+        sales = home.split("private struct NativeHomeSalesBannerCard", 1)[1].split(
+            "private struct NativeHomePageDots", 1
+        )[0]
+
+        self.assertIn("design: .rounded", home)
+        self.assertNotIn("salesLabel(", sales)
+        self.assertNotIn("LinearGradient(", sales)
+        self.assertIn("ForEach(clientDesigns", sales)
+        self.assertIn(".scaledToFit()", sales)
+        self.assertNotIn('Image("HomeSalesBannerFeature")', sales)
 
     def test_search_waits_for_sheet_dismissal_before_routing(self):
         home = HOME.read_text(encoding="utf-8")
@@ -237,12 +284,12 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertIn("pendingSearchRoute = route", home)
         self.assertIn("showingSearch = false", home)
 
-    def test_explicit_trend_playback_uses_the_live_player_state(self):
+    def test_automatic_trend_playback_uses_live_visibility_state(self):
         home = HOME.read_text(encoding="utf-8")
         looping_video = LOOPING_VIDEO.read_text(encoding="utf-8")
 
-        self.assertIn("activeTrendVideoID == item.id", home)
-        self.assertIn("isUserInitiated: true", home)
+        self.assertNotIn("activeTrendVideoID", home)
+        self.assertIn("isUserInitiated: false", home)
         self.assertNotIn("motionPreviewAllowed", home)
         self.assertIn("isUserInitiated || (!reduceMotion && !lowPowerMode)", looping_video)
         self.assertIn(".onGeometryChange(for: Bool.self)", looping_video)

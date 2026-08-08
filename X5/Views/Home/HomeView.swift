@@ -23,11 +23,12 @@ enum HomeRoute: Hashable, Identifiable {
 private enum HomeLayout {
     static let heroHeight: CGFloat = 198
     static let promoHeight: CGFloat = 78
-    static let trendCardSize = CGSize(width: 96, height: 148)
+    static let trendCardSize = CGSize(width: 112, height: 178)
+    static let trendMediaHeight: CGFloat = 146
     static let businessFeatureHeight: CGFloat = 198
     static let businessFeatureOverflow: CGFloat = 38
     static let businessTileHeight: CGFloat = 112
-    static let businessWideHeight: CGFloat = 104
+    static let businessWideHeight: CGFloat = 184
     static let sectionSpacing: CGFloat = 14
     static let cardSpacing: CGFloat = 8
 }
@@ -43,7 +44,6 @@ struct HomeView: View {
     @State private var showingSearch = false
     @State private var pendingSearchRoute: HomeRoute?
     @State private var activeHeroPage = 0
-    @State private var activeTrendVideoID: String?
 
     var body: some View {
         NavigationStack {
@@ -104,7 +104,6 @@ struct HomeView: View {
                 }
             }
         }
-        .onDisappear { activeTrendVideoID = nil }
     }
 
     private var heroBanner: some View {
@@ -205,9 +204,7 @@ struct HomeView: View {
                     ForEach(trendItems) { item in
                         NativeHomeTrendCard(
                             item: item,
-                            isPlaying: activeTrendVideoID == item.id,
-                            onOpen: { handle(item.action) },
-                            onPreview: { togglePreview(for: item) }
+                            onOpen: { handle(item.action) }
                         )
                         .accessibilityIdentifier("x5.home.trend.\(item.id)")
                     }
@@ -221,8 +218,9 @@ struct HomeView: View {
     private var businessSection: some View {
         VStack(alignment: .leading, spacing: HomeLayout.cardSpacing) {
             Text("Дизайн для бизнеса")
-                .font(.title2.weight(.bold))
+                .font(.system(size: 23, weight: .bold, design: .rounded))
                 .foregroundColor(.white)
+                .tracking(-0.35)
 
             NativeHomeAIInfluencerFeatureCard(
                 action: { handle(.videoGeneration) }
@@ -322,13 +320,7 @@ struct HomeView: View {
             ?? .imageGeneration(ImageGenerationCatalog.custom)
     }
 
-    private func togglePreview(for item: NativeHomeTrend) {
-        activeTrendVideoID = activeTrendVideoID == item.id ? nil : item.id
-        X5Feedback.selection()
-    }
-
     private func handle(_ route: HomeRoute) {
-        activeTrendVideoID = nil
         switch route {
         case .imageGeneration(let category):
             DiagnosticLogger.log(event: "home_studio_\(category.id)_tap")
@@ -540,85 +532,46 @@ private struct NativeHomePromoCard: View {
 
 private struct NativeHomeTrendCard: View {
     let item: NativeHomeTrend
-    let isPlaying: Bool
     let onOpen: () -> Void
-    let onPreview: () -> Void
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            Button(action: onOpen) {
-                ZStack(alignment: .bottomLeading) {
-                    Image(item.assetName)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(
-                            width: HomeLayout.trendCardSize.width,
-                            height: HomeLayout.trendCardSize.height
-                        )
-                        .clipped()
-
-                    if isPlaying {
-                        LoopingVideo(
-                            source: item.videoSource,
-                            posterAssetName: item.assetName,
-                            isActive: true,
-                            isUserInitiated: true
-                        )
-                            .transition(.opacity)
-                            .allowsHitTesting(false)
-                    }
-
-                    LinearGradient(
-                        colors: [.clear, Color.black.opacity(0.82)],
-                        startPoint: .center,
-                        endPoint: .bottom
-                    )
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.title)
-                            .font(.system(size: 10.5, weight: .bold))
-                            .foregroundColor(.white)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.65)
-                            .allowsTightening(true)
-                        Text(item.subtitle)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundColor(.white.opacity(0.74))
-                            .lineLimit(2)
-                        Text("VIDEO")
-                            .font(.caption2.weight(.bold))
-                            .foregroundColor(X5Style.blue)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(Color.black.opacity(0.52), in: Capsule())
-                    }
-                    .padding(8)
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 7) {
+                LoopingVideo(
+                    source: item.videoSource,
+                    posterAssetName: item.assetName,
+                    isActive: true,
+                    isUserInitiated: false
+                )
+                .frame(
+                    width: HomeLayout.trendCardSize.width,
+                    height: HomeLayout.trendMediaHeight
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                        .allowsHitTesting(false)
                 }
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint("Открывает соответствующий инструмент")
 
-            Button(action: onPreview) {
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(.white)
-                    .frame(width: 34, height: 34)
-                    .background(Color.black.opacity(0.58), in: Circle())
+                Text(item.title)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.88))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
+                    .allowsTightening(true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 2)
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("x5.home.trend.\(item.id).preview")
-            .accessibilityLabel("Видео: \(item.title)")
-            .accessibilityHint(isPlaying ? "Остановить воспроизведение" : "Воспроизвести без звука")
-            .padding(6)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .frame(
+                width: HomeLayout.trendCardSize.width,
+                height: HomeLayout.trendCardSize.height,
+                alignment: .topLeading
+            )
         }
-        .frame(width: HomeLayout.trendCardSize.width, height: HomeLayout.trendCardSize.height)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.16), lineWidth: 1)
-        }
+        .buttonStyle(.plain)
         .accessibilityLabel(item.title)
+        .accessibilityHint("Открывает соответствующий инструмент")
     }
 }
 
@@ -644,9 +597,13 @@ private struct NativeHomeAIInfluencerFeatureCard: View {
                     )
 
                     VStack(alignment: .leading, spacing: 7) {
-                        Text("AI-инфлюенсер")
-                            .font(.system(size: 27, weight: .heavy))
+                        Text("AI-\nинфлюенсер")
+                            .font(.system(size: 25, weight: .heavy, design: .rounded))
                             .foregroundColor(.white)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.8)
+                            .allowsTightening(true)
+                            .fixedSize(horizontal: false, vertical: true)
 
                         Text("Виртуальный персонаж, который ведет соцсети, рекламирует товары и общается с аудиторией как реальный человек")
                             .font(.system(size: 12, weight: .semibold))
@@ -664,7 +621,7 @@ private struct NativeHomeAIInfluencerFeatureCard: View {
                     }
                     .padding(18)
                     .frame(
-                        width: min(205, proxy.size.width),
+                        width: min(236, proxy.size.width * 0.68),
                         height: proxy.size.height,
                         alignment: .leading
                     )
@@ -900,42 +857,48 @@ private struct NativeHomeSalesBannerCard: View {
     let action: () -> Void
 
     private let cornerRadius: CGFloat = 16
+    private let clientDesigns = [
+        "ClientProductStepper",
+        "ClientProductHeadphones",
+        "ClientProductGamepad"
+    ]
 
     var body: some View {
         Button(action: action) {
             GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Image("HomeSalesBannerFeature")
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .clipped()
-
-                    LinearGradient(
-                        colors: [Color.black.opacity(0.82), Color.black.opacity(0.18), .clear],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        salesLabel("Рекламные", size: 11, weight: .medium)
-                        salesLabel("БАННЕРЫ С ГОТОВЫМИ", size: 10, weight: .heavy)
-                        salesLabel("ПРОДАЮЩИМИ ОФФЕРАМИ", size: 9, weight: .heavy)
-                        salesLabel("ДЛЯ ТАРГЕТА •", size: 10, weight: .heavy)
-                        salesLabel("КАРТОЧКИ МАРКЕТПЛЕЙСОВ", size: 8, weight: .heavy)
+                VStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        ForEach(clientDesigns, id: \.self) { assetName in
+                            Image(assetName)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                                }
+                        }
                     }
-                    .frame(width: max(0, proxy.size.width - 54), alignment: .leading)
-                    .padding(.leading, 10)
-                    .padding(.vertical, 9)
+                    .frame(height: 142)
 
-                    Image(systemName: "arrow.right")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundColor(.black)
-                        .frame(width: 30, height: 30)
-                        .background(X5Style.blue, in: Circle())
-                        .padding(9)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    HStack(spacing: 8) {
+                        Text("Карточки товаров")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white)
+
+                        Spacer(minLength: 0)
+
+                        Image(systemName: "arrow.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.black)
+                            .frame(width: 26, height: 26)
+                            .background(X5Style.blue, in: Circle())
+                    }
                 }
+                .padding(8)
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .background(Color.black.opacity(0.72))
             }
             .frame(maxWidth: .infinity)
             .frame(height: HomeLayout.businessWideHeight)
@@ -948,17 +911,6 @@ private struct NativeHomeSalesBannerCard: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Рекламные баннеры с готовыми продающими офферами для таргета и карточки маркетплейсов")
         .accessibilityHint("Открывает генератор рекламных креативов")
-    }
-
-    private func salesLabel(_ text: String, size: CGFloat, weight: Font.Weight) -> some View {
-        Text(text)
-            .font(.system(size: size, weight: weight))
-            .foregroundColor(.black)
-            .lineLimit(1)
-            .minimumScaleFactor(0.78)
-            .padding(.horizontal, 7)
-            .frame(minHeight: 15)
-            .background(Color.white.opacity(0.95), in: Capsule())
     }
 }
 
