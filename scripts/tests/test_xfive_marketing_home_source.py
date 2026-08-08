@@ -143,7 +143,7 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             self.assertTrue((imageset / f"{asset_name}.jpg").exists(), asset_name)
         self.assertNotIn('Image("HomeSalesBannerFeature")', home)
         self.assertNotIn("salesLabel(", home)
-        self.assertIn('Text("Карточки товаров")', home)
+        self.assertIn('Text("Карточки\\nтоваров")', home)
         self.assertIn('handle(imageAction("target_ad"))', home)
 
     def test_ai_feature_keeps_copy_and_action_as_native_elements(self):
@@ -271,8 +271,16 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
 
         self.assertIn("design: .rounded", home)
         self.assertNotIn("salesLabel(", sales)
-        self.assertNotIn("LinearGradient(", sales)
-        self.assertIn("ForEach(clientDesigns", sales)
+        self.assertIn("LinearGradient(", sales)
+        self.assertIn("ZStack(alignment: .trailing)", sales)
+        self.assertNotIn("ForEach(clientDesigns", sales)
+        self.assertIn('Text("Карточки\\nтоваров")', sales)
+        self.assertIn('Text("Создать")', sales)
+        self.assertIn("clientProductArt(\"ClientProductStepper\")", sales)
+        self.assertIn("clientProductArt(\"ClientProductHeadphones\")", sales)
+        self.assertIn("clientProductArt(\"ClientProductGamepad\")", sales)
+        self.assertIn(".rotationEffect(.degrees(-8))", sales)
+        self.assertIn(".rotationEffect(.degrees(9))", sales)
         self.assertIn(".scaledToFit()", sales)
         self.assertNotIn('Image("HomeSalesBannerFeature")', sales)
 

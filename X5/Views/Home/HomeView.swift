@@ -857,48 +857,90 @@ private struct NativeHomeSalesBannerCard: View {
     let action: () -> Void
 
     private let cornerRadius: CGFloat = 16
-    private let clientDesigns = [
-        "ClientProductStepper",
-        "ClientProductHeadphones",
-        "ClientProductGamepad"
-    ]
 
     var body: some View {
         Button(action: action) {
             GeometryReader { proxy in
-                VStack(spacing: 8) {
-                    HStack(spacing: 6) {
-                        ForEach(clientDesigns, id: \.self) { assetName in
-                            Image(assetName)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                                }
-                        }
-                    }
-                    .frame(height: 142)
+                ZStack(alignment: .trailing) {
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.03, green: 0.03, blue: 0.05),
+                            Color(red: 0.12, green: 0.04, blue: 0.20),
+                            Color(red: 0.02, green: 0.02, blue: 0.04)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
 
-                    HStack(spacing: 8) {
-                        Text("Карточки товаров")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    Circle()
+                        .fill(X5Style.blue.opacity(0.20))
+                        .frame(width: 150, height: 150)
+                        .blur(radius: 36)
+                        .offset(x: 76, y: 50)
+
+                    Circle()
+                        .fill(Color.purple.opacity(0.28))
+                        .frame(width: 118, height: 118)
+                        .blur(radius: 32)
+                        .offset(x: -40, y: -64)
+
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("X5 • AI STUDIO")
+                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                            .tracking(1.1)
+                            .foregroundColor(X5Style.blue)
+
+                        Text("Карточки\nтоваров")
+                            .font(.system(size: 24, weight: .heavy, design: .rounded))
                             .foregroundColor(.white)
+                            .tracking(-0.5)
+                            .lineSpacing(-2)
 
-                        Spacer(minLength: 0)
+                        Text("Готовая инфографика\nдля маркетплейсов")
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                            .foregroundColor(.white.opacity(0.70))
+                            .lineSpacing(1)
 
-                        Image(systemName: "arrow.right")
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(.black)
-                            .frame(width: 26, height: 26)
-                            .background(X5Style.blue, in: Circle())
+                        HStack(spacing: 7) {
+                            Text("Создать")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 12)
+                        .frame(height: 29)
+                        .background(X5Style.blue, in: Capsule())
                     }
+                    .padding(.leading, 17)
+                    .frame(
+                        width: min(166, proxy.size.width * 0.47),
+                        height: proxy.size.height,
+                        alignment: .leading
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    ZStack {
+                        clientProductArt("ClientProductStepper")
+                            .rotationEffect(.degrees(-8))
+                            .offset(x: -58, y: 7)
+                            .zIndex(1)
+
+                        clientProductArt("ClientProductHeadphones")
+                            .rotationEffect(.degrees(3))
+                            .offset(x: -10, y: -5)
+                            .zIndex(2)
+
+                        clientProductArt("ClientProductGamepad")
+                            .rotationEffect(.degrees(9))
+                            .offset(x: 43, y: 5)
+                            .zIndex(3)
+                    }
+                    .frame(width: min(196, proxy.size.width * 0.55), height: proxy.size.height)
+                    .padding(.trailing, 7)
                 }
-                .padding(8)
                 .frame(width: proxy.size.width, height: proxy.size.height)
-                .background(Color.black.opacity(0.72))
             }
             .frame(maxWidth: .infinity)
             .frame(height: HomeLayout.businessWideHeight)
@@ -911,6 +953,20 @@ private struct NativeHomeSalesBannerCard: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Рекламные баннеры с готовыми продающими офферами для таргета и карточки маркетплейсов")
         .accessibilityHint("Открывает генератор рекламных креативов")
+    }
+
+    private func clientProductArt(_ assetName: String) -> some View {
+        Image(assetName)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 86, height: 126)
+            .background(Color.white.opacity(0.96))
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .stroke(Color.white.opacity(0.60), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.46), radius: 8, x: 0, y: 6)
     }
 }
 

@@ -79,4 +79,4 @@ The Home screen reuses four existing X5-owned Higgsfield exports from the projec
 - SHA-256: `d0998f9ac1b73d9f5825b4534776bd1e64ebaa0f4df6eced7d9cacc4aee10d92`, `e05ce4d2c9751870ef332eb90330a9f3c8ee1b6d00f4fb6590a38f4c2bf28b5c`, and `4ee263dc04440ddbe36d3d255edc3bf874d592f6bf7130e91193971de5617667` respectively.
 - Rights: client-supplied product creatives authorized for display inside X5. The repository contains only the three cropped, app-resolution designs; the surrounding conversation screenshots, names, avatars, and WhatsApp interface are excluded.
 - Repository handling: the three cropped app assets are checked by SHA-256. Do not reuse them outside the X5 product-card showcase without renewed client approval.
-- Runtime presentation: the three original infographics appear unobstructed in the Home product-card strip. SwiftUI adds only a short caption underneath the artwork and the navigation arrow.
+- Runtime presentation: the three original infographics form one code-native Home banner in a fanned card composition. The source artwork remains unchanged; SwiftUI adds the surrounding gradient, shadows, separate offer copy, and CTA.
