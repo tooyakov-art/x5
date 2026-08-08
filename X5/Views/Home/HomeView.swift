@@ -224,10 +224,10 @@ struct HomeView: View {
                 .font(.title2.weight(.bold))
                 .foregroundColor(.white)
 
-            NativeHomeInstagramFeatureCard(
-                action: { handle(imageAction("insta_pack")) }
+            NativeHomeAIInfluencerFeatureCard(
+                action: { handle(.videoGeneration) }
             )
-            .accessibilityIdentifier("x5.home.business.instagram")
+            .accessibilityIdentifier("x5.home.business.ai_influencer")
 
             LazyVGrid(
                 columns: [
@@ -249,16 +249,10 @@ struct HomeView: View {
                 }
             }
 
-            NativeHomeBusinessCard(
-                title: "Карточки товара",
-                subtitle: "Готовые визуалы для маркетплейсов",
-                assetName: "HomeCoverProductCards",
-                accent: X5Style.blue,
-                actionTitle: nil,
-                compact: true,
-                action: { handle(imageAction("product_cards")) }
+            NativeHomeSalesBannerCard(
+                action: { handle(imageAction("target_ad")) }
             )
-            .accessibilityIdentifier("x5.home.business.product_cards")
+            .accessibilityIdentifier("x5.home.business.sales_banners")
         }
     }
 
@@ -310,28 +304,12 @@ struct HomeView: View {
                 action: imageAction("youtube_cover")
             ),
             NativeHomeBusiness(
-                id: "logo",
-                title: "Логотипы",
-                subtitle: "Знак для бренда",
-                assetName: "HomeUtilityLogo",
+                id: "product_cards",
+                title: "Карточки товара",
+                subtitle: "Для маркетплейсов",
+                assetName: "HomeCoverProductCards",
                 accent: X5Style.blue,
-                action: imageAction("logo")
-            ),
-            NativeHomeBusiness(
-                id: "brandbook",
-                title: "Брендбук",
-                subtitle: "Единый стиль",
-                assetName: "HomeUtilityPackaging",
-                accent: Color(red: 0.68, green: 0.44, blue: 0.95),
-                action: .imageGeneration(ImageGenerationCatalog.custom)
-            ),
-            NativeHomeBusiness(
-                id: "influencer",
-                title: "AI-инфлюенсер",
-                subtitle: "Персонаж для бренда",
-                assetName: "HomeUtilityCustom",
-                accent: Color(red: 0.68, green: 0.44, blue: 0.95),
-                action: .videoGeneration
+                action: imageAction("product_cards")
             )
         ]
     }
@@ -644,79 +622,59 @@ private struct NativeHomeTrendCard: View {
     }
 }
 
-private struct NativeHomeInstagramFeatureCard: View {
+private struct NativeHomeAIInfluencerFeatureCard: View {
     let action: () -> Void
 
     private let cornerRadius: CGFloat = 20
 
     var body: some View {
         Button(action: action) {
-            ZStack(alignment: .bottom) {
-                cardSurface
-                    .frame(height: HomeLayout.businessFeatureHeight)
-
-                Image("HomeInstagramModelCutout")
+            ZStack(alignment: .leading) {
+                Image("HomeAIInfluencerFeature")
                     .resizable()
-                    .scaledToFit()
-                    .frame(
-                        width: 205,
-                        height: HomeLayout.businessFeatureHeight
-                            + HomeLayout.businessFeatureOverflow + 8
-                    )
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .offset(x: 18, y: 2)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
+                    .scaledToFill()
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.88), Color.black.opacity(0.42), .clear],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("AI-инфлюенсер")
+                        .font(.system(size: 27, weight: .heavy))
+                        .foregroundColor(.white)
+
+                    Text("Виртуальный персонаж, который ведет соцсети, рекламирует товары и общается с аудиторией как реальный человек")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.78))
+                        .lineSpacing(2)
+                        .lineLimit(5)
+
+                    Text("X5")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 17)
+                        .frame(minHeight: 30)
+                        .background(X5Style.blue, in: Capsule())
+                        .padding(.top, 5)
+                }
+                .padding(18)
+                .frame(maxWidth: 205, maxHeight: .infinity, alignment: .leading)
             }
-            .frame(
-                height: HomeLayout.businessFeatureHeight
-                    + HomeLayout.businessFeatureOverflow
-            )
+            .frame(maxWidth: .infinity)
+            .frame(height: HomeLayout.businessFeatureHeight + HomeLayout.businessFeatureOverflow)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Оформление Instagram. Стильные посты и сторис для твоего бренда")
-        .accessibilityHint("Открывает генератор оформления Instagram")
-    }
-
-    private var cardSurface: some View {
-        ZStack(alignment: .leading) {
-            NativeHomeInstagramBackdrop()
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Оформление")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(.black)
-
-                Text("Instagram")
-                    .font(.system(size: 30, weight: .bold))
-                    .italic()
-                    .foregroundColor(Color(red: 0.48, green: 0.26, blue: 0.80))
-
-                Text("Стильные посты и сторис\nдля твоего бренда")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.black.opacity(0.58))
-                    .lineSpacing(1)
-                    .padding(.top, 5)
-
-                Text("X5")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 17)
-                    .frame(minHeight: 30)
-                    .background(X5Style.blue, in: Capsule())
-                    .padding(.top, 9)
-            }
-            .padding(.leading, 16)
-            .padding(.vertical, 14)
-            .frame(maxWidth: 172, maxHeight: .infinity, alignment: .leading)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .stroke(Color.white.opacity(0.72), lineWidth: 1)
+                .stroke(Color.white.opacity(0.22), lineWidth: 1)
         }
         .shadow(color: Color(red: 0.49, green: 0.23, blue: 0.82).opacity(0.30), radius: 16, y: 8)
+        .accessibilityLabel("AI-инфлюенсер. Виртуальный персонаж для ведения соцсетей и рекламы")
+        .accessibilityHint("Открывает инструменты создания AI-персонажа")
     }
 }
 
@@ -927,6 +885,70 @@ private struct NativeHomeBusinessCard: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(title). \(subtitle)")
         .accessibilityHint("Открывает соответствующий инструмент")
+    }
+}
+
+private struct NativeHomeSalesBannerCard: View {
+    let action: () -> Void
+
+    private let cornerRadius: CGFloat = 16
+
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: .leading) {
+                Image("HomeSalesBannerFeature")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: HomeLayout.businessWideHeight)
+                    .clipped()
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.82), Color.black.opacity(0.18), .clear],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    salesLabel("Рекламные", size: 11, weight: .medium)
+                    salesLabel("БАННЕРЫ С ГОТОВЫМИ", size: 10, weight: .heavy)
+                    salesLabel("ПРОДАЮЩИМИ ОФФЕРАМИ", size: 9, weight: .heavy)
+                    salesLabel("ДЛЯ ТАРГЕТА •", size: 10, weight: .heavy)
+                    salesLabel("КАРТОЧКИ МАРКЕТПЛЕЙСОВ", size: 8, weight: .heavy)
+                }
+                .padding(.leading, 10)
+                .padding(.vertical, 9)
+
+                Image(systemName: "arrow.right")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.black)
+                    .frame(width: 30, height: 30)
+                    .background(X5Style.blue, in: Circle())
+                    .padding(9)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: HomeLayout.businessWideHeight)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color.white.opacity(0.16), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Рекламные баннеры с готовыми продающими офферами для таргета и карточки маркетплейсов")
+        .accessibilityHint("Открывает генератор рекламных креативов")
+    }
+
+    private func salesLabel(_ text: String, size: CGFloat, weight: Font.Weight) -> some View {
+        Text(text)
+            .font(.system(size: size, weight: weight))
+            .foregroundColor(.black)
+            .lineLimit(1)
+            .minimumScaleFactor(0.78)
+            .padding(.horizontal, 7)
+            .frame(minHeight: 15)
+            .background(Color.white.opacity(0.95), in: Capsule())
     }
 }
 

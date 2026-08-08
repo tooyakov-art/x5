@@ -5,7 +5,7 @@ permissions:
 
 on:
   push:
-    branches: [main, codex/x5-cleanup-from-restore-clean]
+    branches: [main, codex/x5-cleanup-from-restore-clean, codex/x5-client-feedback-20260807]
   workflow_dispatch:
 
 jobs:

@@ -216,6 +216,128 @@ struct ImageGenerationCategory: Identifiable, Hashable {
     let gradientEnd: Color
 }
 
+struct SalesAngle: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let summary: String
+    let examples: [String]
+    let isRecommended: Bool
+
+    static let all: [SalesAngle] = [
+        .init(
+            id: "pain",
+            title: "Через боль клиента",
+            summary: "Покажите проблему, которую человек хочет решить.",
+            examples: ["Надоело каждое утро рисовать брови?", "Устали искать клиентов?", "Замучили боли в спине?"],
+            isRecommended: true
+        ),
+        .init(
+            id: "desired_result",
+            title: "Через желаемый результат",
+            summary: "Покажите конечный результат, ради которого покупают товар или услугу.",
+            examples: ["Просыпайтесь красивой каждый день.", "Получите первых клиентов уже через месяц.", "Дом, которым будете гордиться."],
+            isRecommended: true
+        ),
+        .init(
+            id: "benefit",
+            title: "Через выгоду",
+            summary: "Сразу объясните, что именно получает клиент.",
+            examples: ["До конца месяца скидка 30%.", "Обучение и материалы уже включены.", "Бесплатная доставка."],
+            isRecommended: true
+        ),
+        .init(
+            id: "scarcity",
+            title: "Через ограниченность",
+            summary: "Покажите, что предложение ограничено по времени или количеству.",
+            examples: ["Осталось всего 5 мест.", "Цена действует до конца недели.", "Только для первых 20 клиентов."],
+            isRecommended: true
+        ),
+        .init(
+            id: "expertise",
+            title: "Через экспертность и доверие",
+            summary: "Объясните, почему клиент может доверять именно вам.",
+            examples: ["17 лет опыта.", "Более 2 000 довольных клиентов.", "Сертифицированный преподаватель."],
+            isRecommended: true
+        ),
+        .init(
+            id: "transformation",
+            title: "Через трансформацию",
+            summary: "Покажите понятное изменение до и после.",
+            examples: ["Из офисного сотрудника в мастера с высоким доходом.", "До и после процедуры.", "До рекламы и после запуска."],
+            isRecommended: true
+        ),
+        .init(
+            id: "social_proof",
+            title: "Через социальное доказательство",
+            summary: "Используйте отзывы, оценки и количество клиентов.",
+            examples: ["Более 1 500 клиентов.", "Нас рекомендуют знакомым.", "4,9 по отзывам."],
+            isRecommended: false
+        ),
+        .init(
+            id: "saving",
+            title: "Через экономию времени или денег",
+            summary: "Покажите, сколько времени или денег сэкономит клиент.",
+            examples: ["Экономьте час каждое утро.", "Перестаньте переплачивать.", "Один раз сделали и забыли."],
+            isRecommended: false
+        ),
+        .init(
+            id: "curiosity",
+            title: "Через любопытство",
+            summary: "Дайте причину остановиться и узнать больше.",
+            examples: ["Почему 9 из 10 девушек выбирают эту технику?", "Ошибка, которую совершают почти все.", "Секрет идеальных бровей."],
+            isRecommended: false
+        ),
+        .init(
+            id: "loss_aversion",
+            title: "Через страх потери",
+            summary: "Покажите, что человек может потерять, если отложит решение.",
+            examples: ["После окончания акции цена станет выше.", "Не откладывайте, пока есть свободные даты.", "Чем раньше начнете, тем быстрее получите результат."],
+            isRecommended: false
+        )
+    ]
+}
+
+enum SalesCreativeBriefBuilder {
+    static func compose(
+        description: String,
+        angle: SalesAngle,
+        hasMainPhoto: Bool,
+        hasLogo: Bool,
+        referenceCount: Int
+    ) -> String {
+        let cleanDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        var parts = [
+            "Создай профессиональный рекламный баннер или карточку товара на русском языке.",
+            "Товар или услуга: \(cleanDescription)",
+            "Угол продаж: \(angle.title). \(angle.summary)",
+            "Самостоятельно напиши короткий продающий заголовок, понятный оффер и только нужный текст. Не копируй примеры дословно, если они не подходят к описанию.",
+            "Сделай цельную профессиональную композицию. Текст должен быть частью дизайна, а не случайной надписью поверх изображения."
+        ]
+
+        var imageRoles: [String] = []
+        var imageIndex = 1
+        if hasMainPhoto {
+            imageRoles.append("изображение \(imageIndex) является основной фотографией товара или услуги")
+            imageIndex += 1
+        }
+        if hasLogo {
+            imageRoles.append("изображение \(imageIndex) является логотипом, сохрани его написание и размести аккуратно")
+            imageIndex += 1
+        }
+        if referenceCount > 0 {
+            let range = referenceCount == 1
+                ? "изображение \(imageIndex) является референсом стиля"
+                : "изображения \(imageIndex)-\(imageIndex + referenceCount - 1) являются референсами стиля"
+            imageRoles.append(range)
+        }
+        if !imageRoles.isEmpty {
+            parts.append("Роли загруженных материалов: \(imageRoles.joined(separator: "; ")).")
+        }
+
+        return parts.joined(separator: "\n")
+    }
+}
+
 enum ImageGenerationCatalog {
     static let creditCost: Int = 60
 
