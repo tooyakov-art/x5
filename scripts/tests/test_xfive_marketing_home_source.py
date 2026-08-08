@@ -146,6 +146,18 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertIn('Text("Карточки\\nтоваров")', home)
         self.assertIn('handle(imageAction("target_ad"))', home)
 
+    def test_sales_banner_is_immediately_after_ai_influencer_before_tiles(self):
+        home = HOME.read_text(encoding="utf-8")
+        business = home.split("private var businessSection", 1)[1].split(
+            "private var trendItems", 1
+        )[0]
+
+        influencer = business.index("NativeHomeAIInfluencerFeatureCard(")
+        banner = business.index("NativeHomeSalesBannerCard(")
+        tiles = business.index("LazyVGrid(")
+        self.assertLess(influencer, banner)
+        self.assertLess(banner, tiles)
+
     def test_ai_feature_keeps_copy_and_action_as_native_elements(self):
         home = HOME.read_text(encoding="utf-8")
         ai_card = home.split(

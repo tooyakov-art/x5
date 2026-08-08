@@ -227,6 +227,11 @@ struct HomeView: View {
             )
             .accessibilityIdentifier("x5.home.business.ai_influencer")
 
+            NativeHomeSalesBannerCard(
+                action: { handle(imageAction("target_ad")) }
+            )
+            .accessibilityIdentifier("x5.home.business.sales_banners")
+
             LazyVGrid(
                 columns: [
                     GridItem(.flexible(), spacing: HomeLayout.cardSpacing),
@@ -247,10 +252,6 @@ struct HomeView: View {
                 }
             }
 
-            NativeHomeSalesBannerCard(
-                action: { handle(imageAction("target_ad")) }
-            )
-            .accessibilityIdentifier("x5.home.business.sales_banners")
         }
     }
 
