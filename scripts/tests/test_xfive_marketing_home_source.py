@@ -97,13 +97,11 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             "С Токаевым",
             "Карточки WB",
             "Со знаменитостью",
-            'Text("Оформление")',
-            'Text("Instagram")',
             "Обложки YouTube",
-            "Логотипы",
-            "Брендбук",
             "AI-инфлюенсер",
             "Карточки товара",
+            "Рекламные",
+            "БАННЕРЫ С ГОТОВЫМИ",
         ):
             self.assertIn(text, home)
 
@@ -112,42 +110,44 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertIn("NativeHomeBusinessCard", home)
         self.assertIn("NativeHomeTrendCard", home)
 
-    def test_instagram_feature_is_a_native_overflow_card_after_trends(self):
+    def test_ai_influencer_feature_is_a_native_overflow_card_after_trends(self):
         home = HOME.read_text(encoding="utf-8")
-        cutout = (
+        artwork = (
             ROOT
             / "X5"
             / "Assets.xcassets"
-            / "HomeInstagramModelCutout.imageset"
-            / "HomeInstagramModelCutout.png"
+            / "HomeAIInfluencerFeature.imageset"
+            / "HomeAIInfluencerFeature.png"
         )
 
-        self.assertIn("struct NativeHomeInstagramFeatureCard", home)
-        self.assertIn('Image("HomeInstagramModelCutout")', home)
-        self.assertIn('Text("Оформление")', home)
-        self.assertIn('Text("Instagram")', home)
+        self.assertIn("struct NativeHomeAIInfluencerFeatureCard", home)
+        self.assertIn('Image("HomeAIInfluencerFeature")', home)
+        self.assertIn('Text("AI-инфлюенсер")', home)
         self.assertIn('Text("X5")', home)
         self.assertIn("static let businessFeatureHeight: CGFloat = 198", home)
         self.assertIn("static let businessFeatureOverflow: CGFloat = 38", home)
-        self.assertIn('.accessibilityIdentifier("x5.home.business.instagram")', home)
+        self.assertIn('.accessibilityIdentifier("x5.home.business.ai_influencer")', home)
         self.assertLess(home.index("trendsSection"), home.index("businessSection"))
-        self.assertTrue(cutout.exists(), "The overflow model must be a separate content asset")
+        self.assertTrue(artwork.exists(), "The AI feature must keep its content artwork")
 
-    def test_instagram_feature_limits_the_light_panel_to_reference_proportions(self):
+    def test_sales_banner_is_native_and_opens_the_target_ad_tool(self):
         home = HOME.read_text(encoding="utf-8")
 
-        self.assertIn("struct NativeHomeInstagramBackdrop", home)
-        self.assertIn("private let lightPanelFraction: CGFloat = 0.42", home)
-        self.assertIn("NativeHomeInstagramBackdrop()", home)
+        self.assertIn("struct NativeHomeSalesBannerCard", home)
+        self.assertIn('Image("HomeSalesBannerFeature")', home)
+        self.assertIn('salesLabel("Рекламные"', home)
+        self.assertIn('handle(imageAction("target_ad"))', home)
 
-    def test_instagram_feature_draws_native_post_elements_behind_the_model(self):
+    def test_ai_feature_keeps_copy_and_action_as_native_elements(self):
         home = HOME.read_text(encoding="utf-8")
+        ai_card = home.split(
+            "private struct NativeHomeAIInfluencerFeatureCard", 1
+        )[1].split("private struct NativeHomeInstagramBackdrop", 1)[0]
 
-        self.assertIn("struct NativeHomeInstagramPostStack", home)
-        self.assertIn("NativeHomeInstagramPostStack()", home)
-        self.assertIn('Image(systemName: "heart.fill")', home)
-        self.assertIn('Image(systemName: "bubble.right.fill")', home)
-        self.assertNotIn("InstagramPostMockup", home)
+        self.assertIn('Text("AI-инфлюенсер")', ai_card)
+        self.assertIn("LinearGradient(", ai_card)
+        self.assertIn('Text("X5")', ai_card)
+        self.assertIn("Button(action: action)", ai_card)
 
     def test_home_uses_compact_reference_proportions_instead_of_oversized_cards(self):
         home = HOME.read_text(encoding="utf-8")
@@ -170,6 +170,20 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
 
         self.assertNotIn("minHeight: 130", home)
         self.assertNotIn("width: 164, height: 238", home)
+
+    def test_new_business_artwork_cannot_expand_home_past_the_phone_width(self):
+        home = HOME.read_text(encoding="utf-8")
+        ai_card = home.split(
+            "private struct NativeHomeAIInfluencerFeatureCard", 1
+        )[1].split("private struct NativeHomeInstagramBackdrop", 1)[0]
+        sales_card = home.split(
+            "private struct NativeHomeSalesBannerCard", 1
+        )[1].split("private struct NativeHomePageDots", 1)[0]
+
+        for card in (ai_card, sales_card):
+            self.assertIn("GeometryReader { proxy in", card)
+            self.assertIn("width: proxy.size.width", card)
+            self.assertIn("height: proxy.size.height", card)
 
     def test_compact_promo_buttons_do_not_force_bad_wraps_on_small_iphones(self):
         home = HOME.read_text(encoding="utf-8")

@@ -29,7 +29,8 @@ class CISupplyChainSourceTests(unittest.TestCase):
         for path in sorted(WORKFLOW_DIR.glob("*.yml")):
             source = workflow_text(path)
             for line in source.splitlines():
-                if "uses:" not in line:
+                stripped = line.lstrip()
+                if not (stripped.startswith("uses:") or stripped.startswith("- uses:")):
                     continue
                 reference = line.split("uses:", 1)[1].strip().split("#", 1)[0].strip()
                 self.assertIn("@", reference, f"missing action ref in {path.name}: {line}")

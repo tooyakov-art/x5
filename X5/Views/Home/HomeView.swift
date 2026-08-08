@@ -629,38 +629,46 @@ private struct NativeHomeAIInfluencerFeatureCard: View {
 
     var body: some View {
         Button(action: action) {
-            ZStack(alignment: .leading) {
-                Image("HomeAIInfluencerFeature")
-                    .resizable()
-                    .scaledToFill()
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Image("HomeAIInfluencerFeature")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
 
-                LinearGradient(
-                    colors: [Color.black.opacity(0.88), Color.black.opacity(0.42), .clear],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.88), Color.black.opacity(0.42), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
 
-                VStack(alignment: .leading, spacing: 7) {
-                    Text("AI-инфлюенсер")
-                        .font(.system(size: 27, weight: .heavy))
-                        .foregroundColor(.white)
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("AI-инфлюенсер")
+                            .font(.system(size: 27, weight: .heavy))
+                            .foregroundColor(.white)
 
-                    Text("Виртуальный персонаж, который ведет соцсети, рекламирует товары и общается с аудиторией как реальный человек")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.78))
-                        .lineSpacing(2)
-                        .lineLimit(5)
+                        Text("Виртуальный персонаж, который ведет соцсети, рекламирует товары и общается с аудиторией как реальный человек")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.78))
+                            .lineSpacing(2)
+                            .lineLimit(5)
 
-                    Text("X5")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 17)
-                        .frame(minHeight: 30)
-                        .background(X5Style.blue, in: Capsule())
-                        .padding(.top, 5)
+                        Text("X5")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 17)
+                            .frame(minHeight: 30)
+                            .background(X5Style.blue, in: Capsule())
+                            .padding(.top, 5)
+                    }
+                    .padding(18)
+                    .frame(
+                        width: min(205, proxy.size.width),
+                        height: proxy.size.height,
+                        alignment: .leading
+                    )
                 }
-                .padding(18)
-                .frame(maxWidth: 205, maxHeight: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity)
             .frame(height: HomeLayout.businessFeatureHeight + HomeLayout.businessFeatureOverflow)
@@ -895,37 +903,39 @@ private struct NativeHomeSalesBannerCard: View {
 
     var body: some View {
         Button(action: action) {
-            ZStack(alignment: .leading) {
-                Image("HomeSalesBannerFeature")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity)
-                    .frame(height: HomeLayout.businessWideHeight)
-                    .clipped()
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Image("HomeSalesBannerFeature")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
 
-                LinearGradient(
-                    colors: [Color.black.opacity(0.82), Color.black.opacity(0.18), .clear],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.82), Color.black.opacity(0.18), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
 
-                VStack(alignment: .leading, spacing: 2) {
-                    salesLabel("Рекламные", size: 11, weight: .medium)
-                    salesLabel("БАННЕРЫ С ГОТОВЫМИ", size: 10, weight: .heavy)
-                    salesLabel("ПРОДАЮЩИМИ ОФФЕРАМИ", size: 9, weight: .heavy)
-                    salesLabel("ДЛЯ ТАРГЕТА •", size: 10, weight: .heavy)
-                    salesLabel("КАРТОЧКИ МАРКЕТПЛЕЙСОВ", size: 8, weight: .heavy)
+                    VStack(alignment: .leading, spacing: 2) {
+                        salesLabel("Рекламные", size: 11, weight: .medium)
+                        salesLabel("БАННЕРЫ С ГОТОВЫМИ", size: 10, weight: .heavy)
+                        salesLabel("ПРОДАЮЩИМИ ОФФЕРАМИ", size: 9, weight: .heavy)
+                        salesLabel("ДЛЯ ТАРГЕТА •", size: 10, weight: .heavy)
+                        salesLabel("КАРТОЧКИ МАРКЕТПЛЕЙСОВ", size: 8, weight: .heavy)
+                    }
+                    .frame(width: max(0, proxy.size.width - 54), alignment: .leading)
+                    .padding(.leading, 10)
+                    .padding(.vertical, 9)
+
+                    Image(systemName: "arrow.right")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(.black)
+                        .frame(width: 30, height: 30)
+                        .background(X5Style.blue, in: Circle())
+                        .padding(9)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 }
-                .padding(.leading, 10)
-                .padding(.vertical, 9)
-
-                Image(systemName: "arrow.right")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundColor(.black)
-                    .frame(width: 30, height: 30)
-                    .background(X5Style.blue, in: Circle())
-                    .padding(9)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             }
             .frame(maxWidth: .infinity)
             .frame(height: HomeLayout.businessWideHeight)
