@@ -28,6 +28,7 @@ struct ImageGeneratorView: View {
     @State private var referenceImages: [ImageReferenceAsset] = []
     @State private var isLoadingReferences = false
     @State private var selectedSalesAngle: SalesAngle
+    @State private var selectedYouTubeMode: YouTubeThumbnailMode
     @State private var generationProgress: Double = 0
     @State private var generationProgressTask: Task<Void, Never>?
     @State private var showGenerationComplete = false
@@ -37,9 +38,12 @@ struct ImageGeneratorView: View {
     init(category: ImageGenerationCategory = ImageGenerationCatalog.custom, provider: ImageGenerationProvider = .gptImage2) {
         self.category = category
         let isSalesCreative = category.id == "product_cards" || category.id == "target_ad"
-        _prompt = State(initialValue: isSalesCreative ? "" : category.examplePrompt)
+        let isYouTubeThumbnail = category.id == "youtube_cover"
+        _prompt = State(initialValue: isSalesCreative || isYouTubeThumbnail ? "" : category.examplePrompt)
         _selectedProvider = State(initialValue: provider)
+        _selectedSize = State(initialValue: category.id == "youtube_cover" ? .landscape : .square)
         _selectedSalesAngle = State(initialValue: SalesAngle.all[0])
+        _selectedYouTubeMode = State(initialValue: YouTubeThumbnailMode.all[0])
     }
 
     var body: some View {
@@ -50,6 +54,9 @@ struct ImageGeneratorView: View {
                 settingsPanel
                 if isSalesCreativeCategory {
                     salesAnglePanel
+                }
+                if isYouTubeThumbnailCategory {
+                    youtubeModePanel
                 }
                 promptPanel
                 referencePanel
@@ -334,9 +341,78 @@ struct ImageGeneratorView: View {
         .accessibilityIdentifier("x5.generator.sales_angle")
     }
 
+    private var youtubeModePanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel("Режим обложки")
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 9) {
+                    ForEach(YouTubeThumbnailMode.all) { mode in
+                        Button {
+                            X5Feedback.selection()
+                            selectedYouTubeMode = mode
+                        } label: {
+                            VStack(alignment: .leading, spacing: 7) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: mode.icon)
+                                    if mode.isRecommended {
+                                        Text("TOP")
+                                            .font(.system(size: 8, weight: .black, design: .rounded))
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 2)
+                                            .background(X5Style.blue, in: Capsule())
+                                            .foregroundColor(.black)
+                                    }
+                                }
+                                .font(.system(size: 15, weight: .bold))
+
+                                Text(mode.title)
+                                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                                    .lineLimit(1)
+                            }
+                            .foregroundColor(.white)
+                            .frame(width: 132, alignment: .leading)
+                            .padding(11)
+                            .background(
+                                selectedYouTubeMode == mode
+                                    ? X5Style.blue.opacity(0.24)
+                                    : Color.white.opacity(0.07)
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(
+                                        selectedYouTubeMode == mode
+                                            ? X5Style.blue.opacity(0.88)
+                                            : Color.white.opacity(0.09),
+                                        lineWidth: selectedYouTubeMode == mode ? 1.4 : 1
+                                    )
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isGenerating)
+                        .accessibilityLabel("\(mode.title). \(mode.summary)")
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+
+            Text(selectedYouTubeMode.summary)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white.opacity(0.62))
+        }
+        .padding(14)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.11)
+        .accessibilityIdentifier("x5.generator.youtube_mode")
+    }
+
     private var promptPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionLabel(isSalesCreativeCategory ? "Описание товара или услуги" : loc.t("gen_prompt"))
+            sectionLabel(
+                isSalesCreativeCategory
+                    ? "Описание товара или услуги"
+                    : (isYouTubeThumbnailCategory ? "Тема ролика" : loc.t("gen_prompt"))
+            )
 
             TextField(promptPlaceholder, text: $prompt, axis: .vertical)
                 .focused($promptFocused)
@@ -353,6 +429,10 @@ struct ImageGeneratorView: View {
 
             if isSalesCreativeCategory {
                 Text("Укажите цену, город, акцию и важные условия. AI сам соберет продающий текст и впишет его в дизайн.")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.54))
+            } else if isYouTubeThumbnailCategory {
+                Text("Опишите сюжет, героя и главный смысл ролика. AI предложит короткий заголовок и соберёт обложку в выбранном режиме.")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white.opacity(0.54))
             }
@@ -598,7 +678,9 @@ struct ImageGeneratorView: View {
 
     private var hasValidPromptOrReferences: Bool {
         let hasDescription = prompt.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
-        return isSalesCreativeCategory ? hasDescription : (hasDescription || !allReferenceAssets.isEmpty)
+        return (isSalesCreativeCategory || isYouTubeThumbnailCategory)
+            ? hasDescription
+            : (hasDescription || !allReferenceAssets.isEmpty)
     }
 
     private var balanceText: String {
@@ -622,9 +704,18 @@ struct ImageGeneratorView: View {
         category.id == "product_cards" || category.id == "target_ad"
     }
 
+    private var isYouTubeThumbnailCategory: Bool {
+        category.id == "youtube_cover"
+    }
+
     private var promptPlaceholder: String {
-        guard isSalesCreativeCategory else { return category.examplePrompt }
-        return "Опишите вашу услугу или товар. В конце укажите стоимость, город, акции и другие важные условия."
+        if isSalesCreativeCategory {
+            return "Опишите вашу услугу или товар. В конце укажите стоимость, город, акции и другие важные условия."
+        }
+        if isYouTubeThumbnailCategory {
+            return "Например: почему малый бизнес теряет клиентов из-за слабой рекламы, в кадре владелец бизнеса и разбор ошибок"
+        }
+        return category.examplePrompt
     }
 
     private var allReferenceAssets: [ImageReferenceAsset] {
@@ -668,7 +759,17 @@ struct ImageGeneratorView: View {
         let currentReferences = referencesOverride ?? allReferenceAssets.map { $0.reference }
         let rawPrompt = promptOverride ?? prompt
         let cleanPrompt: String
-        if isSalesCreativeCategory && promptOverride == nil {
+        if isYouTubeThumbnailCategory && promptOverride == nil {
+            guard rawPrompt.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 else {
+                errorMessage = "Опишите тему ролика"
+                return
+            }
+            cleanPrompt = YouTubeThumbnailBriefBuilder.compose(
+                topic: rawPrompt,
+                mode: selectedYouTubeMode,
+                hasReferences: !currentReferences.isEmpty
+            )
+        } else if isSalesCreativeCategory && promptOverride == nil {
             guard rawPrompt.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 else {
                 errorMessage = "Опишите товар или услугу"
                 return

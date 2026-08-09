@@ -216,6 +216,87 @@ struct ImageGenerationCategory: Identifiable, Hashable {
     let gradientEnd: Color
 }
 
+struct YouTubeThumbnailMode: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let summary: String
+    let icon: String
+    let promptGuidance: String
+    let isRecommended: Bool
+
+    static let all: [YouTubeThumbnailMode] = [
+        .init(
+            id: "entertainment",
+            title: "Развлекательная",
+            summary: "Эмоция, движение и яркий контраст.",
+            icon: "theatermasks.fill",
+            promptGuidance: "Динамичная развлекательная подача: сильная эмоция, живой сюжет, яркие контрастные цвета и крупный визуальный акцент.",
+            isRecommended: true
+        ),
+        .init(
+            id: "serious",
+            title: "Серьёзная",
+            summary: "Сдержанно, убедительно и без визуального шума.",
+            icon: "building.columns.fill",
+            promptGuidance: "Серьёзная авторитетная подача: чистая композиция, спокойные глубокие цвета, уверенный герой или предмет, минимум декоративного шума.",
+            isRecommended: false
+        ),
+        .init(
+            id: "expert",
+            title: "Экспертная",
+            summary: "Знания, польза и доверие к автору.",
+            icon: "graduationcap.fill",
+            promptGuidance: "Экспертная образовательная подача: компетентный герой, понятный предмет разговора, визуальные намёки на анализ, схему или результат.",
+            isRecommended: true
+        ),
+        .init(
+            id: "news",
+            title: "Новостная",
+            summary: "Актуальность и ощущение важного события.",
+            icon: "newspaper.fill",
+            promptGuidance: "Новостная подача: ощущение актуального события, чёткая иерархия, редакционная композиция и сильный информационный акцент без ложной срочности.",
+            isRecommended: false
+        ),
+        .init(
+            id: "provocative",
+            title: "Провокационная",
+            summary: "Контраст и интрига без обмана зрителя.",
+            icon: "bolt.fill",
+            promptGuidance: "Провокационная, но честная подача: визуальный конфликт, неожиданный контраст и интрига без ложных обещаний, шокирующих манипуляций и вводящего в заблуждение кликбейта.",
+            isRecommended: false
+        ),
+        .init(
+            id: "minimal",
+            title: "Минималистичная",
+            summary: "Один герой, короткий текст и много воздуха.",
+            icon: "circle.lefthalf.filled",
+            promptGuidance: "Минималистичная подача: один главный объект или человек, короткий заголовок, много свободного пространства, точный свет и премиальная типографика.",
+            isRecommended: false
+        )
+    ]
+}
+
+enum YouTubeThumbnailBriefBuilder {
+    static func compose(
+        topic: String,
+        mode: YouTubeThumbnailMode,
+        hasReferences: Bool
+    ) -> String {
+        let cleanTopic = topic.trimmingCharacters(in: .whitespacesAndNewlines)
+        var parts = [
+            "Создай профессиональную кликабельную обложку YouTube строго в формате 16:9.",
+            "Тема ролика: \(cleanTopic)",
+            "Режим: \(mode.title). \(mode.promptGuidance)",
+            "Самостоятельно предложи короткий читаемый заголовок на русском из 2-5 слов. Заголовок должен поддерживать тему ролика и не обещать того, чего нет в описании.",
+            "Главный объект, лицо или продукт должны хорошо читаться на маленьком превью. Сохрани безопасные отступы, высокий контраст и цельную композицию. Не добавляй интерфейс YouTube, логотип YouTube, водяные знаки или мелкий текст."
+        ]
+        if hasReferences {
+            parts.append("Используй загруженные изображения как визуальные референсы и сохрани узнаваемые черты главного героя или объекта.")
+        }
+        return parts.joined(separator: "\n")
+    }
+}
+
 struct SalesAngle: Identifiable, Hashable {
     let id: String
     let title: String

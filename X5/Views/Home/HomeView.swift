@@ -29,6 +29,7 @@ private enum HomeLayout {
     static let businessFeatureOverflow: CGFloat = 38
     static let businessTileHeight: CGFloat = 112
     static let businessWideHeight: CGFloat = 184
+    static let voicePromoHeight: CGFloat = 92
     static let sectionSpacing: CGFloat = 14
     static let cardSpacing: CGFloat = 8
 }
@@ -251,6 +252,11 @@ struct HomeView: View {
                     .accessibilityIdentifier("x5.home.business.\(item.id)")
                 }
             }
+
+            NativeHomeVoiceCard(
+                action: { handle(.voiceGeneration) }
+            )
+            .accessibilityIdentifier("x5.home.business.voice")
 
         }
     }
@@ -851,6 +857,79 @@ private struct NativeHomeBusinessCard: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(title). \(subtitle)")
         .accessibilityHint("Открывает соответствующий инструмент")
+    }
+}
+
+private struct NativeHomeVoiceCard: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(X5Style.blue.opacity(0.15))
+
+                    Image(systemName: "waveform")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(X5Style.blue)
+                }
+                .frame(width: 58, height: 58)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(X5Style.blue.opacity(0.32), lineWidth: 1)
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Озвучка")
+                        .font(.system(size: 20, weight: .heavy, design: .rounded))
+                        .foregroundColor(.white)
+
+                    Text("Естественные голоса, эмоции и языки")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.66))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+
+                Spacer(minLength: 4)
+
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.black)
+                    .frame(width: 34, height: 34)
+                    .background(X5Style.blue, in: Circle())
+            }
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
+            .frame(height: HomeLayout.voicePromoHeight)
+            .background {
+                ZStack {
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.08),
+                            Color(red: 0.08, green: 0.04, blue: 0.14).opacity(0.94)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+
+                    LinearGradient(
+                        colors: [X5Style.blue.opacity(0.16), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Озвучка. Естественные голоса, эмоции и языки")
+        .accessibilityHint("Открывает генератор озвучки")
     }
 }
 

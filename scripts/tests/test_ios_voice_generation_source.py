@@ -23,7 +23,7 @@ class IOSVoiceGenerationSourceTests(unittest.TestCase):
         self.assertIn("VoiceGenerationLocalStore", source)
         self.assertIn("pendingRequestID", source)
 
-    def test_voice_route_stays_implemented_but_is_not_exposed_without_backend_gate(self):
+    def test_voice_route_is_exposed_after_verified_backend_contract(self):
         self.assertTrue(VIEW.is_file())
         home = HOME.read_text(encoding="utf-8")
 
@@ -35,14 +35,11 @@ class IOSVoiceGenerationSourceTests(unittest.TestCase):
         )
 
         visible_collections = home[
-            home.index("private var trendItems") : home.index("private func imageAction")
+            home.index("private var businessSection") : home.index("private var trendItems")
         ]
-        self.assertNotIn(
-            "action: .voiceGeneration",
-            visible_collections,
-            "Voice must not be shown as a working Home card until the deployed "
-            "backend availability gate exists.",
-        )
+        self.assertIn("NativeHomeVoiceCard", visible_collections)
+        self.assertIn("action: { handle(.voiceGeneration) }", visible_collections)
+        self.assertIn('accessibilityIdentifier("x5.home.business.voice")', home)
 
     def test_voice_ui_has_native_input_playback_and_sharing(self):
         self.assertTrue(VIEW.is_file())
