@@ -82,3 +82,11 @@ See [`SUBMIT.md`](./SUBMIT.md) — full step-by-step including:
 - Metadata + review notes
 
 Total active time: ~2.5 hours setup + 30 min per submission. Apple review wait: 1–3 days.
+
+## App analytics export
+
+`.github/workflows/export-app-analytics.yml` refreshes the privacy-safe public
+snapshot in `analytics-data/latest.json` every six hours. It contains aggregate
+downloads, installs, commerce, countries, and build state only; it never exports
+emails, user IDs, transaction IDs, or purchase tokens. Apple Analytics Reports
+may take 24–48 hours to prepare after the initial request.

@@ -1,0 +1,49 @@
+name: Export app analytics
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: export-app-analytics
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install exporter dependencies
+        run: pip install "pyjwt[crypto]" requests
+
+      - name: Export privacy-safe aggregates
+        env:
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+        run: python scripts/export_app_analytics.py --output analytics-data/latest.json
+
+      - name: Validate public snapshot
+        run: python -m unittest scripts.tests.test_export_app_analytics
+
+      - name: Publish refreshed snapshot
+        run: |
+          if git diff --quiet -- analytics-data/latest.json; then
+            echo "Analytics snapshot is unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add analytics-data/latest.json
+          git commit -m "chore: refresh app analytics [skip ci]"
+          git push
