@@ -343,63 +343,137 @@ struct ImageGeneratorView: View {
 
     private var youtubeModePanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionLabel("Режим обложки")
+            sectionLabel("Стиль обложки")
+
+            Menu {
+                ForEach(YouTubeThumbnailMode.all) { mode in
+                    Button {
+                        X5Feedback.selection()
+                        selectedYouTubeMode = mode
+                    } label: {
+                        Label(
+                            mode.isRecommended ? "\(mode.title) · рекомендуем" : mode.title,
+                            systemImage: mode == selectedYouTubeMode ? "checkmark" : mode.icon
+                        )
+                    }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: selectedYouTubeMode.icon)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(.red)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(selectedYouTubeMode.title)
+                                .font(.system(size: 15, weight: .heavy))
+                                .foregroundColor(.white)
+
+                            if selectedYouTubeMode.isRecommended {
+                                Text("TOP")
+                                    .font(.system(size: 8, weight: .black, design: .rounded))
+                                    .foregroundColor(.black)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(X5Style.blue, in: Capsule())
+                            }
+                        }
+
+                        Text(selectedYouTubeMode.summary)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.58))
+                            .lineLimit(2)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.52))
+                }
+                .padding(12)
+                .background(Color.white.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .disabled(isGenerating)
+
+            HStack(alignment: .firstTextBaseline) {
+                Text("Готовые идеи")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+
+                Spacer()
+
+                Text("нажмите, чтобы использовать")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.46))
+            }
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 9) {
-                    ForEach(YouTubeThumbnailMode.all) { mode in
+                    ForEach(selectedYouTubeMode.examples, id: \.self) { example in
                         Button {
                             X5Feedback.selection()
-                            selectedYouTubeMode = mode
+                            prompt = example
+                            promptFocused = false
                         } label: {
-                            VStack(alignment: .leading, spacing: 7) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: mode.icon)
-                                    if mode.isRecommended {
-                                        Text("TOP")
-                                            .font(.system(size: 8, weight: .black, design: .rounded))
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 2)
-                                            .background(X5Style.blue, in: Capsule())
-                                            .foregroundColor(.black)
-                                    }
-                                }
-                                .font(.system(size: 15, weight: .bold))
+                            ZStack(alignment: .bottomLeading) {
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.37, green: 0.03, blue: 0.12),
+                                        Color(red: 0.09, green: 0.03, blue: 0.16),
+                                        Color.black
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
 
-                                Text(mode.title)
-                                    .font(.system(size: 13, weight: .heavy, design: .rounded))
-                                    .lineLimit(1)
+                                Circle()
+                                    .fill(Color.red.opacity(0.30))
+                                    .frame(width: 82, height: 82)
+                                    .blur(radius: 12)
+                                    .offset(x: 132, y: -35)
+
+                                Image(systemName: selectedYouTubeMode.icon)
+                                    .font(.system(size: 28, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.16))
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                                    .padding(12)
+
+                                VStack(alignment: .leading, spacing: 7) {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: "play.fill")
+                                        Text(selectedYouTubeMode.title.uppercased())
+                                    }
+                                    .font(.system(size: 8, weight: .black, design: .rounded))
+                                    .tracking(0.6)
+                                    .foregroundColor(.red.opacity(0.95))
+
+                                    Text(example)
+                                        .font(.system(size: 13, weight: .heavy, design: .rounded))
+                                        .foregroundColor(.white)
+                                        .lineLimit(3)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                .padding(12)
                             }
-                            .foregroundColor(.white)
-                            .frame(width: 132, alignment: .leading)
-                            .padding(11)
-                            .background(
-                                selectedYouTubeMode == mode
-                                    ? X5Style.blue.opacity(0.24)
-                                    : Color.white.opacity(0.07)
-                            )
+                            .frame(width: 210, height: 112)
+                            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
                             .overlay {
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                RoundedRectangle(cornerRadius: 15, style: .continuous)
                                     .stroke(
-                                        selectedYouTubeMode == mode
-                                            ? X5Style.blue.opacity(0.88)
-                                            : Color.white.opacity(0.09),
-                                        lineWidth: selectedYouTubeMode == mode ? 1.4 : 1
+                                        prompt == example ? X5Style.blue.opacity(0.9) : Color.white.opacity(0.12),
+                                        lineWidth: prompt == example ? 1.5 : 1
                                     )
                             }
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                         .buttonStyle(.plain)
                         .disabled(isGenerating)
-                        .accessibilityLabel("\(mode.title). \(mode.summary)")
+                        .accessibilityLabel("Использовать идею: \(example)")
                     }
                 }
                 .padding(.vertical, 1)
             }
-
-            Text(selectedYouTubeMode.summary)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.white.opacity(0.62))
         }
         .padding(14)
         .x5ClearGlass(cornerRadius: 18, highlight: 0.11)
@@ -444,7 +518,11 @@ struct ImageGeneratorView: View {
     private var referencePanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                sectionLabel(isSalesCreativeCategory ? "Фотографии и логотип" : "Референсы")
+                sectionLabel(
+                    isSalesCreativeCategory
+                        ? "Фотографии и логотип"
+                        : (isYouTubeThumbnailCategory ? "Фото героя и референсы" : "Референсы")
+                )
                 Spacer()
                 if isLoadingReferences {
                     ProgressView()
@@ -484,6 +562,32 @@ struct ImageGeneratorView: View {
                     uploadSlot(
                         title: "Референс",
                         subtitle: referenceImages.isEmpty ? "Пример желаемого оформления" : "Добавлено: \(referenceImages.count)",
+                        image: referenceImages.first?.image,
+                        systemImage: "rectangle.stack"
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isGenerating || isLoadingReferences)
+            } else if isYouTubeThumbnailCategory {
+                Text("Добавьте фото героя, чтобы сохранить внешность, и примеры понравившихся обложек для стиля.")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.72))
+
+                PhotosPicker(selection: $mainPhotoItem, matching: .images) {
+                    uploadSlot(
+                        title: "Фото героя",
+                        subtitle: mainPhoto == nil ? "Лицо или главный персонаж ролика" : "Фото героя добавлено",
+                        image: mainPhoto?.image,
+                        systemImage: "person.crop.rectangle"
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isGenerating || isLoadingReferences)
+
+                PhotosPicker(selection: $referenceItems, maxSelectionCount: 4, matching: .images) {
+                    uploadSlot(
+                        title: "Примеры обложек",
+                        subtitle: referenceImages.isEmpty ? "До 4 референсов оформления" : "Добавлено: \(referenceImages.count)",
                         image: referenceImages.first?.image,
                         systemImage: "rectangle.stack"
                     )
@@ -539,7 +643,9 @@ struct ImageGeneratorView: View {
 
                 Text(isSalesCreativeCategory
                      ? "Референсы задают стиль. Основная фотография и логотип используются отдельно."
-                     : "AI будет использовать эти фото как референсы: изменить, добавить, убрать или сгенерировать похожую картинку.")
+                     : (isYouTubeThumbnailCategory
+                        ? "Примеры задают стиль обложки. Фото героя используется отдельно и сохраняет внешность."
+                        : "AI будет использовать эти фото как референсы: изменить, добавить, убрать или сгенерировать похожую картинку."))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white.opacity(0.54))
             }
@@ -767,7 +873,8 @@ struct ImageGeneratorView: View {
             cleanPrompt = YouTubeThumbnailBriefBuilder.compose(
                 topic: rawPrompt,
                 mode: selectedYouTubeMode,
-                hasReferences: !currentReferences.isEmpty
+                hasHeroPhoto: mainPhoto != nil,
+                referenceCount: referenceImages.count
             )
         } else if isSalesCreativeCategory && promptOverride == nil {
             guard rawPrompt.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 else {

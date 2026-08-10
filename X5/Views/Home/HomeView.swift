@@ -29,7 +29,7 @@ private enum HomeLayout {
     static let businessFeatureOverflow: CGFloat = 38
     static let businessTileHeight: CGFloat = 112
     static let businessWideHeight: CGFloat = 184
-    static let voicePromoHeight: CGFloat = 92
+    static let voicePromoHeight: CGFloat = 148
     static let sectionSpacing: CGFloat = 14
     static let cardSpacing: CGFloat = 8
 }
@@ -865,62 +865,76 @@ private struct NativeHomeVoiceCard: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(X5Style.blue.opacity(0.15))
+            ZStack(alignment: .bottomLeading) {
+                Image("HomeMotionStudioPoster")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: HomeLayout.voicePromoHeight)
+                    .clipped()
 
-                    Image(systemName: "waveform")
-                        .font(.system(size: 24, weight: .bold))
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.88),
+                        Color.black.opacity(0.48),
+                        Color.black.opacity(0.12)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+
+                LinearGradient(
+                    colors: [.clear, Color.black.opacity(0.72)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("AI VOICE")
+                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .tracking(1.2)
                         .foregroundColor(X5Style.blue)
-                }
-                .frame(width: 58, height: 58)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(X5Style.blue.opacity(0.32), lineWidth: 1)
-                }
 
-                VStack(alignment: .leading, spacing: 5) {
                     Text("Озвучка")
-                        .font(.system(size: 20, weight: .heavy, design: .rounded))
+                        .font(.system(size: 25, weight: .heavy, design: .rounded))
                         .foregroundColor(.white)
 
-                    Text("Естественные голоса, эмоции и языки")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundColor(.white.opacity(0.66))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
+                    Text("Живые голоса для видео, рекламы и подкастов")
+                        .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.74))
+                        .lineLimit(2)
+                        .frame(maxWidth: 220, alignment: .leading)
 
-                Spacer(minLength: 4)
+                    HStack(spacing: 6) {
+                        Text("Озвучить текст")
+                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
 
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 14, weight: .bold))
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 9, weight: .bold))
+                    }
                     .foregroundColor(.black)
-                    .frame(width: 34, height: 34)
-                    .background(X5Style.blue, in: Circle())
+                    .padding(.horizontal, 12)
+                    .frame(height: 29)
+                    .background(X5Style.blue, in: Capsule())
+                }
+                .padding(16)
+
+                Image(systemName: "waveform")
+                    .font(.system(size: 36, weight: .bold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [X5Style.blue, .white.opacity(0.82)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .shadow(color: X5Style.blue.opacity(0.42), radius: 10)
+                    .padding(.trailing, 25)
+                    .padding(.bottom, 49)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             }
-            .padding(.horizontal, 16)
             .frame(maxWidth: .infinity)
             .frame(height: HomeLayout.voicePromoHeight)
-            .background {
-                ZStack {
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.08),
-                            Color(red: 0.08, green: 0.04, blue: 0.14).opacity(0.94)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-
-                    LinearGradient(
-                        colors: [X5Style.blue.opacity(0.16), .clear],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                }
-            }
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)

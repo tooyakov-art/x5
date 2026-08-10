@@ -9,7 +9,7 @@ HOME = ROOT / "X5" / "Views" / "Home" / "HomeView.swift"
 
 
 class YouTubeThumbnailModeSourceTests(unittest.TestCase):
-    def test_catalog_has_six_clear_youtube_thumbnail_modes(self):
+    def test_catalog_has_ten_clear_youtube_thumbnail_modes_with_examples(self):
         source = HOME_DATA.read_text(encoding="utf-8")
 
         self.assertIn("struct YouTubeThumbnailMode", source)
@@ -20,8 +20,14 @@ class YouTubeThumbnailModeSourceTests(unittest.TestCase):
             "news",
             "provocative",
             "minimal",
+            "interview",
+            "review",
+            "comparison",
+            "story",
         ):
             self.assertIn(f'id: "{mode_id}"', source)
+        self.assertIn("let examples: [String]", source)
+        self.assertGreaterEqual(source.count("examples: ["), 10)
         self.assertIn("enum YouTubeThumbnailBriefBuilder", source)
         self.assertIn("mode.promptGuidance", source)
 
@@ -32,6 +38,11 @@ class YouTubeThumbnailModeSourceTests(unittest.TestCase):
         self.assertIn("if isYouTubeThumbnailCategory", source)
         self.assertIn("youtubeModePanel", source)
         self.assertIn("ForEach(YouTubeThumbnailMode.all)", source)
+        self.assertIn("ForEach(selectedYouTubeMode.examples", source)
+        self.assertIn("prompt = example", source)
+        self.assertIn('Text("Готовые идеи")', source)
+        self.assertIn('title: "Фото героя"', source)
+        self.assertIn("hasHeroPhoto: mainPhoto != nil", source)
         self.assertIn(
             'category.id == "youtube_cover" ? .landscape : .square',
             source,

@@ -40,6 +40,8 @@ class IOSVoiceGenerationSourceTests(unittest.TestCase):
         self.assertIn("NativeHomeVoiceCard", visible_collections)
         self.assertIn("action: { handle(.voiceGeneration) }", visible_collections)
         self.assertIn('accessibilityIdentifier("x5.home.business.voice")', home)
+        self.assertIn('Image("HomeMotionStudioPoster")', home)
+        self.assertIn('Text("AI VOICE")', home)
 
     def test_voice_ui_has_native_input_playback_and_sharing(self):
         self.assertTrue(VIEW.is_file())
