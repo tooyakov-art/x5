@@ -1,31 +1,151 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-10T05:50:04Z",
+  "generatedAt": "2026-08-10T07:25:14.104213Z",
   "sync": {
     "status": "preparing",
     "message": "Apple готовит исторические отчёты",
-    "detail": "Сборка 208 уже доступна в TestFlight; скачивания и commerce появятся после первой выгрузки Analytics Reports."
+    "detail": "Исторический snapshot запрошен; Apple формирует сегменты."
   },
   "overview": {
-    "downloads": { "value": null, "status": "preparing" },
-    "installs": { "value": null, "status": "preparing" },
-    "purchases": { "value": null, "status": "preparing" },
-    "revenue": { "value": null, "currency": "USD", "status": "preparing" },
-    "activeSubscriptions": { "value": null, "status": "not_connected" },
-    "refunds": { "value": null, "status": "not_connected" }
+    "downloads": {
+      "value": null,
+      "status": "preparing"
+    },
+    "installs": {
+      "value": null,
+      "status": "preparing"
+    },
+    "purchases": {
+      "value": null,
+      "status": "preparing"
+    },
+    "revenue": {
+      "value": null,
+      "currency": "USD",
+      "status": "preparing"
+    },
+    "activeSubscriptions": {
+      "value": null,
+      "status": "not_connected"
+    },
+    "refunds": {
+      "value": null,
+      "status": "not_connected"
+    }
   },
   "platforms": [
-    { "id": "ios", "name": "iOS", "installs": null, "status": "preparing" },
-    { "id": "android", "name": "Android", "installs": null, "status": "not_connected" }
+    {
+      "id": "ios",
+      "name": "iOS",
+      "installs": null,
+      "status": "preparing"
+    },
+    {
+      "id": "android",
+      "name": "Android",
+      "installs": null,
+      "status": "not_connected"
+    }
   ],
   "trend": [],
   "countries": [],
   "builds": [
-    { "platform": "iOS", "version": "1.1.6", "build": "208", "status": "IN_BETA_TESTING" }
+    {
+      "platform": "iOS",
+      "version": "1.1.6",
+      "build": "208",
+      "status": "IN_BETA_TESTING",
+      "processingState": "VALID",
+      "uploadedDate": "2026-08-09T22:48:27-07:00"
+    },
+    {
+      "platform": "iOS",
+      "version": "1.1.6",
+      "build": "207",
+      "status": "VALID",
+      "processingState": "VALID",
+      "uploadedDate": "2026-08-09T21:58:12-07:00"
+    },
+    {
+      "platform": "iOS",
+      "version": "1.1.6",
+      "build": "206",
+      "status": "VALID",
+      "processingState": "VALID",
+      "uploadedDate": "2026-08-09T08:26:28-07:00"
+    },
+    {
+      "platform": "iOS",
+      "version": "1.1.6",
+      "build": "205",
+      "status": "VALID",
+      "processingState": "VALID",
+      "uploadedDate": "2026-08-08T09:07:45-07:00"
+    },
+    {
+      "platform": "iOS",
+      "version": "1.1.6",
+      "build": "204",
+      "status": "VALID",
+      "processingState": "VALID",
+      "uploadedDate": "2026-08-08T08:30:58-07:00"
+    },
+    {
+      "platform": "iOS",
+      "version": "1.1.6",
+      "build": "203",
+      "status": "VALID",
+      "processingState": "VALID",
+      "uploadedDate": "2026-08-08T08:02:57-07:00"
+    },
+    {
+      "platform": "iOS",
+      "version": "1.1.6",
+      "build": "202",
+      "status": "VALID",
+      "processingState": "VALID",
+      "uploadedDate": "2026-08-08T07:10:22-07:00"
+    },
+    {
+      "platform": "iOS",
+      "version": "1.1.6",
+      "build": "201",
+      "status": "VALID",
+      "processingState": "VALID",
+      "uploadedDate": "2026-08-08T05:56:40-07:00"
+    },
+    {
+      "platform": "iOS",
+      "version": "1.1.6",
+      "build": "200",
+      "status": "VALID",
+      "processingState": "VALID",
+      "uploadedDate": "2026-08-08T05:37:40-07:00"
+    },
+    {
+      "platform": "iOS",
+      "version": "1.1.6",
+      "build": "199",
+      "status": "VALID",
+      "processingState": "VALID",
+      "uploadedDate": "2026-08-06T09:22:29-07:00"
+    }
   ],
   "sources": {
-    "apple": { "status": "preparing", "detail": "Build 208 VALID · Analytics Reports запрошены" },
-    "google": { "status": "not_connected", "detail": "Нужны Play service account и GCS report bucket" },
-    "payments": { "status": "not_connected", "detail": "Нужен серверный доступ к агрегатам Supabase" }
+    "apple": {
+      "status": "preparing",
+      "detail": "Исторический snapshot запрошен; Apple формирует сегменты.",
+      "warnings": [
+        "Некоторые отчёты Apple пока недоступны; синхронизация повторится автоматически."
+      ]
+    },
+    "google": {
+      "status": "not_connected",
+      "detail": "Нужны Play service account и GCS report bucket"
+    },
+    "payments": {
+      "status": "not_connected",
+      "detail": "Нужен серверный доступ к агрегатам Supabase"
+    }
   }
 }
