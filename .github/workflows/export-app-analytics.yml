@@ -6,7 +6,7 @@ on:
     - cron: "17 */6 * * *"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: export-app-analytics
@@ -26,24 +26,14 @@ jobs:
       - name: Install exporter dependencies
         run: pip install "pyjwt[crypto]" requests
 
-      - name: Export privacy-safe aggregates
+      - name: Load aggregates into protected analytics tables
         env:
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
-        run: python scripts/export_app_analytics.py --output analytics-data/latest.json
+          SUPABASE_URL: https://afwznqjpshybmqhlewmy.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python scripts/export_app_analytics.py
 
-      - name: Validate public snapshot
+      - name: Validate private export contract
         run: python -m unittest scripts.tests.test_export_app_analytics
-
-      - name: Publish refreshed snapshot
-        run: |
-          if git diff --quiet -- analytics-data/latest.json; then
-            echo "Analytics snapshot is unchanged."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add analytics-data/latest.json
-          git commit -m "chore: refresh app analytics [skip ci]"
-          git push

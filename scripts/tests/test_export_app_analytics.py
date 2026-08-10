@@ -1,9 +1,7 @@
 import json
-import tempfile
 import unittest
-from pathlib import Path
 
-from scripts.export_app_analytics import base_snapshot, parse_number
+from scripts.export_app_analytics import base_snapshot, parse_number, store_metric_rows
 
 
 class ExportAppAnalyticsTests(unittest.TestCase):
@@ -13,7 +11,7 @@ class ExportAppAnalyticsTests(unittest.TestCase):
         self.assertEqual(parse_number(" 7 "), 7)
         self.assertIsNone(parse_number(""))
 
-    def test_public_snapshot_has_expected_contract_and_no_pii(self):
+    def test_snapshot_has_expected_contract_and_no_pii(self):
         snapshot = base_snapshot()
         encoded = json.dumps(snapshot, ensure_ascii=False).lower()
 
@@ -25,11 +23,15 @@ class ExportAppAnalyticsTests(unittest.TestCase):
         self.assertNotIn("transactionid", encoded)
         self.assertNotIn("purchasetoken", encoded)
 
-    def test_checked_in_snapshot_is_valid_json(self):
-        path = Path(__file__).resolve().parents[2] / "analytics-data" / "latest.json"
-        snapshot = json.loads(path.read_text(encoding="utf-8"))
-        self.assertEqual(snapshot["schemaVersion"], 1)
-        self.assertIsInstance(snapshot["builds"], list)
+    def test_store_rows_are_private_table_shape(self):
+        snapshot = base_snapshot()
+        snapshot["trend"] = [{"date": "2026-08-09", "downloads": 8, "installs": 6, "purchases": 2, "sessions": 9}]
+        snapshot["overview"]["revenue"] = {"value": 19.98, "currency": "USD", "status": "ready"}
+        rows = store_metric_rows(snapshot)
+        self.assertEqual(rows[0]["provider"], "apple")
+        self.assertEqual(rows[0]["platform"], "ios")
+        self.assertEqual(rows[0]["revenue"], 19.98)
+        self.assertNotIn("email", json.dumps(rows).lower())
 
 
 if __name__ == "__main__":

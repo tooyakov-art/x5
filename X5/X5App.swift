@@ -55,6 +55,11 @@ struct X5App: App {
                     if !auth.isAuthenticated {
                         PushNotifications.shared.cancelPromoLoop()
                     }
+                    await AppAnalyticsService.shared.recordLaunch(accessToken: auth.accessToken)
+                }
+                .onChange(of: scenePhase) { phase in
+                    guard phase == .active else { return }
+                    Task { await AppAnalyticsService.shared.recordLaunch(accessToken: auth.accessToken) }
                 }
         }
     }

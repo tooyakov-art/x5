@@ -37,6 +37,7 @@ targets:
       - path: X5/ru.lproj
       - path: X5/kk.lproj
       - path: X5/PrivacyInfo.xcprivacy
+      - path: X5/Resources/cis-cities.json
     info:
       path: X5/Info.plist
       properties:

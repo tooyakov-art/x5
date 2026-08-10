@@ -355,6 +355,10 @@ extension LocalizationService {
             // Onboarding
             "onb_title": "Расскажи о себе",
             "onb_subtitle": "Это поможет настроить опыт и то, что ты увидишь в Hub.",
+            "onb_identity_title": "Основные данные",
+            "onb_name_placeholder": "Имя",
+            "onb_country": "Страна",
+            "onb_city_placeholder": "Найди свой город",
             "onb_role_specialist": "Я специалист",
             "onb_role_specialist_sub": "Продаю свои навыки (маркетолог, дизайнер, разработчик, копирайтер и т.д.)",
             "onb_role_entrepreneur": "Я предприниматель",
@@ -668,6 +672,10 @@ extension LocalizationService {
             // Onboarding
             "onb_title": "Tell us who you are",
             "onb_subtitle": "This helps us tailor your experience and what you see in Hub.",
+            "onb_identity_title": "Basic details",
+            "onb_name_placeholder": "Name",
+            "onb_country": "Country",
+            "onb_city_placeholder": "Search for your city",
             "onb_role_specialist": "I'm a specialist",
             "onb_role_specialist_sub": "I sell my skills (marketer, designer, dev, copywriter, etc.)",
             "onb_role_entrepreneur": "I'm an entrepreneur",
@@ -981,6 +989,10 @@ extension LocalizationService {
             // Onboarding
             "onb_title": "Өзің туралы айтып бер",
             "onb_subtitle": "Бұл тәжірибеңді және Hub-та көретін нәрсені баптауға көмектеседі.",
+            "onb_identity_title": "Негізгі мәліметтер",
+            "onb_name_placeholder": "Аты",
+            "onb_country": "Ел",
+            "onb_city_placeholder": "Қалаңды ізде",
             "onb_role_specialist": "Мен маманмын",
             "onb_role_specialist_sub": "Дағдыларымды сатамын (маркетолог, дизайнер, әзірлеуші, копирайтер және т.б.)",
             "onb_role_entrepreneur": "Мен кәсіпкермін",

@@ -10,6 +10,9 @@ struct OnboardingView: View {
     @State private var role: Role?
     @State private var pickedCategories: Set<String> = []
     @State private var bio: String = ""
+    @State private var name: String = ""
+    @State private var countryCode: String = "KZ"
+    @State private var city: String = ""
     @State private var saving = false
     @State private var errorMessage: String?
 
@@ -22,6 +25,7 @@ struct OnboardingView: View {
             ScrollView {
                 VStack(spacing: 22) {
                     header
+                    identityFields
                     rolePicker
                     if role == .specialist {
                         categoriesPicker
@@ -47,6 +51,58 @@ struct OnboardingView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .task {
+            if name.isEmpty { name = currentUser.profile?.name ?? "" }
+            _ = await AppAnalyticsService.shared.record(.registrationStarted, accessToken: auth.accessToken)
+        }
+    }
+
+    private var identityFields: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(loc.t("onb_identity_title"))
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(.white)
+            TextField(loc.t("onb_name_placeholder"), text: $name)
+                .textContentType(.name)
+                .padding(12)
+                .background(Color.white.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .foregroundColor(.white)
+            Picker(loc.t("onb_country"), selection: $countryCode) {
+                ForEach(CISLocations.countries, id: \.code) { country in
+                    Text(country.name).tag(country.code)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(.white)
+            TextField(loc.t("onb_city_placeholder"), text: $city)
+                .textContentType(.addressCity)
+                .padding(12)
+                .background(Color.white.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .foregroundColor(.white)
+            let suggestions = CISLocations.search(country: countryCode, query: city)
+            if !suggestions.isEmpty && !suggestions.contains(where: { $0.city.caseInsensitiveCompare(city) == .orderedSame }) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(suggestions) { item in
+                            Button(item.city) { city = item.city }
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.85))
+                                .padding(.horizontal, 11).padding(.vertical, 7)
+                                .background(Color.white.opacity(0.07))
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+            }
+            Text("GeoNames · CC BY 4.0")
+                .font(.system(size: 9))
+                .foregroundColor(.white.opacity(0.32))
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var header: some View {
@@ -187,6 +243,9 @@ struct OnboardingView: View {
 
     private var canSubmit: Bool {
         guard let role else { return false }
+        guard name.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2,
+              !countryCode.isEmpty,
+              city.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else { return false }
         if role == .specialist { return !pickedCategories.isEmpty }
         return true
     }
@@ -209,6 +268,9 @@ struct OnboardingView: View {
                 if let uid = auth.userId {
                     await currentUser.load(userId: uid, accessToken: token, email: auth.userEmail)
                 }
+                _ = await AppAnalyticsService.shared.record(.registrationCompleted, accessToken: token, metadata: [
+                    "role": role.rawValue, "country": countryCode
+                ])
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -234,9 +296,14 @@ struct OnboardingView: View {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("return=representation", forHTTPHeaderField: "Prefer")
         var body: [String: Any] = [
+            "name": name.trimmingCharacters(in: .whitespacesAndNewlines),
             "user_role": role.rawValue,
             "specialist_category": Array(pickedCategories),
-            "show_in_hub": role == .specialist
+            "show_in_hub": role == .specialist,
+            "country_code": countryCode,
+            "city": city.trimmingCharacters(in: .whitespacesAndNewlines),
+            "registration_platform": "ios",
+            "onboarding_completed_at": ISO8601DateFormatter().string(from: Date())
         ]
         if !bio.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             body["bio"] = bio

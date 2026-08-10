@@ -20,12 +20,17 @@ struct PaywallView: View {
                 VStack(spacing: 10) {
                     Button {
                         Task {
+                            _ = await AppAnalyticsService.shared.record(.purchaseStarted, accessToken: auth.accessToken, metadata: ["product": IAPService.monthlyProductID])
                             let ok = await iap.purchaseMonthly()
                             if ok {
+                                _ = await AppAnalyticsService.shared.record(.purchaseSucceeded, accessToken: auth.accessToken, metadata: ["product": IAPService.monthlyProductID])
                                 if let uid = auth.userId, let token = auth.accessToken {
                                     await currentUser.load(userId: uid, accessToken: token, email: auth.userEmail)
                                 }
                                 showSuccess = true
+                            } else {
+                                let event: AppAnalyticsService.Event = iap.lastError == nil ? .purchaseCancelled : .purchaseFailed
+                                _ = await AppAnalyticsService.shared.record(event, accessToken: auth.accessToken, metadata: ["product": IAPService.monthlyProductID])
                             }
                         }
                     } label: {
@@ -56,6 +61,7 @@ struct PaywallView: View {
                     Button(loc.t("paywall_restore")) {
                         Task {
                             await iap.restore()
+                            _ = await AppAnalyticsService.shared.record(.purchaseRestored, accessToken: auth.accessToken, metadata: ["product": IAPService.monthlyProductID])
                             if let uid = auth.userId, let token = auth.accessToken {
                                 await currentUser.load(userId: uid, accessToken: token, email: auth.userEmail)
                             }
@@ -110,7 +116,10 @@ struct PaywallView: View {
             }
             .padding(20)
         }
-        .task { await iap.loadProducts() }
+        .task {
+            _ = await AppAnalyticsService.shared.record(.paywallOpened, accessToken: auth.accessToken)
+            await iap.loadProducts()
+        }
         .alert(loc.t("paywall_welcome_pro"), isPresented: $showSuccess) {
             Button(loc.t("paywall_continue")) { dismiss() }
         } message: {

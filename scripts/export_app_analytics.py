@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export privacy-safe aggregate X5 analytics for the public dashboard."""
+"""Load aggregate App Store analytics into the protected X5 Supabase tables."""
 
 from __future__ import annotations
 
@@ -50,10 +50,77 @@ class AppleAPIError(RuntimeError):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", default="analytics-data/latest.json")
+    parser.add_argument("--output")
+    parser.add_argument("--supabase-url", default=os.environ.get("SUPABASE_URL"))
     parser.add_argument("--bundle-id", default=BUNDLE_ID)
     parser.add_argument("--max-days", type=int, default=90)
     return parser.parse_args()
+
+
+def store_metric_rows(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    currency = snapshot.get("overview", {}).get("revenue", {}).get("currency") or "USD"
+    revenue_total = snapshot.get("overview", {}).get("revenue", {}).get("value") or 0
+    purchases_total = sum(max(float(row.get("purchases") or 0), 0) for row in snapshot.get("trend", []))
+    rows: list[dict[str, Any]] = []
+    for row in snapshot.get("trend", []):
+        purchases = max(float(row.get("purchases") or 0), 0)
+        allocated_revenue = revenue_total * purchases / purchases_total if purchases_total else 0
+        rows.append({
+            "provider": "apple",
+            "metric_date": row["date"],
+            "platform": "ios",
+            "country_code": "",
+            "app_version": "",
+            "downloads": round(max(float(row.get("downloads") or 0), 0)),
+            "first_time_downloads": 0,
+            "redownloads": 0,
+            "installs": round(max(float(row.get("installs") or 0), 0)),
+            "uninstalls": 0,
+            "active_devices": 0,
+            "purchases": round(purchases),
+            "refunds": 0,
+            "revenue": round(allocated_revenue, 2),
+            "currency": currency,
+        })
+    return rows
+
+
+def publish_private_snapshot(snapshot: dict[str, Any], supabase_url: str, service_role: str) -> int:
+    headers = {
+        "apikey": service_role,
+        "authorization": f"Bearer {service_role}",
+        "content-type": "application/json",
+        "prefer": "resolution=merge-duplicates,return=minimal",
+    }
+    rows = store_metric_rows(snapshot)
+    if rows:
+        response = requests.post(
+            f"{supabase_url.rstrip('/')}/rest/v1/store_metrics_daily",
+            params={"on_conflict": "provider,metric_date,platform,country_code,app_version"},
+            headers=headers,
+            json=rows,
+            timeout=90,
+        )
+        if response.status_code >= 400:
+            raise AppleAPIError(f"Supabase store metrics upsert returned {response.status_code}")
+
+    ready = snapshot.get("sync", {}).get("status") == "ready"
+    source_payload = {
+        "status": "connected" if ready else "preparing",
+        "detail": snapshot.get("sync", {}).get("detail"),
+        "last_attempt_at": datetime.now(timezone.utc).isoformat(),
+        "last_success_at": datetime.now(timezone.utc).isoformat() if ready else None,
+    }
+    response = requests.patch(
+        f"{supabase_url.rstrip('/')}/rest/v1/analytics_source_status",
+        params={"source": "eq.apple"},
+        headers=headers,
+        json=source_payload,
+        timeout=30,
+    )
+    if response.status_code >= 400:
+        raise AppleAPIError(f"Supabase source status update returned {response.status_code}")
+    return len(rows)
 
 
 def required_env(name: str) -> str:
@@ -408,11 +475,15 @@ def make_snapshot(bundle_id: str, max_days: int) -> dict[str, Any]:
 
 def main() -> int:
     args = parse_args()
-    output = Path(args.output)
-    output.parent.mkdir(parents=True, exist_ok=True)
     snapshot = make_snapshot(args.bundle_id, args.max_days)
-    output.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"output": str(output), "sync": snapshot["sync"]["status"], "builds": len(snapshot["builds"]), "trendDays": len(snapshot["trend"])}, ensure_ascii=False))
+    if args.output:
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if not args.supabase_url:
+        raise AppleAPIError("missing Supabase URL")
+    published = publish_private_snapshot(snapshot, args.supabase_url, required_env("SUPABASE_SERVICE_ROLE_KEY"))
+    print(json.dumps({"sync": snapshot["sync"]["status"], "builds": len(snapshot["builds"]), "metricRows": published}, ensure_ascii=False))
     return 0
 
 
