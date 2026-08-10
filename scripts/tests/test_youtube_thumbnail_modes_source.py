@@ -31,16 +31,15 @@ class YouTubeThumbnailModeSourceTests(unittest.TestCase):
         self.assertIn("enum YouTubeThumbnailBriefBuilder", source)
         self.assertIn("mode.promptGuidance", source)
 
-    def test_youtube_generator_exposes_mode_picker_and_defaults_to_16_9(self):
+    def test_youtube_generator_exposes_mode_picker_without_ready_ideas(self):
         source = GENERATOR.read_text(encoding="utf-8")
 
         self.assertIn("@State private var selectedYouTubeMode", source)
         self.assertIn("if isYouTubeThumbnailCategory", source)
         self.assertIn("youtubeModePanel", source)
         self.assertIn("ForEach(YouTubeThumbnailMode.all)", source)
-        self.assertIn("ForEach(selectedYouTubeMode.examples", source)
-        self.assertIn("prompt = example", source)
-        self.assertIn('Text("Готовые идеи")', source)
+        self.assertNotIn("ForEach(selectedYouTubeMode.examples", source)
+        self.assertNotIn('Text("Готовые идеи")', source)
         self.assertIn('title: "Фото героя"', source)
         self.assertIn("hasHeroPhoto: mainPhoto != nil", source)
         self.assertIn(
