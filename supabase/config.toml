@@ -4,6 +4,9 @@ verify_jwt = false
 [functions.app-store-notifications]
 verify_jwt = false
 
+[functions.kaspi-pay-provider]
+verify_jwt = false
+
 [functions.voice-generation-webhook]
 verify_jwt = false
 

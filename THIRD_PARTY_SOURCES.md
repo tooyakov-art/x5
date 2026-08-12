@@ -335,3 +335,18 @@ bundled in the app.
   playback, provider readiness, moderation, cleanup, and server-only ledger
   access are implemented and reviewed. The preserved prototype's public HLS
   response is not release-safe and must not be enabled as written.
+
+## Kaspi Pay provider integration
+
+- Official Kaspi Pay overview:
+  https://kaspi.kz/kaspipay
+- Official provider protocol and exact-amount payment URL format:
+  https://guide.kaspi.kz/cdn/content/pay/product/documents/Instrukciya-po-integracii-1C-s-servisom-Platezhi-na-Kaspi-kz-dlya-distribyutorov.pdf
+- Official remote-payment guide:
+  https://guide.kaspi.kz/partner/ru/pos/payments/remote/q2098
+- Verified: 2026-08-13
+- Integration: the server creates an immutable KZT order and uses only the
+  Kaspi-issued `serviceName`, `serviceId`, and account parameter. The provider
+  `check`/`pay` callback grants credits atomically and idempotently. A normal
+  Kaspi Pay POS link is not substituted because it requires the buyer to enter
+  the amount manually.
