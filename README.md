@@ -6,14 +6,14 @@ Native iOS marketing workspace built with SwiftUI. X5 combines AI image tools, v
 
 - **Bundle ID:** `com.x5studio.app`
 - **App Store name:** `X5`
-- **Version:** 1.1.6 (build 209)
+- **Version:** 1.1.6 (build 210)
 - **Release branch:** `codex/x5-cleanup-from-restore-clean`
 - **Apple Team:** F8LA8PC4U6
 - **Stack:** Swift 5.9 + SwiftUI, iOS 16+, no external libraries
 - **Backend:** X5 Supabase Edge Functions and private Storage; provider credentials stay server-side
 - **Release:** GitHub Actions builds and uploads to TestFlight
 - **Current outcome:** YouTube cover generator has ten styles, a hero-photo slot, and 16:9 output; Home voice generation now has an image-backed cover
-- **Verification:** 233 source regressions pass; GitHub iOS build/upload is green; App Store Connect reports build 209 `VALID` and `IN_BETA_TESTING`
+- **Verification:** 238 source regressions and the full iOS simulator suite pass; GitHub iOS build/upload is green for build 210
 - **Remaining:** direct ElevenLabs account/provider configuration is deferred; the current protected fal ElevenLabs path remains active
 
 ## What's inside
