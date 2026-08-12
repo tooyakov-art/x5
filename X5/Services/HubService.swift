@@ -52,6 +52,8 @@ struct HubTask: Codable, Identifiable, Hashable {
     let description: String?
     let budget: String?
     let category: String?
+    let countryCode: String?
+    let city: String?
     let deadline: String?
     let status: String
     let createdAt: String?
@@ -61,6 +63,8 @@ struct HubTask: Codable, Identifiable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case id, title, description, budget, category, deadline, status
+        case countryCode = "country_code"
+        case city
         case authorId = "author_id"
         case authorName = "author_name"
         case authorAvatar = "author_avatar"
@@ -473,7 +477,7 @@ final class HubService: ObservableObject {
 
     /// Inserts a new task. Returns the new task on success.
     @discardableResult
-    func createTask(authorId: String, authorName: String?, authorAvatar: String?, companyName: String?, title: String, description: String, budget: String, category: String, deadline: Date?, accessToken: String) async -> HubTask? {
+    func createTask(authorId: String, authorName: String?, authorAvatar: String?, companyName: String?, title: String, description: String, budget: String, category: String, countryCode: String, city: String, deadline: Date?, accessToken: String) async -> HubTask? {
         var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/tasks"))
         request.httpMethod = "POST"
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -487,6 +491,8 @@ final class HubService: ObservableObject {
             "description": description,
             "budget": budget,
             "category": category,
+            "country_code": countryCode,
+            "city": city,
             "status": "open",
             "public_visible_at": Self.iso8601String(from: Date())
         ]

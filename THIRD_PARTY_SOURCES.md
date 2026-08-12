@@ -1,5 +1,13 @@
 # Third-party sources
 
+## GeoNames CIS city dataset
+
+- Source: https://download.geonames.org/export/dump/
+- License: Creative Commons Attribution 4.0.
+- Retrieved: 2026-08-10.
+- Use: searchable country and city selection during onboarding and task creation.
+- Bundled derivative: `X5/Resources/cis-cities.json`, filtered to the 12 supported CIS and Russian-speaking country codes.
+
 ## Client-supplied Home artwork
 
 ### Nano Banana + GPT Image trend card

@@ -35,6 +35,10 @@ struct UserProfile: Codable, Equatable, Identifiable {
     var lastSeen: String?
     var isVerified: Bool?
     var verifiedUntil: String?
+    var countryCode: String?
+    var city: String?
+    var registrationPlatform: String?
+    var onboardingCompletedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name, nickname, email, avatar, bio, services, plan, credits, language
@@ -52,6 +56,10 @@ struct UserProfile: Codable, Equatable, Identifiable {
         case lastSeen = "last_seen"
         case isVerified = "is_verified"
         case verifiedUntil = "verified_until"
+        case countryCode = "country_code"
+        case city
+        case registrationPlatform = "registration_platform"
+        case onboardingCompletedAt = "onboarding_completed_at"
     }
 
     var displayName: String {

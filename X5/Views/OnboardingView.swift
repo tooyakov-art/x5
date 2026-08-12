@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Mandatory after first sign in: collect identity and role.
-/// Specialists can additionally pick Hub categories; creators and entrepreneurs finish after nickname.
+/// Mandatory after first sign in: collect identity, role and work location.
+/// New registrations expose exactly two roles: specialist and entrepreneur.
 struct OnboardingView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
@@ -12,12 +12,15 @@ struct OnboardingView: View {
     @State private var step: Step = .role
     @State private var name: String = ""
     @State private var nickname: String = ""
+    @State private var countryCode: String = "KZ"
+    @State private var city: String = ""
     @State private var pickedCategories: Set<String> = []
     @State private var saving = false
     @State private var errorMessage: String?
 
     enum Step {
         case role
+        case location
         case name
         case nickname
     }
@@ -25,7 +28,6 @@ struct OnboardingView: View {
     enum Role: String, CaseIterable, Identifiable {
         case specialist
         case entrepreneur
-        case creator
 
         var id: String { rawValue }
     }
@@ -45,6 +47,8 @@ struct OnboardingView: View {
                     if role == .specialist {
                         categoriesSection
                     }
+                case .location:
+                    locationSection
                 case .name:
                     nameSection
                 case .nickname:
@@ -67,6 +71,9 @@ struct OnboardingView: View {
             if newRole != .specialist {
                 pickedCategories.removeAll()
             }
+        }
+        .onChange(of: countryCode) { newCountry in
+            if newCountry != currentUser.profile?.countryCode { city = "" }
         }
     }
 
@@ -120,12 +127,40 @@ struct OnboardingView: View {
         }
     }
 
+    private var locationSection: some View {
+        Section {
+            Picker(loc.t("onb_country"), selection: $countryCode) {
+                ForEach(CISLocations.countries, id: \.code) { country in
+                    Text(country.name).tag(country.code)
+                }
+            }
+
+            TextField(loc.t("onb_city_placeholder"), text: $city)
+                .textContentType(.addressCity)
+
+            let suggestions = CISLocations.search(country: countryCode, query: city)
+            if !suggestions.isEmpty && !suggestions.contains(where: { $0.city.caseInsensitiveCompare(city) == .orderedSame }) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(suggestions) { item in
+                            Button(item.city) { city = item.city }
+                                .buttonStyle(.bordered)
+                        }
+                    }
+                }
+            }
+        } header: {
+            Text(loc.t("onb_location_section"))
+        } footer: {
+            Text(loc.t("onb_location_hint"))
+        }
+    }
+
     private var roleSection: some View {
         Section {
             Picker(loc.t("onb_role_section"), selection: $role) {
                 Text(loc.t("onb_role_specialist")).tag(Role?.some(.specialist))
                 Text(loc.t("onb_role_entrepreneur")).tag(Role?.some(.entrepreneur))
-                Text(loc.t("onb_role_creator")).tag(Role?.some(.creator))
             }
             .pickerStyle(.segmented)
         } footer: {
@@ -178,6 +213,8 @@ struct OnboardingView: View {
         switch step {
         case .role:
             return loc.t("onb_title")
+        case .location:
+            return loc.t("onb_location_step_title")
         case .name:
             return loc.t("onb_name_step_title")
         case .nickname:
@@ -189,6 +226,8 @@ struct OnboardingView: View {
         switch step {
         case .role:
             return loc.t("onb_subtitle")
+        case .location:
+            return loc.t("onb_location_step_subtitle")
         case .name:
             return loc.t("onb_name_step_subtitle")
         case .nickname:
@@ -241,8 +280,6 @@ struct OnboardingView: View {
             return loc.t("onb_role_specialist_sub")
         case .entrepreneur:
             return loc.t("onb_role_entrepreneur_sub")
-        case .creator:
-            return loc.t("onb_role_creator_sub")
         case nil:
             return loc.t("onb_role_required")
         }
@@ -250,7 +287,7 @@ struct OnboardingView: View {
 
     private var canSubmit: Bool {
         guard let role else { return false }
-        guard hasRealName, isValidNickname else { return false }
+        guard hasRealName, isValidNickname, !countryCode.isEmpty, cityTrimmed.count >= 2 else { return false }
         if role == .specialist { return !pickedCategories.isEmpty }
         return true
     }
@@ -260,6 +297,8 @@ struct OnboardingView: View {
         case .role:
             guard let role else { return false }
             return role != .specialist || !pickedCategories.isEmpty
+        case .location:
+            return !countryCode.isEmpty && cityTrimmed.count >= 2
         case .name:
             return hasRealName
         case .nickname:
@@ -269,7 +308,7 @@ struct OnboardingView: View {
 
     private var isFinalStep: Bool {
         switch step {
-        case .role, .name:
+        case .role, .location, .name:
             return false
         case .nickname:
             return true
@@ -282,6 +321,10 @@ struct OnboardingView: View {
 
     private var nicknameTrimmed: String {
         Self.cleanNickname(nickname.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private var cityTrimmed: String {
+        city.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var hasRealName: Bool {
@@ -319,7 +362,11 @@ struct OnboardingView: View {
             name = profileName
         }
         nickname = Self.cleanNickname((p.nickname ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
-        if let storedRole = Role(rawValue: p.userRole ?? "") {
+        countryCode = p.countryCode ?? countryCode
+        city = p.city ?? city
+        if p.userRole == "creator" {
+            role = .entrepreneur
+        } else if let storedRole = Role(rawValue: p.userRole ?? "") {
             role = storedRole
         }
         pickedCategories = Set(p.specialistCategory ?? [])
@@ -329,6 +376,8 @@ struct OnboardingView: View {
         guard canAdvance else { return }
         switch step {
         case .role:
+            step = .location
+        case .location:
             step = .name
         case .name:
             step = .nickname
@@ -383,7 +432,11 @@ struct OnboardingView: View {
             "user_role": role.rawValue,
             "specialist_category": categories,
             "show_in_hub": role == .specialist,
-            "is_public": role == .specialist
+            "is_public": role == .specialist,
+            "country_code": countryCode,
+            "city": cityTrimmed,
+            "registration_platform": "ios",
+            "onboarding_completed_at": ISO8601DateFormatter().string(from: Date())
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
