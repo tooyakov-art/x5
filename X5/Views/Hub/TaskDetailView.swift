@@ -52,6 +52,13 @@ struct TaskDetailView: View {
                     .font(.system(size: 22, weight: .heavy))
                     .foregroundColor(.white)
 
+                if let city = task.city, !city.isEmpty {
+                    let country = task.countryCode.flatMap(CISLocations.countryName(for:))
+                    Label([city, country].compactMap { $0 }.joined(separator: ", "), systemImage: "mappin.and.ellipse")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.68))
+                }
+
                 if let desc = task.description, !desc.isEmpty {
                     Text(desc)
                         .font(.system(size: 14))

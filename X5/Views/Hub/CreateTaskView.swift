@@ -12,6 +12,8 @@ struct CreateTaskView: View {
     @State private var description: String = ""
     @State private var budget: String = ""
     @State private var category: String = "marketing"
+    @State private var countryCode: String = "KZ"
+    @State private var city: String = ""
     @State private var deadline: Date = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
     @State private var hasDeadline: Bool = false
     @State private var saving: Bool = false
@@ -38,6 +40,27 @@ struct CreateTaskView: View {
                         DatePicker("Срок", selection: $deadline, displayedComponents: .date)
                     }
                 }
+                Section(header: Text("Локация выполнения")) {
+                    Picker("Страна", selection: $countryCode) {
+                        ForEach(CISLocations.countries, id: \.code) { country in
+                            Text(country.name).tag(country.code)
+                        }
+                    }
+                    TextField("Город", text: $city)
+                        .textContentType(.addressCity)
+
+                    let suggestions = CISLocations.search(country: countryCode, query: city)
+                    if !suggestions.isEmpty && !suggestions.contains(where: { $0.city.caseInsensitiveCompare(city) == .orderedSame }) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(suggestions) { item in
+                                    Button(item.city) { city = item.city }
+                                        .buttonStyle(.bordered)
+                                }
+                            }
+                        }
+                    }
+                }
                 if let err = errorMessage {
                     Section { Text(err).foregroundColor(.red) }
                 }
@@ -62,12 +85,23 @@ struct CreateTaskView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear {
+            if let profileCountry = currentUser.profile?.countryCode, !profileCountry.isEmpty {
+                countryCode = profileCountry
+            }
+            if city.isEmpty { city = currentUser.profile?.city ?? "" }
+        }
+        .onChange(of: countryCode) { _ in
+            if countryCode != currentUser.profile?.countryCode { city = "" }
+        }
     }
 
     private var canSubmit: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !budget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !budget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !countryCode.isEmpty &&
+        city.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
     }
 
     private func submit() async {
@@ -83,6 +117,8 @@ struct CreateTaskView: View {
             description: description.trimmingCharacters(in: .whitespacesAndNewlines),
             budget: budget.trimmingCharacters(in: .whitespacesAndNewlines),
             category: category,
+            countryCode: countryCode,
+            city: city.trimmingCharacters(in: .whitespacesAndNewlines),
             deadline: hasDeadline ? deadline : nil,
             accessToken: token
         )

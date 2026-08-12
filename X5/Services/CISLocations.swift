@@ -24,6 +24,10 @@ enum CISLocations {
         return rows
     }()
 
+    static func countryName(for code: String) -> String? {
+        countries.first(where: { $0.code == code })?.name
+    }
+
     static func search(country: String, query: String, limit: Int = 12) -> [CISCity] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
             .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
