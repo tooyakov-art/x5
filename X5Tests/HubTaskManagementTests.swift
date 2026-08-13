@@ -80,6 +80,8 @@ final class HubTaskManagementTests: XCTestCase {
             description: "New details",
             budget: "75000",
             category: "design",
+            countryCode: "KZ",
+            city: "Алматы",
             deadline: nil,
             accessToken: "owner-token"
         )
@@ -94,6 +96,8 @@ final class HubTaskManagementTests: XCTestCase {
         XCTAssertEqual(body["description"] as? String, "New details")
         XCTAssertEqual(body["budget"] as? String, "75000")
         XCTAssertEqual(body["category"] as? String, "design")
+        XCTAssertEqual(body["country_code"] as? String, "KZ")
+        XCTAssertEqual(body["city"] as? String, "Алматы")
         XCTAssertTrue(body["deadline"] is NSNull)
         XCTAssertNil(body["author_id"])
         XCTAssertNil(body["status"])

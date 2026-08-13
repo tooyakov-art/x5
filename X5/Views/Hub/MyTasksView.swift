@@ -336,6 +336,8 @@ private struct EditTaskView: View {
     @State private var description: String
     @State private var budget: String
     @State private var category: String
+    @State private var countryCode: String
+    @State private var city: String
     @State private var deadline: Date
     @State private var hasDeadline: Bool
     @State private var saving = false
@@ -349,6 +351,8 @@ private struct EditTaskView: View {
         _description = State(initialValue: task.description ?? "")
         _budget = State(initialValue: task.budget ?? "")
         _category = State(initialValue: task.category ?? "other")
+        _countryCode = State(initialValue: task.countryCode ?? "KZ")
+        _city = State(initialValue: task.city ?? "")
         _deadline = State(initialValue: parsedDeadline ?? Date())
         _hasDeadline = State(initialValue: parsedDeadline != nil)
     }
@@ -390,6 +394,28 @@ private struct EditTaskView: View {
                     }
                 }
 
+                Section(header: Text(loc.t("task_location_section"))) {
+                    Picker(loc.t("onb_country"), selection: $countryCode) {
+                        ForEach(CISLocations.countries, id: \.code) { country in
+                            Text(country.name).tag(country.code)
+                        }
+                    }
+                    TextField(loc.t("onb_city_placeholder"), text: $city)
+                        .textContentType(.addressCity)
+
+                    let suggestions = CISLocations.search(country: countryCode, query: city)
+                    if !suggestions.isEmpty && !suggestions.contains(where: { $0.city.caseInsensitiveCompare(city) == .orderedSame }) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(suggestions) { item in
+                                    Button(item.city) { city = item.city }
+                                        .buttonStyle(.bordered)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if let errorMessage {
                     Section {
                         Text(errorMessage).foregroundColor(.red)
@@ -420,10 +446,13 @@ private struct EditTaskView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onChange(of: countryCode) { _ in city = "" }
     }
 
     private var canSave: Bool {
-        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !countryCode.isEmpty &&
+        city.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
     }
 
     private func save() async {
@@ -445,6 +474,8 @@ private struct EditTaskView: View {
             description: description.trimmingCharacters(in: .whitespacesAndNewlines),
             budget: cleanBudget.isEmpty ? loc.t("task_budget_discussed") : cleanBudget,
             category: category,
+            countryCode: countryCode,
+            city: city.trimmingCharacters(in: .whitespacesAndNewlines),
             deadline: hasDeadline ? deadline : nil,
             accessToken: token
         )

@@ -33,7 +33,18 @@ class RegistrationAndTaskLocationTests(unittest.TestCase):
         self.assertIn('"city": city', service)
         self.assertIn("CISLocations.countryName(for:)", detail)
 
+    def test_edit_task_can_change_and_persist_location(self):
+        view = (ROOT / "X5/Views/Hub/MyTasksView.swift").read_text(encoding="utf-8")
+        service = (ROOT / "X5/Services/HubService.swift").read_text(encoding="utf-8")
+        self.assertIn('_countryCode = State(initialValue: task.countryCode ?? "KZ")', view)
+        self.assertIn('_city = State(initialValue: task.city ?? "")', view)
+        self.assertIn("CISLocations.countries", view)
+        self.assertIn("CISLocations.search(country: countryCode, query: city)", view)
+        self.assertIn("countryCode: countryCode", view)
+        self.assertIn("city: city.trimmingCharacters", view)
+        self.assertIn('"country_code": countryCode', service)
+        self.assertIn('"city": city', service)
+
 
 if __name__ == "__main__":
     unittest.main()
-

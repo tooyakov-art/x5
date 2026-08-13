@@ -402,6 +402,8 @@ final class HubService: ObservableObject {
         description: String,
         budget: String,
         category: String,
+        countryCode: String,
+        city: String,
         deadline: Date?,
         accessToken: String
     ) async -> HubTask? {
@@ -410,6 +412,8 @@ final class HubService: ObservableObject {
             "description": description,
             "budget": budget,
             "category": category,
+            "country_code": countryCode,
+            "city": city,
             "deadline": NSNull()
         ]
         if let deadline {
