@@ -17,6 +17,14 @@ class RegistrationAndTaskLocationTests(unittest.TestCase):
         self.assertIn('"city": cityTrimmed', source)
         self.assertIn('p.userRole == "creator"', source)
 
+    def test_onboarding_location_step_can_return_to_role(self):
+        source = (ROOT / "X5/Views/OnboardingView.swift").read_text(encoding="utf-8")
+        self.assertIn("if step != .role", source)
+        self.assertIn("Button(action: goBack)", source)
+        self.assertIn('Label(loc.t("btn_back"), systemImage: "chevron.left")', source)
+        self.assertIn('.accessibilityIdentifier("onboarding_back_button")', source)
+        self.assertRegex(source, r"case \.location:\s+step = \.role")
+
     def test_cis_dataset_has_all_supported_countries(self):
         rows = json.loads((ROOT / "X5/Resources/cis-cities.json").read_text(encoding="utf-8"))
         countries = {row["country"] for row in rows}

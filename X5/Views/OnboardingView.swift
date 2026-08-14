@@ -62,6 +62,17 @@ struct OnboardingView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                if step != .role {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button(action: goBack) {
+                            Label(loc.t("btn_back"), systemImage: "chevron.left")
+                        }
+                        .disabled(saving)
+                        .accessibilityIdentifier("onboarding_back_button")
+                    }
+                }
+            }
         }
         .tint(.accentColor)
         .preferredColorScheme(.dark)
@@ -383,6 +394,21 @@ struct OnboardingView: View {
             step = .nickname
         case .nickname:
             submit()
+        }
+    }
+
+    private func goBack() {
+        guard !saving else { return }
+        errorMessage = nil
+        switch step {
+        case .role:
+            break
+        case .location:
+            step = .role
+        case .name:
+            step = .location
+        case .nickname:
+            step = .name
         }
     }
 

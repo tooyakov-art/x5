@@ -51,7 +51,7 @@ class ReleaseVersionSourceTests(unittest.TestCase):
         ).group(1)
 
         self.assertEqual(marketing_version, "1.1.6")
-        self.assertEqual(runtime_build_number, "213")
+        self.assertEqual(runtime_build_number, "214")
         self.assertEqual(fastlane_version, marketing_version)
         self.assertIn(
             f"Version {marketing_version} build 193",
