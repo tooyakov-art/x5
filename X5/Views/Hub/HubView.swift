@@ -22,7 +22,9 @@ struct HubView: View {
     @State private var openingChatWith: String? = nil
     @State private var startingChat: ChatRoom? = nil
     @State private var chatError: String? = nil
-    @State private var selectedCountry: HubCountry = .kazakhstan
+    @State private var selectedCountryCode: String = "KZ"
+    @State private var selectedCity: String = ""
+    @State private var didSeedLocation = false
     @State private var taskCategoriesExpanded = false
     @State private var deepLinkedTask: HubTask?
     @State private var taskOpenError: String?
@@ -89,6 +91,7 @@ struct HubView: View {
                 chats.configureAccessTokenProvider(auth: auth)
                 applyProfileCategoriesOnEntry()
                 await repairCurrentHubProfileIfNeeded()
+                seedLocationFromProfileIfNeeded()
                 await service.loadSpecialists()
                 await loadHubTasks()
                 await openPendingTaskIfNeeded()
@@ -190,43 +193,71 @@ struct HubView: View {
     }
 
     private func countrySelector(messageKey: String) -> some View {
-        HStack(spacing: 8) {
-            Menu {
-                Button {
-                    selectedCountry = .kazakhstan
-                } label: {
-                    Label(loc.t(HubCountry.kazakhstan.titleKey), systemImage: "checkmark")
-                }
-                Section(loc.t("hub_country_soon")) {
-                    ForEach(HubCountry.comingSoon) { country in
-                        Button(loc.t(country.titleKey)) {}
-                            .disabled(true)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Menu {
+                    Button(loc.t("hub_all_countries")) {
+                        selectedCountryCode = ""
+                        selectedCity = ""
                     }
+                    ForEach(CISLocations.countries, id: \.code) { country in
+                        Button {
+                            selectedCountryCode = country.code
+                            selectedCity = ""
+                        } label: {
+                            if selectedCountryCode == country.code {
+                                Label(country.name, systemImage: "checkmark")
+                            } else {
+                                Text(country.name)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(selectedCountryName, systemImage: "location.fill")
+                        .font(.system(size: 13, weight: .heavy))
+                        .foregroundColor(.white.opacity(0.94))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
                 }
-            } label: {
-                Label(loc.t(selectedCountry.titleKey), systemImage: "location.fill")
-                    .font(.system(size: 13, weight: .heavy))
-                    .foregroundColor(.white.opacity(0.94))
+                .buttonStyle(.plain)
+
+                TextField(loc.t("hub_city_filter"), text: $selectedCity)
+                    .textContentType(.addressCity)
+                    .font(.system(size: 13, weight: .semibold))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.12))
+                    .background(Color.white.opacity(0.10))
                     .clipShape(Capsule())
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                    )
+                    .disabled(selectedCountryCode.isEmpty)
             }
-            .buttonStyle(.plain)
+
+            let suggestions = CISLocations.search(country: selectedCountryCode, query: selectedCity, limit: 8)
+            if !selectedCountryCode.isEmpty && !suggestions.isEmpty && !suggestions.contains(where: { $0.city.caseInsensitiveCompare(selectedCity) == .orderedSame }) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 7) {
+                        ForEach(suggestions) { item in
+                            Button(item.city) { selectedCity = item.city }
+                                .font(.system(size: 11, weight: .bold))
+                                .buttonStyle(.bordered)
+                        }
+                    }
+                }
+            }
 
             Text(loc.t(messageKey))
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.white.opacity(0.76))
-                .lineLimit(2)
-                .minimumScaleFactor(0.82)
-            Spacer()
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.62))
         }
         .padding(.horizontal, 16)
         .padding(.top, 2)
+    }
+
+    private var selectedCountryName: String {
+        guard !selectedCountryCode.isEmpty else { return loc.t("hub_all_countries") }
+        return CISLocations.countryName(for: selectedCountryCode) ?? selectedCountryCode
     }
 
     private var categoryRail: some View {
@@ -481,10 +512,12 @@ struct HubView: View {
             return service.specialists
                 .filter { !BlockList.contains($0.id) }
                 .filter { $0.id != auth.userId }
+                .filter { locationMatches(countryCode: $0.countryCode, city: $0.city) }
                 .count
         case .tasks:
             return service.tasks
                 .filter { !BlockList.contains($0.authorId) }
+                .filter { locationMatches(countryCode: $0.countryCode, city: $0.city) }
                 .count
         }
     }
@@ -501,7 +534,9 @@ struct HubView: View {
 
     private var taskCategoryCounts: [String: Int] {
         var counts: [String: Int] = [:]
-        for task in service.tasks where !BlockList.contains(task.authorId) {
+        for task in service.tasks
+        where !BlockList.contains(task.authorId)
+            && locationMatches(countryCode: task.countryCode, city: task.city) {
             if let category = task.category {
                 counts[normalizedHubCategory(category), default: 0] += 1
             }
@@ -681,6 +716,7 @@ struct HubView: View {
     private var visibleSpecialists: [HubSpecialist] {
         service.specialists
             .filter { !BlockList.contains($0.id) }
+            .filter { locationMatches(countryCode: $0.countryCode, city: $0.city) }
     }
 
     private func specialists(matching categoryId: String?) -> [HubSpecialist] {
@@ -691,7 +727,9 @@ struct HubView: View {
     }
 
     private var filteredTasks: [HubTask] {
-        let visible = service.tasks.filter { !BlockList.contains($0.authorId) }
+        let visible = service.tasks
+            .filter { !BlockList.contains($0.authorId) }
+            .filter { locationMatches(countryCode: $0.countryCode, city: $0.city) }
         let filtered = visible.filter {
             taskBrowseState.includes(categoryId: normalizedHubCategory($0.category))
         }
@@ -720,6 +758,25 @@ struct HubView: View {
         case .tasks:
             await loadHubTasks()
         }
+    }
+
+    private func seedLocationFromProfileIfNeeded() {
+        guard !didSeedLocation else { return }
+        didSeedLocation = true
+        if let code = currentUser.profile?.countryCode, !code.isEmpty {
+            selectedCountryCode = code
+        }
+        selectedCity = currentUser.profile?.city ?? ""
+    }
+
+    private func locationMatches(countryCode: String?, city: String?) -> Bool {
+        if !selectedCountryCode.isEmpty,
+           countryCode?.caseInsensitiveCompare(selectedCountryCode) != .orderedSame {
+            return false
+        }
+        let requestedCity = selectedCity.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !requestedCity.isEmpty else { return true }
+        return city?.range(of: requestedCity, options: [.caseInsensitive, .diacriticInsensitive]) != nil
     }
 
     private func loadHubTasks() async {
@@ -771,20 +828,6 @@ struct HubView: View {
 }
 
 // MARK: - Background
-
-private struct HubCountry: Identifiable, Hashable {
-    let id: String
-    let titleKey: String
-
-    static let kazakhstan = HubCountry(id: "kz", titleKey: "country_kazakhstan")
-    static let comingSoon: [HubCountry] = [
-        HubCountry(id: "uz", titleKey: "country_uzbekistan"),
-        HubCountry(id: "kg", titleKey: "country_kyrgyzstan"),
-        HubCountry(id: "ae", titleKey: "country_uae"),
-        HubCountry(id: "tr", titleKey: "country_turkey"),
-        HubCountry(id: "us", titleKey: "country_usa")
-    ]
-}
 
 // MARK: - Tile категории
 

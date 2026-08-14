@@ -212,6 +212,8 @@ struct TaskDetailView: View {
             plan: nil,
             services: nil,
             socialLinks: nil,
+            countryCode: task.countryCode,
+            city: task.city,
             isVerified: nil,
             verifiedUntil: nil
         )

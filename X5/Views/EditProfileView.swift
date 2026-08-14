@@ -21,6 +21,8 @@ struct EditProfileView: View {
     @State private var facebook: String = ""
     @State private var pickedCategories: Set<String> = []
     @State private var showInHub: Bool = false
+    @State private var countryCode: String = "KZ"
+    @State private var city: String = ""
 
     @State private var saving = false
     @State private var errorMessage: String?
@@ -59,6 +61,28 @@ struct EditProfileView: View {
                         .foregroundColor(.secondary)
                 }
 
+                Section(header: Text(loc.t("task_location_section"))) {
+                    Picker(loc.t("onb_country"), selection: $countryCode) {
+                        ForEach(CISLocations.countries, id: \.code) { country in
+                            Text(country.name).tag(country.code)
+                        }
+                    }
+                    TextField(loc.t("onb_city_placeholder"), text: $city)
+                        .textContentType(.addressCity)
+
+                    let suggestions = CISLocations.search(country: countryCode, query: city)
+                    if !suggestions.isEmpty && !suggestions.contains(where: { $0.city.caseInsensitiveCompare(city) == .orderedSame }) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(suggestions) { item in
+                                    Button(item.city) { city = item.city }
+                                        .buttonStyle(.bordered)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Section(header: Text(loc.t("edit_social")),
                         footer: Text(loc.t("edit_social_footer")).font(.caption)) {
                     socialRow(brand: .instagram, name: "Instagram", text: $instagram, placeholder: "@username")
@@ -95,6 +119,9 @@ struct EditProfileView: View {
             }
             .onAppear { populateIfNeeded() }
             .onChange(of: currentUser.profile?.id) { _ in populateIfNeeded() }
+            .onChange(of: countryCode) { newCountry in
+                if didPopulate && newCountry != currentUser.profile?.countryCode { city = "" }
+            }
         }
         .preferredColorScheme(.dark)
     }
@@ -129,7 +156,8 @@ struct EditProfileView: View {
         let cleanNickname = nickname.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if cleanName.count < 2 || cleanName.lowercased() == "user" || cleanName.lowercased() == "x5" { return false }
         if cleanNickname.range(of: "^[a-z0-9_]{3,}$", options: .regularExpression) == nil { return false }
-        return bio.count <= 500
+        let cleanCity = city.trimmingCharacters(in: .whitespacesAndNewlines)
+        return bio.count <= 500 && !countryCode.isEmpty && cleanCity.count >= 2
     }
 
     private func populateIfNeeded() {
@@ -144,6 +172,8 @@ struct EditProfileView: View {
         name = p.name ?? ""
         nickname = p.nickname ?? ""
         bio = p.bio ?? ""
+        countryCode = p.countryCode ?? "KZ"
+        city = p.city ?? ""
         if let s = p.socialLinks {
             instagram = s.instagram ?? ""
             telegram = s.telegram ?? ""
@@ -183,6 +213,8 @@ struct EditProfileView: View {
             "nickname": AnyEncodable(nickname.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()),
             "bio": AnyEncodable(nilIfEmpty(bio)),
             "social_links": AnyEncodable(socials),
+            "country_code": AnyEncodable(countryCode),
+            "city": AnyEncodable(city.trimmingCharacters(in: .whitespacesAndNewlines)),
             "specialist_category": AnyEncodable(cleanCategories),
             "show_in_hub": AnyEncodable(cleanShowInHub)
         ]
