@@ -20,10 +20,22 @@ class HubLocationSourceTests(unittest.TestCase):
         source = (ROOT / "X5/Views/EditProfileView.swift").read_text(encoding="utf-8")
 
         self.assertIn("CISLocations.countries", source)
-        self.assertIn("CISLocations.search(country: countryCode, query: city)", source)
+        self.assertIn("CISCityPickerButton(city: $city, countryCode: countryCode)", source)
         self.assertIn('"country_code": AnyEncodable(countryCode)', source)
         self.assertIn('"city": AnyEncodable(city.trimmingCharacters', source)
         self.assertIn("cleanCity.count >= 2", source)
+
+    def test_hub_uses_all_cities_region_picker_instead_of_city_chips(self):
+        hub = (ROOT / "X5/Views/Hub/HubView.swift").read_text(encoding="utf-8")
+        picker = (ROOT / "X5/Views/CISCityPicker.swift").read_text(encoding="utf-8")
+
+        self.assertIn("CISCityPickerButton(", hub)
+        self.assertIn("allowsAllCities: true", hub)
+        self.assertNotIn("let suggestions = CISLocations.search", hub)
+        self.assertIn("CISLocations.popularCities", picker)
+        self.assertIn("CISLocations.regions", picker)
+        self.assertIn("CISRegionCitiesView", picker)
+        self.assertIn(".searchable(text: $query", picker)
 
 
 if __name__ == "__main__":

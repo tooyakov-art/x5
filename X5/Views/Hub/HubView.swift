@@ -224,27 +224,12 @@ struct HubView: View {
                 }
                 .buttonStyle(.plain)
 
-                TextField(loc.t("hub_city_filter"), text: $selectedCity)
-                    .textContentType(.addressCity)
-                    .font(.system(size: 13, weight: .semibold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.10))
-                    .clipShape(Capsule())
-                    .disabled(selectedCountryCode.isEmpty)
-            }
-
-            let suggestions = CISLocations.search(country: selectedCountryCode, query: selectedCity, limit: 8)
-            if !selectedCountryCode.isEmpty && !suggestions.isEmpty && !suggestions.contains(where: { $0.city.caseInsensitiveCompare(selectedCity) == .orderedSame }) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 7) {
-                        ForEach(suggestions) { item in
-                            Button(item.city) { selectedCity = item.city }
-                                .font(.system(size: 11, weight: .bold))
-                                .buttonStyle(.bordered)
-                        }
-                    }
-                }
+                CISCityPickerButton(
+                    city: $selectedCity,
+                    countryCode: selectedCountryCode,
+                    allowsAllCities: true,
+                    compact: true
+                )
             }
 
             Text(loc.t(messageKey))

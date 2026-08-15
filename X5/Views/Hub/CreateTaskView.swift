@@ -51,20 +51,7 @@ struct CreateTaskView: View {
                             Text(country.name).tag(country.code)
                         }
                     }
-                    TextField(loc.t("onb_city_placeholder"), text: $city)
-                        .textContentType(.addressCity)
-
-                    let suggestions = CISLocations.search(country: countryCode, query: city)
-                    if !suggestions.isEmpty && !suggestions.contains(where: { $0.city.caseInsensitiveCompare(city) == .orderedSame }) {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(suggestions) { item in
-                                    Button(item.city) { city = item.city }
-                                        .buttonStyle(.bordered)
-                                }
-                            }
-                        }
-                    }
+                    CISCityPickerButton(city: $city, countryCode: countryCode)
                 }
                 if let err = errorMessage {
                     Section { Text(err).foregroundColor(.red) }

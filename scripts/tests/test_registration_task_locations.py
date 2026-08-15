@@ -13,6 +13,7 @@ class RegistrationAndTaskLocationTests(unittest.TestCase):
         self.assertIn("case entrepreneur", source)
         self.assertNotIn("case creator", source)
         self.assertIn("case location", source)
+        self.assertIn("CISCityPickerButton(city: $city, countryCode: countryCode)", source)
         self.assertIn('"country_code": countryCode', source)
         self.assertIn('"city": cityTrimmed', source)
         self.assertIn('p.userRole == "creator"', source)
@@ -29,13 +30,18 @@ class RegistrationAndTaskLocationTests(unittest.TestCase):
         rows = json.loads((ROOT / "X5/Resources/cis-cities.json").read_text(encoding="utf-8"))
         countries = {row["country"] for row in rows}
         self.assertEqual(countries, {"AM", "AZ", "BY", "GE", "KG", "KZ", "MD", "RU", "TJ", "TM", "UA", "UZ"})
+        self.assertTrue(all(row.get("regionCode") and row.get("region") for row in rows))
+        kazakhstan_regions = {row["regionCode"] for row in rows if row["country"] == "KZ"}
+        self.assertGreaterEqual(len(kazakhstan_regions), 20)
+        kazakhstan = [row for row in rows if row["country"] == "KZ"]
+        self.assertEqual(kazakhstan[0]["city"], "Almaty")
 
     def test_create_task_requires_and_stores_location(self):
         view = (ROOT / "X5/Views/Hub/CreateTaskView.swift").read_text(encoding="utf-8")
         service = (ROOT / "X5/Services/HubService.swift").read_text(encoding="utf-8")
         detail = (ROOT / "X5/Views/Hub/TaskDetailView.swift").read_text(encoding="utf-8")
         self.assertIn("CISLocations.countries", view)
-        self.assertIn("CISLocations.search(country: countryCode, query: city)", view)
+        self.assertIn("CISCityPickerButton(city: $city, countryCode: countryCode)", view)
         self.assertIn("countryCode: countryCode", view)
         self.assertIn('"country_code": countryCode', service)
         self.assertIn('"city": city', service)
@@ -47,7 +53,7 @@ class RegistrationAndTaskLocationTests(unittest.TestCase):
         self.assertIn('_countryCode = State(initialValue: task.countryCode ?? "KZ")', view)
         self.assertIn('_city = State(initialValue: task.city ?? "")', view)
         self.assertIn("CISLocations.countries", view)
-        self.assertIn("CISLocations.search(country: countryCode, query: city)", view)
+        self.assertIn("CISCityPickerButton(city: $city, countryCode: countryCode)", view)
         self.assertIn("countryCode: countryCode", view)
         self.assertIn("city: city.trimmingCharacters", view)
         self.assertIn('"country_code": countryCode', service)
