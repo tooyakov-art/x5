@@ -50,7 +50,19 @@ class KaspiCreditPaymentsTests(unittest.TestCase):
     def test_internal_testflight_access_is_explicitly_limited(self):
         self.assertIn("KaspiInternalBetaAccess", SERVICE)
         self.assertIn("KaspiInternalBetaAccess.isAllowed(userID: auth.userId)", PAYWALL)
-        self.assertIn("credit_store_kaspi_buy", PAYWALL)
+        self.assertIn("credit_store_payment_kaspi", PAYWALL)
+
+    def test_credit_pack_has_one_buy_button_then_payment_method_picker(self):
+        pack_card = PAYWALL.split("private func packCard", 1)[1].split(
+            "private func buyViaStore", 1
+        )[0]
+        self.assertEqual(pack_card.count("Button {"), 1)
+        self.assertIn("paymentMethodPack = pack", pack_card)
+        self.assertIn("confirmationDialog", PAYWALL)
+        self.assertIn("credit_store_payment_card", PAYWALL)
+        self.assertIn("credit_store_payment_kaspi", PAYWALL)
+        self.assertIn("credit_store_payment_apple_pay", PAYWALL)
+        self.assertNotIn("credit_store_kaspi_buy", pack_card)
 
     def test_refund_reverses_credits_only_once(self):
         self.assertIn("refund_kaspi_credit_payment", MIGRATION)

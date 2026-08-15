@@ -12,6 +12,7 @@ struct PaywallView: View {
     @Environment(\.openURL) private var openURL
 
     @State private var didLoadProducts = false
+    @State private var paymentMethodPack: IAPCreditPack?
     @State private var purchasingProductID: String?
     @State private var kaspiPurchasingProductID: String?
     @State private var kaspiPayment: KaspiCreditPayment?
@@ -133,6 +134,36 @@ struct PaywallView: View {
         .task(id: kaspiPayment?.id) {
             await pollKaspiPaymentUntilFinished()
         }
+        .confirmationDialog(
+            loc.t("credit_store_payment_method_title"),
+            isPresented: Binding(
+                get: { paymentMethodPack != nil },
+                set: { if !$0 { paymentMethodPack = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: paymentMethodPack
+        ) { pack in
+            Button(loc.t("credit_store_payment_card")) {
+                buyViaStore(pack, paymentMethod: "bank_card")
+            }
+            if canPayWithKaspi(pack) {
+                Button(loc.t("credit_store_payment_kaspi")) {
+                    buyWithKaspi(pack)
+                }
+            }
+            Button(loc.t("credit_store_payment_apple_pay")) {
+                buyViaStore(pack, paymentMethod: "apple_pay")
+            }
+            Button(loc.t("btn_cancel"), role: .cancel) {}
+        } message: { pack in
+            Text(
+                String(
+                    format: loc.t("credit_store_payment_method_message"),
+                    pack.credits,
+                    paymentAmount(for: pack)
+                )
+            )
+        }
         .alert(loc.t("credit_store_success_title"), isPresented: $showSuccess) {
             Button(loc.t("btn_done")) { dismiss() }
         } message: {
@@ -174,6 +205,7 @@ struct PaywallView: View {
         let product = iap.product(id: pack.productID)
         let isCurrentPurchase = purchasingProductID == pack.productID && iap.isPurchasing
         let isCurrentKaspiPurchase = kaspiPurchasingProductID == pack.productID
+        let isCurrentPayment = isCurrentPurchase || isCurrentKaspiPurchase
 
         return VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
@@ -192,10 +224,11 @@ struct PaywallView: View {
             }
 
             Button {
-                buy(pack)
+                X5Feedback.selection()
+                paymentMethodPack = pack
             } label: {
                 Group {
-                    if isCurrentPurchase {
+                    if isCurrentPayment {
                         ProgressView().tint(.black)
                     } else {
                         Text(loc.t("credit_store_buy"))
@@ -208,44 +241,9 @@ struct PaywallView: View {
             .buttonStyle(.borderedProminent)
             .tint(.accentColor)
             .foregroundStyle(.black)
-            .disabled(product == nil || iap.isPurchasing)
+            .disabled(kaspiPurchasingProductID != nil || iap.isPurchasing)
 
-            if KaspiInternalBetaAccess.isAllowed(userID: auth.userId),
-               let amountKzt = KaspiCreditCatalog.priceKzt(for: pack.productID) {
-                Button {
-                    buyWithKaspi(pack)
-                } label: {
-                    Group {
-                        if isCurrentKaspiPurchase {
-                            ProgressView().tint(.white)
-                        } else {
-                            Text(
-                                String(
-                                    format: loc.t("credit_store_kaspi_buy"),
-                                    amountKzt.formatted()
-                                )
-                            )
-                            .font(.system(size: 16, weight: .bold))
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 24)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Color(red: 0.86, green: 0.12, blue: 0.18))
-                .foregroundStyle(.white)
-                .disabled(
-                    kaspiPurchasingProductID != nil || iap.isPurchasing
-                )
-
-                Text(loc.t("credit_store_kaspi_exact_amount"))
-                    .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.5))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-            }
-
-            if didLoadProducts && product == nil {
+            if didLoadProducts && product == nil && !canPayWithKaspi(pack) {
                 Text(loc.t("credit_store_unavailable"))
                     .font(.system(size: 11))
                     .foregroundColor(.white.opacity(0.5))
@@ -259,6 +257,25 @@ struct PaywallView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        }
+    }
+
+    private func buyViaStore(_ pack: IAPCreditPack, paymentMethod: String) {
+        paymentMethodPack = nil
+        DiagnosticLogger.log(event: "credit_payment_method_selected", extra: [
+            "method": paymentMethod,
+            "product": pack.productID
+        ])
+
+        Task {
+            if iap.product(id: pack.productID) == nil {
+                await reloadProducts()
+            }
+            guard iap.product(id: pack.productID) != nil else {
+                X5Feedback.error()
+                return
+            }
+            buy(pack)
         }
     }
 
@@ -280,6 +297,7 @@ struct PaywallView: View {
     }
 
     private func buyWithKaspi(_ pack: IAPCreditPack) {
+        paymentMethodPack = nil
         guard kaspiPurchasingProductID == nil else { return }
         kaspiPurchasingProductID = pack.productID
         kaspiError = nil
@@ -314,6 +332,18 @@ struct PaywallView: View {
                 X5Feedback.error()
             }
         }
+    }
+
+    private func canPayWithKaspi(_ pack: IAPCreditPack) -> Bool {
+        KaspiInternalBetaAccess.isAllowed(userID: auth.userId)
+            && KaspiCreditCatalog.priceKzt(for: pack.productID) != nil
+    }
+
+    private func paymentAmount(for pack: IAPCreditPack) -> String {
+        if let amountKzt = KaspiCreditCatalog.priceKzt(for: pack.productID) {
+            return "\(amountKzt.formatted()) ₸"
+        }
+        return iap.product(id: pack.productID)?.displayPrice ?? pack.fallbackDisplayPrice
     }
 
     private func restorePendingKaspiPayment() async {
