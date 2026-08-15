@@ -5,9 +5,15 @@ import AVFoundation
 import UniformTypeIdentifiers
 
 /// Instagram-style portfolio feed. Used inside ProfileView (own) and UserProfileView (public).
+enum PortfolioGridMode: Equatable {
+    case posts
+    case saved
+}
+
 struct PortfolioGrid: View {
     let userId: String
     let canEdit: Bool
+    var mode: PortfolioGridMode = .posts
 
     @EnvironmentObject private var auth: Auth
     @StateObject private var service = PortfolioService()
@@ -17,6 +23,7 @@ struct PortfolioGrid: View {
     @State private var pinnedTick = 0
 
     private var orderedItems: [PortfolioItem] {
+        if mode == .saved { return service.items }
         _ = pinnedTick
         let pinned = service.items.filter { PortfolioPinnedStore.isPinned($0.id) }
             .sorted { (PortfolioPinnedStore.index(of: $0.id) ?? 99) < (PortfolioPinnedStore.index(of: $1.id) ?? 99) }
@@ -27,11 +34,11 @@ struct PortfolioGrid: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Портфолио")
+                Text(mode == .saved ? "Сохранённые" : "Портфолио")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.white)
                 Spacer()
-                if canEdit {
+                if canEdit && mode == .posts {
                     Button {
                         showingAdd = true
                     } label: {
@@ -50,7 +57,7 @@ struct PortfolioGrid: View {
                     Image(systemName: "photo.stack")
                         .font(.system(size: 28, weight: .light))
                         .foregroundColor(.white.opacity(0.4))
-                    Text(canEdit ? "Загрузи свои работы" : "Портфолио пустое")
+                    Text(mode == .saved ? "Здесь будут сохранённые работы" : (canEdit ? "Загрузи свои работы" : "Портфолио пустое"))
                         .font(.system(size: 13))
                         .foregroundColor(.white.opacity(0.5))
                 }
@@ -66,7 +73,7 @@ struct PortfolioGrid: View {
                     ForEach(Array(orderedItems.enumerated()), id: \.element.id) { index, item in
                         PortfolioGridCell(
                             item: item,
-                            isPinned: PortfolioPinnedStore.isPinned(item.id),
+                            isPinned: mode == .posts && PortfolioPinnedStore.isPinned(item.id),
                             onOpen: {
                                 X5Feedback.selection()
                                 selectedIndex = index
@@ -79,7 +86,11 @@ struct PortfolioGrid: View {
         }
         .task {
             guard let token = await auth.freshAccessToken() else { return }
-            await service.load(userId: userId, accessToken: token, includeUnapproved: canEdit)
+            if mode == .saved {
+                await service.loadSaved(userId: userId, accessToken: token)
+            } else {
+                await service.load(userId: userId, accessToken: token, includeUnapproved: canEdit)
+            }
         }
         .sheet(isPresented: $showingAdd) {
             AddPortfolioItemView { data, mediaType, mime, ext, thumbnailData, title, desc in
@@ -102,7 +113,8 @@ struct PortfolioGrid: View {
             PortfolioInstagramViewer(
                 items: orderedItems,
                 initialIndex: selectedIndex ?? 0,
-                canEdit: canEdit,
+                canEdit: canEdit && mode == .posts,
+                authorForItem: { item in service.authors[item.userId] },
                 onDelete: { item in
                     Task {
                         guard let token = await auth.freshAccessToken() else { return }
@@ -134,6 +146,22 @@ struct PortfolioGrid: View {
                           let token = await auth.freshAccessToken()
                     else { return false }
                     return await service.setLiked(itemId: item.id, liked: liked, currentUserId: uid, accessToken: token)
+                },
+                onLoadSaved: { item in
+                    guard let uid = auth.userId,
+                          let token = await auth.freshAccessToken()
+                    else { return PortfolioSaveState(isSaved: false) }
+                    return await service.saveState(itemId: item.id, userId: uid, accessToken: token)
+                },
+                onSetSaved: { item, saved in
+                    guard let uid = auth.userId,
+                          let token = await auth.freshAccessToken()
+                    else { return false }
+                    let ok = await service.setSaved(itemId: item.id, saved: saved, userId: uid, accessToken: token)
+                    if ok, mode == .saved, !saved {
+                        await service.loadSaved(userId: uid, accessToken: token)
+                    }
+                    return ok
                 },
                 onLoadComments: { item in
                     guard let token = await auth.freshAccessToken() else { return [] }
@@ -493,12 +521,15 @@ private struct PortfolioInstagramViewer: View {
     let items: [PortfolioItem]
     let initialIndex: Int
     let canEdit: Bool
+    let authorForItem: (PortfolioItem) -> PortfolioAuthor?
     let onDelete: (PortfolioItem) -> Void
     let onTogglePin: (PortfolioItem) -> Void
     let onUpdateDetails: (PortfolioItem, String?, String?) async -> PortfolioItem?
     let isPinned: (PortfolioItem) -> Bool
     let onLoadLike: (PortfolioItem) async -> PortfolioLikeState
     let onSetLiked: (PortfolioItem, Bool) async -> Bool
+    let onLoadSaved: (PortfolioItem) async -> PortfolioSaveState
+    let onSetSaved: (PortfolioItem, Bool) async -> Bool
     let onLoadComments: (PortfolioItem) async -> [PortfolioComment]
     let onAddComment: (PortfolioItem, String) async -> PortfolioComment?
 
@@ -512,6 +543,7 @@ private struct PortfolioInstagramViewer: View {
                         ForEach(items) { item in
                             PortfolioInstagramPostPage(
                                 item: item,
+                                author: authorForItem(item),
                                 canEdit: canEdit,
                                 isPinned: isPinned(item),
                                 onDelete: { onDelete(item) },
@@ -519,6 +551,8 @@ private struct PortfolioInstagramViewer: View {
                                 onUpdateDetails: { title, description in await onUpdateDetails(item, title, description) },
                                 onLoadLike: { await onLoadLike(item) },
                                 onSetLiked: { liked in await onSetLiked(item, liked) },
+                                onLoadSaved: { await onLoadSaved(item) },
+                                onSetSaved: { saved in await onSetSaved(item, saved) },
                                 onLoadComments: { await onLoadComments(item) },
                                 onAddComment: { text in await onAddComment(item, text) }
                             )
@@ -552,6 +586,7 @@ private struct PortfolioInstagramViewer: View {
 
 private struct PortfolioInstagramPostPage: View {
     let item: PortfolioItem
+    let author: PortfolioAuthor?
     let canEdit: Bool
     let isPinned: Bool
     let onDelete: () -> Void
@@ -559,6 +594,8 @@ private struct PortfolioInstagramPostPage: View {
     let onUpdateDetails: (String?, String?) async -> PortfolioItem?
     let onLoadLike: () async -> PortfolioLikeState
     let onSetLiked: (Bool) async -> Bool
+    let onLoadSaved: () async -> PortfolioSaveState
+    let onSetSaved: (Bool) async -> Bool
     let onLoadComments: () async -> [PortfolioComment]
     let onAddComment: (String) async -> PortfolioComment?
 
@@ -568,6 +605,7 @@ private struct PortfolioInstagramPostPage: View {
     @State private var busyLike = false
     @State private var sendingComment = false
     @State private var isSaved = false
+    @State private var busySave = false
     @State private var confirmDelete = false
     @State private var showingEdit = false
     @State private var showVideoEditorNotice = false
@@ -581,6 +619,7 @@ private struct PortfolioInstagramPostPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            authorHeader
             media
                 .frame(maxWidth: .infinity)
                 .frame(height: maxMediaHeight)
@@ -600,6 +639,7 @@ private struct PortfolioInstagramPostPage: View {
         .background(Color.black)
         .task {
             likeState = await onLoadLike()
+            isSaved = (await onLoadSaved()).isSaved
             comments = await onLoadComments()
             if item.type == "video", let s = item.displayMediaUrl, let url = URL(string: s) {
                 player = AVPlayer(url: url)
@@ -625,6 +665,52 @@ private struct PortfolioInstagramPostPage: View {
             EditPortfolioItemView(item: item, onSave: onUpdateDetails)
                 .preferredColorScheme(.dark)
         }
+    }
+
+    private var authorHeader: some View {
+        HStack(spacing: 10) {
+            Group {
+                if let avatar = author?.avatar, let url = URL(string: avatar) {
+                    CachedAsyncImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        Image(systemName: "person.fill").foregroundColor(.white.opacity(0.55))
+                    }
+                } else {
+                    Image(systemName: "person.fill")
+                        .foregroundColor(.white.opacity(0.55))
+                }
+            }
+            .frame(width: 34, height: 34)
+            .background(Color.white.opacity(0.1))
+            .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(authorDisplayName)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+                if let nickname = author?.nickname, !nickname.isEmpty {
+                    Text("@\(nickname)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+            }
+            Spacer()
+            if isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.accentColor)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    private var authorDisplayName: String {
+        guard let name = author?.name?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty
+        else { return "X five marketing" }
+        return name
     }
 
     @ViewBuilder
@@ -665,11 +751,11 @@ private struct PortfolioInstagramPostPage: View {
             Spacer()
 
             Button {
-                isSaved.toggle()
-                X5Feedback.selection()
+                Task { await toggleSaved() }
             } label: {
                 Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
             }
+            .disabled(busySave)
 
             if canEdit {
                 Button {
@@ -817,6 +903,16 @@ private struct PortfolioInstagramPostPage: View {
         X5Feedback.selection()
         guard await onSetLiked(next) else { return }
         likeState = PortfolioLikeState(isLiked: next, count: max(0, likeState.count + (next ? 1 : -1)))
+    }
+
+    private func toggleSaved() async {
+        guard !busySave else { return }
+        busySave = true
+        defer { busySave = false }
+        let next = !isSaved
+        X5Feedback.selection()
+        guard await onSetSaved(next) else { return }
+        isSaved = next
     }
 
     private func sendComment() async {

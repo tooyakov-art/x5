@@ -248,6 +248,8 @@ struct ProfileView: View {
             overviewSection
         case .works:
             worksSection
+        case .saved:
+            savedWorksSection
         }
     }
 
@@ -274,6 +276,13 @@ struct ProfileView: View {
     private var worksSection: some View {
         if let uid = currentUser.profile?.id {
             PortfolioGrid(userId: uid, canEdit: true)
+        }
+    }
+
+    @ViewBuilder
+    private var savedWorksSection: some View {
+        if let uid = currentUser.profile?.id {
+            PortfolioGrid(userId: uid, canEdit: false, mode: .saved)
         }
     }
 
@@ -691,6 +700,7 @@ struct ProfileSocialLinksStrip: View {
 private enum ProfileSection: String, CaseIterable, Identifiable {
     case overview
     case works
+    case saved
 
     var id: String { rawValue }
 
@@ -699,6 +709,7 @@ private enum ProfileSection: String, CaseIterable, Identifiable {
         switch self {
         case .overview: return loc.t("profile_tab_overview")
         case .works: return loc.t("profile_tab_works")
+        case .saved: return "Сохранённые"
         }
     }
 }

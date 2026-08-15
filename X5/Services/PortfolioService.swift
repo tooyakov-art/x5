@@ -118,6 +118,17 @@ struct PortfolioLikeState: Equatable {
     let count: Int
 }
 
+struct PortfolioSaveState: Equatable {
+    let isSaved: Bool
+}
+
+struct PortfolioAuthor: Codable, Equatable {
+    let id: String
+    let name: String?
+    let avatar: String?
+    let nickname: String?
+}
+
 struct PortfolioComment: Codable, Identifiable, Equatable {
     let id: String
     let itemId: String
@@ -142,6 +153,7 @@ final class PortfolioService: ObservableObject {
     @Published private(set) var items: [PortfolioItem] = []
     @Published private(set) var isLoading: Bool = false
     @Published private(set) var error: String?
+    @Published private(set) var authors: [String: PortfolioAuthor] = [:]
 
     private let baseURL: URL
     private let anonKey: String
@@ -195,6 +207,7 @@ final class PortfolioService: ObservableObject {
         else { return }
         let decoded = (try? JSONDecoder().decode([PortfolioItem].self, from: data)) ?? []
         items = await resolveMediaURLs(in: decoded, accessToken: accessToken)
+        await loadAuthors(userIDs: Set(items.map(\.userId)), accessToken: accessToken)
         if includeUnapproved {
             let retryable = items.filter {
                 ["pending", "manual_review", "failed"].contains($0.moderationStatus)
@@ -206,6 +219,143 @@ final class PortfolioService: ObservableObject {
                 )
             }
         }
+    }
+
+    func loadSaved(userId: String, accessToken: String) async {
+        isLoading = true
+        defer { isLoading = false }
+
+        guard var savesComponents = URLComponents(
+            url: baseURL.appendingPathComponent("rest/v1/portfolio_item_saves"),
+            resolvingAgainstBaseURL: false
+        ) else { return }
+        savesComponents.queryItems = [
+            URLQueryItem(name: "user_id", value: "eq.\(userId)"),
+            URLQueryItem(name: "select", value: "item_id"),
+            URLQueryItem(name: "order", value: "created_at.desc")
+        ]
+        guard let savesURL = savesComponents.url else { return }
+        var savesRequest = URLRequest(url: savesURL)
+        savesRequest.setValue(anonKey, forHTTPHeaderField: "apikey")
+        savesRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (savesData, savesResponse) = try? await session.data(for: savesRequest),
+              let savesHTTP = savesResponse as? HTTPURLResponse,
+              (200..<300).contains(savesHTTP.statusCode),
+              let saves = try? JSONDecoder().decode([PortfolioSaveRow].self, from: savesData)
+        else { return }
+
+        let orderedIDs = saves.map(\.itemId)
+        guard !orderedIDs.isEmpty else {
+            items = []
+            authors = [:]
+            return
+        }
+
+        guard var itemsComponents = URLComponents(
+            url: baseURL.appendingPathComponent("rest/v1/portfolio_items"),
+            resolvingAgainstBaseURL: false
+        ) else { return }
+        itemsComponents.queryItems = [
+            URLQueryItem(name: "id", value: "in.(\(orderedIDs.joined(separator: ",")))"),
+            URLQueryItem(name: "moderation_status", value: "eq.approved"),
+            URLQueryItem(name: "select", value: "*")
+        ]
+        guard let itemsURL = itemsComponents.url else { return }
+        var itemsRequest = URLRequest(url: itemsURL)
+        itemsRequest.setValue(anonKey, forHTTPHeaderField: "apikey")
+        itemsRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (itemsData, itemsResponse) = try? await session.data(for: itemsRequest),
+              let itemsHTTP = itemsResponse as? HTTPURLResponse,
+              (200..<300).contains(itemsHTTP.statusCode),
+              let decoded = try? JSONDecoder().decode([PortfolioItem].self, from: itemsData)
+        else { return }
+
+        let byID = Dictionary(uniqueKeysWithValues: decoded.map { ($0.id, $0) })
+        let orderedItems = orderedIDs.compactMap { byID[$0] }
+        items = await resolveMediaURLs(in: orderedItems, accessToken: accessToken)
+        await loadAuthors(userIDs: Set(items.map(\.userId)), accessToken: accessToken)
+    }
+
+    func saveState(itemId: String, userId: String, accessToken: String) async -> PortfolioSaveState {
+        guard var components = URLComponents(
+            url: baseURL.appendingPathComponent("rest/v1/portfolio_item_saves"),
+            resolvingAgainstBaseURL: false
+        ) else { return PortfolioSaveState(isSaved: false) }
+        components.queryItems = [
+            URLQueryItem(name: "item_id", value: "eq.\(itemId)"),
+            URLQueryItem(name: "user_id", value: "eq.\(userId)"),
+            URLQueryItem(name: "select", value: "item_id")
+        ]
+        guard let url = components.url else { return PortfolioSaveState(isSaved: false) }
+        var request = URLRequest(url: url)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let rows = try? JSONDecoder().decode([PortfolioSaveRow].self, from: data)
+        else { return PortfolioSaveState(isSaved: false) }
+        return PortfolioSaveState(isSaved: !rows.isEmpty)
+    }
+
+    func setSaved(itemId: String, saved: Bool, userId: String, accessToken: String) async -> Bool {
+        if saved {
+            var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/portfolio_item_saves"))
+            request.httpMethod = "POST"
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("resolution=ignore-duplicates", forHTTPHeaderField: "Prefer")
+            request.httpBody = try? JSONEncoder().encode([
+                "item_id": AnyEncodable(itemId),
+                "user_id": AnyEncodable(userId)
+            ])
+            guard let (_, response) = try? await session.data(for: request),
+                  let http = response as? HTTPURLResponse
+            else { return false }
+            return (200..<300).contains(http.statusCode)
+        }
+
+        guard var components = URLComponents(
+            url: baseURL.appendingPathComponent("rest/v1/portfolio_item_saves"),
+            resolvingAgainstBaseURL: false
+        ) else { return false }
+        components.queryItems = [
+            URLQueryItem(name: "item_id", value: "eq.\(itemId)"),
+            URLQueryItem(name: "user_id", value: "eq.\(userId)")
+        ]
+        guard let url = components.url else { return false }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (_, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse
+        else { return false }
+        return (200..<300).contains(http.statusCode)
+    }
+
+    private func loadAuthors(userIDs: Set<String>, accessToken: String) async {
+        guard !userIDs.isEmpty,
+              var components = URLComponents(
+                url: baseURL.appendingPathComponent("rest/v1/profiles"),
+                resolvingAgainstBaseURL: false
+              )
+        else { return }
+        components.queryItems = [
+            URLQueryItem(name: "id", value: "in.(\(userIDs.joined(separator: ",")))"),
+            URLQueryItem(name: "select", value: "id,name,avatar,nickname")
+        ]
+        guard let url = components.url else { return }
+        var request = URLRequest(url: url)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let rows = try? JSONDecoder().decode([PortfolioAuthor].self, from: data)
+        else { return }
+        authors = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
     }
 
     /// Uploads JPEG to Storage, then stores a stable public-shaped object ID.
@@ -658,6 +808,14 @@ private struct PortfolioLikeRow: Codable {
 
     enum CodingKeys: String, CodingKey {
         case userId = "user_id"
+    }
+}
+
+private struct PortfolioSaveRow: Codable {
+    let itemId: String
+
+    enum CodingKeys: String, CodingKey {
+        case itemId = "item_id"
     }
 }
 
