@@ -57,6 +57,12 @@ final class PortfolioMediaPrivacyTests: XCTestCase {
                 """
                 return Self.response(for: request, data: Data(body.utf8))
             }
+            if request.url?.path == "/rest/v1/profiles" {
+                let body = """
+                [{"id":"user-1","name":"Portfolio owner","avatar":null,"nickname":"owner"}]
+                """
+                return Self.response(for: request, data: Data(body.utf8))
+            }
             XCTAssertEqual(
                 request.url?.path,
                 "/storage/v1/object/sign/portfolio/user-1/work.jpg"
