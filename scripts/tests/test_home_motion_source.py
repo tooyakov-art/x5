@@ -45,6 +45,8 @@ class HomeMotionSourceTests(unittest.TestCase):
         )
         self.assertIn("case video(HomeMotionSource)", home)
         for name in (
+            "HomeTrendStrawberry",
+            "HomeTrendTokayev",
             "HomeTrendAIStylist",
             "HomeTrendFaceSwap",
         ):
@@ -70,14 +72,19 @@ class HomeMotionSourceTests(unittest.TestCase):
         self.assertNotIn("activeTrendVideoID == item.id", source)
         self.assertNotIn("isMotionActive: item.showsPlay", source)
 
-    def test_client_reference_cards_animate_their_own_artwork(self):
+    def test_client_reference_cards_play_their_verified_reels(self):
         source = HOME_VIEW.read_text(encoding="utf-8")
 
-        self.assertEqual(source.count("motion: .referencePoster"), 2)
-        self.assertIn("private struct HomeReferenceMotionPhoto", source)
-        self.assertIn("TimelineView(", source)
-        self.assertIn("accessibilityReduceMotion", source)
-        self.assertIn("scenePhase != .active", source)
+        self.assertIn(
+            'motion: .video(.bundled(resourceName: "HomeTrendStrawberry"))',
+            source,
+        )
+        self.assertIn(
+            'motion: .video(.bundled(resourceName: "HomeTrendTokayev"))',
+            source,
+        )
+        self.assertNotIn("referencePoster", source)
+        self.assertNotIn("HomeReferenceMotionPhoto", source)
         self.assertNotIn('resourceName: "HomeTrendTransitions"', source)
         self.assertNotIn('resourceName: "HomeTrendLipSync"', source)
 
@@ -107,8 +114,8 @@ class HomeMotionSourceTests(unittest.TestCase):
             {
                 "HomeMotionStudio.mp4",
                 "HomeMotionFruit.mp4",
-                "HomeTrendTransitions.mp4",
-                "HomeTrendLipSync.mp4",
+                "HomeTrendStrawberry.mp4",
+                "HomeTrendTokayev.mp4",
                 "HomeTrendAIStylist.mp4",
                 "HomeTrendFaceSwap.mp4",
             },
@@ -118,8 +125,8 @@ class HomeMotionSourceTests(unittest.TestCase):
         expected_videos = {
             "HomeMotionStudio.mp4": 1_500_000,
             "HomeMotionFruit.mp4": 1_500_000,
-            "HomeTrendTransitions.mp4": 750_000,
-            "HomeTrendLipSync.mp4": 300_000,
+            "HomeTrendStrawberry.mp4": 1_100_000,
+            "HomeTrendTokayev.mp4": 2_300_000,
             "HomeTrendAIStylist.mp4": 300_000,
             "HomeTrendFaceSwap.mp4": 100_000,
         }
@@ -147,7 +154,12 @@ class HomeMotionSourceTests(unittest.TestCase):
         self.assertIn("debug-only", sources.lower())
         self.assertIn("X5-owned", provenance)
         self.assertIn("Higgsfield", provenance)
-        self.assertIn("transitions.mp4", provenance)
+        self.assertIn("DXoWkuziCX6", provenance)
+        self.assertIn("C8RAdTZtCoT", provenance)
+        self.assertIn("HomeTrendStrawberry.mp4", provenance)
+        self.assertIn("HomeTrendTokayev.mp4", provenance)
+        self.assertIn("HomeTrendTransitions", provenance)
+        self.assertIn("removed from the app bundle", provenance)
         self.assertIn("face-swap.mp4", provenance)
         self.assertIn("visible cards", provenance.lower())
         self.assertIn("Instagram", provenance)

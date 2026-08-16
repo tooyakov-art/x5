@@ -268,15 +268,15 @@ struct HomeView: View {
                 title: "Измена клубнички",
                 subtitle: "С бананом • мультсериал",
                 assetName: "HomeTrendLiveVideo",
-                motion: .referencePoster,
+                motion: .video(.bundled(resourceName: "HomeTrendStrawberry")),
                 action: .liveFruits
             ),
             NativeHomeTrend(
                 id: "tokayev",
                 title: "С Токаевым",
-                subtitle: "AI-пародия • VIP на матче",
+                subtitle: "Видео с президентом",
                 assetName: "HomeTrendPost",
-                motion: .referencePoster,
+                motion: .video(.bundled(resourceName: "HomeTrendTokayev")),
                 action: .videoGeneration
             ),
             NativeHomeTrend(
@@ -396,7 +396,6 @@ private struct NativeHomeTrend: Identifiable {
 }
 
 private enum NativeHomeTrendMotion {
-    case referencePoster
     case video(HomeMotionSource)
 }
 
@@ -584,8 +583,6 @@ private struct NativeHomeTrendCard: View {
     @ViewBuilder
     private var trendMedia: some View {
         switch item.motion {
-        case .referencePoster:
-            HomeReferenceMotionPhoto(assetName: item.assetName)
         case .video(let source):
             LoopingVideo(
                 source: source,
@@ -594,43 +591,6 @@ private struct NativeHomeTrendCard: View {
                 isUserInitiated: false
             )
         }
-    }
-}
-
-/// Motion for the client-approved Instagram reference cards.
-/// It animates the supplied artwork itself instead of covering it with an unrelated provider clip.
-private struct HomeReferenceMotionPhoto: View {
-    let assetName: String
-
-    @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        TimelineView(
-            .animation(
-                minimumInterval: 1.0 / 30.0,
-                paused: reduceMotion || scenePhase != .active
-            )
-        ) { timeline in
-            let phase = timeline.date.timeIntervalSinceReferenceDate
-            let horizontal = sin(phase * 0.46)
-            let vertical = cos(phase * 0.38)
-
-            GeometryReader { proxy in
-                Image(assetName)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .scaleEffect(reduceMotion ? 1.0 : 1.075 + vertical * 0.012)
-                    .offset(
-                        x: reduceMotion ? 0 : horizontal * proxy.size.width * 0.025,
-                        y: reduceMotion ? 0 : vertical * proxy.size.height * 0.012
-                    )
-                    .clipped()
-            }
-        }
-        .background(Color.white.opacity(0.06))
-        .accessibilityHidden(true)
     }
 }
 

@@ -20,8 +20,8 @@ final class HomeMotionPolicyTests: XCTestCase {
         XCTAssertEqual(
             HomeMotionCatalog.asset(for: "HomeTrendLiveVideo"),
             HomeMotionAsset(
-                source: .bundled(resourceName: "HomeMotionStudio"),
-                posterAssetName: "HomeMotionStudioPoster"
+                source: .bundled(resourceName: "HomeTrendStrawberry"),
+                posterAssetName: "HomeTrendLiveVideo"
             )
         )
         XCTAssertEqual(
@@ -31,7 +31,13 @@ final class HomeMotionPolicyTests: XCTestCase {
                 posterAssetName: "HomeMotionStudioPoster"
             )
         )
-        XCTAssertNil(HomeMotionCatalog.asset(for: "HomeTrendPost"))
+        XCTAssertEqual(
+            HomeMotionCatalog.asset(for: "HomeTrendPost"),
+            HomeMotionAsset(
+                source: .bundled(resourceName: "HomeTrendTokayev"),
+                posterAssetName: "HomeTrendPost"
+            )
+        )
         XCTAssertNil(HomeMotionCatalog.asset(for: "HomeCoverYoutube"))
     }
 

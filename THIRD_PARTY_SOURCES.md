@@ -10,6 +10,16 @@
 
 ## Client-supplied Home artwork
 
+### Client-selected Instagram Trend clips
+
+- Selection/instruction date: 2026-08-16.
+- Strawberry source: `https://www.instagram.com/reel/DXoWkuziCX6/`.
+- Tokayev source: `https://www.instagram.com/reel/C8RAdTZtCoT/`.
+- Bundled derivatives: `HomeTrendStrawberry.mp4` and `HomeTrendTokayev.mp4`.
+- Transform: audio removed; H.264/yuv420p fast-start transcode. The strawberry Reel is placed over a blurred vertical canvas without removing its original frame; the Tokayev Reel retains its vertical frame.
+- Use: muted, looping Home Trend previews and matching poster frames.
+- Rights boundary: the X5 owner/client expressly instructed the app team to use these specific Reels. This project record is not evidence of a copyright assignment or endorsement by Instagram, the uploaders, or depicted people; public-release clearance remains the owner's responsibility.
+
 ### Nano Banana + GPT Image trend card
 
 - Supplied directly by the client on 2026-07-26 with an explicit request to
@@ -102,8 +112,9 @@
 - Delivery: existing project objects in the X5 Supabase `videos/home` bucket;
   the app permits only that HTTPS host and retains the approved client artwork
   as its offline poster.
-- Selected release fallbacks: `transitions.mp4`, `lipsync.mp4`,
-  `ai-stylist.mp4`, and `face-swap.mp4`.
+- Selected release fallbacks: `ai-stylist.mp4` and `face-swap.mp4`. The older
+  `transitions.mp4` and `lipsync.mp4` previews were removed because they did not
+  match the visible client-selected Trend cards.
 - Performance/accessibility: Home instantiates one active muted player at a
   time; offscreen, background, Low Power Mode, and Reduce Motion states pause
   playback.
