@@ -15,7 +15,6 @@ enum HomeMotionCatalog {
     static func asset(for imageAssetName: String) -> HomeMotionAsset? {
         switch imageAssetName {
         case "HomeCoverTargetAds",
-             "HomeTrendLiveVideo",
              "HomeUtilityVideo",
              "HomeMotionStudioPoster":
             return HomeMotionAsset(
@@ -26,6 +25,16 @@ enum HomeMotionCatalog {
             return HomeMotionAsset(
                 source: .bundled(resourceName: "HomeMotionFruit"),
                 posterAssetName: "HomeMotionFruitPoster"
+            )
+        case "HomeTrendLiveVideo":
+            return HomeMotionAsset(
+                source: .bundled(resourceName: "HomeTrendStrawberry"),
+                posterAssetName: "HomeTrendLiveVideo"
+            )
+        case "HomeTrendPost":
+            return HomeMotionAsset(
+                source: .bundled(resourceName: "HomeTrendTokayev"),
+                posterAssetName: "HomeTrendPost"
             )
         default:
             return nil
