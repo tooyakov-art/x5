@@ -1349,7 +1349,7 @@ private struct TaskCardBubble: View {
             HStack(spacing: 6) {
                 Image(systemName: "briefcase.fill")
                     .font(.system(size: 11, weight: .bold))
-                Text("Отклик по задаче")
+                Text("Отклик по заданию")
                     .font(.system(size: 12, weight: .bold))
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")

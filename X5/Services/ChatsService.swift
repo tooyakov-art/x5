@@ -125,7 +125,7 @@ struct ChatTaskCardPayload: Codable, Hashable {
     }
 
     var preview: String {
-        "Задача: \(title)"
+        "Задание: \(title)"
     }
 
     var copyText: String {
@@ -626,7 +626,7 @@ final class ChatsService: ObservableObject {
         case "audio": preview = "🎤 Голосовое"
         case "file":  preview = "📎 Файл"
         case "task_card":
-            preview = ChatTaskCardPayload.decode(row["content"] as? String)?.preview ?? "Задача"
+            preview = ChatTaskCardPayload.decode(row["content"] as? String)?.preview ?? "Задание"
         default:      preview = (row["content"] as? String) ?? ""
         }
         return (preview, at)
@@ -1145,7 +1145,7 @@ final class ChatsService: ObservableObject {
               let rows = try? JSONDecoder().decode([ChatMessageRow].self, from: data),
               let inserted = rows.first
         else {
-            if error == nil { error = "Не удалось отправить задачу в чат." }
+            if error == nil { error = "Не удалось отправить задание в чат." }
             return nil
         }
 

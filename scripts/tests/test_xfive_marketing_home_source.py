@@ -209,11 +209,11 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
     def test_compact_promo_buttons_do_not_force_bad_wraps_on_small_iphones(self):
         home = HOME.read_text(encoding="utf-8")
 
-        self.assertIn('subtitle: "Специалисты и задачи"', home)
+        self.assertIn('subtitle: "Специалисты и задания"', home)
         self.assertIn(".frame(width: 34, height: 34)", home)
         self.assertIn(".font(.system(size: 14, weight: .bold))", home)
         self.assertIn(".font(.system(size: 11, weight: .medium))", home)
-        self.assertNotIn('subtitle: "Специалисты\\nи задачи"', home)
+        self.assertNotIn('subtitle: "Специалисты\\nи задания"', home)
 
     def test_header_search_gallery_and_more_are_working_surfaces(self):
         home = HOME.read_text(encoding="utf-8")

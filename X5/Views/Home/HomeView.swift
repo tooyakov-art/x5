@@ -171,7 +171,7 @@ struct HomeView: View {
 
             NativeHomePromoCard(
                 title: "Hub",
-                subtitle: "Специалисты и задачи",
+                subtitle: "Специалисты и задания",
                 icon: "briefcase.fill",
                 action: { handle(.hub) }
             )
@@ -268,7 +268,7 @@ struct HomeView: View {
                 title: "Измена клубнички",
                 subtitle: "С бананом • мультсериал",
                 assetName: "HomeTrendLiveVideo",
-                videoSource: .bundled(resourceName: "HomeTrendTransitions"),
+                motion: .referencePoster,
                 action: .liveFruits
             ),
             NativeHomeTrend(
@@ -276,7 +276,7 @@ struct HomeView: View {
                 title: "С Токаевым",
                 subtitle: "AI-пародия • VIP на матче",
                 assetName: "HomeTrendPost",
-                videoSource: .bundled(resourceName: "HomeTrendLipSync"),
+                motion: .referencePoster,
                 action: .videoGeneration
             ),
             NativeHomeTrend(
@@ -284,7 +284,7 @@ struct HomeView: View {
                 title: "Карточки WB",
                 subtitle: "Добавь свои товары",
                 assetName: "HomeTrendNanoBanana",
-                videoSource: .bundled(resourceName: "HomeTrendAIStylist"),
+                motion: .video(.bundled(resourceName: "HomeTrendAIStylist")),
                 action: imageAction("product_cards")
             ),
             NativeHomeTrend(
@@ -292,7 +292,7 @@ struct HomeView: View {
                 title: "Со знаменитостью",
                 subtitle: "Добавь себя в сцену",
                 assetName: "HomeTrendInfluencer",
-                videoSource: .bundled(resourceName: "HomeTrendFaceSwap"),
+                motion: .video(.bundled(resourceName: "HomeTrendFaceSwap")),
                 action: .videoGeneration
             )
         ]
@@ -391,8 +391,13 @@ private struct NativeHomeTrend: Identifiable {
     let title: String
     let subtitle: String
     let assetName: String
-    let videoSource: HomeMotionSource
+    let motion: NativeHomeTrendMotion
     let action: HomeRoute
+}
+
+private enum NativeHomeTrendMotion {
+    case referencePoster
+    case video(HomeMotionSource)
 }
 
 private struct NativeHomeBusiness: Identifiable {
@@ -544,12 +549,7 @@ private struct NativeHomeTrendCard: View {
     var body: some View {
         Button(action: onOpen) {
             VStack(alignment: .leading, spacing: 7) {
-                LoopingVideo(
-                    source: item.videoSource,
-                    posterAssetName: item.assetName,
-                    isActive: true,
-                    isUserInitiated: false
-                )
+                trendMedia
                 .frame(
                     width: HomeLayout.trendCardSize.width,
                     height: HomeLayout.trendMediaHeight
@@ -579,6 +579,58 @@ private struct NativeHomeTrendCard: View {
         .buttonStyle(.plain)
         .accessibilityLabel(item.title)
         .accessibilityHint("Открывает соответствующий инструмент")
+    }
+
+    @ViewBuilder
+    private var trendMedia: some View {
+        switch item.motion {
+        case .referencePoster:
+            HomeReferenceMotionPhoto(assetName: item.assetName)
+        case .video(let source):
+            LoopingVideo(
+                source: source,
+                posterAssetName: item.assetName,
+                isActive: true,
+                isUserInitiated: false
+            )
+        }
+    }
+}
+
+/// Motion for the client-approved Instagram reference cards.
+/// It animates the supplied artwork itself instead of covering it with an unrelated provider clip.
+private struct HomeReferenceMotionPhoto: View {
+    let assetName: String
+
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(
+            .animation(
+                minimumInterval: 1.0 / 30.0,
+                paused: reduceMotion || scenePhase != .active
+            )
+        ) { timeline in
+            let phase = timeline.date.timeIntervalSinceReferenceDate
+            let horizontal = sin(phase * 0.46)
+            let vertical = cos(phase * 0.38)
+
+            GeometryReader { proxy in
+                Image(assetName)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .scaleEffect(reduceMotion ? 1.0 : 1.075 + vertical * 0.012)
+                    .offset(
+                        x: reduceMotion ? 0 : horizontal * proxy.size.width * 0.025,
+                        y: reduceMotion ? 0 : vertical * proxy.size.height * 0.012
+                    )
+                    .clipped()
+            }
+        }
+        .background(Color.white.opacity(0.06))
+        .accessibilityHidden(true)
     }
 }
 
@@ -1093,7 +1145,7 @@ private struct HomeSearchSheet: View {
             HomeSearchItem(title: "Генерация видео", subtitle: "AI-ролики для соцсетей", icon: "video.fill", route: .videoGeneration),
             HomeSearchItem(title: "Озвучка", subtitle: "Текст в естественный голос", icon: "waveform", route: .voiceGeneration),
             HomeSearchItem(title: "Живые фрукты", subtitle: "Сценарий и ролик для Reels", icon: "play.tv.fill", route: .liveFruits),
-            HomeSearchItem(title: "Hub", subtitle: "Специалисты и задачи", icon: "briefcase.fill", route: .hub)
+            HomeSearchItem(title: "Hub", subtitle: "Специалисты и задания", icon: "briefcase.fill", route: .hub)
         ]
         items.append(
             contentsOf: ImageGenerationCatalog.categories.map { category in

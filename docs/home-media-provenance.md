@@ -17,7 +17,7 @@
 
 ## Release trend-video fallbacks
 
-The Home screen reuses four existing X5-owned Higgsfield exports from the project's established Supabase `videos/home` bucket. The same bucket and filenames are already used by the X5 web client. These files are functional motion fallbacks selected by tool type; they are not represented as the exact people or scenes shown in the approved posters.
+The Home bundle retains four existing X5-owned Higgsfield exports from the project's established Supabase `videos/home` bucket. The same bucket and filenames are already used by the X5 web client. They are historical fallback assets and are not represented as the exact people or scenes shown in the approved posters.
 
 | Card | Existing object | Bundled file | SHA-256 |
 |---|---|---|---|
@@ -25,6 +25,13 @@ The Home screen reuses four existing X5-owned Higgsfield exports from the projec
 | С Токаевым | `lipsync.mp4` | `HomeTrendLipSync.mp4` | `5455bb6fe0243dfc6442ad136fccad3ac06422c83a0969b587ad6071faab6f24` |
 | Карточки WB | `ai-stylist.mp4` | `HomeTrendAIStylist.mp4` | `ff0fa0fa1805af7e09d72cd1940d6b920a950233cb59f9eed8d6b32b386fa8d7` |
 | Со знаменитостью | `face-swap.mp4` | `HomeTrendFaceSwap.mp4` | `4e7a3fd2eb6a2517487a883cee0a30243173a0687abaca75f65bebdab0f5a75a` |
+
+- Current runtime boundary: `Измена клубнички` and `С Токаевым` no longer play
+  `HomeTrendTransitions` or `HomeTrendLipSync`. Their approved card artwork is
+  animated directly with a restrained pan-and-zoom motion, so the visible
+  reference is never covered by an unrelated provider clip. Reduce Motion and
+  inactive-app states pause this animation. The remaining two trend cards keep
+  their existing X5-owned bundled previews.
 
 - Delivery base: `https://afwznqjpshybmqhlewmy.supabase.co/storage/v1/object/public/videos/home`
 - Release delivery: the four verified objects are bundled under
