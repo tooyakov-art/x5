@@ -1,4 +1,4 @@
-"""Guarded App Store Connect assignment of build 219 to internal beta groups."""
+"""Guarded App Store Connect assignment of build 221 to internal beta groups."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import time
 from typing import Iterable, Protocol
 
 
-EXPECTED_BUILD = "219"
+EXPECTED_BUILD = "221"
 EXPECTED_GROUP_NAMES = frozenset({"123", "321"})
 
 
@@ -32,7 +32,7 @@ def assign_internal_groups(
     build_number: str,
     group_names: Iterable[str],
 ) -> dict[str, str]:
-    """Assign exactly build 219 to exactly the two approved internal groups."""
+    """Assign exactly build 221 to exactly the two approved internal groups."""
 
     requested_names = tuple(group_names)
     if build_number != EXPECTED_BUILD:
