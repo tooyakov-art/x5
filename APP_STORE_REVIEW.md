@@ -13,16 +13,16 @@
 - ✅ Privacy Policy / Terms / Support links на GitHub Pages
 - ✅ Локализация ru / en / kk
 - ✅ Portfolio (build 28)
-- ✅ Verified Badge IAP scaffolding (build 28)
-- ✅ Pro Subscription IAP scaffolding (`com.x5studio.app.pro.monthly`)
+- ✅ Verified Badge IAP scaffolding (`com.x5studio.app.verified.monthly`)
+- ✅ Subscription IAP scaffolding (`com.x5studio.app.lite.monthly`, `com.x5studio.app.pro.monthly`, `com.x5studio.app.max.monthly`)
 
 ## 1. Зависимости от тебя (Apple Developer Account)
 
 ### 1.1 Pro подписка (в работе с другим помощником)
 
 - [ ] ASC → Apps → X5 → Subscriptions → группа **X5 Pro** создана
-- [ ] Продукт `com.x5studio.app.pro.monthly` создан, статус **Ready to Submit**
-- [ ] Pricing: KZ + US (хотя бы)
+- [ ] Продукты `com.x5studio.app.lite.monthly`, `com.x5studio.app.pro.monthly`, `com.x5studio.app.max.monthly` созданы, статус **Ready to Submit**
+- [ ] Pricing: 1000 ₸ / 2000 ₸ / 5000 ₸ для KZ + US fallback
 - [ ] Localizations: English (U.S.) + Russian
 - [ ] Review screenshot загружен (1242×2688 или 1290×2796 .png/.jpg paywall)
 - [ ] Sandbox Tester создан (с паролем, который ты вводишь сам)
@@ -31,7 +31,7 @@
 
 - [ ] ASC → создать вторую подписку `com.x5studio.app.verified.monthly`
 - [ ] Та же группа **X5 Pro** или новая (рекомендую отдельную «X5 Badges»)
-- [ ] Pricing: $1.99 US / 990 ₸ KZ (или другая)
+- [ ] Pricing: 500 ₸ KZ + US fallback
 - [ ] Localization (en + ru): «Verified Badge — get the blue ☑ next to your name»
 - [ ] Review screenshot — экран `VerifiedBadgeView`
 
@@ -98,7 +98,7 @@ New in this version:
 - Hub improvements for specialists, tasks and proposals.
 - Direct chats with text, photos, voice messages, search, replies, pin, mute, archive, report and block controls.
 - Portfolio improvements with photos, videos, likes, comments and pinned work.
-- CourseUP video lessons and Pro-gated course access.
+- CourseUP video lessons and credit-based course purchases.
 - Profile, onboarding, language, Face ID lock, push notification and subscription improvements.
 ```
 
@@ -150,7 +150,7 @@ What you can do:
 • Build your own portfolio and personal brand
 
 Subscriptions (auto-renewable):
-• X5 Pro — unlocks all AI tools, premium courses, +1000 credits/month
+• X5 Pro — unlocks all AI tools and adds monthly credits that can be spent on courses and creator tools
 • Verified Badge — blue ☑ that signals trust and ranks your profile higher in Hub
 
 Subscription auto-renews monthly until cancelled. Manage in iOS Settings → Apple ID → Subscriptions.
@@ -211,7 +211,9 @@ Sign-in: three options — Sign in with Apple, Sign in with Google, and Email/Pa
 The reviewer can use any. No demo account is required.
 
 Subscriptions:
-• X5 Pro (com.x5studio.app.pro.monthly) — auto-renewable monthly, unlocks AI tools and premium courses.
+• X5 Lite (com.x5studio.app.lite.monthly) — auto-renewable monthly, 1000 credits.
+• X5 Pro (com.x5studio.app.pro.monthly) — auto-renewable monthly, 2000 credits.
+• X5 Max (com.x5studio.app.max.monthly) — auto-renewable monthly, 5000 credits.
 • Verified Badge (com.x5studio.app.verified.monthly) — auto-renewable monthly, blue ☑ next to user's name.
 
 Account deletion (Guideline 5.1.1(v)):

@@ -1,0 +1,634 @@
+name: ASC configure subscriptions
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, codex/x5-cleanup-from-restore-clean]
+    paths:
+      - ".github/workflows/asc-configure-subscriptions.yml"
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    environment: app-store-production
+    timeout-minutes: 10
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      BUNDLE_ID: com.x5studio.app
+      SCREENSHOT_PATH: fastlane/iap-screenshots/x5-credit-store-review.png
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --require-hashes -r .github/requirements/asc-requirements.lock
+      - name: Configure App Store Connect subscriptions
+        run: |
+          python <<'PY'
+          import base64
+          import hashlib
+          import mimetypes
+          import os
+          import sys
+          import time
+          from datetime import date, timedelta
+          from decimal import Decimal
+
+          import jwt
+          import requests
+
+          BASE = "https://api.appstoreconnect.apple.com/v1"
+
+          PRODUCTS = [
+              {
+                  "key": "lite",
+                  "name": "X5 Lite Monthly",
+                  "product_id": "com.x5studio.app.lite.monthly",
+                  "display_name": "X5 Lite",
+                  "description": "1000 credits and X5 creator tools.",
+                  "price_kaz": Decimal("1000"),
+                  "group_reference": "X5 Subscriptions",
+                  "group_locale_name": "X5 subscriptions",
+                  "group_level": 3,
+                  "review_note": "Lite monthly plan shown in the app paywall. User gets paid access and 1000 credits.",
+                  "legacy_read_only": True,
+              },
+              {
+                  "key": "pro",
+                  "name": "X5 Pro Monthly",
+                  "product_id": "com.x5studio.app.pro.monthly",
+                  "display_name": "X5 Pro",
+                  "description": "2000 credits and all X5 tools.",
+                  "price_kaz": Decimal("2000"),
+                  "group_reference": "X5 Subscriptions",
+                  "group_locale_name": "X5 subscriptions",
+                  "group_level": 2,
+                  "review_note": "Pro monthly plan shown in the app paywall. User gets full paid access and 2000 credits.",
+                  "legacy_read_only": True,
+              },
+              {
+                  "key": "max",
+                  "name": "X5 Max Monthly",
+                  "product_id": "com.x5studio.app.max.monthly",
+                  "display_name": "X5 Max",
+                  "description": "5000 credits, all X5 tools, and top Hub priority.",
+                  "price_kaz": Decimal("5000"),
+                  "group_reference": "X5 Subscriptions",
+                  "group_locale_name": "X5 subscriptions",
+                  "group_level": 1,
+                  "review_note": "Max monthly plan shown in the app paywall. User gets full paid access and 5000 credits.",
+                  "legacy_read_only": True,
+              },
+              {
+                  "key": "verified",
+                  "name": "X5 Verified Badge Monthly",
+                  "product_id": "com.x5studio.app.verified.monthly",
+                  "display_name": "X5 Verified Badge",
+                  "description": "Blue verified badge next to the creator name.",
+                  "price_kaz": Decimal("1000"),
+                  "group_reference": "X5 Verified Badge",
+                  "group_locale_name": "X5 verified badge",
+                  "group_level": 1,
+                  "review_note": "Separate monthly subscription from Profile -> Get verified. User gets a blue verified badge and Hub trust signal.",
+              },
+          ]
+
+          def make_token():
+              return jwt.encode(
+                  {
+                      "iss": os.environ["ASC_API_ISSUER_ID"],
+                      "iat": int(time.time()),
+                      "exp": int(time.time()) + 60 * 10,
+                      "aud": "appstoreconnect-v1",
+                  },
+                  base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+                  algorithm="ES256",
+                  headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+              )
+
+          TOKEN = make_token()
+
+          def headers():
+              return {"Authorization": f"Bearer {TOKEN}"}
+
+          def api(method, path, *, expected=(200,), **kwargs):
+              url = path if path.startswith("http") else f"{BASE}{path}"
+              req_headers = headers()
+              if "json" in kwargs:
+                  req_headers["Content-Type"] = "application/json"
+              req_headers.update(kwargs.pop("headers", {}))
+              response = requests.request(method, url, headers=req_headers, timeout=60, **kwargs)
+              if response.status_code not in expected:
+                  print(f"{method} {url} -> HTTP {response.status_code}")
+                  print(response.text[:2000])
+                  raise SystemExit(1)
+              if response.text:
+                  return response.json()
+              return None
+
+          def patch_or_keep_active(path, payload, label):
+              url = f"{BASE}{path}"
+              response = requests.patch(
+                  url,
+                  headers={**headers(), "Content-Type": "application/json"},
+                  json=payload,
+                  timeout=60,
+              )
+              if response.status_code < 300:
+                  print(f"Updated {label}")
+                  return response.json() if response.text else None
+              if response.status_code == 409 and "ACTIVE state" in response.text:
+                  print(f"Keeping active {label}; Apple does not allow editing it")
+                  return None
+              print(f"PATCH {url} -> HTTP {response.status_code}")
+              print(response.text[:2000])
+              raise SystemExit(1)
+
+          def list_all(path):
+              rows = []
+              url = f"{BASE}{path}"
+              while url:
+                  response = requests.get(url, headers=headers(), timeout=60)
+                  if response.status_code >= 300:
+                      print(f"GET {url} -> HTTP {response.status_code}")
+                      print(response.text[:2000])
+                      raise SystemExit(1)
+                  payload = response.json()
+                  rows.extend(payload.get("data", []))
+                  url = payload.get("links", {}).get("next")
+              return rows
+
+          def money(value):
+              return Decimal(str(value)).quantize(Decimal("0.01"))
+
+          def territory_id(resource):
+              return (
+                  resource.get("relationships", {})
+                  .get("territory", {})
+                  .get("data", {})
+                  .get("id")
+              )
+
+          app = api("GET", f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}")["data"]
+          if not app:
+              raise SystemExit(f"No App Store Connect app for {os.environ['BUNDLE_ID']}")
+          app_id = app[0]["id"]
+          print(f"App: {app_id} ({os.environ['BUNDLE_ID']})")
+
+          def app_subscription_group_refs():
+              response = requests.get(
+                  f"{BASE}/apps/{app_id}/relationships/subscriptionGroups?limit=200",
+                  headers=headers(),
+                  timeout=60,
+              )
+              print(f"GET app subscription groups -> HTTP {response.status_code}")
+              if response.status_code < 300:
+                  return response.json().get("data", [])
+
+              print(response.text[:1000])
+              fallback = requests.get(
+                  f"{BASE}/subscriptionGroups?filter[app]={app_id}&limit=200",
+                  headers=headers(),
+                  timeout=60,
+              )
+              print(f"GET subscriptionGroups filter app -> HTTP {fallback.status_code}")
+              if fallback.status_code >= 300:
+                  print(fallback.text[:1000])
+                  raise SystemExit(1)
+              return fallback.json().get("data", [])
+
+          def ensure_group(reference_name, localized_name):
+              group_links = app_subscription_group_refs()
+              groups = [api("GET", f"/subscriptionGroups/{item['id']}")["data"] for item in group_links]
+              group = next((g for g in groups if g.get("attributes", {}).get("referenceName") == reference_name), None)
+              if not group:
+                  group = api(
+                      "POST",
+                      "/subscriptionGroups",
+                      expected=(201,),
+                      json={
+                          "data": {
+                              "type": "subscriptionGroups",
+                              "attributes": {"referenceName": reference_name},
+                              "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
+                          }
+                      },
+                  )["data"]
+                  print(f"Created subscription group: {group['id']} {reference_name}")
+
+              group_id = group["id"]
+              group_localizations = list_all(f"/subscriptionGroups/{group_id}/subscriptionGroupLocalizations?limit=200")
+              en_group_loc = next((loc for loc in group_localizations if loc["attributes"].get("locale") == "en-US"), None)
+              group_loc_payload = {
+                  "data": {
+                      "type": "subscriptionGroupLocalizations",
+                      "attributes": {"name": localized_name, "locale": "en-US"},
+                      "relationships": {"subscriptionGroup": {"data": {"type": "subscriptionGroups", "id": group_id}}},
+                  }
+              }
+              if en_group_loc:
+                  patch_or_keep_active(
+                      f"/subscriptionGroupLocalizations/{en_group_loc['id']}",
+                      {
+                          "data": {
+                              "type": "subscriptionGroupLocalizations",
+                              "id": en_group_loc["id"],
+                              "attributes": {"name": localized_name},
+                          }
+                      },
+                      f"subscription group localization en-US for {reference_name}",
+                  )
+              else:
+                  api("POST", "/subscriptionGroupLocalizations", expected=(201,), json=group_loc_payload)
+                  print(f"Created subscription group localization en-US for {reference_name}")
+              return group_id
+
+          def ensure_existing_group_localization(group_id, localized_name):
+              group_localizations = list_all(f"/subscriptionGroups/{group_id}/subscriptionGroupLocalizations?limit=200")
+              en_group_loc = next((loc for loc in group_localizations if loc["attributes"].get("locale") == "en-US"), None)
+              if en_group_loc:
+                  patch_or_keep_active(
+                      f"/subscriptionGroupLocalizations/{en_group_loc['id']}",
+                      {
+                          "data": {
+                              "type": "subscriptionGroupLocalizations",
+                              "id": en_group_loc["id"],
+                              "attributes": {"name": localized_name},
+                          }
+                      },
+                      f"existing group localization en-US for group {group_id}",
+                  )
+              else:
+                  api(
+                      "POST",
+                      "/subscriptionGroupLocalizations",
+                      expected=(201,),
+                      json={
+                          "data": {
+                              "type": "subscriptionGroupLocalizations",
+                              "attributes": {"name": localized_name, "locale": "en-US"},
+                              "relationships": {"subscriptionGroup": {"data": {"type": "subscriptionGroups", "id": group_id}}},
+                          }
+                      },
+                  )
+                  print(f"Created existing group localization en-US for group {group_id}")
+
+          group_specs = sorted({
+              (spec["group_reference"], spec["group_locale_name"])
+              for spec in PRODUCTS
+              if not spec.get("legacy_read_only")
+          })
+          group_ids = {
+              group_spec: ensure_group(group_spec[0], group_spec[1])
+              for group_spec in group_specs
+          }
+          existing_subs = []
+          for group_ref in app_subscription_group_refs():
+              existing_subs.extend(list_all(f"/subscriptionGroups/{group_ref['id']}/subscriptions?limit=200"))
+          by_product = {sub["attributes"].get("productId"): sub for sub in existing_subs}
+          configured = []
+
+          for spec in PRODUCTS:
+              if spec.get("legacy_read_only"):
+                  print(f"Keeping legacy subscription unchanged: {spec['product_id']}")
+                  continue
+
+              sub = by_product.get(spec["product_id"])
+              if sub:
+                  sub_id = sub["id"]
+                  api(
+                      "PATCH",
+                      f"/subscriptions/{sub_id}",
+                      json={
+                          "data": {
+                              "type": "subscriptions",
+                              "id": sub_id,
+                              "attributes": {
+                                  "name": spec["name"],
+                                  "reviewNote": spec["review_note"],
+                                  "groupLevel": spec["group_level"],
+                                  "familySharable": False,
+                              },
+                          }
+                      },
+                  )
+                  print(f"Updated subscription: {spec['product_id']} -> {sub_id}")
+              else:
+                  sub = api(
+                      "POST",
+                      "/subscriptions",
+                      expected=(201,),
+                      json={
+                          "data": {
+                              "type": "subscriptions",
+                              "attributes": {
+                                  "name": spec["name"],
+                                  "productId": spec["product_id"],
+                                  "subscriptionPeriod": "ONE_MONTH",
+                                  "familySharable": False,
+                                  "reviewNote": spec["review_note"],
+                                  "groupLevel": spec["group_level"],
+                              },
+                              "relationships": {
+                                  "group": {
+                                      "data": {
+                                          "type": "subscriptionGroups",
+                                          "id": group_ids[(spec["group_reference"], spec["group_locale_name"])],
+                                      }
+                                  }
+                              },
+                          }
+                      },
+                  )["data"]
+                  sub_id = sub["id"]
+                  print(f"Created subscription: {spec['product_id']} -> {sub_id}")
+
+              localizations = list_all(f"/subscriptions/{sub_id}/subscriptionLocalizations?limit=200")
+              en_loc = next((loc for loc in localizations if loc["attributes"].get("locale") == "en-US"), None)
+              if en_loc:
+                  patch_or_keep_active(
+                      f"/subscriptionLocalizations/{en_loc['id']}",
+                      {
+                          "data": {
+                              "type": "subscriptionLocalizations",
+                              "id": en_loc["id"],
+                              "attributes": {
+                                  "name": spec["display_name"],
+                                  "description": spec["description"],
+                              },
+                          }
+                      },
+                      f"localization en-US for {spec['product_id']}",
+                  )
+              else:
+                  api(
+                      "POST",
+                      "/subscriptionLocalizations",
+                      expected=(201,),
+                      json={
+                          "data": {
+                              "type": "subscriptionLocalizations",
+                              "attributes": {
+                                  "name": spec["display_name"],
+                                  "locale": "en-US",
+                                  "description": spec["description"],
+                              },
+                              "relationships": {
+                                  "subscription": {"data": {"type": "subscriptions", "id": sub_id}}
+                              },
+                          }
+                      },
+                  )
+                  print(f"Created localization en-US for {spec['product_id']}")
+
+              availability_payload = {
+                  "data": {
+                      "type": "subscriptionAvailabilities",
+                      "attributes": {"availableInNewTerritories": False},
+                      "relationships": {
+                          "availableTerritories": {
+                              "data": [{"type": "territories", "id": "KAZ"}]
+                          },
+                          "subscription": {"data": {"type": "subscriptions", "id": sub_id}},
+                      },
+                  }
+              }
+              availability = requests.post(
+                  f"{BASE}/subscriptionAvailabilities",
+                  headers={**headers(), "Content-Type": "application/json"},
+                  json=availability_payload,
+                  timeout=60,
+              )
+              if availability.status_code == 201:
+                  print(f"Enabled KAZ availability for {spec['product_id']}")
+              elif availability.status_code == 409 and "AVAILABILITY_REMOVAL_NOT_ALLOWED" in availability.text:
+                  print(f"Keeping existing availability for {spec['product_id']} because Apple blocks removal")
+              else:
+                  print(f"POST {BASE}/subscriptionAvailabilities -> HTTP {availability.status_code}")
+                  print(availability.text[:2000])
+                  raise SystemExit(1)
+
+              price_points = list_all(
+                  f"/subscriptions/{sub_id}/pricePoints?include=territory&filter[territory]=KAZ&limit=8000"
+              )
+              exact = [
+                  point
+                  for point in price_points
+                  if money(point["attributes"].get("customerPrice")) == spec["price_kaz"].quantize(Decimal("0.01"))
+              ]
+              if not exact:
+                  sample = ", ".join(str(p["attributes"].get("customerPrice")) for p in price_points[:20])
+                  raise SystemExit(
+                      f"No exact KAZ price point {spec['price_kaz']} for {spec['product_id']}. First values: {sample}"
+                  )
+              price_point_id = exact[0]["id"]
+              print(f"Using KAZ price point for {spec['product_id']}: {price_point_id}")
+              prices = list_all(f"/subscriptions/{sub_id}/prices?include=subscriptionPricePoint,territory&limit=200")
+              current_price_point_ids = {
+                  price.get("relationships", {}).get("subscriptionPricePoint", {}).get("data", {}).get("id")
+                  for price in prices
+              }
+              current_territories = {territory_id(price) for price in prices if territory_id(price)}
+              equalized_points = list_all(
+                  f"/subscriptionPricePoints/{price_point_id}/equalizations?include=territory&limit=200"
+              )
+              price_points_to_set = {price_point_id: exact[0]}
+              for point in equalized_points:
+                  price_points_to_set[point["id"]] = point
+              print(f"Global equalized price points for {spec['product_id']}: {len(price_points_to_set)}")
+
+              created_prices = 0
+              skipped_prices = 0
+              scheduled_prices = 0
+              for global_price_point_id, global_point in price_points_to_set.items():
+                  territory = territory_id(global_point)
+                  if global_price_point_id in current_price_point_ids:
+                      skipped_prices += 1
+                      continue
+                  if territory and territory in current_territories:
+                      start_date = (date.today() + timedelta(days=2)).isoformat()
+                      price_payload = {
+                          "data": {
+                              "type": "subscriptionPrices",
+                              "attributes": {
+                                  "startDate": start_date,
+                                  "preserveCurrentPrice": False,
+                              },
+                              "relationships": {
+                                  "subscription": {"data": {"type": "subscriptions", "id": sub_id}},
+                                  "subscriptionPricePoint": {
+                                      "data": {"type": "subscriptionPricePoints", "id": global_price_point_id}
+                                  },
+                              },
+                          }
+                      }
+                      scheduled = requests.post(
+                          f"{BASE}/subscriptionPrices",
+                          headers={**headers(), "Content-Type": "application/json"},
+                          json=price_payload,
+                          timeout=60,
+                      )
+                      if scheduled.status_code != 201:
+                          print(f"POST {BASE}/subscriptionPrices -> HTTP {scheduled.status_code}")
+                          print(scheduled.text[:2000])
+                          raise SystemExit(1)
+                      scheduled_prices += 1
+                      continue
+                  price_payload = {
+                      "data": {
+                          "type": "subscriptionPrices",
+                          "attributes": {"startDate": None},
+                          "relationships": {
+                              "subscription": {"data": {"type": "subscriptions", "id": sub_id}},
+                              "subscriptionPricePoint": {
+                                  "data": {"type": "subscriptionPricePoints", "id": global_price_point_id}
+                              },
+                          },
+                      }
+                  }
+                  price_response = requests.post(
+                      f"{BASE}/subscriptionPrices",
+                      headers={**headers(), "Content-Type": "application/json"},
+                      json=price_payload,
+                      timeout=60,
+                  )
+                  if price_response.status_code == 201:
+                      created_prices += 1
+                  elif price_response.status_code == 409 and "Initial price cannot be created again" in price_response.text:
+                      start_date = (date.today() + timedelta(days=2)).isoformat()
+                      price_payload = {
+                          "data": {
+                              "type": "subscriptionPrices",
+                              "attributes": {
+                                  "startDate": start_date,
+                                  "preserveCurrentPrice": False,
+                              },
+                              "relationships": {
+                                  "subscription": {"data": {"type": "subscriptions", "id": sub_id}},
+                                  "subscriptionPricePoint": {
+                                      "data": {"type": "subscriptionPricePoints", "id": global_price_point_id}
+                                  },
+                              },
+                          }
+                      }
+                      scheduled = requests.post(
+                          f"{BASE}/subscriptionPrices",
+                          headers={**headers(), "Content-Type": "application/json"},
+                          json=price_payload,
+                          timeout=60,
+                      )
+                      if scheduled.status_code != 201:
+                          print(f"POST {BASE}/subscriptionPrices -> HTTP {scheduled.status_code}")
+                          print(scheduled.text[:2000])
+                          raise SystemExit(1)
+                      scheduled_prices += 1
+                  else:
+                      print(f"POST {BASE}/subscriptionPrices -> HTTP {price_response.status_code}")
+                      print(price_response.text[:2000])
+                      raise SystemExit(1)
+              print(
+                  f"Prices for {spec['product_id']}: "
+                  f"created={created_prices} scheduled={scheduled_prices} skipped={skipped_prices}"
+              )
+
+              configured.append((spec, sub_id))
+
+          screenshot_path = os.environ["SCREENSHOT_PATH"]
+          if os.path.exists(screenshot_path):
+              with open(screenshot_path, "rb") as f:
+                  data = f.read()
+              checksum = hashlib.md5(data).hexdigest()
+              size = len(data)
+              filename = os.path.basename(screenshot_path)
+              mime = mimetypes.guess_type(filename)[0] or "image/jpeg"
+              print(f"Review screenshot: {filename} size={size} md5={checksum} mime={mime}")
+
+              for spec, sub_id in configured:
+                  existing_response = requests.get(
+                      f"{BASE}/subscriptions/{sub_id}/appStoreReviewScreenshot",
+                      headers=headers(),
+                      timeout=60,
+                  )
+                  if existing_response.status_code == 200:
+                      current = existing_response.json().get("data")
+                  elif existing_response.status_code == 404:
+                      current = None
+                  else:
+                      print(
+                          f"GET {BASE}/subscriptions/{sub_id}/appStoreReviewScreenshot "
+                          f"-> HTTP {existing_response.status_code}"
+                      )
+                      print(existing_response.text[:2000])
+                      raise SystemExit(1)
+
+                  if current and current.get("attributes", {}).get("sourceFileChecksum") == checksum:
+                      print(
+                          f"Keeping current review screenshot for {spec['product_id']} "
+                          f"-> {current['id']}"
+                      )
+                      continue
+
+                  if current:
+                      api(
+                          "DELETE",
+                          f"/subscriptionAppStoreReviewScreenshots/{current['id']}",
+                          expected=(204,),
+                      )
+                      print(
+                          f"Removed stale review screenshot for {spec['product_id']} "
+                          f"-> {current['id']}"
+                      )
+
+                  reservation_response = requests.post(
+                      f"{BASE}/subscriptionAppStoreReviewScreenshots",
+                      headers={**headers(), "Content-Type": "application/json"},
+                      json={
+                          "data": {
+                              "type": "subscriptionAppStoreReviewScreenshots",
+                              "attributes": {"fileName": filename, "fileSize": size},
+                              "relationships": {
+                                  "subscription": {"data": {"type": "subscriptions", "id": sub_id}}
+                              },
+                          }
+                      },
+                      timeout=60,
+                  )
+                  if reservation_response.status_code != 201:
+                      print(f"POST {BASE}/subscriptionAppStoreReviewScreenshots -> HTTP {reservation_response.status_code}")
+                      print(reservation_response.text[:2000])
+                      raise SystemExit(1)
+                  reservation = reservation_response.json()["data"]
+                  asset_id = reservation["id"]
+                  for op in reservation["attributes"]["uploadOperations"]:
+                      chunk = data[op["offset"] : op["offset"] + op["length"]]
+                      upload_headers = {h["name"]: h["value"] for h in op["requestHeaders"]}
+                      up = requests.request(op["method"], op["url"], headers=upload_headers, data=chunk, timeout=60)
+                      if up.status_code >= 300:
+                          print(f"Screenshot upload failed HTTP {up.status_code}: {up.text[:1000]}")
+                          raise SystemExit(1)
+                  api(
+                      "PATCH",
+                      f"/subscriptionAppStoreReviewScreenshots/{asset_id}",
+                      json={
+                          "data": {
+                              "type": "subscriptionAppStoreReviewScreenshots",
+                              "id": asset_id,
+                              "attributes": {"uploaded": True, "sourceFileChecksum": checksum},
+                          }
+                      },
+                  )
+                  print(f"Uploaded review screenshot for {spec['product_id']} -> {asset_id}")
+          else:
+              print(f"Review screenshot not found, skipped: {screenshot_path}")
+
+          print("Configured subscriptions:")
+          for spec, sub_id in configured:
+              print(f"  {spec['product_id']} -> {sub_id}, {spec['price_kaz']} KZT")
+          PY

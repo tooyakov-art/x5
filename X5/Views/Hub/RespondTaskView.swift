@@ -67,6 +67,7 @@ struct RespondTaskView: View {
     }
 
     private func submit() async {
+        chats.configureAccessTokenProvider(auth: auth)
         guard let uid = auth.userId, let token = auth.accessToken else { return }
         saving = true
         defer { saving = false }
@@ -85,8 +86,15 @@ struct RespondTaskView: View {
         }
         // Open a chat with the task author tagged with this task
         if let chat = await chats.ensureChat(otherUserId: task.authorId, currentUserId: uid, taskId: task.id, taskTitle: task.title, accessToken: token) {
-            // Send the response message into the chat as well so the author sees it
-            _ = await chats.sendText(chatId: chat.id, currentUserId: uid, text: trimmed, accessToken: token)
+            var rows = await chats.loadMessages(chatId: chat.id, accessToken: token, forceRefresh: true)
+            if !rows.contains(where: { $0.taskCard?.id == task.id }),
+               let card = await chats.sendTaskCard(chatId: chat.id, currentUserId: uid, task: task, accessToken: token) {
+                rows.append(card)
+            }
+            if let responseMessage = await chats.sendText(chatId: chat.id, currentUserId: uid, text: trimmed, accessToken: token) {
+                rows.append(responseMessage)
+            }
+            chats.persistMessageCache(chatId: chat.id, rows: rows)
             navigatingChat = chat
         } else {
             dismiss()

@@ -1,40 +1,36 @@
 # X5
 
-Native iOS app — AI caption writer for marketers. SwiftUI, single screen, zero third-party dependencies.
-
-Built specifically to **maximize App Store approval probability** under a fresh bundle ID, after `com.x5marketing.mobile` was rejected for 4 months running.
+Native iOS marketing workspace built with SwiftUI. X5 combines AI image tools, voice generation, courses, chat, specialist tasks, and profile/account flows in one native app.
 
 ## Status
 
-- **Bundle ID:** `com.x5studio.app` (NEW, no rejection history)
+- **Bundle ID:** `com.x5studio.app`
 - **App Store name:** `X5`
-- **Version:** 1.0.0 (build 1)
-- **Apple Team:** F8LA8PC4U6 (same as X5 Marketing)
+- **Version:** 1.1.6 (build 210)
+- **Release branch:** `codex/x5-cleanup-from-restore-clean`
+- **Apple Team:** F8LA8PC4U6
 - **Stack:** Swift 5.9 + SwiftUI, iOS 16+, no external libraries
-- **Backend:** Reuses X5 Supabase (`afwznqjpshybmqhlewmy`) only for Apple Sign-In + delete-account RPC
-- **Build:** GitHub Actions macOS runner (free tier)
+- **Backend:** X5 Supabase Edge Functions and private Storage; provider credentials stay server-side
+- **Release:** GitHub Actions builds and uploads to TestFlight
+- **Current outcome:** YouTube cover generator has ten styles, a hero-photo slot, and 16:9 output; Home voice generation now has an image-backed cover
+- **Verification:** 238 source regressions and the full iOS simulator suite pass; build 210 is `VALID`, `IN_BETA_TESTING`, and assigned to internal groups `123` and `321`
+- **Remaining:** direct ElevenLabs account/provider configuration is deferred; the current protected fal ElevenLabs path remains active
 
 ## What's inside
 
-- **3 views**, single tab, single feature
-  - `LoginView` — Apple Sign-In only
-  - `MainView` — topic + tone → 5 generated captions
-  - `ProfileView` — sign out + delete account
-- **Caption generation** is local (template-based) — no AI API calls in v1.0, no API keys in the binary
-- **Delete account** calls `public.delete_own_account()` Supabase RPC
-- **Privacy Manifest** declares 4 standard Apple-required API reasons; no tracking, no third-party SDKs
+- Native Home, CourseUP, chats, Hub, profile, search, and portfolio flows
+- AI image generation with category-specific briefs, references, and progress recovery
+- YouTube covers: ten styles, hero photo, and up to four visual references
+- Voice generation with language, voice, stability, speed, playback, and sharing
+- Server-side credits, idempotency, private media storage, and signed downloads
+- Sign in with Apple and in-app account deletion
 
-## Why this passes review (vs X5 Marketing)
+## Release safety
 
-| Past X5 reject | Closed in X5 |
-|---|---|
-| 5.2.3 Audio/Video Download | No media features at all |
-| 3.1.1 External Payments | No payments — fully free |
-| 5.1.1(v) Account Deletion | Two-step confirm + real Supabase RPC |
-| 2.1(b) IAP not submitted | No IAP — nothing to submit |
-| 4.2 Minimum Functionality | Native SwiftUI, no WebView |
-| 4.3 Spam | New bundle ID, new icon, new ASC entry |
-| 4.8 Sign in with Apple | Apple Sign-In is the only sign-in method |
+- No provider secret is embedded in the iOS binary.
+- Voice requests use idempotency and authenticated server functions.
+- Generated media is stored privately and delivered through short-lived signed URLs.
+- Account deletion remains available inside the app.
 
 ## Project layout
 

@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 
 /// Hub — bottom tab matching web HireView. Two segmented sub-tabs:
 /// Specialists (profiles where show_in_hub=true) and Tasks (open task marketplace).
@@ -13,16 +13,35 @@ struct HubView: View {
     @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = HubService()
     @StateObject private var chats = ChatsService()
-    @StateObject private var portfolio = PortfolioService()
+    @StateObject private var deepLinkRouter = AppDeepLinkRouter.shared
     @State private var segment: Segment = .specialists
     @State private var category: String? = nil
+    @State private var taskBrowseState = HubTaskBrowseState()
     @State private var showingPostTask = false
-    @State private var showingAddPortfolio = false
     @State private var showingEditProfile = false
     @State private var openingChatWith: String? = nil
     @State private var startingChat: ChatRoom? = nil
     @State private var chatError: String? = nil
-    @State private var selectedCountry: HubCountry = .kazakhstan
+    @State private var selectedCountryCode: String = "KZ"
+    @State private var selectedCity: String = ""
+    @State private var didSeedLocation = false
+    @State private var taskCategoriesExpanded = false
+    @State private var deepLinkedTask: HubTask?
+    @State private var taskOpenError: String?
+
+    private var currentRole: String {
+        (currentUser.profile?.userRole ?? "").lowercased()
+    }
+
+    private var canAddPortfolioFromHub: Bool {
+        currentRole == "entrepreneur" || currentRole == "creator"
+    }
+
+    private var visibleTaskCategories: [HubCategory] {
+        taskCategoriesExpanded
+            ? HubCategories.hubDisplayOrder
+            : Array(HubCategories.hubDisplayOrder.prefix(7))
+    }
 
     var body: some View {
         NavigationStack {
@@ -40,12 +59,16 @@ struct HubView: View {
                 .padding(.bottom, 4)
 
                 if segment == .specialists {
-                    addPortfolioButton
+                    if canAddPortfolioFromHub {
+                        addPortfolioButton
+                    }
                     countrySelector(messageKey: "hub_country_specialists")
                 } else if segment == .tasks {
                     createTaskButton
                     countrySelector(messageKey: "hub_country_orders")
-                    categoryRail
+                    if taskBrowseState.isShowingResults {
+                        categoryRail
+                    }
                 }
 
                 Group {
@@ -64,47 +87,37 @@ struct HubView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    if segment == .specialists && !(currentUser.profile?.showInHub ?? false) {
-                        Button {
-                            NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
-                        } label: {
-                            Text(loc.t("hub_become_specialist"))
-                        }
-                    }
-                }
-            }
             .task {
+                chats.configureAccessTokenProvider(auth: auth)
+                applyProfileCategoriesOnEntry()
+                await repairCurrentHubProfileIfNeeded()
+                seedLocationFromProfileIfNeeded()
                 await service.loadSpecialists()
-                await service.loadTasks()
+                await loadHubTasks()
+                await openPendingTaskIfNeeded()
+            }
+            .onChange(of: currentUser.profile?.specialistCategory ?? []) { _ in
+                applyProfileCategoriesOnEntry()
+            }
+            .onChange(of: deepLinkRouter.pendingHubTaskID) { taskID in
+                guard taskID != nil else { return }
+                Task { await openPendingTaskIfNeeded() }
+            }
+            .navigationDestination(isPresented: Binding(
+                get: { deepLinkedTask != nil },
+                set: { if !$0 { deepLinkedTask = nil } }
+            )) {
+                if let task = deepLinkedTask { TaskDetailView(task: task) }
             }
             .sheet(isPresented: $showingPostTask) {
                 CreateTaskView(onCreated: {
-                    Task { await service.loadTasks() }
+                    Task { await loadHubTasks() }
                 })
             }
-            .sheet(isPresented: $showingAddPortfolio) {
-                AddPortfolioItemView { data, mediaType, mime, ext, title, desc in
-                    guard let token = auth.accessToken, let userId = auth.userId else {
-                        chatError = "Сначала войди в аккаунт."
-                        return false
-                    }
-                    return await portfolio.addMedia(
-                        data: data,
-                        type: mediaType,
-                        mime: mime,
-                        ext: ext,
-                        userId: userId,
-                        title: title,
-                        description: desc,
-                        accessToken: token
-                    )
-                }
-                .preferredColorScheme(.dark)
-            }
-            .sheet(isPresented: $showingEditProfile) {
-                EditProfileView()
+            .sheet(isPresented: $showingEditProfile, onDismiss: {
+                Task { await service.loadSpecialists() }
+            }) {
+                EditProfileView(activateSpecialistOnOpen: true)
             }
             .sheet(item: $startingChat) { chat in
                 NavigationStack { ChatThreadView(chat: chat) }
@@ -118,21 +131,29 @@ struct HubView: View {
             } message: {
                 Text(chatError ?? "")
             }
+            .alert("Задание не открылось", isPresented: Binding(
+                get: { taskOpenError != nil },
+                set: { if !$0 { taskOpenError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(taskOpenError ?? "")
+            }
         }
     }
 
     private var hubHeader: some View {
         HStack(alignment: .center) {
             Text(loc.t("hub_title"))
-                .font(.system(size: 42, weight: .black))
+                .font(.system(size: 34, weight: .black))
                 .foregroundColor(.white)
-                .kerning(-1.0)
+                .kerning(0)
                 .shadow(color: X5Style.blueSoft.opacity(0.45), radius: 18, x: 0, y: 0)
             Spacer()
         }
         .padding(.horizontal, 24)
-        .padding(.top, -22)
-        .padding(.bottom, 4)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
     }
 
     private var createTaskButton: some View {
@@ -155,9 +176,9 @@ struct HubView: View {
 
     private var addPortfolioButton: some View {
         Button {
-            showingAddPortfolio = true
+            showingEditProfile = true
         } label: {
-            Label(loc.t("hub_add_portfolio"), systemImage: "person.crop.circle")
+            Label(loc.t("hub_add_portfolio"), systemImage: "photo.badge.plus")
                 .font(.system(size: 16, weight: .black))
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)
@@ -172,73 +193,121 @@ struct HubView: View {
     }
 
     private func countrySelector(messageKey: String) -> some View {
-        HStack(spacing: 8) {
-            Menu {
-                Button {
-                    selectedCountry = .kazakhstan
-                } label: {
-                    Label(loc.t(HubCountry.kazakhstan.titleKey), systemImage: "checkmark")
-                }
-                Section(loc.t("hub_country_soon")) {
-                    ForEach(HubCountry.comingSoon) { country in
-                        Button(loc.t(country.titleKey)) {}
-                            .disabled(true)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Menu {
+                    Button(loc.t("hub_all_countries")) {
+                        selectedCountryCode = ""
+                        selectedCity = ""
                     }
+                    ForEach(CISLocations.countries, id: \.code) { country in
+                        Button {
+                            selectedCountryCode = country.code
+                            selectedCity = ""
+                        } label: {
+                            if selectedCountryCode == country.code {
+                                Label(country.name, systemImage: "checkmark")
+                            } else {
+                                Text(country.name)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(selectedCountryName, systemImage: "location.fill")
+                        .font(.system(size: 13, weight: .heavy))
+                        .foregroundColor(.white.opacity(0.94))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
                 }
-            } label: {
-                Label(loc.t(selectedCountry.titleKey), systemImage: "location.fill")
-                    .font(.system(size: 13, weight: .heavy))
-                    .foregroundColor(.white.opacity(0.94))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.12))
-                    .clipShape(Capsule())
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                    )
+                .buttonStyle(.plain)
+
+                CISCityPickerButton(
+                    city: $selectedCity,
+                    countryCode: selectedCountryCode,
+                    allowsAllCities: true,
+                    compact: true
+                )
             }
-            .buttonStyle(.plain)
 
             Text(loc.t(messageKey))
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.white.opacity(0.76))
-                .lineLimit(2)
-                .minimumScaleFactor(0.82)
-            Spacer()
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.62))
         }
         .padding(.horizontal, 16)
         .padding(.top, 2)
     }
 
-    private var categoryRail: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 9) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) { category = nil }
-                } label: {
-                    CategoryChip(title: loc.t("hub_all"),
-                                 systemImage: "line.3.horizontal.decrease.circle",
-                                 count: totalVisibleCount,
-                                 isSelected: category == nil)
-                }
-                .buttonStyle(.plain)
+    private var selectedCountryName: String {
+        guard !selectedCountryCode.isEmpty else { return loc.t("hub_all_countries") }
+        return CISLocations.countryName(for: selectedCountryCode) ?? selectedCountryCode
+    }
 
-                ForEach(HubCategories.all) { cat in
+    private var categoryRail: some View {
+        HStack(spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    taskBrowseState.showCategories()
+                    taskCategoriesExpanded = false
+                }
+            } label: {
+                CategoryChip(title: loc.t("hub_back_to_categories"),
+                             systemImage: "chevron.left",
+                             count: nil,
+                             isSelected: false)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("hub-task-results-back")
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 9) {
                     Button {
-                        withAnimation(.easeInOut(duration: 0.18)) { category = cat.id }
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            taskBrowseState.showAllResults()
+                        }
                     } label: {
-                        CategoryChip(title: HubCategories.label(for: cat.id, language: loc.current),
-                                     systemImage: hubCategorySymbol(for: cat.id),
-                                     count: countForCategory(cat.id),
-                                     isSelected: category == cat.id)
+                        CategoryChip(title: loc.t("hub_all"),
+                                     systemImage: "line.3.horizontal.decrease.circle",
+                                     count: totalVisibleCount,
+                                     isSelected: taskBrowseState.selectedCategoryIds.isEmpty)
                     }
                     .buttonStyle(.plain)
+                    .id("cat-all")
+
+                    ForEach(visibleTaskCategories) { cat in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                taskBrowseState.toggleResults(for: cat.id)
+                            }
+                        } label: {
+                            CategoryChip(title: HubCategories.label(for: cat.id, language: loc.current),
+                                         systemImage: hubCategorySymbol(for: cat.id),
+                                         count: countForCategory(cat.id),
+                                         isSelected: taskBrowseState.selectedCategoryIds.contains(cat.id))
+                        }
+                        .buttonStyle(.plain)
+                        .id("cat-\(cat.id)")
+                    }
+
+                    if !taskCategoriesExpanded {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.18)) { taskCategoriesExpanded = true }
+                        } label: {
+                            CategoryChip(title: loc.t("common_more"),
+                                         systemImage: "ellipsis.circle",
+                                         count: nil,
+                                         isSelected: false)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
+                .padding(.trailing, 16)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
         }
+        .padding(.leading, 16)
+        .padding(.vertical, 10)
     }
 
     private func startChat(with person: HubSpecialist) {
@@ -268,18 +337,56 @@ struct HubView: View {
     private var specialistsContent: some View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(spacing: 14) {
-                specialistCategoryGrid
-                if totalVisibleCount == 0 && !service.isLoading {
-                    EmptyState(systemImage: "person.crop.circle.badge.questionmark",
-                               title: loc.t("hub_no_specialists"),
-                               subtitle: loc.t("hub_no_specialists_sub"))
-                        .padding(.top, 40)
+                if category == nil {
+                    specialistCategoryGrid
+                    if totalVisibleCount == 0 && !service.isLoading {
+                        EmptyState(systemImage: "person.crop.circle.badge.questionmark",
+                                   title: loc.t("hub_no_specialists"),
+                                   subtitle: loc.t("hub_no_specialists_sub"))
+                            .padding(.top, 40)
+                    }
+                } else {
+                    LazyVStack(spacing: 10) {
+                        ForEach(filteredSpecialists) { person in
+                            HStack(spacing: 8) {
+                                NavigationLink {
+                                    UserProfileView(userId: person.id, fallback: person)
+                                } label: {
+                                    SpecialistRow(person: person)
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    startChat(with: person)
+                                } label: {
+                                    Group {
+                                        if openingChatWith == person.id {
+                                            ProgressView().tint(.accentColor)
+                                        } else {
+                                            Image(systemName: "message.fill")
+                                                .font(.system(size: 16, weight: .semibold))
+                                                .foregroundColor(.accentColor)
+                                        }
+                                    }
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(openingChatWith != nil)
+                            }
+                        }
+                        if filteredSpecialists.isEmpty && !service.isLoading {
+                            EmptyState(systemImage: "person.crop.circle.badge.questionmark",
+                                       title: loc.t("hub_no_specialists"),
+                                       subtitle: loc.t("hub_no_specialists_sub"))
+                                .padding(.top, 60)
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 32)
-            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .clipped()
@@ -303,7 +410,7 @@ struct HubView: View {
             }
             .buttonStyle(.plain)
 
-            ForEach(HubCategories.all) { cat in
+            ForEach(HubCategories.hubDisplayOrder) { cat in
                 NavigationLink {
                     specialistCategoryPage(
                         categoryId: cat.id,
@@ -366,7 +473,6 @@ struct HubView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 32)
-            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .clipped()
@@ -391,10 +497,12 @@ struct HubView: View {
             return service.specialists
                 .filter { !BlockList.contains($0.id) }
                 .filter { $0.id != auth.userId }
+                .filter { locationMatches(countryCode: $0.countryCode, city: $0.city) }
                 .count
         case .tasks:
             return service.tasks
                 .filter { !BlockList.contains($0.authorId) }
+                .filter { locationMatches(countryCode: $0.countryCode, city: $0.city) }
                 .count
         }
     }
@@ -411,7 +519,9 @@ struct HubView: View {
 
     private var taskCategoryCounts: [String: Int] {
         var counts: [String: Int] = [:]
-        for task in service.tasks where !BlockList.contains(task.authorId) {
+        for task in service.tasks
+        where !BlockList.contains(task.authorId)
+            && locationMatches(countryCode: task.countryCode, city: task.city) {
             if let category = task.category {
                 counts[normalizedHubCategory(category), default: 0] += 1
             }
@@ -460,7 +570,6 @@ struct HubView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 32)
-            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .clipped()
@@ -470,29 +579,119 @@ struct HubView: View {
     private var tasksList: some View {
         ScrollView(.vertical, showsIndicators: true) {
             LazyVStack(spacing: 10) {
-                ForEach(filteredTasks) { task in
-                    NavigationLink {
-                        TaskDetailView(task: task)
-                    } label: {
-                        TaskRow(task: task)
+                if let error = service.error {
+                    VStack(spacing: 10) {
+                        Text(loc.t("hub_tasks_load_error"))
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                        Text(error)
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.58))
+                            .multilineTextAlignment(.center)
+                            .lineLimit(3)
+                        Button(loc.t("btn_retry")) {
+                            Task { await loadHubTasks() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.accentColor)
+                        .foregroundStyle(.black)
                     }
-                    .buttonStyle(.plain)
+                    .padding(16)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.red.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
-                if filteredTasks.isEmpty && !service.isLoading {
-                    EmptyState(systemImage: "tray",
-                               title: loc.t("hub_no_tasks"),
-                               subtitle: loc.t("hub_no_tasks_sub"))
-                        .padding(.top, 60)
+
+                if !taskBrowseState.isShowingResults {
+                    taskCategoryGrid
+                    if totalVisibleCount == 0 && !service.isLoading {
+                        EmptyState(systemImage: "tray",
+                                   title: loc.t("hub_no_tasks"),
+                                   subtitle: loc.t("hub_no_tasks_sub"))
+                            .padding(.top, 40)
+                    }
+                } else {
+                    ForEach(filteredTasks) { task in
+                        NavigationLink {
+                            TaskDetailView(task: task)
+                        } label: {
+                            TaskRow(task: task)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if filteredTasks.isEmpty && !service.isLoading {
+                        EmptyState(systemImage: "tray",
+                                   title: loc.t("hub_no_tasks"),
+                                   subtitle: loc.t("hub_no_tasks_sub"))
+                            .padding(.top, 60)
+                    }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 32)
-            .frame(maxWidth: min(UIScreen.main.bounds.width, 640))
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .clipped()
-        .refreshable { await service.loadTasks() }
+        .refreshable { await loadHubTasks() }
+    }
+
+    private var taskCategoryGrid: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 4),
+            spacing: 8
+        ) {
+            Button {
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                    taskBrowseState.showAllResults()
+                    taskCategoriesExpanded = true
+                }
+            } label: {
+                CategoryTile(
+                    title: loc.t("hub_all"),
+                    systemImage: "line.3.horizontal.decrease.circle",
+                    count: totalVisibleCount,
+                    isSelected: false
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("hub-task-category-all")
+
+            Button {
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                    taskBrowseState.showResults(forProfileCategories: currentUser.profile?.specialistCategory)
+                    taskCategoriesExpanded = true
+                }
+            } label: {
+                CategoryTile(
+                    title: loc.t("hub_tasks_by_categories"),
+                    systemImage: "slider.horizontal.3",
+                    count: 0,
+                    isSelected: false
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("hub-task-category-filter")
+
+            ForEach(HubCategories.hubDisplayOrder) { cat in
+                Button {
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                        taskBrowseState.showResults(for: cat.id)
+                        taskCategoriesExpanded = true
+                    }
+                } label: {
+                    CategoryTile(
+                        title: HubCategories.label(for: cat.id, language: loc.current),
+                        systemImage: hubCategorySymbol(for: cat.id),
+                        count: countForCategory(cat.id),
+                        isSelected: false
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("hub-task-category-\(cat.id)")
+            }
+        }
     }
 
     private var filteredSpecialists: [HubSpecialist] {
@@ -502,7 +701,7 @@ struct HubView: View {
     private var visibleSpecialists: [HubSpecialist] {
         service.specialists
             .filter { !BlockList.contains($0.id) }
-            .filter { $0.id != auth.userId }
+            .filter { locationMatches(countryCode: $0.countryCode, city: $0.city) }
     }
 
     private func specialists(matching categoryId: String?) -> [HubSpecialist] {
@@ -513,9 +712,28 @@ struct HubView: View {
     }
 
     private var filteredTasks: [HubTask] {
-        let visible = service.tasks.filter { !BlockList.contains($0.authorId) }
-        guard let category else { return visible }
-        return visible.filter { normalizedHubCategory($0.category) == category }
+        let visible = service.tasks
+            .filter { !BlockList.contains($0.authorId) }
+            .filter { locationMatches(countryCode: $0.countryCode, city: $0.city) }
+        let filtered = visible.filter {
+            taskBrowseState.includes(categoryId: normalizedHubCategory($0.category))
+        }
+        guard taskBrowseState.selectedCategoryIds.isEmpty,
+              !taskBrowseState.preferredCategoryIds.isEmpty
+        else { return filtered }
+
+        // Stable partition: profile matches appear first while every open task
+        // remains visible in the server's original newest-first order.
+        return filtered.enumerated().sorted { lhs, rhs in
+            let lhsPreferred = taskBrowseState.preferredCategoryIds.contains(
+                normalizedHubCategory(lhs.element.category)
+            )
+            let rhsPreferred = taskBrowseState.preferredCategoryIds.contains(
+                normalizedHubCategory(rhs.element.category)
+            )
+            if lhsPreferred != rhsPreferred { return lhsPreferred && !rhsPreferred }
+            return lhs.offset < rhs.offset
+        }.map(\.element)
     }
 
     private func refreshCurrentHubSegment() async {
@@ -523,26 +741,78 @@ struct HubView: View {
         case .specialists:
             await service.loadSpecialists()
         case .tasks:
-            await service.loadTasks()
+            await loadHubTasks()
         }
+    }
+
+    private func seedLocationFromProfileIfNeeded() {
+        guard !didSeedLocation else { return }
+        didSeedLocation = true
+        if let code = currentUser.profile?.countryCode, !code.isEmpty {
+            selectedCountryCode = code
+        }
+        selectedCity = currentUser.profile?.city ?? ""
+    }
+
+    private func locationMatches(countryCode: String?, city: String?) -> Bool {
+        if !selectedCountryCode.isEmpty,
+           countryCode?.caseInsensitiveCompare(selectedCountryCode) != .orderedSame {
+            return false
+        }
+        let requestedCity = selectedCity.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !requestedCity.isEmpty else { return true }
+        return city?.range(of: requestedCity, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+    }
+
+    private func loadHubTasks() async {
+        // Never reuse a possibly expired cached JWT. The open feed remains
+        // readable anonymously if refresh is temporarily unavailable.
+        let token: String?
+        if auth.isAuthenticated {
+            token = await auth.freshAccessToken()
+        } else {
+            token = nil
+        }
+        await service.loadTasks(accessToken: token)
+    }
+
+    private func repairCurrentHubProfileIfNeeded() async {
+        guard currentUser.profile?.showInHub == true,
+              currentUser.profile?.isPublic != true,
+              let token = await auth.freshAccessToken()
+        else { return }
+        await currentUser.patchMany(["is_public": AnyEncodable(true)], accessToken: token)
+    }
+
+    private func applyProfileCategoriesOnEntry() {
+        _ = taskBrowseState.applyProfileCategoriesOnEntry(
+            currentUser.profile?.specialistCategory
+        )
+    }
+
+    private func openPendingTaskIfNeeded() async {
+        guard let taskID = deepLinkRouter.pendingHubTaskID else { return }
+        segment = .tasks
+        taskCategoriesExpanded = true
+
+        if let task = service.tasks.first(where: { $0.id == taskID }) {
+            deepLinkedTask = task
+            deepLinkRouter.consumeHubTask(id: taskID)
+            return
+        }
+        guard let token = await auth.freshAccessToken(),
+              let task = await service.loadTask(id: taskID, accessToken: token)
+        else {
+            taskOpenError = "Задание недоступно или было удалено."
+            deepLinkRouter.consumeHubTask(id: taskID)
+            return
+        }
+        deepLinkedTask = task
+        deepLinkRouter.consumeHubTask(id: taskID)
     }
 }
 
 // MARK: - Background
-
-private struct HubCountry: Identifiable, Hashable {
-    let id: String
-    let titleKey: String
-
-    static let kazakhstan = HubCountry(id: "kz", titleKey: "country_kazakhstan")
-    static let comingSoon: [HubCountry] = [
-        HubCountry(id: "uz", titleKey: "country_uzbekistan"),
-        HubCountry(id: "kg", titleKey: "country_kyrgyzstan"),
-        HubCountry(id: "ae", titleKey: "country_uae"),
-        HubCountry(id: "tr", titleKey: "country_turkey"),
-        HubCountry(id: "us", titleKey: "country_usa")
-    ]
-}
 
 // MARK: - Tile категории
 
@@ -559,6 +829,8 @@ private func normalizedHubCategory(_ value: String?) -> String {
         .replacingOccurrences(of: " ", with: "_")
 
     switch cleaned {
+    case "smm", "смм", "смм_специалист", "smm_specialist":
+        return "smm"
     case "ads", "ad", "target", "target_ads", "targeting_ads", "reklama", "реклама", "таргет", "таргет_реклама":
         return "targeting"
     case "chatbot", "chatbots", "bot", "bots", "botdev", "bot_dev":
@@ -581,7 +853,7 @@ private func normalizedHubCategory(_ value: String?) -> String {
 private struct CategoryChip: View {
     let title: String
     let systemImage: String
-    let count: Int
+    let count: Int?
     let isSelected: Bool
 
     var body: some View {
@@ -593,7 +865,7 @@ private struct CategoryChip: View {
                 .font(.system(size: 14, weight: .heavy))
                 .lineLimit(1)
                 .foregroundColor(isSelected ? .black : .white.opacity(0.76))
-            if count > 0 {
+            if let count, count > 0 {
                 Text("\(count)")
                     .font(.system(size: 12, weight: .black))
                     .padding(.leading, 1)
@@ -629,7 +901,7 @@ private struct CategoryTile: View {
                 .font(.system(size: 10.5, weight: .heavy))
                 .foregroundColor(isSelected ? .black : .white)
                 .multilineTextAlignment(.center)
-                .lineLimit(2)
+                .lineLimit(3)
                 .minimumScaleFactor(0.68)
             if count > 0 {
                 Text("\(count)")
@@ -662,13 +934,13 @@ private struct SpecialistRow: View {
             AvatarView(urlString: person.avatar, name: person.name, size: 48)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(person.name ?? person.nickname ?? "X5")
+                    Text(person.name ?? person.nickname ?? "X five marketing")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
-                    if person.isVerified == true {
+                    if person.hasActiveVerifiedBadge {
                         VerifiedChip(size: 12)
                     }
-                    if person.plan == "pro" {
+                    if person.isPro {
                         Text("PRO").font(.system(size: 9, weight: .heavy))
                             .foregroundColor(.black)
                             .padding(.horizontal, 5).padding(.vertical, 2)

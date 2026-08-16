@@ -1,13 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import * as economyModule from "./economy.mjs";
 
 import {
-  IMAGE_CREDIT_COST,
   buildFinalPrompt,
   generationCategories,
+  generationModels,
   generationSizes,
-  normalizeImages,
+  googleResponseFormat,
+  IMAGE_CREDIT_COST,
   normalizeGenerationRequest,
+  normalizeImages,
   normalizeQuantity,
 } from "./economy.mjs";
 
@@ -19,35 +22,56 @@ test("normalizes provider, category, prompt, and fixed credit cost", () => {
   });
 
   assert.equal(request.provider, "google");
-  assert.equal(request.model, "gemini-3.1-flash-image-preview");
+  assert.equal(request.model, "gemini-3.1-flash-image");
   assert.equal(request.category.id, "logo");
   assert.equal(request.prompt, "premium bakery mark");
   assert.equal(request.costCredits, IMAGE_CREDIT_COST);
 });
 
-test("keeps exact Nano Banana model ids", () => {
+test("keeps only supported image model ids", () => {
+  const gptImage2 = normalizeGenerationRequest({
+    model: "gpt-image-2",
+    category: "post",
+    prompt: "make a premium post",
+  });
   const nanoBanana2 = normalizeGenerationRequest({
-    model: "gemini-3.1-flash-image-preview",
+    model: "gemini-3.1-flash-image",
     category: "post",
     prompt: "make a post",
   });
-  const nanoBananaPro = normalizeGenerationRequest({
-    model: "gemini-3-pro-image-preview",
-    category: "packaging",
-    prompt: "make the text readable on this box",
-  });
-  const request = normalizeGenerationRequest({
-    model: "gemini-2.5-flash-image",
-    category: "logo",
-    prompt: "simple banana logo",
+  const nanoBanana2Lite = normalizeGenerationRequest({
+    model: "gemini-3.1-flash-lite-image",
+    category: "post",
+    prompt: "make a fast draft",
   });
 
+  assert.equal(gptImage2.provider, "gpt");
+  assert.equal(gptImage2.model, "gpt-image-2");
   assert.equal(nanoBanana2.provider, "google");
-  assert.equal(nanoBanana2.model, "gemini-3.1-flash-image-preview");
-  assert.equal(nanoBananaPro.provider, "google");
-  assert.equal(nanoBananaPro.model, "gemini-3-pro-image-preview");
-  assert.equal(request.provider, "google");
-  assert.equal(request.model, "gemini-2.5-flash-image");
+  assert.equal(nanoBanana2.model, "gemini-3.1-flash-image");
+  assert.equal(nanoBanana2Lite.provider, "google");
+  assert.equal(nanoBanana2Lite.model, "gemini-3.1-flash-lite-image");
+});
+
+test("rejects removed image models before credits are spent", () => {
+  assert.throws(
+    () =>
+      normalizeGenerationRequest({
+        model: "gpt-image-1.5",
+        category: "post",
+        prompt: "old model",
+      }),
+    /unsupported_model/,
+  );
+  assert.throws(
+    () =>
+      normalizeGenerationRequest({
+        model: "gemini-3.1-flash-image-preview",
+        category: "post",
+        prompt: "old preview model",
+      }),
+    /unsupported_model/,
+  );
 });
 
 test("falls back to GPT and custom category for unknown values", () => {
@@ -63,7 +87,7 @@ test("falls back to GPT and custom category for unknown values", () => {
 
 test("normalizes quantity, size, and multiplied credit cost", () => {
   const request = normalizeGenerationRequest({
-    model: "gemini-3.1-flash-image-preview",
+    model: "gemini-3.1-flash-image",
     category: "post",
     prompt: "make three vertical posts",
     quantity: 3,
@@ -81,6 +105,43 @@ test("clamps generation quantity to supported UI range", () => {
   assert.equal(normalizeQuantity(0), 1);
   assert.equal(normalizeQuantity(99), 4);
   assert.equal(normalizeQuantity("bad"), 1);
+});
+
+test("defines supported generation models", () => {
+  assert.deepEqual(
+    generationModels.map((model) => model.id),
+    [
+      "gpt-image-2",
+      "gemini-3.1-flash-image",
+      "gemini-3.1-flash-lite-image",
+    ],
+  );
+});
+
+test("downgrades Nano Banana 2 Lite image size to its supported 1K output", () => {
+  const twoKSize = generationSizes.find((size) => size.id === "square_2k");
+
+  assert.equal(
+    googleResponseFormat(twoKSize, "gemini-3.1-flash-image").image_size,
+    "2K",
+  );
+  assert.equal(
+    googleResponseFormat(twoKSize, "gemini-3.1-flash-lite-image").image_size,
+    "1K",
+  );
+});
+
+test("requests the JPEG response format supported by current Nano Banana models", () => {
+  assert.equal(
+    googleResponseFormat(generationSizes[0], "gemini-3.1-flash-image")
+      .mime_type,
+    "image/jpeg",
+  );
+  assert.equal(
+    googleResponseFormat(generationSizes[0], "gemini-3.1-flash-lite-image")
+      .mime_type,
+    "image/jpeg",
+  );
 });
 
 test("defines supported generation sizes", () => {
@@ -105,14 +166,19 @@ test("defines supported generation sizes", () => {
 
 test("rejects missing prompts", () => {
   assert.throws(
-    () => normalizeGenerationRequest({ provider: "gpt", category: "post", prompt: "  " }),
+    () =>
+      normalizeGenerationRequest({
+        provider: "gpt",
+        category: "post",
+        prompt: "  ",
+      }),
     /prompt_required/,
   );
 });
 
 test("allows image edit requests without a prompt", () => {
   const request = normalizeGenerationRequest({
-    model: "gemini-3.1-flash-image-preview",
+    model: "gemini-3.1-flash-image",
     category: "custom",
     prompt: "",
     images: [{ mimeType: "image/png", data: "abc123" }],
@@ -131,7 +197,11 @@ test("builds category-specific generation prompt", () => {
 });
 
 test("builds conservative edit prompt when images are attached", () => {
-  const finalPrompt = buildFinalPrompt("improve image", generationCategories[0], true);
+  const finalPrompt = buildFinalPrompt(
+    "improve image",
+    generationCategories[0],
+    true,
+  );
 
   assert.match(finalPrompt, /Preserve the original subject/i);
   assert.match(finalPrompt, /Do not invent unrelated objects/i);
@@ -147,4 +217,283 @@ test("normalizes image references for edit requests", () => {
   assert.deepEqual(images, [
     { mimeType: "image/jpeg", data: "abc123" },
   ]);
+});
+
+test("prefers the Gemini key and removes duplicate provider keys", () => {
+  const keys = economyModule.normalizeProviderKeys?.([
+    " new-gemini-key ",
+    "old-google-key",
+    "new-gemini-key",
+    "",
+  ]);
+
+  assert.deepEqual(keys, ["new-gemini-key", "old-google-key"]);
+});
+
+test("rotates Google keys for authentication, quota, and transient failures", () => {
+  const suspended = economyModule.shouldRetryGoogleWithNextKey?.({
+    error: {
+      code: 403,
+      status: "PERMISSION_DENIED",
+      message:
+        "Permission denied: Consumer 'api_key:redacted' has been suspended.",
+      details: [{ reason: "CONSUMER_SUSPENDED" }],
+    },
+  }, 403);
+  const invalidPrompt = economyModule.shouldRetryGoogleWithNextKey?.({
+    error: {
+      code: 400,
+      status: "INVALID_ARGUMENT",
+      message: "Prompt is invalid.",
+    },
+  }, 400);
+
+  assert.equal(suspended, true);
+  assert.equal(economyModule.shouldRetryGoogleWithNextKey?.({}, 429), true);
+  assert.equal(economyModule.shouldRetryGoogleWithNextKey?.({}, 503), true);
+  assert.equal(invalidPrompt, false);
+});
+
+test("falls back from Google to GPT only for provider availability failures", () => {
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(400), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(401), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(403), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(404), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(408), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(409), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(422), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(429), true);
+  assert.equal(economyModule.shouldFallbackGoogleToGPT?.(500), true);
+});
+
+test("derives a stable legacy identity from every semantic generation input", async () => {
+  const request = normalizeGenerationRequest({
+    model: "gemini-3.1-flash-image",
+    category: "post",
+    prompt: "A premium coffee ad",
+    quantity: 2,
+    size: "portrait",
+    images: [{ mimeType: "image/png", data: "reference-image-one" }],
+  });
+  const sameRequest = normalizeGenerationRequest({
+    model: "gemini-3.1-flash-image",
+    category: "post",
+    prompt: "A premium coffee ad",
+    quantity: 2,
+    size: "portrait",
+    images: [{ mimeType: "image/png", data: "reference-image-one" }],
+  });
+  const changedReference = normalizeGenerationRequest({
+    model: "gemini-3.1-flash-image",
+    category: "post",
+    prompt: "A premium coffee ad",
+    quantity: 2,
+    size: "portrait",
+    images: [{ mimeType: "image/png", data: "reference-image-two" }],
+  });
+
+  const identity = await economyModule.buildGenerationIdentity?.(request, {});
+  const repeated = await economyModule.buildGenerationIdentity?.(
+    sameRequest,
+    {},
+  );
+  const changed = await economyModule.buildGenerationIdentity?.(
+    changedReference,
+    {},
+  );
+
+  assert.equal(identity.isLegacy, true);
+  assert.equal(identity.requestKey, repeated.requestKey);
+  assert.equal(identity.fingerprint, repeated.fingerprint);
+  assert.notEqual(identity.fingerprint, changed.fingerprint);
+  assert.match(identity.requestKey, /^legacy:[a-f0-9]{64}$/);
+  assert.doesNotMatch(
+    JSON.stringify(identity),
+    /premium coffee|reference-image/i,
+  );
+});
+
+test("hashes explicit idempotency keys without storing the raw key", async () => {
+  const request = normalizeGenerationRequest({
+    model: "gpt-image-2",
+    prompt: "A clean launch poster",
+  });
+  const identity = await economyModule.buildGenerationIdentity?.(request, {
+    requestId: "client-request-018f9f2c",
+  });
+
+  assert.equal(identity.isLegacy, false);
+  assert.match(identity.requestKey, /^explicit:[a-f0-9]{64}$/);
+  assert.doesNotMatch(identity.requestKey, /client-request/);
+});
+
+test("rejects malformed explicit idempotency keys before provider work", async () => {
+  const request = normalizeGenerationRequest({
+    model: "gpt-image-2",
+    prompt: "A clean launch poster",
+  });
+
+  await assert.rejects(
+    economyModule.buildGenerationIdentity?.(request, {
+      idempotencyKey: "x",
+    }),
+    /invalid_idempotency_key/,
+  );
+});
+
+test("keeps replay manifests free of prompts and raw image bytes", () => {
+  const manifest = economyModule.buildGenerationResultManifest?.({
+    provider: "gpt",
+    model: "gpt-image-2",
+    fallbackFrom: "google",
+    objects: [{
+      path: "user/request/1/0.png",
+      mimeType: "image/png",
+      sha256: "a".repeat(64),
+    }],
+  });
+
+  assert.deepEqual(manifest, {
+    version: 1,
+    provider: "gpt",
+    model: "gpt-image-2",
+    fallbackFrom: "google",
+    objects: [{
+      path: "user/request/1/0.png",
+      mimeType: "image/png",
+      sha256: "a".repeat(64),
+    }],
+  });
+  assert.doesNotMatch(JSON.stringify(manifest), /prompt|base64|imageBase64/i);
+});
+
+test("detects only supported generated image formats before private storage", () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]).toString(
+    "base64",
+  );
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0]).toString("base64");
+  const webp = Buffer.from("RIFF0000WEBP", "ascii").toString("base64");
+  const unknown = Buffer.from("not-an-image", "ascii").toString("base64");
+
+  assert.deepEqual(economyModule.detectGeneratedImageFormat?.(png), {
+    mimeType: "image/png",
+    extension: "png",
+  });
+  assert.deepEqual(economyModule.detectGeneratedImageFormat?.(jpeg), {
+    mimeType: "image/jpeg",
+    extension: "jpg",
+  });
+  assert.deepEqual(economyModule.detectGeneratedImageFormat?.(webp), {
+    mimeType: "image/webp",
+    extension: "webp",
+  });
+  assert.throws(
+    () => economyModule.detectGeneratedImageFormat?.(unknown),
+    /unsupported_generated_image_format/,
+  );
+});
+
+test("keeps the legacy response shape while adding fresh private URLs", () => {
+  const request = normalizeGenerationRequest({
+    model: "gemini-3.1-flash-image",
+    category: "post",
+    prompt: "Coffee launch",
+    quantity: 1,
+    size: "square",
+  });
+  const response = economyModule.buildGenerationResponse?.({
+    normalized: request,
+    imageBase64s: ["encoded-image"],
+    imageUrls: ["https://example.test/fresh-signed-url"],
+    provider: "gpt",
+    model: "gpt-image-2",
+    fallbackFrom: "google",
+    creditsRemaining: 940,
+  });
+
+  assert.equal(response.imageBase64, "encoded-image");
+  assert.deepEqual(response.imageBase64s, ["encoded-image"]);
+  assert.equal(response.imageUrl, "https://example.test/fresh-signed-url");
+  assert.deepEqual(response.imageUrls, [
+    "https://example.test/fresh-signed-url",
+  ]);
+  assert.equal(response.prompt, "Coffee launch");
+  assert.equal(response.fallbackFrom, "google");
+  assert.equal(response.creditsRemaining, 940);
+});
+
+test("keeps Google requests available when only the GPT fallback key exists", () => {
+  assert.equal(
+    economyModule.hasUsableGenerationProvider?.("google", 0, 1),
+    true,
+  );
+  assert.equal(
+    economyModule.hasUsableGenerationProvider?.("google", 0, 0),
+    false,
+  );
+  assert.equal(
+    economyModule.hasUsableGenerationProvider?.("gpt", 0, 1),
+    false,
+  );
+});
+
+test("extracts image data from the current Interactions API steps response", () => {
+  const payload = {
+    steps: [
+      {
+        type: "model_output",
+        content: [
+          { type: "text", text: "Done" },
+          {
+            type: "image",
+            mime_type: "image/jpeg",
+            data: "current-image-data",
+          },
+        ],
+      },
+    ],
+  };
+
+  assert.equal(
+    economyModule.extractGoogleImageData?.(payload),
+    "current-image-data",
+  );
+});
+
+test("keeps legacy Google image response fallbacks", () => {
+  assert.equal(
+    economyModule.extractGoogleImageData?.({
+      output_image: { data: "sdk-image-data" },
+    }),
+    "sdk-image-data",
+  );
+  assert.equal(
+    economyModule.extractGoogleImageData?.({
+      candidates: [{
+        content: { parts: [{ inlineData: { data: "candidate-image-data" } }] },
+      }],
+    }),
+    "candidate-image-data",
+  );
+});
+
+test("never exposes provider API keys in user-facing errors", () => {
+  const safeMessage = economyModule.safeProviderErrorMessage?.(
+    "google",
+    "Permission denied: Consumer 'api_key:AIzaSySecretValue' has been suspended.",
+  );
+
+  assert.equal(
+    safeMessage,
+    "Google image generation is temporarily unavailable. Please try again.",
+  );
+  assert.doesNotMatch(safeMessage || "", /AIza|api_key|consumer/i);
+});
+
+test("keeps deployed Google batch error parsing when syncing the function source", () => {
+  const message = economyModule.extractGoogleErrorMessage?.([
+    { error: { message: "Batch request was rejected" } },
+  ], 400);
+
+  assert.equal(message, "Batch request was rejected");
 });

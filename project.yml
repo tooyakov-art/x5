@@ -1,4 +1,4 @@
-﻿name: X5
+name: X5
 options:
   bundleIdPrefix: com.x5studio
   deploymentTarget:
@@ -11,13 +11,19 @@ packages:
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS
     from: "7.1.0"
+  TUSKit:
+    url: https://github.com/tooyakov-art/TUSKit.git
+    revision: "4fd278f37b8a20f826a6fa45ae12b18b47b058b6"
+  NextLevelSessionExporter:
+    url: https://github.com/NextLevel/NextLevelSessionExporter.git
+    revision: "1bb6e19731ff512f4652f8ce2a8f67c779b1598f"
 
 settings:
   base:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: F8LA8PC4U6
-    MARKETING_VERSION: "1.1.1"
-    CURRENT_PROJECT_VERSION: "143"
+    MARKETING_VERSION: "1.1.6"
+    CURRENT_PROJECT_VERSION: "221"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
 targets:
@@ -29,6 +35,10 @@ targets:
         product: GoogleSignIn
       - package: GoogleSignIn
         product: GoogleSignInSwift
+      - package: TUSKit
+        product: TUSKit
+      - package: NextLevelSessionExporter
+        product: NextLevelSessionExporter
     sources:
       - path: X5
     resources:
@@ -37,10 +47,13 @@ targets:
       - path: X5/ru.lproj
       - path: X5/kk.lproj
       - path: X5/PrivacyInfo.xcprivacy
+      - path: X5/Resources/ThirdParty
+      - path: X5/Resources/HomeMotion
+      - path: X5/Resources/cis-cities.json
     info:
       path: X5/Info.plist
       properties:
-        CFBundleDisplayName: X5
+        CFBundleDisplayName: X five marketing
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDevelopmentRegion: en
@@ -62,12 +75,14 @@ targets:
           UIColorName: LaunchBackground
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         UIUserInterfaceStyle: Dark
         ITSAppUsesNonExemptEncryption: false
-        NSFaceIDUsageDescription: "Used to lock X5 вЂ” only the device owner can open the app."
+        NSFaceIDUsageDescription: "Used to lock X five marketing — only the device owner can open the app."
         NSMicrophoneUsageDescription: "Microphone access is needed to record voice messages in chats."
-        NSPhotoLibraryUsageDescription: "Photo library access is needed to attach photos in chats and portfolio."
-        NSPhotoLibraryAddUsageDescription: "Photo library access is needed to save generated images."
+        NSPhotoLibraryUsageDescription: "Select photos and videos for courses, chats, portfolio, and AI tools."
+        NSPhotoLibraryAddUsageDescription: "Save generated images and videos to your photo library."
         LSApplicationCategoryType: public.app-category.productivity
     entitlements:
       path: X5/X5.entitlements
@@ -80,7 +95,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.x5studio.app
-        PRODUCT_NAME: X5
+        PRODUCT_NAME: X five marketing
+        PRODUCT_MODULE_NAME: X5
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
@@ -96,3 +112,32 @@ targets:
         Release:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: Apple Distribution
+
+  X5Tests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: X5Tests
+    dependencies:
+      - target: X5
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.x5studio.app.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/X five marketing.app/X five marketing"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+schemes:
+  X5-Course-CI:
+    build:
+      targets:
+        X5: all
+        X5Tests: [test]
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - name: X5Tests
+          parallelizable: false

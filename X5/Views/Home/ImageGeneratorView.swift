@@ -20,9 +20,15 @@ struct ImageGeneratorView: View {
     @State private var selectedQuantity = 1
     @State private var selectedSize: ImageGenerationSize = .square
     @State private var showingGallery = false
+    @State private var mainPhotoItem: PhotosPickerItem?
+    @State private var logoItem: PhotosPickerItem?
     @State private var referenceItems: [PhotosPickerItem] = []
+    @State private var mainPhoto: ImageReferenceAsset?
+    @State private var logoImage: ImageReferenceAsset?
     @State private var referenceImages: [ImageReferenceAsset] = []
     @State private var isLoadingReferences = false
+    @State private var selectedSalesAngle: SalesAngle
+    @State private var selectedYouTubeMode: YouTubeThumbnailMode
     @State private var generationProgress: Double = 0
     @State private var generationProgressTask: Task<Void, Never>?
     @State private var showGenerationComplete = false
@@ -31,8 +37,13 @@ struct ImageGeneratorView: View {
 
     init(category: ImageGenerationCategory = ImageGenerationCatalog.custom, provider: ImageGenerationProvider = .gptImage2) {
         self.category = category
-        _prompt = State(initialValue: category.examplePrompt)
+        let isSalesCreative = category.id == "product_cards" || category.id == "target_ad"
+        let isYouTubeThumbnail = category.id == "youtube_cover"
+        _prompt = State(initialValue: isSalesCreative || isYouTubeThumbnail ? "" : category.examplePrompt)
         _selectedProvider = State(initialValue: provider)
+        _selectedSize = State(initialValue: category.id == "youtube_cover" ? .landscape : .square)
+        _selectedSalesAngle = State(initialValue: SalesAngle.all[0])
+        _selectedYouTubeMode = State(initialValue: YouTubeThumbnailMode.all[0])
     }
 
     var body: some View {
@@ -41,6 +52,12 @@ struct ImageGeneratorView: View {
                 hero
                 providerPanel
                 settingsPanel
+                if isSalesCreativeCategory {
+                    salesAnglePanel
+                }
+                if isYouTubeThumbnailCategory {
+                    youtubeModePanel
+                }
                 promptPanel
                 referencePanel
                 generateButton
@@ -89,8 +106,14 @@ struct ImageGeneratorView: View {
         .onChange(of: referenceItems) { newItems in
             Task { await loadReferenceImages(newItems) }
         }
+        .onChange(of: mainPhotoItem) { newItem in
+            Task { mainPhoto = await loadReferenceImage(newItem) }
+        }
+        .onChange(of: logoItem) { newItem in
+            Task { logoImage = await loadReferenceImage(newItem) }
+        }
         .onChange(of: selectedProvider) { provider in
-            if provider.provider == "gpt", selectedSize.isGoogleOnly {
+            if !selectedSize.isSupported(by: provider) {
                 selectedSize = .square
             }
         }
@@ -157,23 +180,16 @@ struct ImageGeneratorView: View {
 
             Menu {
                 ForEach(ImageGenerationProvider.allCases) { model in
-                    if model.isComingSoon {
-                        Button {} label: {
-                            Label("\(model.title) · скоро", systemImage: "clock")
-                        }
-                        .disabled(true)
-                    } else {
-                        Button {
-                            X5Feedback.selection()
-                            selectedProvider = model
-                        } label: {
-                            Label(model.title, systemImage: model == selectedProvider ? "checkmark" : "cpu")
-                        }
+                    Button {
+                        X5Feedback.selection()
+                        selectedProvider = model
+                    } label: {
+                        Label(model.title, systemImage: model == selectedProvider ? "checkmark" : model.menuSystemImage)
                     }
                 }
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "cpu")
+                    ProviderLogo(provider: selectedProvider)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(selectedProvider.title)
                             .font(.system(size: 15, weight: .heavy))
@@ -227,9 +243,9 @@ struct ImageGeneratorView: View {
 
             Menu {
                 ForEach(ImageGenerationSize.allCases) { size in
-                    if selectedProvider.provider == "gpt", size.isGoogleOnly {
+                    if !size.isSupported(by: selectedProvider) {
                         Button {} label: {
-                            Label("\(size.title) · Nano Banana", systemImage: "lock")
+                            Label("\(size.title) · \(size.unavailableLabel(for: selectedProvider))", systemImage: "lock")
                         }
                         .disabled(true)
                     } else {
@@ -268,11 +284,134 @@ struct ImageGeneratorView: View {
         .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
     }
 
+    private var salesAnglePanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel("Угол продаж")
+
+            Menu {
+                ForEach(SalesAngle.all) { angle in
+                    Button {
+                        X5Feedback.selection()
+                        selectedSalesAngle = angle
+                    } label: {
+                        Label(
+                            angle.isRecommended ? "\(angle.title) · рекомендуем" : angle.title,
+                            systemImage: angle == selectedSalesAngle ? "checkmark" : "megaphone"
+                        )
+                    }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "scope")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(X5Style.blue)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(selectedSalesAngle.title)
+                            .font(.system(size: 15, weight: .heavy))
+                            .foregroundColor(.white)
+                        Text(selectedSalesAngle.summary)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.58))
+                            .lineLimit(2)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.52))
+                }
+                .padding(12)
+                .background(Color.white.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .disabled(isGenerating)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Примеры")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundColor(.white.opacity(0.52))
+                ForEach(selectedSalesAngle.examples.prefix(2), id: \.self) { example in
+                    Text("• \(example)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.72))
+                }
+            }
+        }
+        .padding(14)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.11)
+        .accessibilityIdentifier("x5.generator.sales_angle")
+    }
+
+    private var youtubeModePanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel("Стиль обложки")
+
+            Menu {
+                ForEach(YouTubeThumbnailMode.all) { mode in
+                    Button {
+                        X5Feedback.selection()
+                        selectedYouTubeMode = mode
+                    } label: {
+                        Label(
+                            mode.isRecommended ? "\(mode.title) · рекомендуем" : mode.title,
+                            systemImage: mode == selectedYouTubeMode ? "checkmark" : mode.icon
+                        )
+                    }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: selectedYouTubeMode.icon)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(.red)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(selectedYouTubeMode.title)
+                                .font(.system(size: 15, weight: .heavy))
+                                .foregroundColor(.white)
+
+                            if selectedYouTubeMode.isRecommended {
+                                Text("TOP")
+                                    .font(.system(size: 8, weight: .black, design: .rounded))
+                                    .foregroundColor(.black)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(X5Style.blue, in: Capsule())
+                            }
+                        }
+
+                        Text(selectedYouTubeMode.summary)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.58))
+                            .lineLimit(2)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.52))
+                }
+                .padding(12)
+                .background(Color.white.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .disabled(isGenerating)
+
+        }
+        .padding(14)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.11)
+        .accessibilityIdentifier("x5.generator.youtube_mode")
+    }
+
     private var promptPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionLabel(loc.t("gen_prompt"))
+            sectionLabel(
+                isSalesCreativeCategory
+                    ? "Описание товара или услуги"
+                    : (isYouTubeThumbnailCategory ? "Тема ролика" : loc.t("gen_prompt"))
+            )
 
-            TextField(category.examplePrompt, text: $prompt, axis: .vertical)
+            TextField(promptPlaceholder, text: $prompt, axis: .vertical)
                 .focused($promptFocused)
                 .lineLimit(4...7)
                 .font(.system(size: 15))
@@ -285,10 +424,14 @@ struct ImageGeneratorView: View {
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-            HStack(spacing: 8) {
-                quickPrompt(categoryTitle)
-                quickPrompt(loc.t("gen_product_ad"))
-                quickPrompt(loc.t("gen_clean_layout"))
+            if isSalesCreativeCategory {
+                Text("Укажите цену, город, акцию и важные условия. AI сам соберет продающий текст и впишет его в дизайн.")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.54))
+            } else if isYouTubeThumbnailCategory {
+                Text("Опишите сюжет, героя и главный смысл ролика. AI предложит короткий заголовок и соберёт обложку в выбранном режиме.")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.54))
             }
         }
         .padding(14)
@@ -298,7 +441,11 @@ struct ImageGeneratorView: View {
     private var referencePanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                sectionLabel("Референсы")
+                sectionLabel(
+                    isSalesCreativeCategory
+                        ? "Фотографии и логотип"
+                        : (isYouTubeThumbnailCategory ? "Фото героя и референсы" : "Референсы")
+                )
                 Spacer()
                 if isLoadingReferences {
                     ProgressView()
@@ -307,17 +454,82 @@ struct ImageGeneratorView: View {
                 }
             }
 
-            PhotosPicker(selection: $referenceItems, maxSelectionCount: 6, matching: .images) {
-                Label(referenceImages.isEmpty ? "Добавить фото" : "Изменить фото", systemImage: "photo.badge.plus")
-                    .font(.system(size: 14, weight: .heavy))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            if isSalesCreativeCategory {
+                Text("Добавьте основную фотографию, логотип, также можете использовать референс.")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.72))
+
+                PhotosPicker(selection: $mainPhotoItem, matching: .images) {
+                    uploadSlot(
+                        title: "Основная фотография",
+                        subtitle: mainPhoto == nil ? "Товар, услуга или человек" : "Фотография добавлена",
+                        image: mainPhoto?.image,
+                        systemImage: "photo"
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isGenerating || isLoadingReferences)
+
+                PhotosPicker(selection: $logoItem, matching: .images) {
+                    uploadSlot(
+                        title: "Логотип",
+                        subtitle: logoImage == nil ? "Разместим аккуратно в макете" : "Логотип добавлен",
+                        image: logoImage?.image,
+                        systemImage: "seal"
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isGenerating || isLoadingReferences)
+
+                PhotosPicker(selection: $referenceItems, maxSelectionCount: 4, matching: .images) {
+                    uploadSlot(
+                        title: "Референс",
+                        subtitle: referenceImages.isEmpty ? "Пример желаемого оформления" : "Добавлено: \(referenceImages.count)",
+                        image: referenceImages.first?.image,
+                        systemImage: "rectangle.stack"
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isGenerating || isLoadingReferences)
+            } else if isYouTubeThumbnailCategory {
+                Text("Добавьте фото героя, чтобы сохранить внешность, и примеры понравившихся обложек для стиля.")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.72))
+
+                PhotosPicker(selection: $mainPhotoItem, matching: .images) {
+                    uploadSlot(
+                        title: "Фото героя",
+                        subtitle: mainPhoto == nil ? "Лицо или главный персонаж ролика" : "Фото героя добавлено",
+                        image: mainPhoto?.image,
+                        systemImage: "person.crop.rectangle"
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isGenerating || isLoadingReferences)
+
+                PhotosPicker(selection: $referenceItems, maxSelectionCount: 4, matching: .images) {
+                    uploadSlot(
+                        title: "Примеры обложек",
+                        subtitle: referenceImages.isEmpty ? "До 4 референсов оформления" : "Добавлено: \(referenceImages.count)",
+                        image: referenceImages.first?.image,
+                        systemImage: "rectangle.stack"
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isGenerating || isLoadingReferences)
+            } else {
+                PhotosPicker(selection: $referenceItems, maxSelectionCount: 6, matching: .images) {
+                    Label(referenceImages.isEmpty ? "Добавить фото" : "Изменить фото", systemImage: "photo.badge.plus")
+                        .font(.system(size: 14, weight: .heavy))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(isGenerating || isLoadingReferences)
             }
-            .buttonStyle(.plain)
-            .disabled(isGenerating || isLoadingReferences)
 
             if !referenceImages.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -352,13 +564,58 @@ struct ImageGeneratorView: View {
                     .padding(.trailing, 8)
                 }
 
-                Text("AI будет использовать эти фото как референсы: изменить, добавить, убрать или сгенерировать похожую картинку.")
+                Text(isSalesCreativeCategory
+                     ? "Референсы задают стиль. Основная фотография и логотип используются отдельно."
+                     : (isYouTubeThumbnailCategory
+                        ? "Примеры задают стиль обложки. Фото героя используется отдельно и сохраняет внешность."
+                        : "AI будет использовать эти фото как референсы: изменить, добавить, убрать или сгенерировать похожую картинку."))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white.opacity(0.54))
             }
         }
         .padding(14)
         .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
+    }
+
+    private func uploadSlot(
+        title: String,
+        subtitle: String,
+        image: UIImage?,
+        systemImage: String
+    ) -> some View {
+        HStack(spacing: 12) {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 52, height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                Image(systemName: systemImage)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(X5Style.blue)
+                    .frame(width: 52, height: 52)
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundColor(.white)
+                Text(subtitle)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.54))
+                    .lineLimit(1)
+            }
+            Spacer()
+            Image(systemName: image == nil ? "plus.circle.fill" : "checkmark.circle.fill")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(image == nil ? .white.opacity(0.56) : X5Style.blue)
+        }
+        .padding(10)
+        .background(Color.white.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var generateButton: some View {
@@ -449,7 +706,10 @@ struct ImageGeneratorView: View {
     }
 
     private var hasValidPromptOrReferences: Bool {
-        prompt.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 || !referenceImages.isEmpty
+        let hasDescription = prompt.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
+        return (isSalesCreativeCategory || isYouTubeThumbnailCategory)
+            ? hasDescription
+            : (hasDescription || !allReferenceAssets.isEmpty)
     }
 
     private var balanceText: String {
@@ -467,6 +727,28 @@ struct ImageGeneratorView: View {
 
     private var totalCreditCost: Int {
         ImageGenerationCatalog.creditCost * selectedQuantity
+    }
+
+    private var isSalesCreativeCategory: Bool {
+        category.id == "product_cards" || category.id == "target_ad"
+    }
+
+    private var isYouTubeThumbnailCategory: Bool {
+        category.id == "youtube_cover"
+    }
+
+    private var promptPlaceholder: String {
+        if isSalesCreativeCategory {
+            return "Опишите вашу услугу или товар. В конце укажите стоимость, город, акции и другие важные условия."
+        }
+        if isYouTubeThumbnailCategory {
+            return "Например: почему малый бизнес теряет клиентов из-за слабой рекламы, в кадре владелец бизнеса и разбор ошибок"
+        }
+        return category.examplePrompt
+    }
+
+    private var allReferenceAssets: [ImageReferenceAsset] {
+        [mainPhoto, logoImage].compactMap { $0 } + referenceImages
     }
 
     private func generatedImageButton(_ asset: GeneratedImageAsset, compact: Bool) -> some View {
@@ -494,22 +776,6 @@ struct ImageGeneratorView: View {
             .foregroundColor(.white.opacity(0.45))
     }
 
-    private func quickPrompt(_ text: String) -> some View {
-        Button {
-            X5Feedback.selection()
-            prompt = text == categoryTitle ? category.examplePrompt : "\(text) for \(category.title.lowercased()), premium X5 style"
-            promptFocused = true
-        } label: {
-            Text(text)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(.white.opacity(0.82))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
-        }
-        .buttonStyle(.plain)
-    }
-
     private func refreshProfileIfPossible() async {
         guard let uid = auth.userId, let token = await auth.freshAccessToken() else { return }
         await currentUser.load(userId: uid, accessToken: token)
@@ -519,8 +785,35 @@ struct ImageGeneratorView: View {
         promptOverride: String? = nil,
         referencesOverride: [ImageGenerationReference]? = nil
     ) async {
-        let currentReferences = referencesOverride ?? referenceImages.map { $0.reference }
-        let cleanPrompt = effectivePrompt(promptOverride ?? prompt, hasReferences: !currentReferences.isEmpty)
+        let currentReferences = referencesOverride ?? allReferenceAssets.map { $0.reference }
+        let rawPrompt = promptOverride ?? prompt
+        let cleanPrompt: String
+        if isYouTubeThumbnailCategory && promptOverride == nil {
+            guard rawPrompt.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 else {
+                errorMessage = "Опишите тему ролика"
+                return
+            }
+            cleanPrompt = YouTubeThumbnailBriefBuilder.compose(
+                topic: rawPrompt,
+                mode: selectedYouTubeMode,
+                hasHeroPhoto: mainPhoto != nil,
+                referenceCount: referenceImages.count
+            )
+        } else if isSalesCreativeCategory && promptOverride == nil {
+            guard rawPrompt.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 else {
+                errorMessage = "Опишите товар или услугу"
+                return
+            }
+            cleanPrompt = SalesCreativeBriefBuilder.compose(
+                description: rawPrompt,
+                angle: selectedSalesAngle,
+                hasMainPhoto: mainPhoto != nil,
+                hasLogo: logoImage != nil,
+                referenceCount: referenceImages.count
+            )
+        } else {
+            cleanPrompt = effectivePrompt(rawPrompt, hasReferences: !currentReferences.isEmpty)
+        }
         guard !cleanPrompt.isEmpty else {
             errorMessage = loc.t("gen_prompt_required")
             return
@@ -652,11 +945,19 @@ struct ImageGeneratorView: View {
                 await MainActor.run {
                     guard isGenerating else { return }
                     let elapsed = Date().timeIntervalSince(startedAt)
-                    let curve = 1 - exp(-elapsed / 24)
-                    let target = min(0.985, 0.02 + curve * 0.965)
-                    let next = max(generationProgress + 0.001, target)
+                    let target: Double
+                    if elapsed < 15 {
+                        target = 0.02 + (elapsed / 15) * 0.43
+                    } else if elapsed < 60 {
+                        target = 0.45 + ((elapsed - 15) / 45) * 0.23
+                    } else if elapsed < 180 {
+                        target = 0.68 + ((elapsed - 60) / 120) * 0.20
+                    } else {
+                        target = min(0.965, 0.88 + ((elapsed - 180) / 180) * 0.085)
+                    }
+                    let next = max(generationProgress + 0.0008, target)
                     withAnimation(.linear(duration: 0.18)) {
-                        generationProgress = min(next, 0.985)
+                        generationProgress = min(next, 0.965)
                     }
                 }
             }
@@ -684,6 +985,21 @@ struct ImageGeneratorView: View {
             )
         }
         referenceImages = loaded
+    }
+
+    private func loadReferenceImage(_ item: PhotosPickerItem?) async -> ImageReferenceAsset? {
+        guard let item,
+              let data = try? await item.loadTransferable(type: Data.self),
+              let uiImage = UIImage(data: data),
+              let jpegData = uiImage.jpegData(compressionQuality: 0.88)
+        else { return nil }
+        return ImageReferenceAsset(
+            image: uiImage,
+            reference: ImageGenerationReference(
+                mimeType: "image/jpeg",
+                base64: jpegData.base64EncodedString()
+            )
+        )
     }
 
     private func effectivePrompt(_ rawPrompt: String, hasReferences: Bool) -> String {
@@ -745,6 +1061,26 @@ private struct ImageReferenceAsset: Identifiable {
     let id = UUID()
     let image: UIImage
     let reference: ImageGenerationReference
+}
+
+private struct ProviderLogo: View {
+    let provider: ImageGenerationProvider
+
+    var body: some View {
+        Text(provider.brandLabel)
+            .font(.system(size: provider == .gptImage2 ? 10 : 16, weight: .black, design: .rounded))
+            .foregroundColor(provider == .gptImage2 ? .black : .white)
+            .frame(width: 34, height: 34)
+            .background(
+                Circle()
+                    .fill(provider.brandColor)
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(0.26), lineWidth: 1)
+                    )
+            )
+            .accessibilityLabel(provider.title)
+    }
 }
 
 private struct GenerationAnimationView: View {

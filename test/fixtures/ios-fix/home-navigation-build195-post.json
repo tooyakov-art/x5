@@ -1,0 +1,35 @@
+{
+  "fixtureVersion": 1,
+  "capturedAt": "2026-08-01T21:03:00+06:00",
+  "sourceBranch": "codex/x5-full-fix-20260801",
+  "appVersion": "1.1.6",
+  "buildNumber": "195",
+  "device": {
+    "name": "X5 Build 194 QA",
+    "runtime": "iOS 26.5"
+  },
+  "launchEnvironment": {
+    "X5_HOME_QA_PREVIEW": "1"
+  },
+  "state": {
+    "screen": "home",
+    "selectedTab": "home",
+    "scrollPosition": "top",
+    "activeRoute": null,
+    "activeTrendVideoID": null
+  },
+  "evidence": {
+    "homeScreenshotLabel": "x5-build195-home-post-fix.png",
+    "homeScreenshotSHA256": "59237bdbd6a493f734786c3a1953a51cd0c11c10d62b0e842d8e90f4b06da484",
+    "verifiedTabs": ["home", "courses", "chats", "hub", "profile"],
+    "tabScreenshotSHA256": {
+      "courses": "7259e23e4afc78e98ec84c533204d0793fd5a57d61752848028c0e9d58d95ed7",
+      "chats": "71937a0b7467df071499032ae6317e8b74252aec52a394b7dd3e26a617c05bee",
+      "hub": "4c77c3b73467817e4351cbddc07626de362e4dc478d6cdad2a9613b9d64db14a",
+      "profile": "a8fa2b22b4e95bf3835d6e396293d1a330062c22cda57c61ad03995c8c1437d1"
+    },
+    "stateServerAvailable": false,
+    "stateServerNote": "This app target has no StateServer wiring; reproducible simulator state, screenshot hashes and native XCTest/source contracts are recorded without publishing private artwork."
+  },
+  "verified": "The approved first Home page is visually unchanged; all five bottom tabs are visible and tappable; hero pages, trend cards, promos, search and business cards retain real routes."
+}

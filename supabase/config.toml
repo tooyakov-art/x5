@@ -1,0 +1,24 @@
+[functions.google-play-notifications]
+verify_jwt = false
+
+[functions.app-store-notifications]
+verify_jwt = false
+
+[functions.kaspi-pay-provider]
+verify_jwt = false
+
+[functions.voice-generation-webhook]
+verify_jwt = false
+
+[functions.account-deletion-cleanup]
+verify_jwt = false
+
+# Invoked only by signed pg_net requests. The function validates the dedicated
+# X5_PUSH_WEBHOOK_SECRET before parsing the event body.
+[functions.send-message-push]
+verify_jwt = false
+
+# Accepts either a normal user JWT (single-item enqueue/claim) or the dedicated
+# X5_PORTFOLIO_MODERATION_SWEEP_SECRET used by the signed pg_net sweep.
+[functions.moderate-portfolio]
+verify_jwt = false

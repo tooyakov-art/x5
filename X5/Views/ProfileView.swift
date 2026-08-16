@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 import PhotosUI
 
 struct ProfileView: View {
@@ -6,12 +6,12 @@ struct ProfileView: View {
     @EnvironmentObject private var subscription: Subscription
     @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var loc: LocalizationService
-    @StateObject private var iap = IAPService()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     var showsDoneButton: Bool = true
 
-    @State private var showingPaywall = false
+    @State private var showingStore = false
     @State private var showingVerified = false
     @State private var showingSettings = false
     @State private var showingEdit = false
@@ -21,6 +21,10 @@ struct ProfileView: View {
     @State private var isRefreshing = false
     @State private var showInHubToggle = false
     @State private var savingShowInHub = false
+    @State private var selectedSection: ProfileSection = .overview
+    @State private var followCounts: ProfileFollowCounts?
+
+    private let followService = ProfileFollowService()
 
     var body: some View {
         NavigationStack {
@@ -29,27 +33,8 @@ struct ProfileView: View {
                     hero
 
                     VStack(spacing: 16) {
-                        if currentUser.profile?.isPro == true {
-                            proHero
-                        } else {
-                            upgradeCard
-                        }
-                        if let bio = currentUser.profile?.bio, !bio.isEmpty {
-                            BioCard(text: bio)
-                        }
-                        if currentUser.profile?.showInHub != true {
-                            becomeSpecialistCard
-                        }
-                        if let uid = currentUser.profile?.id {
-                            PortfolioGrid(userId: uid, canEdit: true)
-                        }
-                        socialLinks
-                        if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
-                            specialistCard(cats: cats)
-                        }
-                        if !(currentUser.profile?.hasActiveVerifiedBadge ?? false) {
-                            verifiedCard
-                        }
+                        sectionPicker
+                        selectedSectionContent
                     }
                     .frame(maxWidth: profileContentWidth)
                     .frame(maxWidth: .infinity)
@@ -99,7 +84,7 @@ struct ProfileView: View {
                 }
             }
             .sheet(isPresented: $showingSettings) { SettingsView() }
-            .sheet(isPresented: $showingPaywall) { PaywallView() }
+            .sheet(isPresented: $showingStore) { PaywallView() }
             .sheet(isPresented: $showingVerified) { VerifiedBadgeView() }
             .sheet(isPresented: $showingEdit) { EditProfileView() }
             .alert("Фото не сохранилось", isPresented: Binding(
@@ -120,8 +105,23 @@ struct ProfileView: View {
                     showInHubToggle = value ?? false
                 }
             }
-            .task { await iap.loadProducts() }
             .onAppear { showInHubToggle = currentUser.profile?.showInHub ?? false }
+            .task(id: currentUser.profile?.id) {
+                await refreshFollowCounts()
+            }
+            // Cross-device follow changes do not emit this process's local
+            // notification. Refresh whenever the app returns to the foreground;
+            // SwiftUI cancels this task automatically when the view disappears.
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
+                await refreshFollowCounts()
+            }
+            .onReceive(
+                NotificationCenter.default.publisher(for: .x5FollowStateDidChange)
+            ) { note in
+                guard followEventAffectsCurrentProfile(note) else { return }
+                Task { await refreshFollowCounts() }
+            }
         }
     }
 
@@ -193,7 +193,9 @@ struct ProfileView: View {
                             .foregroundColor(.white.opacity(0.66))
                     }
 
-                    hubVisibilityToggle
+                    if shouldShowHubVisibilityToggle {
+                        hubVisibilityToggle
+                    }
 
                     Button {
                         X5Feedback.impact()
@@ -211,26 +213,9 @@ struct ProfileView: View {
                     .tint(.white)
                     .foregroundStyle(.black)
 
-                    HStack(spacing: 6) {
-                        Text(planLabel)
-                            .font(.system(size: 10, weight: .heavy))
-                            .tracking(0.8)
-                            .foregroundColor(currentUser.profile?.isPro == true ? .black : .white)
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(currentUser.profile?.isPro == true ? Color.accentColor : Color.white.opacity(0.1))
-                            .clipShape(Capsule())
-                        if let n = currentUser.profile?.signupNumber {
-                            Text("#\(n)")
-                                .font(.system(size: 10, weight: .heavy))
-                                .tracking(0.8)
-                                .foregroundColor(.white.opacity(0.6))
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(Color.white.opacity(0.06))
-                                .clipShape(Capsule())
-                        }
-                    }
-
                     heroStatsRow
+
+                    ProfileSocialLinksStrip(items: socialItems)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 28)
@@ -242,6 +227,63 @@ struct ProfileView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: heroHeight)
+    }
+
+    private var sectionPicker: some View {
+        Picker("", selection: $selectedSection) {
+            ForEach(ProfileSection.allCases) { section in
+                Text(section.title(loc)).tag(section)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(4)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var selectedSectionContent: some View {
+        switch selectedSection {
+        case .overview:
+            overviewSection
+        case .works:
+            worksSection
+        case .saved:
+            savedWorksSection
+        }
+    }
+
+    private var overviewSection: some View {
+        VStack(spacing: 16) {
+            storeCard
+            myTasksCard
+            if let bio = currentUser.profile?.bio, !bio.isEmpty {
+                BioCard(text: bio)
+            }
+            if !hasSpecialistCategories {
+                becomeSpecialistCard
+            }
+            if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
+                specialistCard(cats: cats)
+            }
+            if !(currentUser.profile?.hasActiveVerifiedBadge ?? false) {
+                verifiedCard
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var worksSection: some View {
+        if let uid = currentUser.profile?.id {
+            PortfolioGrid(userId: uid, canEdit: true)
+        }
+    }
+
+    @ViewBuilder
+    private var savedWorksSection: some View {
+        if let uid = currentUser.profile?.id {
+            PortfolioGrid(userId: uid, canEdit: false, mode: .saved)
+        }
     }
 
     private func uploadAvatar(_ item: PhotosPickerItem) async {
@@ -274,8 +316,14 @@ struct ProfileView: View {
     private var heroStatsRow: some View {
         HStack(spacing: 8) {
             StatBubble(value: "\(currentUser.profile?.credits ?? 0)", label: loc.t("profile_credits"))
-            StatBubble(value: "0", label: loc.t("profile_followers"))
-            StatBubble(value: "0", label: loc.t("profile_following"))
+            StatBubble(
+                value: followCounts?.followers.description ?? "—",
+                label: loc.t("profile_followers")
+            )
+            StatBubble(
+                value: followCounts?.following.description ?? "—",
+                label: loc.t("profile_following")
+            )
         }
     }
 
@@ -295,7 +343,7 @@ struct ProfileView: View {
                     .tint(.white)
                     .scaleEffect(0.8)
             }
-            Toggle("", isOn: Binding(
+        Toggle("", isOn: Binding(
                 get: { showInHubToggle },
                 set: { value in
                     guard value != showInHubToggle else { return }
@@ -314,6 +362,14 @@ struct ProfileView: View {
         .x5ClearGlass(cornerRadius: 18, highlight: 0.12)
     }
 
+    private var hasSpecialistCategories: Bool {
+        currentUser.profile?.specialistCategory?.isEmpty == false
+    }
+
+    private var shouldShowHubVisibilityToggle: Bool {
+        hasSpecialistCategories
+    }
+
     private var heroHeight: CGFloat {
         max(UIScreen.main.bounds.height * 0.78, 640)
     }
@@ -329,11 +385,35 @@ struct ProfileView: View {
             return
         }
         await currentUser.load(userId: uid, accessToken: token)
+        await refreshFollowCounts(accessToken: token)
         showInHubToggle = currentUser.profile?.showInHub ?? false
         subscription.sync(from: currentUser.profile)
-        await iap.loadProducts()
         try? await Task.sleep(nanoseconds: 450_000_000)
         isRefreshing = false
+    }
+
+    private func refreshFollowCounts(accessToken: String? = nil) async {
+        guard let uid = auth.userId ?? currentUser.profile?.id else { return }
+        let token: String?
+        if let accessToken {
+            token = accessToken
+        } else {
+            token = await auth.freshAccessToken()
+        }
+        if let counts = try? await followService.loadCounts(
+            userId: uid,
+            accessToken: token
+        ) {
+            followCounts = counts
+        }
+    }
+
+    private func followEventAffectsCurrentProfile(_ note: Notification) -> Bool {
+        guard let uid = auth.userId ?? currentUser.profile?.id else { return false }
+        let followerId = note.userInfo?["follower_id"] as? String
+        let followingId = note.userInfo?["following_id"] as? String
+        return followerId?.caseInsensitiveCompare(uid) == .orderedSame ||
+            followingId?.caseInsensitiveCompare(uid) == .orderedSame
     }
 
     private func updateHubVisibility(_ value: Bool) async {
@@ -345,11 +425,19 @@ struct ProfileView: View {
         savingShowInHub = true
         defer { savingShowInHub = false }
 
+        guard hasSpecialistCategories else {
+            await currentUser.patchMany(["show_in_hub": AnyEncodable(false)], accessToken: token)
+            showInHubToggle = false
+            X5Feedback.selection()
+            return
+        }
+
         var fields: [String: AnyEncodable] = [
             "show_in_hub": AnyEncodable(value)
         ]
-        if value && (currentUser.profile?.userRole ?? "").isEmpty {
+        if value {
             fields["user_role"] = AnyEncodable("specialist")
+            fields["is_public"] = AnyEncodable(true)
         }
         await currentUser.patchMany(fields, accessToken: token)
         showInHubToggle = currentUser.profile?.showInHub ?? value
@@ -358,9 +446,15 @@ struct ProfileView: View {
 
     private var displayName: String {
         let raw = currentUser.profile?.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let raw, !raw.isEmpty, raw != "User", raw != "X5" { return raw }
+        if let raw,
+           !raw.isEmpty,
+           raw != "User",
+           raw != "Xfive marketing",
+           raw != "X five marketing" {
+            return raw
+        }
         if let emailName = emailPrefix { return emailName }
-        return "X5"
+        return "X five marketing"
     }
 
     private var handleText: String {
@@ -375,48 +469,59 @@ struct ProfileView: View {
         return cleaned.isEmpty ? nil : cleaned.capitalized
     }
 
-    // MARK: - Pro hero / upgrade card
+    // MARK: - Credit store
 
-    private var proHero: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: "sparkles").foregroundColor(.accentColor)
-                Text(loc.t("profile_pro_active"))
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.white)
-                Spacer()
-                Button(loc.t("profile_manage")) {
-                    if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
-                        UIApplication.shared.open(url)
-                    }
-                }
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.accentColor)
-            }
-            if let end = currentUser.profile?.subscriptionEndDate {
-                Text("\(loc.t("profile_renews")) \(formatDate(end))")
-                    .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.55))
-            }
-        }
-        .padding(14)
-        .x5ClearGlass(cornerRadius: 16, highlight: 0.12)
-    }
-
-    private var upgradeCard: some View {
-        Button {
-            showingPaywall = true
+    private var myTasksCard: some View {
+        NavigationLink {
+            MyTasksView()
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: "sparkles")
+                Image(systemName: "checklist")
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundColor(.black)
                     .frame(width: 40, height: 40)
                     .background(Color.accentColor)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(loc.t("profile_upgrade")).font(.system(size: 15, weight: .bold)).foregroundColor(.white)
-                    Text(upgradeSubtitle).font(.system(size: 12)).foregroundColor(.white.opacity(0.55))
+                    Text(loc.t("my_tasks_title"))
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                    Text(loc.t("my_tasks_profile_subtitle"))
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.4))
+            }
+            .padding(14)
+            .x5ClearGlass(cornerRadius: 16, highlight: 0.12)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var storeCard: some View {
+        Button {
+            showingStore = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "cart.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.black)
+                    .frame(width: 40, height: 40)
+                    .background(Color.accentColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(loc.t("profile_store_title"))
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                    Text(String(
+                        format: loc.t("profile_store_subtitle"),
+                        currentUser.profile?.credits ?? 0
+                    ))
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.55))
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundColor(.white.opacity(0.4))
@@ -489,27 +594,9 @@ struct ProfileView: View {
 
     // MARK: - Social
 
-    @ViewBuilder
-    private var socialLinks: some View {
-        if let links = currentUser.profile?.socialLinks {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(loc.t("profile_social").uppercased())
-                    .font(.system(size: 11, weight: .bold))
-                    .tracking(1.4)
-                    .foregroundColor(.white.opacity(0.45))
-                HStack(spacing: 8) {
-                    if let v = links.telegram, !v.isEmpty {
-                        SocialChip(label: "Telegram", value: v, brand: .telegram) { open(telegram: v) }
-                    }
-                    if let v = links.whatsapp, !v.isEmpty {
-                        SocialChip(label: "WhatsApp", value: v, brand: .whatsapp) { open(whatsapp: v) }
-                    }
-                    if let v = links.instagram, !v.isEmpty {
-                        SocialChip(label: "Instagram", value: v, brand: .instagram) { open(instagram: v) }
-                    }
-                }
-            }
-        }
+    private var socialItems: [ProfileSocialLinkItem] {
+        guard let links = currentUser.profile?.socialLinks else { return [] }
+        return makeSocialItems(from: links)
     }
 
     private func specialistCard(cats: [String]) -> some View {
@@ -526,7 +613,7 @@ struct ProfileView: View {
             }
             HStack(spacing: 6) {
                 ForEach(cats.prefix(3), id: \.self) { id in
-                    Text(HubCategories.label(for: id))
+                    Text(HubCategories.label(for: id, language: loc.current))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.accentColor)
                         .padding(.horizontal, 10).padding(.vertical, 5)
@@ -541,42 +628,88 @@ struct ProfileView: View {
 
     // MARK: - Helpers
 
-    private var planLabel: String {
-        currentUser.profile?.planLabel.uppercased() ?? "FREE"
+    private func makeSocialItems(from links: SocialLinks) -> [ProfileSocialLinkItem] {
+        [
+            socialItem(id: "instagram", label: "Instagram", brand: .instagram, raw: links.instagram, fallbackHost: "https://instagram.com/"),
+            socialItem(id: "tiktok", label: "TikTok", brand: .tiktok, raw: links.tiktok, fallbackHost: "https://www.tiktok.com/@"),
+            socialItem(id: "telegram", label: "Telegram", brand: .telegram, raw: links.telegram, fallbackHost: "https://t.me/"),
+            socialItem(id: "whatsapp", label: "WhatsApp", brand: .whatsapp, raw: links.whatsapp, fallbackHost: "https://wa.me/", digitsOnly: true),
+            socialItem(id: "youtube", label: "YouTube", brand: .youtube, raw: links.youtube, fallbackHost: "https://youtube.com/"),
+            socialItem(id: "linkedin", label: "LinkedIn", brand: .linkedin, raw: links.linkedin, fallbackHost: "https://linkedin.com/in/"),
+            socialItem(id: "facebook", label: "Facebook", brand: .facebook, raw: links.facebook, fallbackHost: "https://facebook.com/")
+        ].compactMap { $0 }
     }
 
-    /// Real subscription price from StoreKit / ASC. Loaded once on appear.
-    private var upgradeSubtitle: String {
-        if let p = iap.product {
-            return "\(p.displayPrice) / \(loc.t("profile_month")) - \(loc.t("profile_upgrade_sub"))"
+    private func socialItem(id: String, label: String, brand: SocialBrand, raw: String?, fallbackHost: String, digitsOnly: Bool = false) -> ProfileSocialLinkItem? {
+        let value = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        if value.hasPrefix("http"), let url = URL(string: value) {
+            return ProfileSocialLinkItem(id: id, label: label, brand: brand, url: url)
         }
-        return loc.t("profile_upgrade_sub")
+        let cleaned = digitsOnly ? value.filter("0123456789".contains) : value.replacingOccurrences(of: "@", with: "")
+        guard !cleaned.isEmpty else { return nil }
+        return ProfileSocialLinkItem(id: id, label: label, brand: brand, url: URL(string: fallbackHost + cleaned))
     }
+}
 
-    private func formatDate(_ iso: String) -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let d = f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return iso }
-        let out = DateFormatter()
-        out.dateStyle = .medium
-        return out.string(from: d)
-    }
+struct ProfileSocialLinkItem: Identifiable, Hashable {
+    let id: String
+    let label: String
+    let brand: SocialBrand
+    let url: URL?
+}
 
-    private func open(telegram raw: String) {
-        let user = raw.replacingOccurrences(of: "@", with: "")
-        if let url = URL(string: raw.hasPrefix("http") ? raw : "https://t.me/\(user)") {
-            UIApplication.shared.open(url)
+struct ProfileSocialLinksStrip: View {
+    let items: [ProfileSocialLinkItem]
+
+    var body: some View {
+        if !items.isEmpty {
+            GeometryReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(items) { item in
+                            Button {
+                                if let url = item.url {
+                                    UIApplication.shared.open(url)
+                                }
+                            } label: {
+                                HStack(spacing: 7) {
+                                    SocialBrandIcon(item.brand, size: 16)
+                                    Text(item.label)
+                                        .font(.system(size: 12, weight: .bold))
+                                        .lineLimit(1)
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 12)
+                                .frame(height: 38)
+                                .x5ClearGlass(cornerRadius: 19, highlight: 0.10)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(item.url == nil)
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .frame(minWidth: proxy.size.width, alignment: .center)
+                }
+            }
+            .frame(height: 42)
         }
     }
-    private func open(whatsapp raw: String) {
-        if raw.hasPrefix("http"), let url = URL(string: raw) { UIApplication.shared.open(url); return }
-        let digits = raw.filter("0123456789".contains)
-        if let url = URL(string: "https://wa.me/\(digits)") { UIApplication.shared.open(url) }
-    }
-    private func open(instagram raw: String) {
-        let user = raw.replacingOccurrences(of: "@", with: "")
-        if let url = URL(string: raw.hasPrefix("http") ? raw : "https://instagram.com/\(user)") {
-            UIApplication.shared.open(url)
+}
+
+private enum ProfileSection: String, CaseIterable, Identifiable {
+    case overview
+    case works
+    case saved
+
+    var id: String { rawValue }
+
+    @MainActor
+    func title(_ loc: LocalizationService) -> String {
+        switch self {
+        case .overview: return loc.t("profile_tab_overview")
+        case .works: return loc.t("profile_tab_works")
+        case .saved: return "Сохранённые"
         }
     }
 }
@@ -606,26 +739,6 @@ private struct BioCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
             .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
-    }
-}
-
-private struct SocialChip: View {
-    let label: String
-    let value: String
-    let brand: SocialBrand
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                SocialBrandIcon(brand, size: 16)
-                Text(label).font(.system(size: 12, weight: .semibold))
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
-        }
-        .buttonStyle(.plain)
     }
 }
 

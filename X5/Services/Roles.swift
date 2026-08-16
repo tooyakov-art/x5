@@ -1,19 +1,22 @@
 import Foundation
 
-/// Whitelist of emails with developer permissions: can create / edit / delete courses,
-/// see the "Create course" button, and bypass purchase gates locally.
-/// Source-of-truth admin check is enforced by Supabase RLS — this is just UI gating.
+/// UI mirror of the server-side developer gate.
+///
+/// Access is tied only to immutable Supabase user IDs. Email addresses and
+/// editable profile fields must never grant course-management permissions.
+/// Supabase RLS remains the source of truth for every write operation.
 enum Roles {
-    static let developerEmails: Set<String> = [
-        "tuakov.ursa@gmail.com",
-        "tooyakov.art@gmail.com",
-        "tooyakov.icloud@gmail.com",
-        "tooyakov@icloud.com",
-        "tuakov.ursa@icloud.com",
+    static let developerUserIds: Set<String> = [
+        "f3eea23f-0aeb-405b-ab35-2c53173b7a8f",
+        "eee55a08-18d1-46e3-a303-1411d1bb9333",
     ]
 
     static func isDeveloper(_ email: String?) -> Bool {
-        guard let e = email?.lowercased() else { return false }
-        return developerEmails.contains(e)
+        isDeveloper(email: email, userId: nil)
+    }
+
+    static func isDeveloper(email _: String?, userId: String?) -> Bool {
+        guard let userId else { return false }
+        return developerUserIds.contains(userId.lowercased())
     }
 }

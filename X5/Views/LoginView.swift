@@ -11,6 +11,7 @@ struct LoginView: View {
     @State private var isSignUp = false
     @State private var loading = false
     @State private var errorMessage: String?
+    @State private var appleNonce: String?
     @FocusState private var focused: Field?
 
     enum Mode { case select, email }
@@ -40,8 +41,6 @@ struct LoginView: View {
 
     private var logoBlock: some View {
         VStack(spacing: 14) {
-            X5LogoMark(size: 84)
-
             Text(mode == .email
                  ? (isSignUp ? loc.t("login_signup") : loc.t("login_signin"))
                  : loc.t("login_title"))
@@ -71,13 +70,21 @@ struct LoginView: View {
     private var selectButtons: some View {
         VStack(spacing: 12) {
             SignInWithAppleButton(.signIn) { request in
+                let rawNonce = Nonce.random()
+                appleNonce = rawNonce
                 request.requestedScopes = [.fullName, .email]
+                request.nonce = Nonce.sha256(rawNonce)
             } onCompletion: { result in
-                Task { await handleApple(result) }
+                guard let rawNonce = appleNonce else {
+                    errorMessage = loc.t("login_apple_failed")
+                    return
+                }
+                Task { await handleApple(result, rawNonce: rawNonce) }
             }
             .signInWithAppleButtonStyle(.white)
             .frame(height: 52)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .disabled(loading)
 
             Button {
                 Task { await handleGoogle() }
@@ -248,10 +255,10 @@ struct LoginView: View {
 
     private func humanError(_ error: Error) -> String {
         let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        if msg.localizedCaseInsensitiveContains("invalid login") { return "Invalid email or password." }
-        if msg.localizedCaseInsensitiveContains("already registered") { return "This email is already registered." }
-        if msg.localizedCaseInsensitiveContains("password should") { return "Password must be at least 6 characters." }
-        return msg
+        if msg.localizedCaseInsensitiveContains("invalid login") { return loc.t("login_invalid") }
+        if msg.localizedCaseInsensitiveContains("already registered") { return loc.t("login_already") }
+        if msg.localizedCaseInsensitiveContains("password should") { return loc.t("login_password_short") }
+        return loc.t("login_generic_failed")
     }
 
     private func handleGoogle() async {
@@ -262,25 +269,34 @@ struct LoginView: View {
             try await auth.signInWithGoogle()
         } catch {
             let msg = error.localizedDescription
-            // Silent on cancel
             if msg.localizedCaseInsensitiveContains("cancel") { return }
-            // Real error — show full text so user can debug (provider misconfig, redirect URL, etc.)
-            errorMessage = "Google: \(msg)"
+            errorMessage = loc.t("login_google_failed")
         }
     }
 
-    private func handleApple(_ result: Result<ASAuthorization, Error>) async {
+    private func handleApple(
+        _ result: Result<ASAuthorization, Error>,
+        rawNonce: String
+    ) async {
         errorMessage = nil
+        loading = true
+        defer {
+            loading = false
+            appleNonce = nil
+        }
         switch result {
         case .success(let authorization):
             do {
-                try await auth.signInWithApple(authorization: authorization)
+                try await auth.signInWithApple(
+                    authorization: authorization,
+                    rawNonce: rawNonce
+                )
             } catch {
-                errorMessage = humanError(error)
+                errorMessage = loc.t("login_apple_failed")
             }
         case .failure(let error as NSError):
             if error.code != ASAuthorizationError.canceled.rawValue {
-                errorMessage = "Apple: \(error.localizedDescription)"
+                errorMessage = loc.t("login_apple_failed")
             }
         }
     }

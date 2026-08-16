@@ -17,15 +17,48 @@ struct SupabaseSession: Decodable {
     }
 }
 
+@MainActor
 final class SupabaseClient {
-    private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
-    private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
+    private let session: URLSession
+    private let baseURL: URL
+    private let anonKey: String
 
-    var accessToken: String?
-    var refreshToken: String?
+    private(set) var sessionGeneration: UInt64 = 0
+    var accessToken: String? {
+        didSet {
+            if accessToken != oldValue {
+                sessionGeneration &+= 1
+            }
+        }
+    }
+    var refreshToken: String? {
+        didSet {
+            if refreshToken != oldValue {
+                sessionGeneration &+= 1
+            }
+        }
+    }
 
     /// Hook for the Auth layer to persist refreshed tokens to UserDefaults.
     var onSessionRefreshed: ((SupabaseSession) -> Void)?
+
+    private struct RefreshFlight {
+        let id: UUID
+        let refreshToken: String
+        let sessionGeneration: UInt64
+        let task: Task<SupabaseSession, Error>
+    }
+    private var refreshFlight: RefreshFlight?
+
+    init(
+        session: URLSession = .shared,
+        baseURL: URL = X5Config.supabaseBaseURL,
+        anonKey: String = X5Config.supabaseAnonKey
+    ) {
+        self.session = session
+        self.baseURL = baseURL
+        self.anonKey = anonKey
+    }
 
     func signInWithEmailPassword(email: String, password: String) async throws -> SupabaseSession {
         var components = URLComponents(
@@ -42,7 +75,7 @@ final class SupabaseClient {
             "email": email,
             "password": password
         ])
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try ensureOK(response: response, data: data)
         return try JSONDecoder().decode(SupabaseSession.self, from: data)
     }
@@ -56,13 +89,13 @@ final class SupabaseClient {
             "email": email,
             "password": password
         ])
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try ensureOK(response: response, data: data)
         return try JSONDecoder().decode(SupabaseSession.self, from: data)
     }
 
-    func signInWithApple(identityToken: String) async throws -> SupabaseSession {
-        try await signInWithIdToken(provider: "apple", idToken: identityToken)
+    func signInWithApple(identityToken: String, nonce: String) async throws -> SupabaseSession {
+        try await signInWithIdToken(provider: "apple", idToken: identityToken, nonce: nonce)
     }
 
     /// Trades a Google idToken (from GIDSignIn iOS SDK) for a Supabase session.
@@ -71,7 +104,11 @@ final class SupabaseClient {
         try await signInWithIdToken(provider: "google", idToken: idToken)
     }
 
-    private func signInWithIdToken(provider: String, idToken: String) async throws -> SupabaseSession {
+    private func signInWithIdToken(
+        provider: String,
+        idToken: String,
+        nonce: String? = nil
+    ) async throws -> SupabaseSession {
         var components = URLComponents(
             url: baseURL.appendingPathComponent("auth/v1/token"),
             resolvingAgainstBaseURL: false
@@ -83,13 +120,14 @@ final class SupabaseClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
 
-        let body: [String: String] = [
+        var body: [String: String] = [
             "provider": provider,
             "id_token": idToken
         ]
+        if let nonce, !nonce.isEmpty { body["nonce"] = nonce }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try ensureOK(response: response, data: data)
         return try JSONDecoder().decode(SupabaseSession.self, from: data)
     }
@@ -100,7 +138,7 @@ final class SupabaseClient {
         var request = URLRequest(url: baseURL.appendingPathComponent("auth/v1/user"))
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try ensureOK(response: response, data: data)
         return try JSONDecoder().decode(SupabaseUser.self, from: data)
     }
@@ -109,6 +147,43 @@ final class SupabaseClient {
         guard let refresh = refreshToken else {
             throw SupabaseError.notAuthenticated
         }
+        let expectedGeneration = sessionGeneration
+
+        if let flight = refreshFlight,
+           flight.refreshToken == refresh,
+           flight.sessionGeneration == expectedGeneration {
+            return try await flight.task.value
+        }
+
+        let flightID = UUID()
+        let task = Task<SupabaseSession, Error> { [weak self] in
+            guard let self else { throw SupabaseError.notAuthenticated }
+            return try await self.performRefresh(
+                refreshToken: refresh,
+                expectedGeneration: expectedGeneration
+            )
+        }
+        refreshFlight = RefreshFlight(
+            id: flightID,
+            refreshToken: refresh,
+            sessionGeneration: expectedGeneration,
+            task: task
+        )
+
+        do {
+            let refreshed = try await task.value
+            if refreshFlight?.id == flightID { refreshFlight = nil }
+            return refreshed
+        } catch {
+            if refreshFlight?.id == flightID { refreshFlight = nil }
+            throw error
+        }
+    }
+
+    private func performRefresh(
+        refreshToken refresh: String,
+        expectedGeneration: UInt64
+    ) async throws -> SupabaseSession {
 
         var components = URLComponents(
             url: baseURL.appendingPathComponent("auth/v1/token"),
@@ -122,13 +197,23 @@ final class SupabaseClient {
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["refresh_token": refresh])
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
+        try Task.checkCancellation()
         try ensureOK(response: response, data: data)
-        let session = try JSONDecoder().decode(SupabaseSession.self, from: data)
-        accessToken = session.accessToken
-        refreshToken = session.refreshToken ?? refreshToken
-        onSessionRefreshed?(session)
-        return session
+        let refreshedSession = try JSONDecoder().decode(
+            SupabaseSession.self,
+            from: data
+        )
+        guard sessionGeneration == expectedGeneration,
+              refreshToken == refresh
+        else {
+            throw SupabaseError.staleSession
+        }
+
+        accessToken = refreshedSession.accessToken
+        refreshToken = refreshedSession.refreshToken ?? refresh
+        onSessionRefreshed?(refreshedSession)
+        return refreshedSession
     }
 
     func deleteOwnAccount() async throws {
@@ -150,8 +235,109 @@ final class SupabaseClient {
         category: ImageGenerationCategory,
         quantity: Int = 1,
         size: ImageGenerationSize = .square,
-        referenceImages: [ImageGenerationReference] = []
+        referenceImages: [ImageGenerationReference] = [],
+        idempotencyKey: String? = nil
     ) async throws -> GeneratedImage {
+        let body = try imageRequestBody(
+            prompt: prompt,
+            provider: provider,
+            category: category,
+            quantity: quantity,
+            size: size,
+            referenceImages: referenceImages
+        )
+        let data = try await runAuthed { token in
+            self.imageRequest(
+                body: body,
+                accessToken: token,
+                idempotencyKey: idempotencyKey
+            )
+        }
+        return try JSONDecoder().decode(GeneratedImage.self, from: data)
+    }
+
+    /// Paid multi-step flows use the access token captured for the account
+    /// that started the operation. This path intentionally never reads or
+    /// refreshes the mutable shared session after the request begins.
+    func generateImageWithAccessToken(
+        prompt: String,
+        provider: ImageGenerationProvider,
+        category: ImageGenerationCategory,
+        quantity: Int = 1,
+        size: ImageGenerationSize = .square,
+        referenceImages: [ImageGenerationReference] = [],
+        idempotencyKey: String? = nil,
+        accessToken: String
+    ) async throws -> GeneratedImage {
+        let token = accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else {
+            throw SupabaseError.notAuthenticated
+        }
+        let body = try imageRequestBody(
+            prompt: prompt,
+            provider: provider,
+            category: category,
+            quantity: quantity,
+            size: size,
+            referenceImages: referenceImages
+        )
+        let request = imageRequest(
+            body: body,
+            accessToken: token,
+            idempotencyKey: idempotencyKey
+        )
+        try Task.checkCancellation()
+        let (data, response) = try await session.data(for: request)
+        try Task.checkCancellation()
+        try ensureOK(response: response, data: data)
+        return try JSONDecoder().decode(GeneratedImage.self, from: data)
+    }
+
+    // MARK: - Auth-aware request runner with auto-refresh on 401
+
+    @discardableResult
+    private func runAuthed(_ build: @escaping (String) -> URLRequest) async throws -> Data {
+        guard let token = accessToken else { throw SupabaseError.notAuthenticated }
+        let expectedGeneration = sessionGeneration
+        let request = build(token)
+        let (data, response) = try await session.data(for: request)
+        try Task.checkCancellation()
+
+        if let http = response as? HTTPURLResponse, http.statusCode == 401, refreshToken != nil {
+            // Token expired — refresh once and retry
+            guard sessionGeneration == expectedGeneration,
+                  accessToken == token
+            else {
+                throw SupabaseError.staleSession
+            }
+            let refreshedSession = try await refreshSession()
+            try Task.checkCancellation()
+            guard accessToken == refreshedSession.accessToken else {
+                throw SupabaseError.staleSession
+            }
+            let newToken = refreshedSession.accessToken
+            let retryRequest = build(newToken)
+            let (retryData, retryResponse) = try await session.data(for: retryRequest)
+            try Task.checkCancellation()
+            try ensureOK(response: retryResponse, data: retryData)
+            return retryData
+        }
+
+        try ensureOK(response: response, data: data)
+        return data
+    }
+
+    private func imageRequestBody(
+        prompt: String,
+        provider: ImageGenerationProvider,
+        category: ImageGenerationCategory,
+        quantity: Int,
+        size: ImageGenerationSize,
+        referenceImages: [ImageGenerationReference]
+    ) throws -> Data {
+        guard ImageGenerationReferencePolicy.accepts(referenceImages) else {
+            throw SupabaseError.invalidMediaPayload
+        }
         var payload: [String: Any] = [
             "prompt": prompt,
             "provider": provider.provider,
@@ -168,40 +354,29 @@ final class SupabaseClient {
                 ]
             }
         }
-        let body = try JSONSerialization.data(withJSONObject: payload)
-        let data = try await runAuthed { token in
-            let url = self.baseURL.appendingPathComponent("functions/v1/generate-image")
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue(self.anonKey, forHTTPHeaderField: "apikey")
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            request.httpBody = body
-            return request
-        }
-        return try JSONDecoder().decode(GeneratedImage.self, from: data)
+        return try JSONSerialization.data(withJSONObject: payload)
     }
 
-    // MARK: - Auth-aware request runner with auto-refresh on 401
-
-    @discardableResult
-    private func runAuthed(_ build: @escaping (String) -> URLRequest) async throws -> Data {
-        guard let token = accessToken else { throw SupabaseError.notAuthenticated }
-        let request = build(token)
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        if let http = response as? HTTPURLResponse, http.statusCode == 401, refreshToken != nil {
-            // Token expired — refresh once and retry
-            _ = try await refreshSession()
-            guard let newToken = accessToken else { throw SupabaseError.notAuthenticated }
-            let retryRequest = build(newToken)
-            let (retryData, retryResponse) = try await URLSession.shared.data(for: retryRequest)
-            try ensureOK(response: retryResponse, data: retryData)
-            return retryData
+    private func imageRequest(
+        body: Data,
+        accessToken: String,
+        idempotencyKey: String?
+    ) -> URLRequest {
+        let url = baseURL.appendingPathComponent("functions/v1/generate-image")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 240
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue(
+            "Bearer \(accessToken)",
+            forHTTPHeaderField: "Authorization"
+        )
+        if let idempotencyKey {
+            request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
         }
-
-        try ensureOK(response: response, data: data)
-        return data
+        request.httpBody = body
+        return request
     }
 
     private func ensureOK(response: URLResponse, data: Data) throws {
@@ -220,6 +395,30 @@ struct ImageGenerationReference {
     let base64: String
 }
 
+enum ImageGenerationReferencePolicy {
+    static let maximumCount = 6
+    static let maximumDecodedBytesPerImage = 8 * 1_024 * 1_024
+    static let maximumDecodedBytesTotal = 24 * 1_024 * 1_024
+
+    static func accepts(_ references: [ImageGenerationReference]) -> Bool {
+        guard references.count <= maximumCount else { return false }
+        var total = 0
+        for reference in references {
+            guard ["image/jpeg", "image/png", "image/webp"].contains(reference.mimeType.lowercased()) else {
+                return false
+            }
+            // Base64 decoded size is at most 3/4 of its encoded byte count.
+            let decodedBytes = reference.base64.utf8.count * 3 / 4
+            guard decodedBytes > 0,
+                  decodedBytes <= maximumDecodedBytesPerImage
+            else { return false }
+            total += decodedBytes
+            guard total <= maximumDecodedBytesTotal else { return false }
+        }
+        return true
+    }
+}
+
 struct GeneratedImage: Decodable {
     let imageBase64: String
     let imageBase64s: [String]?
@@ -235,15 +434,40 @@ struct GeneratedImage: Decodable {
 
 enum SupabaseError: LocalizedError {
     case notAuthenticated
+    /// An operation started under an older account/session. It must be
+    /// discarded without clearing the newer session now stored by the app.
+    case staleSession
     case invalidResponse
     case serverError(status: Int, body: String)
+    case invalidMediaPayload
+
+    /// Only credential rejection invalidates the local session. Connectivity
+    /// failures and server outages must never sign the user out.
+    var invalidatesSession: Bool {
+        switch self {
+        case .notAuthenticated:
+            return true
+        case .staleSession:
+            return false
+        case .serverError(let status, _):
+            return status == 400 || status == 401
+        case .invalidResponse:
+            return false
+        case .invalidMediaPayload:
+            return false
+        }
+    }
 
     var errorDescription: String? {
         switch self {
         case .notAuthenticated:
             return "Not signed in."
+        case .staleSession:
+            return "The signed-in account changed while the request was running."
         case .invalidResponse:
             return "Invalid response from server."
+        case .invalidMediaPayload:
+            return "Too many reference images or the files are too large."
         case .serverError(let status, let body):
             if let message = Self.serverMessage(from: body) {
                 return message

@@ -33,10 +33,21 @@ _signing/
 ## Node (icon generator)
 node_modules/
 
+## Python test cache
+__pycache__/
+*.py[cod]
+
 ## Local secrets
 .env
 secrets.local
 
+## Client-approved artwork (restored only inside trusted builds)
+X5/Assets.xcassets/HomeApprovedReference.imageset/HomeApprovedReference.png
+
 .secrets/
 supabase/.temp/
 .scripts/screens_inbox/
+
+## Local production snapshots (course content may be private)
+diagnostics/course-repair/*.json
+!diagnostics/course-repair/.gitkeep

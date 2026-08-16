@@ -1,0 +1,345 @@
+name: iOS course regression tests
+
+on:
+  push:
+    branches:
+      - codex/x5-course-client-fixes-20260714
+  pull_request:
+    paths:
+      - "X5/**"
+      - "X5Tests/**"
+      - "project.yml"
+      - "supabase/functions/verify-app-store-transaction/**"
+      - "supabase/functions/app-store-notifications/**"
+      - "supabase/functions/verify-play-purchase/**"
+      - "supabase/functions/google-play-notifications/**"
+      - "supabase/functions/generate-image/**"
+      - "supabase/functions/moderate-portfolio/**"
+      - "supabase/functions/send-message-push/**"
+      - "supabase/functions/register-push-token/**"
+      - "supabase/functions/generate-video/**"
+      - "supabase/functions/generate-voice/**"
+      - "supabase/functions/voice-generation-webhook/**"
+      - "supabase/functions/account-deletion-cleanup/**"
+      - "supabase/config.toml"
+      - "supabase/functions/create-course-video-upload/**"
+      - "supabase/functions/startup-chat/**"
+      - "supabase/functions/fruit-story/**"
+      - "supabase/tests/image_generation_reliability_contract_test.mjs"
+      - "supabase/tests/video_generation_backend_contract_test.mjs"
+      - "supabase/tests/video_generation_openai_provider_contract_test.mjs"
+      - "supabase/tests/voice_generation_backend_contract_test.mjs"
+      - "supabase/tests/20260726_voice_generation_exact_once_test.sql"
+      - "supabase/tests/course_video_upload_slot_contract_test.mjs"
+      - "supabase/tests/startup_chat_backend_contract_test.mjs"
+      - "supabase/tests/startup_chat_rate_limit_contract_test.mjs"
+      - "supabase/tests/fruit_story_backend_contract_test.mjs"
+      - "supabase/tests/portfolio_automatic_moderation_contract_test.mjs"
+      - "supabase/tests/portfolio_private_media_contract_test.mjs"
+      - "supabase/tests/chat_attachment_security_contract_test.mjs"
+      - "supabase/tests/push_tokens_contract_test.mjs"
+      - "supabase/migrations/**apple*store*.sql"
+      - "supabase/migrations/**/*store*.sql"
+      - "supabase/migrations/**/*video*.sql"
+      - "supabase/migrations/**/*voice*.sql"
+      - "supabase/migrations/20260726222900_revoke_account_delete_helper_acl.sql"
+      - "supabase/migrations/20260801115000_push_tokens_contract.sql"
+      - "supabase/migrations/20260801120000_secure_push_dispatch.sql"
+      - "supabase/migrations/20260801121000_portfolio_automatic_moderation_enforcement.sql"
+      - "supabase/migrations/20260801122000_secure_chat_attachments.sql"
+      - "supabase/migrations/20260801123000_private_portfolio_media.sql"
+      - "supabase/sunset/**"
+      - "THIRD_PARTY_SOURCES.md"
+      - "supabase/ROLLBACK_20260801.md"
+      - "supabase/rollback/20260801_safe_operational_rollback.sql"
+      - ".github/requirements/asc-requirements.in"
+      - ".github/requirements/asc-requirements.lock"
+      - "Gemfile"
+      - "Gemfile.lock"
+      - "scripts/tests/**"
+      - ".github/workflows/ios-course-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-course-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Restore approved private Home artwork
+        env:
+          X5_HOME_ART_KEY: ${{ secrets.X5_HOME_ART_KEY }}
+        run: scripts/decrypt_client_home_art.sh
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.9.4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24.14.0"
+
+      - name: Verify App Store backend
+        working-directory: supabase/functions/verify-app-store-transaction
+        run: |
+          deno fmt --check
+          deno lint
+          deno check index.ts
+          deno test --allow-read
+
+      - name: Verify App Store notification backend
+        working-directory: supabase/functions/app-store-notifications
+        run: |
+          deno fmt --check
+          deno lint
+          deno check index.ts
+          deno test --allow-read
+
+      - name: Verify Google Play backend
+        working-directory: supabase/functions/verify-play-purchase
+        run: |
+          deno fmt --check
+          deno lint
+          deno check --frozen index.ts
+          deno test --frozen --allow-read
+
+      - name: Verify Google Play notification backend
+        working-directory: supabase/functions/google-play-notifications
+        run: |
+          deno fmt --check
+          deno lint
+          deno check --frozen index.ts
+          deno test --frozen --allow-read
+
+      - name: Verify image generation and portfolio moderation
+        run: |
+          deno check supabase/functions/generate-image/index.ts
+          (
+            cd supabase/functions/moderate-portfolio
+            deno fmt --check
+            deno lint
+            deno check --frozen index.ts
+            deno test --frozen --allow-read
+          )
+          deno test --allow-read \
+            supabase/functions/generate-image/economy.test.mjs \
+            supabase/tests/image_generation_reliability_contract_test.mjs \
+            supabase/tests/portfolio_automatic_moderation_contract_test.mjs \
+            supabase/tests/portfolio_private_media_contract_test.mjs
+
+      - name: Verify signed push and database event contracts
+        run: |
+          (
+            cd supabase/functions/send-message-push
+            deno fmt --check
+            deno lint
+            deno check --frozen index.ts
+            deno test --frozen --allow-read
+          )
+          (
+            cd supabase/functions/register-push-token
+            deno fmt --check
+            deno lint
+            deno check --frozen index.ts
+            deno test --frozen --allow-read
+          )
+          node --test \
+            supabase/functions/send-message-push/*.test.mjs \
+            supabase/functions/register-push-token/*.test.mjs
+          node --test \
+            supabase/tests/portfolio_automatic_moderation_contract_test.mjs \
+            supabase/tests/portfolio_private_media_contract_test.mjs \
+            supabase/tests/chat_attachment_security_contract_test.mjs \
+            supabase/tests/push_tokens_contract_test.mjs
+          deno test --allow-read \
+            supabase/tests/portfolio_automatic_moderation_contract_test.mjs \
+            supabase/tests/portfolio_private_media_contract_test.mjs \
+            supabase/tests/chat_attachment_security_contract_test.mjs \
+            supabase/tests/push_tokens_contract_test.mjs
+
+      - name: Verify AI Home backends
+        run: |
+          deno fmt --check \
+            supabase/functions/generate-voice \
+            supabase/functions/voice-generation-webhook \
+            supabase/functions/account-deletion-cleanup
+          deno lint \
+            supabase/functions/generate-voice \
+            supabase/functions/voice-generation-webhook \
+            supabase/functions/account-deletion-cleanup
+          deno check \
+            supabase/functions/generate-video/index.ts \
+            supabase/functions/generate-voice/index.ts \
+            supabase/functions/voice-generation-webhook/index.ts \
+            supabase/functions/account-deletion-cleanup/index.ts \
+            supabase/functions/startup-chat/index.ts \
+            supabase/functions/fruit-story/index.ts
+          node --test \
+            supabase/functions/generate-video/*.test.mjs \
+            supabase/functions/generate-voice/*.test.mjs \
+            supabase/functions/voice-generation-webhook/*.test.mjs \
+            supabase/functions/account-deletion-cleanup/*.test.mjs \
+            supabase/functions/startup-chat/*.test.mjs \
+            supabase/functions/fruit-story/tests/*.test.mjs \
+            supabase/tests/video_generation_backend_contract_test.mjs \
+            supabase/tests/video_generation_openai_provider_contract_test.mjs \
+            supabase/tests/voice_generation_backend_contract_test.mjs \
+            supabase/tests/startup_chat_backend_contract_test.mjs \
+            supabase/tests/startup_chat_rate_limit_contract_test.mjs \
+            supabase/tests/fruit_story_backend_contract_test.mjs
+
+      - name: Verify quarantined Bunny course video source
+        run: |
+          deno fmt --check supabase/functions/create-course-video-upload
+          deno lint supabase/functions/create-course-video-upload
+          deno check supabase/functions/create-course-video-upload/index.ts
+          node --test \
+            supabase/functions/create-course-video-upload/*.test.mjs \
+            supabase/tests/course_video_upload_slot_contract_test.mjs
+
+      - name: Verify release automation contracts
+        run: python3 -m unittest discover -s scripts/tests -p "test_*.py"
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.app || sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Verify pinned TUSKit fork
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch x5-request-timeout-300 \
+            https://github.com/tooyakov-art/TUSKit.git "$RUNNER_TEMP/TUSKit"
+          test "$(git -C "$RUNNER_TEMP/TUSKit" rev-parse HEAD)" = \
+            "4fd278f37b8a20f826a6fa45ae12b18b47b058b6"
+          swift test --package-path "$RUNNER_TEMP/TUSKit"
+
+      - name: Install XcodeGen
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -fsSL \
+            'https://github.com/yonaskolb/XcodeGen/releases/download/2.45.4/xcodegen.zip' \
+            --output "$RUNNER_TEMP/xcodegen.zip"
+          echo '090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef  '"$RUNNER_TEMP/xcodegen.zip" \
+            | shasum -a 256 -c -
+          mkdir -p "$RUNNER_TEMP/xcodegen"
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/xcodegen"
+          echo "$RUNNER_TEMP/xcodegen/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Select simulator
+        id: simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for devices in data["devices"].values() for d in devices if d.get("isAvailable") and d.get("name", "").startswith("iPhone")))')
+          echo "id=$DEVICE_ID" >> "$GITHUB_OUTPUT"
+          echo "Using iPhone simulator $DEVICE_ID"
+
+      - name: Run unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project X5.xcodeproj \
+            -scheme X5-Course-CI \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}' \
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO
+
+      - name: Remove restored private Home artwork
+        if: always()
+        run: rm -f X5/Assets.xcassets/HomeApprovedReference.imageset/HomeApprovedReference.png
+
+      - name: Run private portfolio media privacy regression explicitly
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project X5.xcodeproj \
+            -scheme X5-Course-CI \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}' \
+            -only-testing:X5Tests/PortfolioMediaPrivacyTests \
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO
+
+  apple-sandbox-audit:
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/codex/x5-course-client-fixes-20260714' &&
+      contains(github.event.head_commit.message, '[audit-apple-sandbox]')
+    runs-on: ubuntu-24.04
+    environment: app-store-production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - name: Install pinned audit dependencies
+        run: python -m pip install --require-hashes -r .github/requirements/asc-requirements.lock
+      - name: Verify the read-only audit contract
+        run: python -m unittest scripts.tests.test_apple_sandbox_history_audit
+      - name: Read approved Apple Sandbox history windows
+        env:
+          IAP_API_KEY_ID: ${{ secrets.IAP_API_KEY_ID || secrets.ASC_API_KEY_ID }}
+          IAP_API_ISSUER_ID: ${{ secrets.IAP_API_ISSUER_ID || secrets.ASC_API_ISSUER_ID }}
+          IAP_API_KEY_BASE64: ${{ secrets.IAP_API_KEY_BASE64 || secrets.ASC_API_KEY_BASE64 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/x5-apple-audit"
+          python scripts/apple_sandbox_history_audit.py --output "$RUNNER_TEMP/x5-apple-audit/apple-sandbox-history-audit.json"
+      - name: Upload safe audit report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apple-sandbox-history-audit
+          path: ${{ runner.temp }}/x5-apple-audit/apple-sandbox-history-audit.json
+          if-no-files-found: error
+          retention-days: 7
+
+  apple-sandbox-recovery:
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/codex/x5-course-client-fixes-20260714' &&
+      contains(github.event.head_commit.message, '[recover-apple-sandbox]')
+    runs-on: ubuntu-24.04
+    environment: app-store-production
+    timeout-minutes: 10
+    concurrency:
+      group: x5-fixed-sandbox-consumable-recovery
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - name: Install pinned recovery dependencies
+        run: python -m pip install --require-hashes -r .github/requirements/asc-requirements.lock
+      - name: Verify the fixed recovery contract
+        run: python -m unittest scripts.tests.test_apple_sandbox_consumable_recovery
+      - name: Recover the fixed Sandbox consumable
+        env:
+          IAP_API_KEY_ID: ${{ secrets.IAP_API_KEY_ID || secrets.ASC_API_KEY_ID }}
+          IAP_API_ISSUER_ID: ${{ secrets.IAP_API_ISSUER_ID || secrets.ASC_API_ISSUER_ID }}
+          IAP_API_KEY_BASE64: ${{ secrets.IAP_API_KEY_BASE64 || secrets.ASC_API_KEY_BASE64 }}
+        run: python -m scripts.apple_sandbox_consumable_recovery

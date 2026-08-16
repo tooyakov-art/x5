@@ -18,7 +18,7 @@ struct UserProfile: Codable, Equatable, Identifiable {
     var avatar: String?
     var bio: String?
     var services: [String]?
-    var plan: String?               // free | pro | black
+    var plan: String?               // free | lite | pro | max | black
     var credits: Int?
     var purchasedCourseIds: [String]?
     var purchasedLessonIds: [String]?
@@ -35,6 +35,10 @@ struct UserProfile: Codable, Equatable, Identifiable {
     var lastSeen: String?
     var isVerified: Bool?
     var verifiedUntil: String?
+    var countryCode: String?
+    var city: String?
+    var registrationPlatform: String?
+    var onboardingCompletedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name, nickname, email, avatar, bio, services, plan, credits, language
@@ -52,6 +56,10 @@ struct UserProfile: Codable, Equatable, Identifiable {
         case lastSeen = "last_seen"
         case isVerified = "is_verified"
         case verifiedUntil = "verified_until"
+        case countryCode = "country_code"
+        case city
+        case registrationPlatform = "registration_platform"
+        case onboardingCompletedAt = "onboarding_completed_at"
     }
 
     var displayName: String {
@@ -61,7 +69,7 @@ struct UserProfile: Codable, Equatable, Identifiable {
             let emailName = String(prefix).replacingOccurrences(of: ".", with: " ").capitalized
             if let n = Self.cleanDisplayName(emailName) { return n }
         }
-        return "X5"
+        return "X five marketing"
     }
 
     private static func cleanDisplayName(_ raw: String?) -> String? {
@@ -73,23 +81,51 @@ struct UserProfile: Codable, Equatable, Identifiable {
 
     var planLabel: String {
         switch plan ?? "free" {
+        case "lite": return "Lite"
         case "pro": return "Pro"
+        case "max": return "Max"
         case "black": return "Black"
         default: return "Free"
         }
     }
 
-    var isPro: Bool { plan == "pro" || plan == "black" }
+    /// Paid access is active only while the server-recorded StoreKit period is
+    /// active. Legacy paid profiles that predate expiration tracking keep their
+    /// access; new verified transactions always include an end date.
+    var isPro: Bool {
+        Self.isPaidPlanActive(plan: plan, endDate: subscriptionEndDate)
+    }
+
+    static func isPaidPlanActive(plan: String?, endDate: String?) -> Bool {
+        let normalizedPlan = plan?.lowercased()
+        if normalizedPlan == "black" { return true }
+        guard ["lite", "pro", "max"].contains(normalizedPlan ?? "") else { return false }
+        guard let end = endDate?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !end.isEmpty
+        else { return true }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let expiration = formatter.date(from: end) ?? ISO8601DateFormatter().date(from: end)
+        return expiration.map { $0 > Date() } ?? false
+    }
 
     /// True only if is_verified is set AND the paid period hasn't expired.
     var hasActiveVerifiedBadge: Bool {
-        guard isVerified == true else { return false }
-        guard let untilStr = verifiedUntil else { return false }
+        Self.isVerifiedBadgeActive(isVerified: isVerified, until: verifiedUntil)
+    }
+
+    static func isVerifiedBadgeActive(
+        isVerified: Bool?,
+        until untilStr: String?,
+        now: Date = Date()
+    ) -> Bool {
+        guard isVerified == true, let untilStr else { return false }
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let until = f.date(from: untilStr) ?? ISO8601DateFormatter().date(from: untilStr)
         guard let until else { return false }
-        return until > Date()
+        return until > now
     }
 }
 
@@ -99,7 +135,7 @@ final class CurrentUser: ObservableObject {
     /// services (Subscription, etc.) reconcile their local cache to match the
     /// server — the single source of truth for plan / Pro state.
     ///
-    /// Notification payload is intentionally narrow (`plan` only). Posting
+    /// Notification payload is intentionally narrow (`is_pro` only). Posting
     /// the full struct via the default NotificationCenter would expose PII
     /// (email, credits, push_token) to any in-process observer including
     /// linked third-party SDKs.
@@ -112,7 +148,7 @@ final class CurrentUser: ObservableObject {
             NotificationCenter.default.post(
                 name: .x5ProfileDidUpdate,
                 object: nil,
-                userInfo: ["plan": profile?.plan ?? ""]
+                userInfo: ["is_pro": profile?.isPro ?? false]
             )
             persistCachedProfile()
         }
@@ -120,7 +156,8 @@ final class CurrentUser: ObservableObject {
     @Published private(set) var isLoading: Bool = false
     @Published private(set) var error: String?
 
-    private let cachedProfileKey = "x5.profile.cache"
+    private let cachedProfileKeyPrefix = "x5.profile.cache."
+    private var lastCachedProfileId: String?
 
     private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
     private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
@@ -141,9 +178,16 @@ final class CurrentUser: ObservableObject {
     }
 
     private func restoreCachedProfile() {
-        guard let data = UserDefaults.standard.data(forKey: cachedProfileKey),
+        let defaults = UserDefaults.standard
+        guard let sessionUserId = defaults.string(forKey: "x5.session.user_id")?.lowercased(),
+              let data = defaults.data(forKey: cachedProfileKeyPrefix + sessionUserId),
               let cached = try? JSONDecoder().decode(UserProfile.self, from: data)
         else { return }
+        guard cached.id.caseInsensitiveCompare(sessionUserId) == .orderedSame else {
+            defaults.removeObject(forKey: cachedProfileKeyPrefix + sessionUserId)
+            return
+        }
+        lastCachedProfileId = cached.id.lowercased()
         // Routing through the setter re-persists the same bytes (no-op write)
         // and re-broadcasts the cached plan — which is fine: Subscription
         // syncs to the cached state until the server fetch overrides it,
@@ -154,9 +198,13 @@ final class CurrentUser: ObservableObject {
     private func persistCachedProfile() {
         let defaults = UserDefaults.standard
         if let profile, let data = try? JSONEncoder().encode(profile) {
-            defaults.set(data, forKey: cachedProfileKey)
-        } else {
-            defaults.removeObject(forKey: cachedProfileKey)
+            let profileId = profile.id.lowercased()
+            defaults.set(data, forKey: cachedProfileKeyPrefix + profileId)
+            lastCachedProfileId = profileId
+            defaults.removeObject(forKey: "x5.profile.cache")
+        } else if let lastCachedProfileId {
+            defaults.removeObject(forKey: cachedProfileKeyPrefix + lastCachedProfileId)
+            self.lastCachedProfileId = nil
         }
     }
 
@@ -166,13 +214,33 @@ final class CurrentUser: ObservableObject {
         self.profile = profile
     }
 
+    /// Applies the server-authoritative result of the atomic course-purchase
+    /// RPC so the course unlocks immediately while a full profile refresh is
+    /// in flight. Failed business outcomes only reconcile the known balance.
+    func applyCoursePurchase(_ response: CoursePurchaseResponse) {
+        guard var profile else { return }
+
+        if let credits = response.creditsRemaining {
+            profile.credits = credits
+        }
+        if response.grantsOwnership {
+            var purchased = profile.purchasedCourseIds ?? []
+            if !purchased.contains(response.courseId) {
+                purchased.append(response.courseId)
+            }
+            profile.purchasedCourseIds = purchased
+        }
+        self.profile = profile
+    }
+
     deinit {
         if let observer { NotificationCenter.default.removeObserver(observer) }
     }
 
     /// Loads (or refreshes) the current user's profile row using the access token.
     /// If the row does not exist yet, creates it with default values.
-    func load(userId: String, accessToken: String) async {
+    @discardableResult
+    func load(userId: String, accessToken: String) async -> Bool {
         isLoading = true
         defer { isLoading = false }
         error = nil
@@ -195,17 +263,19 @@ final class CurrentUser: ObservableObject {
             let rows = try JSONDecoder().decode([UserProfile].self, from: data)
             if let row = rows.first {
                 self.profile = row
+                return true
             } else {
                 // Profile row missing — create one (covers users registered before the
                 // auth.users -> profiles Postgres trigger existed).
-                await ensureProfile(userId: userId, accessToken: accessToken)
+                return await ensureProfile(userId: userId, accessToken: accessToken)
             }
         } catch {
             self.error = error.localizedDescription
+            return false
         }
     }
 
-    private func ensureProfile(userId: String, accessToken: String) async {
+    private func ensureProfile(userId: String, accessToken: String) async -> Bool {
         var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/profiles"))
         request.httpMethod = "POST"
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -220,12 +290,59 @@ final class CurrentUser: ObservableObject {
         ]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        if let (data, response) = try? await URLSession.shared.data(for: request),
-           let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-           let rows = try? JSONDecoder().decode([UserProfile].self, from: data),
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode)
+        else {
+            error = "Profile creation failed"
+            return false
+        }
+
+        if let rows = try? JSONDecoder().decode([UserProfile].self, from: data),
            let row = rows.first {
             self.profile = row
+            return true
         }
+
+        // With `resolution=ignore-duplicates`, a concurrent trigger or another
+        // client can win the insert and PostgREST legitimately returns an empty
+        // representation. Resolve that successful race with one bounded GET;
+        // never recurse back into profile creation.
+        if let row = await refetchProfileAfterIgnoredInsert(
+            userId: userId,
+            accessToken: accessToken
+        ) {
+            self.profile = row
+            return true
+        }
+        error = "Profile refresh returned no data"
+        return false
+    }
+
+    private func refetchProfileAfterIgnoredInsert(
+        userId: String,
+        accessToken: String
+    ) async -> UserProfile? {
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("rest/v1/profiles"),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = [
+            URLQueryItem(name: "id", value: "eq.\(userId)"),
+            URLQueryItem(name: "select", value: "*"),
+            URLQueryItem(name: "limit", value: "1")
+        ]
+        var request = URLRequest(url: components.url!)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let rows = try? JSONDecoder().decode([UserProfile].self, from: data)
+        else { return nil }
+        return rows.first
     }
 
     /// Uploads an avatar JPEG to Supabase Storage and patches profiles.avatar to the public URL.
@@ -256,13 +373,19 @@ final class CurrentUser: ObservableObject {
     }
 
     /// Patches a single field on the profile row.
-    func patch<T: Encodable>(_ field: String, value: T, accessToken: String) async {
+    @discardableResult
+    func patch<T: Encodable>(_ field: String, value: T, accessToken: String) async -> Bool {
         await patchMany([field: AnyEncodable(value)], accessToken: accessToken)
     }
 
     /// Patches several fields atomically.
-    func patchMany(_ fields: [String: AnyEncodable], accessToken: String) async {
-        guard let id = profile?.id else { return }
+    @discardableResult
+    func patchMany(_ fields: [String: AnyEncodable], accessToken: String) async -> Bool {
+        guard let id = profile?.id else {
+            error = "Profile is not loaded"
+            return false
+        }
+        error = nil
         do {
             var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
             components.queryItems = [URLQueryItem(name: "id", value: "eq.\(id)")]
@@ -278,10 +401,21 @@ final class CurrentUser: ObservableObject {
             if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
                 if let rows = try? JSONDecoder().decode([UserProfile].self, from: data), let row = rows.first {
                     self.profile = row
+                    return true
                 }
+                error = "Profile save returned an empty response"
+                return false
             }
+            if let http = response as? HTTPURLResponse {
+                let body = String(data: data, encoding: .utf8) ?? ""
+                error = body.isEmpty ? "Profile save failed (\(http.statusCode))" : body
+            } else {
+                error = "Profile save failed"
+            }
+            return false
         } catch {
             self.error = error.localizedDescription
+            return false
         }
     }
 }

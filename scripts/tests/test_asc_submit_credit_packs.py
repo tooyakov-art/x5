@@ -1,0 +1,394 @@
+import importlib.util
+import pathlib
+import sys
+import unittest
+from unittest import mock
+
+
+SCRIPT = pathlib.Path(__file__).parents[1] / "asc_submit_credit_packs.py"
+SPEC = importlib.util.spec_from_file_location("asc_submit_credit_packs", SCRIPT)
+assert SPEC and SPEC.loader
+MODULE = importlib.util.module_from_spec(SPEC)
+sys.path.insert(0, str(SCRIPT.parent))
+sys.modules[SPEC.name] = MODULE
+SPEC.loader.exec_module(MODULE)
+
+
+class CreditPackSubmissionTests(unittest.TestCase):
+    def test_release_is_locked_to_build_193(self):
+        self.assertEqual(MODULE.TARGET_VERSION, "1.1.6")
+        self.assertEqual(MODULE.TARGET_BUILD, "193")
+
+    def test_iap_version_payload_targets_parent_purchase(self):
+        payload = MODULE.iap_version_payload("iap-1")
+        self.assertEqual(
+            payload["data"]["relationships"]["inAppPurchase"]["data"],
+            {"type": "inAppPurchases", "id": "iap-1"},
+        )
+
+    def test_review_item_can_attach_iap_version(self):
+        payload = MODULE.review_item_payload(
+            "submission-1",
+            "inAppPurchaseVersion",
+            "inAppPurchaseVersions",
+            "version-1",
+        )
+        relationships = payload["data"]["relationships"]
+        self.assertEqual(
+            relationships["reviewSubmission"]["data"]["id"],
+            "submission-1",
+        )
+        self.assertEqual(
+            relationships["inAppPurchaseVersion"]["data"],
+            {"type": "inAppPurchaseVersions", "id": "version-1"},
+        )
+
+    def test_combined_submission_targets_ios_app(self):
+        payload = MODULE.review_submission_payload("app-1")
+        self.assertEqual(payload["data"]["attributes"]["platform"], "IOS")
+        self.assertEqual(
+            payload["data"]["relationships"]["app"]["data"],
+            {"type": "apps", "id": "app-1"},
+        )
+
+    def test_developer_rejected_iap_version_is_reused(self):
+        rejected = {
+            "id": "version-1",
+            "attributes": {"state": "DEVELOPER_REJECTED"},
+        }
+
+        class FakeAPI:
+            def list_all(self, path):
+                return [rejected]
+
+            def request(self, *args, **kwargs):
+                raise AssertionError("must not create a duplicate version")
+
+        self.assertEqual(
+            MODULE.ensure_iap_version(FakeAPI(), "iap-1"),
+            rejected,
+        )
+
+    def test_single_ready_submission_is_reused(self):
+        ready = {
+            "id": "submission-1",
+            "attributes": {"state": "READY_FOR_REVIEW"},
+        }
+        complete = {
+            "id": "submission-2",
+            "attributes": {"state": "COMPLETE"},
+        }
+        self.assertEqual(
+            MODULE.single_ready_submission([complete, ready]),
+            ready,
+        )
+
+    def test_multiple_ready_submissions_fail_closed(self):
+        rows = [
+            {"id": "one", "attributes": {"state": "READY_FOR_REVIEW"}},
+            {"id": "two", "attributes": {"state": "READY_FOR_REVIEW"}},
+        ]
+        with self.assertRaisesRegex(RuntimeError, "More than one"):
+            MODULE.single_ready_submission(rows)
+
+    def test_submit_only_from_ready_to_submit(self):
+        self.assertTrue(
+            MODULE.should_submit("READY_TO_SUBMIT", action="submit")
+        )
+        for state in ("APPROVED", "WAITING_FOR_REVIEW", "IN_REVIEW"):
+            with self.subTest(state=state):
+                self.assertFalse(
+                    MODULE.should_submit(state, action="submit")
+                )
+
+    def test_audit_never_mutates(self):
+        self.assertFalse(
+            MODULE.should_submit("MISSING_METADATA", action="audit")
+        )
+
+    def test_unsafe_submit_state_fails_closed(self):
+        with self.assertRaisesRegex(RuntimeError, "MISSING_METADATA"):
+            MODULE.should_submit("MISSING_METADATA", action="submit")
+
+    def test_exact_combined_review_targets_are_extracted(self):
+        payload = {
+            "included": [
+                {
+                    "id": "item-app",
+                    "type": "reviewSubmissionItems",
+                    "relationships": {
+                        "appStoreVersion": {
+                            "data": {
+                                "type": "appStoreVersions",
+                                "id": "version-1",
+                            }
+                        }
+                    },
+                },
+                *[
+                    {
+                        "id": f"item-iap-{index}",
+                        "type": "reviewSubmissionItems",
+                        "relationships": {
+                            "inAppPurchaseVersion": {
+                                "data": {
+                                    "type": "inAppPurchaseVersions",
+                                    "id": f"iap-version-{index}",
+                                }
+                            }
+                        },
+                    }
+                    for index in range(1, 4)
+                ],
+            ]
+        }
+
+        self.assertEqual(
+            MODULE.review_item_targets(payload),
+            {
+                ("appStoreVersions", "version-1"),
+                ("inAppPurchaseVersions", "iap-version-1"),
+                ("inAppPurchaseVersions", "iap-version-2"),
+                ("inAppPurchaseVersions", "iap-version-3"),
+            },
+        )
+
+    def test_combined_review_submits_only_after_exactly_four_targets(self):
+        class FakeAPI:
+            def __init__(self):
+                self.targets = set()
+                self.submitted = False
+
+            def request(self, method, path, expected=(200,), payload=None):
+                if method == "GET" and "?filter[app]=" in path:
+                    return {
+                        "data": [
+                            {
+                                "id": "submission-1",
+                                "attributes": {"state": "READY_FOR_REVIEW"},
+                            }
+                        ]
+                    }
+                if method == "GET" and "?include=items" in path:
+                    included = []
+                    for index, (resource_type, resource_id) in enumerate(
+                        sorted(self.targets)
+                    ):
+                        relationship = (
+                            "appStoreVersion"
+                            if resource_type == "appStoreVersions"
+                            else "inAppPurchaseVersion"
+                        )
+                        included.append(
+                            {
+                                "id": f"item-{index}",
+                                "type": "reviewSubmissionItems",
+                                "relationships": {
+                                    relationship: {
+                                        "data": {
+                                            "type": resource_type,
+                                            "id": resource_id,
+                                        }
+                                    }
+                                },
+                            }
+                        )
+                    return {"included": included}
+                if method == "POST" and path == "/v1/reviewSubmissionItems":
+                    relationships = payload["data"]["relationships"]
+                    relationship = next(
+                        name
+                        for name in (
+                            "appStoreVersion",
+                            "inAppPurchaseVersion",
+                        )
+                        if name in relationships
+                    )
+                    target = relationships[relationship]["data"]
+                    self.targets.add((target["type"], target["id"]))
+                    return {"data": {"id": f"item-{len(self.targets)}"}}
+                if method == "PATCH":
+                    self.submitted = True
+                    self.assert_exact_targets()
+                    return {
+                        "data": {
+                            "id": "submission-1",
+                            "attributes": {"state": "WAITING_FOR_REVIEW"},
+                        }
+                    }
+                raise AssertionError(f"Unexpected request {method} {path}")
+
+            def assert_exact_targets(self):
+                expected = {
+                    ("appStoreVersions", "version-1"),
+                    ("inAppPurchaseVersions", "iap-1"),
+                    ("inAppPurchaseVersions", "iap-2"),
+                    ("inAppPurchaseVersions", "iap-3"),
+                }
+                if self.targets != expected:
+                    raise AssertionError(
+                        f"submitted with wrong targets {self.targets}"
+                    )
+
+        api = FakeAPI()
+        submission_id = MODULE.create_combined_review(
+            api,
+            "app-1",
+            "version-1",
+            [{"id": "iap-1"}, {"id": "iap-2"}, {"id": "iap-3"}],
+        )
+        self.assertEqual(submission_id, "submission-1")
+        self.assertTrue(api.submitted)
+        api.assert_exact_targets()
+
+    def test_ready_submission_waits_for_eventual_exact_target_readback(self):
+        expected_targets = {
+            ("appStoreVersions", "version-1"),
+            ("inAppPurchaseVersions", "iap-1"),
+            ("inAppPurchaseVersions", "iap-2"),
+            ("inAppPurchaseVersions", "iap-3"),
+        }
+
+        class FakeAPI:
+            def __init__(self):
+                self.target_readbacks = [
+                    expected_targets,
+                    set(),
+                    expected_targets,
+                ]
+                self.submitted = False
+
+            def request(self, method, path, expected=(200,), payload=None):
+                if method == "GET" and "?filter[app]=" in path:
+                    return {
+                        "data": [
+                            {
+                                "id": "submission-ready",
+                                "attributes": {"state": "READY_FOR_REVIEW"},
+                            }
+                        ]
+                    }
+                if method == "GET" and "?include=items" in path:
+                    targets = self.target_readbacks.pop(0)
+                    included = []
+                    for index, (resource_type, resource_id) in enumerate(
+                        sorted(targets)
+                    ):
+                        relationship = (
+                            "appStoreVersion"
+                            if resource_type == "appStoreVersions"
+                            else "inAppPurchaseVersion"
+                        )
+                        included.append(
+                            {
+                                "id": f"item-{index}",
+                                "type": "reviewSubmissionItems",
+                                "relationships": {
+                                    relationship: {
+                                        "data": {
+                                            "type": resource_type,
+                                            "id": resource_id,
+                                        }
+                                    }
+                                },
+                            }
+                        )
+                    return {"included": included}
+                if method == "PATCH":
+                    self.submitted = True
+                    return {
+                        "data": {
+                            "id": "submission-ready",
+                            "attributes": {"state": "WAITING_FOR_REVIEW"},
+                        }
+                    }
+                if method == "POST":
+                    raise AssertionError(
+                        "rerun must reuse the ready submission and its items"
+                    )
+                raise AssertionError(f"Unexpected request {method} {path}")
+
+        api = FakeAPI()
+        with mock.patch.object(MODULE.time, "sleep") as sleep:
+            submission_id = MODULE.create_combined_review(
+                api,
+                "app-1",
+                "version-1",
+                [{"id": "iap-1"}, {"id": "iap-2"}, {"id": "iap-3"}],
+            )
+
+        self.assertEqual(submission_id, "submission-ready")
+        self.assertTrue(api.submitted)
+        self.assertEqual(api.target_readbacks, [])
+        sleep.assert_called_once_with(2)
+
+    def test_replace_workflow_delegates_final_submission_to_combined_script(self):
+        workflow = (
+            pathlib.Path(__file__).parents[2]
+            / ".github"
+            / "workflows"
+            / "asc-release-replace-submit.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('EXPECTED_VERSION: "1.1.6"', workflow)
+        self.assertIn('EXPECTED_BUILD: "220"', workflow)
+        self.assertIn(
+            "python scripts/asc_submit_credit_packs.py --action submit",
+            workflow,
+        )
+        self.assertNotIn("Attached app version item.", workflow)
+
+    def test_replace_workflow_requires_an_explicit_manual_dispatch(self):
+        workflow = (
+            pathlib.Path(__file__).parents[2]
+            / ".github"
+            / "workflows"
+            / "asc-release-replace-submit.yml"
+        ).read_text(encoding="utf-8")
+
+        trigger_block = workflow.split("jobs:", maxsplit=1)[0]
+        self.assertIn("workflow_dispatch:", trigger_block)
+        self.assertNotIn("\n  push:", trigger_block)
+
+    def test_replace_workflow_fails_closed_when_metadata_upload_fails(self):
+        workflow = (
+            pathlib.Path(__file__).parents[2]
+            / ".github"
+            / "workflows"
+            / "asc-release-replace-submit.yml"
+        ).read_text(encoding="utf-8")
+        metadata_step = workflow.split(
+            "- name: Upload latest review metadata",
+            maxsplit=1,
+        )[1].split(
+            "- name: Attach build and submit for review",
+            maxsplit=1,
+        )[0]
+
+        self.assertNotIn("continue-on-error: true", metadata_step)
+
+    def test_replace_workflow_waits_for_valid_build_before_cancelling_review(self):
+        workflow = (
+            pathlib.Path(__file__).parents[2]
+            / ".github"
+            / "workflows"
+            / "asc-release-replace-submit.yml"
+        ).read_text(encoding="utf-8")
+
+        preflight = "- name: Wait for expected build before changing review"
+        cancellation = "- name: Cancel waiting review submission before replacing build"
+        self.assertIn(preflight, workflow)
+        self.assertLess(workflow.index(preflight), workflow.index(cancellation))
+
+        preflight_step = workflow.split(preflight, maxsplit=1)[1].split(
+            "- name: Developer-reject pending App Store version",
+            maxsplit=1,
+        )[0]
+        self.assertIn('state = attrs.get("processingState")', preflight_step)
+        self.assertIn('if state == "VALID" and not expired:', preflight_step)
+        self.assertNotIn("requests.patch(", preflight_step)
+        self.assertNotIn("requests.post(", preflight_step)
+
+
+if __name__ == "__main__":
+    unittest.main()

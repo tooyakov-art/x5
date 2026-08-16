@@ -1,23 +1,35 @@
 ﻿name: iOS build & TestFlight upload
 
+permissions:
+  contents: read
+  statuses: write
+
 on:
   push:
-    branches: [main]
+    branches: [main, codex/x5-cleanup-from-restore-clean, codex/x5-client-feedback-20260807]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: macos-26
+    environment: app-store-production
     timeout-minutes: 40
     env:
-      SCHEME: X5
+      SCHEME: X5-Course-CI
       BUNDLE_ID: com.x5studio.app
       ARCHIVE_PATH: ${{ github.workspace }}/build/X5.xcarchive
       EXPORT_PATH: ${{ github.workspace }}/build/export
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Restore approved private Home artwork
+        env:
+          X5_HOME_ART_KEY: ${{ secrets.X5_HOME_ART_KEY }}
+        run: scripts/decrypt_client_home_art.sh
 
       - name: Select Xcode
         run: |
@@ -26,7 +38,7 @@ jobs:
 
       # ── КЕШ: Swift Package Manager + DerivedData ──
       - name: Cache SPM dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm
@@ -36,11 +48,21 @@ jobs:
           restore-keys: |
             spm-${{ runner.os }}-
 
-      - name: Install xcodegen
-        run: brew install xcodegen
+      - name: Install verified XcodeGen 2.45.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -fsSL \
+            'https://github.com/yonaskolb/XcodeGen/releases/download/2.45.4/xcodegen.zip' \
+            --output "$RUNNER_TEMP/xcodegen.zip"
+          echo '090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef  '"$RUNNER_TEMP/xcodegen.zip" \
+            | shasum -a 256 -c -
+          mkdir -p "$RUNNER_TEMP/xcodegen"
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/xcodegen"
+          echo "$RUNNER_TEMP/xcodegen/xcodegen/bin" >> "$GITHUB_PATH"
 
       - name: Cache DerivedData (Xcode build artifacts)
-        uses: actions/cache@v4
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ~/Library/Developer/Xcode/DerivedData
           key: derived-${{ runner.os }}-${{ hashFiles('X5/**/*.swift', 'project.yml') }}
@@ -126,14 +148,6 @@ jobs:
             -exportOptionsPlist ExportOptions.plist \
             -allowProvisioningUpdates
 
-      - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: X5-ipa
-          path: ${{ env.EXPORT_PATH }}/*.ipa
-          if-no-files-found: error
-          retention-days: 14
-
       - name: Write App Store Connect API key
         env:
           ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
@@ -149,6 +163,7 @@ jobs:
         env:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_APP_ID: "6764340680"
         run: |
           set -euo pipefail
           IPA=$(ls "$EXPORT_PATH"/*.ipa | head -n 1)
@@ -156,8 +171,43 @@ jobs:
           xcrun altool --upload-app \
             --type ios \
             --file "$IPA" \
+            --apple-id "$ASC_APP_ID" \
             --apiKey "$ASC_API_KEY_ID" \
             --apiIssuer "$ASC_API_ISSUER_ID" 2>&1 | tee "$LOG"
           if grep -E "UPLOAD FAILED|Failed to upload package|STATE_ERROR|Validation failed" "$LOG"; then
             exit 1
           fi
+
+      - name: Remove restored private Home artwork
+        if: always()
+        run: rm -f X5/Assets.xcassets/HomeApprovedReference.imageset/HomeApprovedReference.png
+
+      - name: Publish TestFlight upload status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          case "$JOB_STATUS" in
+            success)
+              STATE="success"
+              DESCRIPTION="Build uploaded to TestFlight"
+              ;;
+            cancelled)
+              STATE="error"
+              DESCRIPTION="TestFlight upload cancelled"
+              ;;
+            *)
+              STATE="failure"
+              DESCRIPTION="TestFlight upload failed"
+              ;;
+          esac
+          TARGET_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            --data "{\"state\":\"$STATE\",\"target_url\":\"$TARGET_URL\",\"description\":\"$DESCRIPTION\",\"context\":\"testflight/upload\"}"

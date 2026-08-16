@@ -1,0 +1,285 @@
+name: ASC submit latest review version
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/x5-cleanup-from-restore-clean]
+    paths:
+      - ".github/workflows/asc-cancel-empty-and-submit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  submit-latest:
+    runs-on: ubuntu-latest
+    environment: app-store-production
+    timeout-minutes: 10
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      BUNDLE_ID: com.x5studio.app
+      TARGET_VERSION: "1.1.4"
+      TARGET_BUILD: "180"
+      RELEASE_NOTES: "Исправлены ошибки и улучшена стабильность приложения."
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --require-hashes -r .github/requirements/asc-requirements.lock
+      - name: Attach target version and submit latest
+        run: |
+          python <<'PY'
+          import base64
+          import os
+          import time
+          from pathlib import Path
+
+          import jwt
+          import requests
+
+          BASE = "https://api.appstoreconnect.apple.com/v1"
+          result_path = Path("diagnostics/asc-cancel-empty-submit-result.txt")
+          result_path.parent.mkdir(exist_ok=True)
+          lines = []
+
+          def record(line):
+              print(line)
+              lines.append(str(line))
+
+          def finish(ok):
+              result_path.write_text(
+                  "ok={}\n{}".format("true" if ok else "false", "\n".join(lines)) + "\n",
+                  encoding="utf-8",
+              )
+
+          token = jwt.encode(
+              {
+                  "iss": os.environ["ASC_API_ISSUER_ID"],
+                  "iat": int(time.time()),
+                  "exp": int(time.time()) + 600,
+                  "aud": "appstoreconnect-v1",
+              },
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          h = {"Authorization": f"Bearer {token}"}
+          jh = {**h, "Content-Type": "application/json"}
+
+          def raw(method, path, **kwargs):
+              return requests.request(
+                  method,
+                  path if path.startswith("http") else f"{BASE}{path}",
+                  headers=kwargs.pop("headers", h),
+                  timeout=60,
+                  **kwargs,
+              )
+
+          def api(method, path, expected=(200,), **kwargs):
+              response = raw(method, path, **kwargs)
+              if response.status_code not in expected:
+                  record(f"{method} {path} -> HTTP {response.status_code}")
+                  record(response.text[:3000])
+                  finish(False)
+                  raise SystemExit(0)
+              return response.json() if response.text else {}
+
+          def submit_review_submission(submission_id):
+              response = raw(
+                  "PATCH",
+                  f"/reviewSubmissions/{submission_id}",
+                  headers=jh,
+                  json={
+                      "data": {
+                          "type": "reviewSubmissions",
+                          "id": submission_id,
+                          "attributes": {"submitted": True},
+                      }
+                  },
+              )
+              record(f"submit_status={response.status_code}")
+              record(response.text[:3000])
+              if response.status_code >= 300:
+                  return False
+              final_state = response.json()["data"]["attributes"].get("state")
+              record(f"final_state={final_state}")
+              return final_state in {"WAITING_FOR_REVIEW", "IN_REVIEW", "COMPLETING"}
+
+          def add_app_version_item(submission_id, label):
+              response = raw(
+                  "POST",
+                  "/reviewSubmissionItems",
+                  headers=jh,
+                  json={
+                      "data": {
+                          "type": "reviewSubmissionItems",
+                          "relationships": {
+                              "reviewSubmission": {
+                                  "data": {"type": "reviewSubmissions", "id": submission_id}
+                              },
+                              "appStoreVersion": {
+                                  "data": {"type": "appStoreVersions", "id": version_id}
+                              },
+                          },
+                      }
+                  },
+              )
+              record(f"{label}_add_item_status={response.status_code}")
+              record(response.text[:3000])
+              if response.status_code >= 300:
+                  return None
+              return response.json()["data"]["id"]
+
+          def delete_submission(submission_id):
+              response = raw("DELETE", f"/reviewSubmissions/{submission_id}")
+              record(f"delete_ready_submission_status={response.status_code}")
+              record(response.text[:3000])
+              return response.status_code in {200, 202, 204}
+
+          def create_submission():
+              created = api(
+                  "POST",
+                  "/reviewSubmissions",
+                  expected=(201,),
+                  headers=jh,
+                  json={
+                      "data": {
+                          "type": "reviewSubmissions",
+                          "attributes": {"platform": "IOS"},
+                          "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
+                      }
+                  },
+              )
+              submission_id = created["data"]["id"]
+              record(f"created_submission={submission_id}")
+              return submission_id
+
+          def ensure_whats_new():
+              localizations = api(
+                  "GET",
+                  f"/appStoreVersions/{version_id}/appStoreVersionLocalizations?limit=50",
+              ).get("data", [])
+              if not localizations:
+                  record("no_app_store_version_localizations")
+                  return
+
+              for localization in localizations:
+                  loc_id = localization["id"]
+                  attrs = localization.get("attributes", {})
+                  locale = attrs.get("locale")
+                  whats_new = (attrs.get("whatsNew") or "").strip()
+                  record(f"localization={loc_id} locale={locale} whats_new_present={bool(whats_new)}")
+                  if whats_new:
+                      continue
+
+                  response = raw(
+                      "PATCH",
+                      f"/appStoreVersionLocalizations/{loc_id}",
+                      headers=jh,
+                      json={
+                          "data": {
+                              "type": "appStoreVersionLocalizations",
+                              "id": loc_id,
+                              "attributes": {"whatsNew": os.environ["RELEASE_NOTES"]},
+                          }
+                      },
+                  )
+                  record(f"set_whats_new_status={response.status_code}")
+                  record(response.text[:3000])
+                  if response.status_code >= 300:
+                      finish(False)
+                      raise SystemExit(0)
+
+          app_rows = api("GET", f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}").get("data", [])
+          if not app_rows:
+              record("No app")
+              finish(False)
+              raise SystemExit(0)
+          app_id = app_rows[0]["id"]
+          record(f"app_id={app_id}")
+
+          versions = api("GET", f"/apps/{app_id}/appStoreVersions?limit=50").get("data", [])
+          version = next(
+              (
+                  row for row in versions
+                  if row.get("attributes", {}).get("versionString") == os.environ["TARGET_VERSION"]
+                  and row.get("attributes", {}).get("platform") == "IOS"
+              ),
+              None,
+          )
+          if not version:
+              record(f"No target version {os.environ['TARGET_VERSION']}")
+              finish(False)
+              raise SystemExit(0)
+          version_id = version["id"]
+          version_state = version.get("attributes", {}).get("appStoreState")
+          record(f"version_id={version_id}")
+          record(f"version_state={version_state}")
+          if version_state in {"WAITING_FOR_REVIEW", "IN_REVIEW", "COMPLETING"}:
+              record("version already in active review flow")
+              finish(True)
+              raise SystemExit(0)
+
+          attached = api("GET", f"/appStoreVersions/{version_id}/build").get("data")
+          attached_build = attached.get("attributes", {}).get("version") if attached else None
+          record(f"attached_build={attached_build}")
+          if attached_build != os.environ["TARGET_BUILD"]:
+              record(f"wrong attached build: {attached_build}")
+              finish(False)
+              raise SystemExit(0)
+
+          ensure_whats_new()
+
+          submissions = api(
+              "GET",
+              f"/reviewSubmissions?filter[app]={app_id}&filter[platform]=IOS&include=items,appStoreVersionForReview",
+          ).get("data", [])
+
+          for submission in submissions:
+              state = submission.get("attributes", {}).get("state")
+              sid = submission["id"]
+              record(f"submission={sid} state={state}")
+              if state == "READY_FOR_REVIEW":
+                  items = api("GET", f"/reviewSubmissions/{sid}/items?limit=50").get("data", [])
+                  record(f"ready_submission={sid} items={len(items)}")
+                  if not items:
+                      item_id = add_app_version_item(sid, "ready")
+                      if item_id:
+                          record(f"ready_item={item_id}")
+                          finish(submit_review_submission(sid))
+                          raise SystemExit(0)
+
+                      if not delete_submission(sid):
+                          finish(False)
+                          raise SystemExit(0)
+
+                      time.sleep(5)
+                      break
+
+                  finish(submit_review_submission(sid))
+                  raise SystemExit(0)
+
+          submission_id = create_submission()
+          item_id = add_app_version_item(submission_id, "new")
+          if not item_id:
+              finish(False)
+              raise SystemExit(0)
+          record(f"created_item={item_id}")
+
+          finish(submit_review_submission(submission_id))
+          PY
+      - name: Commit submit diagnostic
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add diagnostics/asc-cancel-empty-submit-result.txt
+          git commit -m "Record ASC cancel empty submit diagnostic [skip ci]" || true
+          git push origin HEAD:codex/x5-cleanup-from-restore-clean || true
+      - name: Assert submit completed
+        run: grep -q '^ok=true$' diagnostics/asc-cancel-empty-submit-result.txt

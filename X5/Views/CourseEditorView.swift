@@ -1,11 +1,60 @@
 import SwiftUI
 import PhotosUI
-import UniformTypeIdentifiers
+
+private typealias EditableCategory = CourseCategoryDraft
+private typealias EditableDay = CourseDayDraft
+private typealias EditableLesson = CourseLessonDraft
+
+private enum CourseSaveStage: Equatable {
+    case idle
+    case preparing
+    case creatingCourse
+    case uploadingCover
+    case uploadingVideo(current: Int, total: Int)
+    case uploadingLessonCover(current: Int, total: Int)
+    case savingCourse
+    case completed
+    case failed(String)
+
+    var message: String? {
+        switch self {
+        case .idle:
+            return nil
+        case .preparing:
+            return "Подготовка к сохранению…"
+        case .creatingCourse:
+            return "Создание черновика курса…"
+        case .uploadingCover:
+            return "Загрузка обложки курса…"
+        case let .uploadingVideo(current, total):
+            return "Загрузка видео \(current) из \(total)…"
+        case let .uploadingLessonCover(current, total):
+            return "Загрузка обложки урока \(current) из \(total)…"
+        case .savingCourse:
+            return "Сохранение курса…"
+        case .completed:
+            return "Готово"
+        case let .failed(message):
+            return message
+        }
+    }
+
+    var isProgress: Bool {
+        switch self {
+        case .preparing, .creatingCourse, .uploadingCover, .uploadingVideo,
+             .uploadingLessonCover, .savingCourse:
+            return true
+        default:
+            return false
+        }
+    }
+}
 
 /// Developer-only course editor. Handles course metadata, cover image, and lessons
 /// stored inside `courses.categories` JSON.
 struct CourseEditorView: View {
     @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var currentUser: CurrentUser
     @Environment(\.dismiss) private var dismiss
     @StateObject private var service = CoursesService()
 
@@ -20,6 +69,12 @@ struct CourseEditorView: View {
     @State private var isFree: Bool = true
     @State private var isPublic: Bool = false
     @State private var courseLanguage: String = "ru"
+    @State private var authorName: String = ""
+    @State private var selectedAuthorId: String?
+    @State private var availableAuthors: [UserProfile] = []
+    @State private var authorPickerPresented = false
+    @State private var loadingAuthors = false
+    @State private var authorLoadError: String?
     @State private var coverUrl: String?
     @State private var categories: [EditableCategory] = [.defaultContent()]
 
@@ -32,9 +87,17 @@ struct CourseEditorView: View {
     @State private var saving = false
     @State private var deleteConfirm = false
     @State private var errorText: String?
+    @State private var saveIdentity: CourseSaveIdentity
+    @State private var saveStage: CourseSaveStage = .idle
 
-    private var isCreating: Bool { editing == nil }
-    private var existingId: String? { editing?.id }
+    private var isCreating: Bool { saveIdentity.persistedCourseID == nil }
+    private var existingId: String? { saveIdentity.persistedCourseID }
+
+    init(editing: Course?, onChange: @escaping () -> Void) {
+        self.editing = editing
+        self.onChange = onChange
+        _saveIdentity = State(initialValue: CourseSaveIdentity(existingCourseID: editing?.id))
+    }
 
     var body: some View {
         NavigationStack {
@@ -47,6 +110,23 @@ struct CourseEditorView: View {
                     TextField("Название курса", text: $title)
                         .textInputAutocapitalization(.sentences)
                     TextField("Подзаголовок", text: $marketingHook)
+                    Button {
+                        authorPickerPresented = true
+                        Task { await loadCourseAuthors() }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Label("Автор курса", systemImage: "person.crop.circle")
+                            Spacer()
+                            Text(resolvedAuthorId == nil ? "Выбрать" : resolvedAuthorName)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                     TextField("Описание", text: $description, axis: .vertical)
                         .lineLimit(3...8)
                 }
@@ -94,12 +174,16 @@ struct CourseEditorView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color(red: 0.04, green: 0.05, blue: 0.10))
+            .safeAreaInset(edge: .bottom) {
+                saveStatusBanner
+            }
             .navigationTitle(isCreating ? "Новый курс" : "Редактировать")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") { dismiss() }
+                    Button("Отмена") { Task { await cancelEditing() } }
+                        .disabled(saving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
@@ -119,23 +203,47 @@ struct CourseEditorView: View {
             .sheet(item: $lessonEditor) { target in
                 LessonEditorSheet(
                     lesson: target.lesson,
-                    uploadBlockerText: videoUploadBlockerText,
-                    uploadsImmediately: existingId != nil,
-                    uploadVideo: { fileURL in
-                        await uploadVideo(fileURL, lessonId: target.lesson.id)
-                    },
                     onSave: { saved in
                         upsertLesson(saved, categoryId: target.categoryId, dayId: target.dayId)
                     }
                 )
             }
+            .sheet(isPresented: $authorPickerPresented) {
+                CourseAuthorPickerSheet(
+                    authors: availableAuthors,
+                    selectedAuthorId: selectedAuthorId,
+                    isLoading: loadingAuthors,
+                    errorText: authorLoadError,
+                    onReload: {
+                        Task { await loadCourseAuthors(force: true) }
+                    },
+                    onSelect: { author in
+                        selectedAuthorId = author.id
+                        authorName = author.displayName
+                    }
+                )
+            }
             .onAppear { populate() }
+            .onChange(of: currentUser.profile?.displayName) { _ in
+                guard isCreating else { return }
+                if selectedAuthorId == nil {
+                    selectedAuthorId = currentUser.profile?.id ?? auth.userId
+                }
+                if authorName.x5Trimmed.isEmpty {
+                    authorName = defaultAuthorName
+                }
+            }
             .onChange(of: coverItem) { newValue in
                 guard let newValue else { return }
                 Task { await loadCoverPreview(newValue) }
             }
+            .task {
+                await loadCourseAuthors()
+            }
         }
         .preferredColorScheme(.dark)
+        .interactiveDismissDisabled(saving || (editing == nil && existingId != nil))
+        .onDisappear { cleanupPendingLessonVideos() }
     }
 
     @ViewBuilder
@@ -178,60 +286,105 @@ struct CourseEditorView: View {
 
     private var lessonsSection: some View {
         Section {
-            ForEach(orderedCategories()) { category in
+            ForEach(orderedCategoryIndices, id: \.self) { categoryIndex in
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(category.title)
+                    TextField("Название модуля", text: $categories[categoryIndex].title)
                         .font(.headline)
+                        .textInputAutocapitalization(.sentences)
 
-                    ForEach(category.orderedDays) { day in
+                    TextField("Иконка SF Symbol, например folder", text: iconBinding(for: categoryIndex))
+                        .font(.caption)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    ForEach(orderedDayIndices(in: categoryIndex), id: \.self) { dayIndex in
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(day.title)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                            HStack(spacing: 8) {
+                                TextField("Название дня или блока", text: $categories[categoryIndex].days[dayIndex].title)
+                                    .font(.subheadline)
+                                    .textInputAutocapitalization(.sentences)
 
-                            if day.lessons.isEmpty {
+                                if categories[categoryIndex].days.count > 1 {
+                                    Button(role: .destructive) {
+                                        deleteDay(categoryIndex: categoryIndex, dayIndex: dayIndex)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+                            }
+
+                            if categories[categoryIndex].days[dayIndex].lessons.isEmpty {
                                 Text("Уроков пока нет")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }
 
-                            ForEach(day.orderedLessons) { lesson in
+                            ForEach(categories[categoryIndex].days[dayIndex].orderedLessons) { lesson in
                                 Button {
-                                    lessonEditor = LessonEditorTarget(categoryId: category.id, dayId: day.id, lesson: lesson)
+                                    lessonEditor = LessonEditorTarget(
+                                        categoryId: categories[categoryIndex].id,
+                                        dayId: categories[categoryIndex].days[dayIndex].id,
+                                        lesson: lesson
+                                    )
                                 } label: {
                                     LessonDraftRow(lesson: lesson)
                                 }
                                 .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        deleteLesson(lesson.id, categoryIndex: categoryIndex, dayIndex: dayIndex)
+                                    } label: {
+                                        Label("Удалить урок", systemImage: "trash")
+                                    }
+                                }
                             }
 
                             Button {
-                                openNewLesson(categoryId: category.id, dayId: day.id)
+                                openNewLesson(
+                                    categoryId: categories[categoryIndex].id,
+                                    dayId: categories[categoryIndex].days[dayIndex].id
+                                )
                             } label: {
                                 Label("Добавить урок", systemImage: "plus.circle")
                             }
                         }
+                        .padding(.vertical, 6)
+                        .padding(.leading, 8)
                     }
+
+                    HStack {
+                        Button {
+                            addDay(categoryIndex: categoryIndex)
+                        } label: {
+                            Label("Добавить день / блок", systemImage: "calendar.badge.plus")
+                        }
+
+                        Spacer()
+
+                        if categories.count > 1 {
+                            Button(role: .destructive) {
+                                deleteCategory(categoryIndex)
+                            } label: {
+                                Label("Удалить модуль", systemImage: "trash")
+                            }
+                        }
+                    }
+                    .font(.footnote)
                 }
                 .padding(.vertical, 6)
             }
 
             Button {
-                openFirstNewLesson()
+                addCategory()
             } label: {
-                Label("Добавить урок в курс", systemImage: "plus")
+                Label("Добавить модуль", systemImage: "folder.badge.plus")
             }
         } header: {
-            Text("Уроки")
+            Text("Программа курса")
         } footer: {
-            Text("Видео можно указать прямой ссылкой MP4/HLS или импортировать файл после первого сохранения курса.")
+            Text("Модули отображаются в заданном порядке; внутри можно добавлять дни, блоки и уроки. Видео задаётся прямой ссылкой MP4/HLS или импортом файла.")
         }
-    }
-
-    private var videoUploadBlockerText: String? {
-        if auth.accessToken == nil {
-            return "Для загрузки файла нужен активный вход разработчика."
-        }
-        return nil
     }
 
     private func populate() {
@@ -240,6 +393,8 @@ struct CourseEditorView: View {
 
         guard let c = editing else {
             categories = [.defaultContent()]
+            selectedAuthorId = auth.userId
+            authorName = defaultAuthorName
             return
         }
         title = c.title
@@ -249,10 +404,99 @@ struct CourseEditorView: View {
         isFree = c.isFree ?? false
         isPublic = c.isPublic ?? false
         courseLanguage = c.courseLanguage ?? "ru"
+        selectedAuthorId = c.authorId
+        if let existingAuthor = c.authorName?.x5Trimmed, !existingAuthor.isEmpty {
+            authorName = existingAuthor
+        } else {
+            authorName = defaultAuthorName
+        }
         coverUrl = c.coverUrl
-        categories = c.categories.map(EditableCategory.init)
+        categories = c.categories.map { EditableCategory(category: $0) }
         if categories.isEmpty {
             categories = [.defaultContent()]
+        }
+    }
+
+    private var defaultAuthorName: String {
+        if let profile = currentUser.profile {
+            let profileName = profile.displayName.x5Trimmed
+            if !profileName.isEmpty {
+                return profileName
+            }
+        }
+        if let email = auth.userEmail?.x5Trimmed,
+           let prefix = email.split(separator: "@").first,
+           !prefix.isEmpty {
+            return String(prefix).replacingOccurrences(of: ".", with: " ").capitalized
+        }
+        return "X five marketing"
+    }
+
+    @ViewBuilder
+    private var saveStatusBanner: some View {
+        if let message = saveStage.message {
+            HStack(spacing: 12) {
+                if saveStage.isProgress {
+                    if case .uploadingVideo = saveStage,
+                       let progress = service.videoUploadProgress {
+                        ProgressView(value: progress)
+                            .frame(width: 52)
+                    } else {
+                        ProgressView()
+                    }
+                } else {
+                    Image(
+                        systemName: saveStage == .completed
+                            ? "checkmark.circle.fill"
+                            : "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(saveStage == .completed ? Color.green : Color.red)
+                }
+                Text(message)
+                    .font(.footnote.weight(.semibold))
+                    .lineLimit(3)
+                Spacer(minLength: 0)
+                if case .uploadingVideo = saveStage,
+                   let progress = service.videoUploadProgress {
+                    Text("\(Int((progress * 100).rounded()))%")
+                        .font(.caption.monospacedDigit().weight(.bold))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(.regularMaterial)
+        }
+    }
+
+    private func loadCourseAuthors(force: Bool = false) async {
+        guard !loadingAuthors else { return }
+        guard force || availableAuthors.isEmpty else { return }
+        guard let token = await auth.freshAccessToken() else {
+            authorLoadError = "Не удалось подтвердить вход. Войдите снова."
+            return
+        }
+
+        loadingAuthors = true
+        authorLoadError = nil
+        var authors = await service.loadCourseAuthors(accessToken: token)
+        loadingAuthors = false
+
+        if let currentProfile = currentUser.profile,
+           !authors.contains(where: { $0.id.caseInsensitiveCompare(currentProfile.id) == .orderedSame }) {
+            authors.append(currentProfile)
+        }
+        availableAuthors = authors.sorted {
+            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        }
+        if let selectedAuthorId,
+           let matchingAuthor = availableAuthors.first(where: {
+               $0.id.caseInsensitiveCompare(selectedAuthorId) == .orderedSame
+           }) {
+            authorName = matchingAuthor.displayName
+        }
+        if availableAuthors.isEmpty {
+            authorLoadError = service.error ?? "Профили авторов не найдены."
         }
     }
 
@@ -265,30 +509,65 @@ struct CourseEditorView: View {
     }
 
     private func save() async {
-        guard let token = await auth.freshAccessToken() else { return }
+        saveStage = .preparing
+        errorText = nil
+        guard let resolvedAuthorId else {
+            markSaveFailed("Выберите автора курса из профилей.")
+            return
+        }
+        guard let token = await auth.freshAccessToken() else {
+            markSaveFailed("Не удалось подтвердить вход. Войдите снова.")
+            return
+        }
         saving = true
         defer { saving = false }
-        errorText = nil
 
         var courseId = existingId
 
         // Create row first if new. This gives storage a stable course path.
         if courseId == nil {
-            guard let created = await service.createCourse(title: title, accessToken: token) else {
-                errorText = service.error ?? "Не удалось создать курс."
+            saveStage = .creatingCourse
+            guard let created = await service.createCourse(
+                title: title,
+                authorName: resolvedAuthorName,
+                authorId: resolvedAuthorId,
+                accessToken: token
+            ) else {
+                markSaveFailed(service.error ?? "Не удалось создать курс.")
                 return
             }
-            courseId = created.id
+            saveIdentity.recordCreatedCourse(id: created.id)
+            courseId = saveIdentity.persistedCourseID
         }
-        guard let id = courseId else { return }
+        guard let id = courseId else {
+            markSaveFailed("Не удалось подготовить курс к сохранению.")
+            return
+        }
 
         if let jpeg = coverPreviewData {
             uploadingCover = true
-            _ = await service.uploadCover(courseId: id, jpegData: jpeg, accessToken: token)
+            saveStage = .uploadingCover
+            guard let uploadedCoverURL = await service.uploadCover(courseId: id, jpegData: jpeg, accessToken: token) else {
+                uploadingCover = false
+                markSaveFailed(service.error ?? "Не удалось загрузить обложку курса.")
+                return
+            }
             uploadingCover = false
+            coverUrl = uploadedCoverURL
+            coverPreviewData = nil
         }
 
         guard await uploadPendingLessonVideos(courseId: id, accessToken: token) else {
+            return
+        }
+        guard let postUploadToken = await auth.accessTokenForUpload() else {
+            markSaveFailed("Сессия истекла во время загрузки. Войдите снова.")
+            return
+        }
+        guard await uploadPendingLessonThumbnails(
+            courseId: id,
+            accessToken: postUploadToken
+        ) else {
             return
         }
 
@@ -297,18 +576,28 @@ struct CourseEditorView: View {
             "title": title,
             "description": description.x5Trimmed.isEmpty ? NSNull() : description,
             "marketing_hook": marketingHook.x5Trimmed.isEmpty ? NSNull() : marketingHook,
+            "author_name": resolvedAuthorName,
+            "author_id": resolvedAuthorId,
+            "cover_url": coverUrl?.x5Trimmed.isEmpty == false ? (coverUrl ?? "") : NSNull(),
             "price": priceInt,
             "is_free": isFree,
             "is_public": isPublic,
             "course_language": courseLanguage,
             "categories": categoriesPayload()
         ]
-        let ok = await service.updateCourse(id: id, fields: fields, accessToken: token)
+        saveStage = .savingCourse
+        let ok = await service.updateCourse(
+            id: id,
+            fields: fields,
+            accessToken: postUploadToken
+        )
         if !ok {
-            errorText = service.error ?? "Не удалось сохранить."
+            markSaveFailed(service.error ?? "Не удалось сохранить.")
             return
         }
+        saveStage = .completed
         onChange()
+        try? await Task.sleep(nanoseconds: 350_000_000)
         dismiss()
     }
 
@@ -318,6 +607,7 @@ struct CourseEditorView: View {
         defer { saving = false }
         let ok = await service.deleteCourse(id: id, accessToken: token)
         if ok {
+            cleanupPendingLessonVideos()
             onChange()
             dismiss()
         } else {
@@ -325,20 +615,14 @@ struct CourseEditorView: View {
         }
     }
 
-    private func uploadVideo(_ fileURL: URL, lessonId: String) async -> LessonVideoUploadResult {
-        guard let courseId = existingId else {
-            return .failure("Сначала сохраните курс как черновик, затем откройте редактирование и загрузите файл.")
-        }
-        guard let token = await auth.freshAccessToken() else {
-            return .failure("Нужен активный вход разработчика.")
-        }
-        if let publicURL = await service.uploadLessonVideo(courseId: courseId, lessonId: lessonId, fileURL: fileURL, accessToken: token) {
-            return .success(publicURL)
-        }
-        return .failure(service.error ?? "Не удалось загрузить видео.")
-    }
-
     private func uploadPendingLessonVideos(courseId: String, accessToken: String) async -> Bool {
+        let total = categories
+            .flatMap(\.days)
+            .flatMap(\.lessons)
+            .filter { $0.pendingVideoFileURL != nil }
+            .count
+        var uploaded = 0
+
         for categoryIndex in categories.indices {
             for dayIndex in categories[categoryIndex].days.indices {
                 for lessonIndex in categories[categoryIndex].days[dayIndex].lessons.indices {
@@ -346,29 +630,132 @@ struct CourseEditorView: View {
                         continue
                     }
 
+                    saveStage = .uploadingVideo(current: uploaded + 1, total: total)
                     let lessonId = categories[categoryIndex].days[dayIndex].lessons[lessonIndex].id
-                    guard let publicURL = await service.uploadLessonVideo(courseId: courseId, lessonId: lessonId, fileURL: fileURL, accessToken: accessToken) else {
-                        errorText = service.error ?? "Не удалось загрузить видео урока."
+                    guard let publicURL = await service.uploadLessonVideo(
+                        courseId: courseId,
+                        lessonId: lessonId,
+                        fileURL: fileURL,
+                        accessToken: accessToken,
+                        accessTokenProvider: {
+                            await auth.accessTokenForUpload()
+                        }
+                    ) else {
+                        markSaveFailed(service.error ?? "Не удалось загрузить видео урока.")
                         return false
                     }
 
-                    categories[categoryIndex].days[dayIndex].lessons[lessonIndex].videoUrl = publicURL
-                    categories[categoryIndex].days[dayIndex].lessons[lessonIndex].pendingVideoFileURL = nil
-                    categories[categoryIndex].days[dayIndex].lessons[lessonIndex].pendingVideoFileName = nil
+                    CourseVideoStaging.removeIfManaged(fileURL)
+                    categories[categoryIndex].days[dayIndex].lessons[lessonIndex]
+                        .markVideoUploadSucceeded(publicURL: publicURL)
+                    uploaded += 1
                 }
             }
         }
         return true
     }
 
+    private func uploadPendingLessonThumbnails(courseId: String, accessToken: String) async -> Bool {
+        let total = categories
+            .flatMap(\.days)
+            .flatMap(\.lessons)
+            .filter { $0.pendingThumbnailData != nil }
+            .count
+        var uploaded = 0
+
+        for categoryIndex in categories.indices {
+            for dayIndex in categories[categoryIndex].days.indices {
+                for lessonIndex in categories[categoryIndex].days[dayIndex].lessons.indices {
+                    guard let jpegData = categories[categoryIndex].days[dayIndex].lessons[lessonIndex].pendingThumbnailData else {
+                        continue
+                    }
+
+                    saveStage = .uploadingLessonCover(current: uploaded + 1, total: total)
+                    let lessonId = categories[categoryIndex].days[dayIndex].lessons[lessonIndex].id
+                    guard let publicURL = await service.uploadLessonThumbnail(courseId: courseId, lessonId: lessonId, jpegData: jpegData, accessToken: accessToken) else {
+                        markSaveFailed(service.error ?? "Не удалось загрузить обложку урока.")
+                        return false
+                    }
+
+                    categories[categoryIndex].days[dayIndex].lessons[lessonIndex]
+                        .markThumbnailUploadSucceeded(publicURL: publicURL)
+                    uploaded += 1
+                }
+            }
+        }
+        return true
+    }
+
+    private func markSaveFailed(_ message: String) {
+        errorText = message
+        saveStage = .failed(message)
+    }
+
+
     private func orderedCategories() -> [EditableCategory] {
         categories.sorted { $0.order < $1.order }
     }
 
-    private func categoriesPayload() -> [[String: Any]] {
-        orderedCategories().enumerated().map { index, category in
-            category.payload(order: index + 1)
+    private var orderedCategoryIndices: [Int] {
+        categories.indices.sorted { categories[$0].order < categories[$1].order }
+    }
+
+    private func orderedDayIndices(in categoryIndex: Int) -> [Int] {
+        guard categories.indices.contains(categoryIndex) else { return [] }
+        return categories[categoryIndex].days.indices.sorted {
+            categories[categoryIndex].days[$0].order < categories[categoryIndex].days[$1].order
         }
+    }
+
+    private func iconBinding(for categoryIndex: Int) -> Binding<String> {
+        Binding(
+            get: {
+                guard categories.indices.contains(categoryIndex) else { return "" }
+                return categories[categoryIndex].icon ?? ""
+            },
+            set: { value in
+                guard categories.indices.contains(categoryIndex) else { return }
+                categories[categoryIndex].icon = value.x5Trimmed.isEmpty ? nil : value.x5Trimmed
+            }
+        )
+    }
+
+    private func categoriesPayload() -> [[String: Any]] {
+        CourseDraft(categories: categories).categoriesPayload
+    }
+
+    private func cancelEditing() async {
+        guard editing == nil, let id = existingId else {
+            cleanupPendingLessonVideos()
+            dismiss()
+            return
+        }
+
+        guard let token = await auth.freshAccessToken() else {
+            errorText = "Не удалось закрыть черновик: войдите снова и удалите его."
+            return
+        }
+
+        saving = true
+        let deleted = await service.deleteCourse(id: id, accessToken: token)
+        saving = false
+        if deleted {
+            cleanupPendingLessonVideos()
+            dismiss()
+        } else {
+            errorText = service.error ?? "Не удалось удалить незавершённый черновик."
+        }
+    }
+
+    private var resolvedAuthorName: String {
+        let value = authorName.x5Trimmed
+        return value.isEmpty ? defaultAuthorName : value
+    }
+
+    private var resolvedAuthorId: String? {
+        guard let value = selectedAuthorId?.x5Trimmed,
+              UUID(uuidString: value) != nil else { return nil }
+        return value
     }
 
     private func ensureDefaultContent() {
@@ -376,7 +763,76 @@ struct CourseEditorView: View {
             categories = [.defaultContent()]
         }
         for index in categories.indices where categories[index].days.isEmpty {
-            categories[index].days = [EditableCategory.defaultDay()]
+            categories[index].days = [EditableCategory.defaultDay(order: 1)]
+        }
+    }
+
+    private func addCategory() {
+        let nextOrder = (categories.map(\.order).max() ?? 0) + 1
+        categories.append(
+            EditableCategory(
+                id: "cat_\(UUID().uuidString)",
+                title: "Новый раздел",
+                order: nextOrder,
+                icon: "folder",
+                days: [EditableCategory.defaultDay(order: 1)]
+            )
+        )
+    }
+
+    private func deleteCategory(_ categoryIndex: Int) {
+        guard categories.indices.contains(categoryIndex), categories.count > 1 else { return }
+        cleanupPendingLessonVideos(
+            categories[categoryIndex].days.flatMap(\.lessons)
+        )
+        categories.remove(at: categoryIndex)
+        normalizeCategoryOrder()
+    }
+
+    private func addDay(categoryIndex: Int) {
+        guard categories.indices.contains(categoryIndex) else { return }
+        let nextOrder = (categories[categoryIndex].days.map(\.order).max() ?? 0) + 1
+        categories[categoryIndex].days.append(EditableCategory.defaultDay(order: nextOrder))
+    }
+
+    private func deleteDay(categoryIndex: Int, dayIndex: Int) {
+        guard categories.indices.contains(categoryIndex),
+              categories[categoryIndex].days.indices.contains(dayIndex),
+              categories[categoryIndex].days.count > 1 else { return }
+        cleanupPendingLessonVideos(categories[categoryIndex].days[dayIndex].lessons)
+        categories[categoryIndex].days.remove(at: dayIndex)
+        normalizeDayOrder(categoryIndex: categoryIndex)
+    }
+
+    private func deleteLesson(_ lessonId: String, categoryIndex: Int, dayIndex: Int) {
+        guard categories.indices.contains(categoryIndex),
+              categories[categoryIndex].days.indices.contains(dayIndex) else { return }
+        if let lesson = categories[categoryIndex].days[dayIndex].lessons.first(where: { $0.id == lessonId }) {
+            CourseVideoStaging.removeIfManaged(lesson.pendingVideoFileURL)
+        }
+        categories[categoryIndex].days[dayIndex].lessons.removeAll { $0.id == lessonId }
+        normalizeLessonOrder(categoryIndex: categoryIndex, dayIndex: dayIndex)
+    }
+
+    private func cleanupPendingLessonVideos(_ lessons: [EditableLesson]? = nil) {
+        let pendingLessons = lessons ?? categories
+            .flatMap(\.days)
+            .flatMap(\.lessons)
+        for lesson in pendingLessons {
+            CourseVideoStaging.removeIfManaged(lesson.pendingVideoFileURL)
+        }
+    }
+
+    private func normalizeCategoryOrder() {
+        for (offset, categoryIndex) in orderedCategoryIndices.enumerated() {
+            categories[categoryIndex].order = offset + 1
+        }
+    }
+
+    private func normalizeDayOrder(categoryIndex: Int) {
+        guard categories.indices.contains(categoryIndex) else { return }
+        for (offset, dayIndex) in orderedDayIndices(in: categoryIndex).enumerated() {
+            categories[categoryIndex].days[dayIndex].order = offset + 1
         }
     }
 
@@ -420,6 +876,118 @@ struct CourseEditorView: View {
     }
 }
 
+private struct CourseAuthorPickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText = ""
+
+    let authors: [UserProfile]
+    let selectedAuthorId: String?
+    let isLoading: Bool
+    let errorText: String?
+    let onReload: () -> Void
+    let onSelect: (UserProfile) -> Void
+
+    private var filteredAuthors: [UserProfile] {
+        let query = searchText.x5Trimmed
+        guard !query.isEmpty else { return authors }
+        return authors.filter {
+            $0.displayName.localizedCaseInsensitiveContains(query)
+                || ($0.nickname?.localizedCaseInsensitiveContains(query) ?? false)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if isLoading && authors.isEmpty {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text("Загрузка профилей…")
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if authors.isEmpty {
+                    VStack(spacing: 14) {
+                        Image(systemName: "person.crop.circle.badge.exclamationmark")
+                            .font(.system(size: 34))
+                            .foregroundStyle(.secondary)
+                        Text(errorText ?? "Профили авторов не найдены.")
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.secondary)
+                        Button("Повторить", action: onReload)
+                    }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(filteredAuthors) { author in
+                        Button {
+                            onSelect(author)
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 12) {
+                                authorAvatar(author)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(author.displayName)
+                                        .foregroundStyle(.primary)
+                                    if let nickname = author.nickname?.x5Trimmed,
+                                       !nickname.isEmpty {
+                                        Text("@\(nickname)")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                if selectedAuthorId?.caseInsensitiveCompare(author.id) == .orderedSame {
+                                    Image(systemName: "checkmark")
+                                        .font(.body.weight(.semibold))
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .searchable(text: $searchText, prompt: "Имя или никнейм")
+                    .refreshable {
+                        onReload()
+                    }
+                }
+            }
+            .navigationTitle("Автор курса")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Закрыть") { dismiss() }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder
+    private func authorAvatar(_ author: UserProfile) -> some View {
+        if let raw = author.avatar?.x5Trimmed,
+           let url = URL(string: raw),
+           !raw.isEmpty {
+            CachedAsyncImage(url: url) { image in
+                image.resizable().scaledToFill()
+            } placeholder: {
+                avatarPlaceholder
+            }
+            .frame(width: 42, height: 42)
+            .clipShape(Circle())
+        } else {
+            avatarPlaceholder
+        }
+    }
+
+    private var avatarPlaceholder: some View {
+        Image(systemName: "person.crop.circle.fill")
+            .font(.system(size: 39))
+            .foregroundStyle(.secondary)
+            .frame(width: 42, height: 42)
+    }
+}
+
 private struct LessonEditorTarget: Identifiable {
     let categoryId: String
     let dayId: String
@@ -428,210 +996,18 @@ private struct LessonEditorTarget: Identifiable {
     var id: String { "\(categoryId)-\(dayId)-\(lesson.id)" }
 }
 
-private struct EditableCategory: Identifiable, Equatable {
-    var id: String
-    var title: String
-    var order: Int
-    var icon: String?
-    var days: [EditableDay]
-
-    init(id: String, title: String, order: Int, icon: String? = nil, days: [EditableDay]) {
-        self.id = id
-        self.title = title
-        self.order = order
-        self.icon = icon
-        self.days = days
-    }
-
-    init(_ category: CourseCategory) {
-        self.id = category.id
-        self.title = category.title
-        self.order = category.order ?? 0
-        self.icon = category.icon
-        self.days = category.days.map(EditableDay.init)
-    }
-
-    var orderedDays: [EditableDay] {
-        days.sorted { $0.order < $1.order }
-    }
-
-    static func defaultContent() -> EditableCategory {
-        EditableCategory(id: "cat_\(Self.timestamp)", title: "Уроки", order: 1, icon: "FolderOpen", days: [Self.defaultDay()])
-    }
-
-    static func defaultDay() -> EditableDay {
-        EditableDay(id: "day_\(timestamp)", title: "Уроки", order: 1, lessons: [])
-    }
-
-    func payload(order: Int) -> [String: Any] {
-        var dict: [String: Any] = [
-            "id": id,
-            "title": title,
-            "order": order,
-            "days": orderedDays.enumerated().map { index, day in day.payload(order: index + 1) }
-        ]
-        if let icon, !icon.x5Trimmed.isEmpty {
-            dict["icon"] = icon
-        }
-        return dict
-    }
-
-    private static var timestamp: Int {
-        Int(Date().timeIntervalSince1970 * 1000)
-    }
-}
-
-private struct EditableDay: Identifiable, Equatable {
-    var id: String
-    var title: String
-    var order: Int
-    var lessons: [EditableLesson]
-
-    init(id: String, title: String, order: Int, lessons: [EditableLesson]) {
-        self.id = id
-        self.title = title
-        self.order = order
-        self.lessons = lessons
-    }
-
-    init(_ day: CourseDay) {
-        self.id = day.id
-        self.title = day.title
-        self.order = day.order ?? 0
-        self.lessons = day.lessons.map(EditableLesson.init)
-    }
-
-    var orderedLessons: [EditableLesson] {
-        lessons.sorted { $0.order < $1.order }
-    }
-
-    func payload(order: Int) -> [String: Any] {
-        [
-            "id": id,
-            "title": title,
-            "order": order,
-            "lessons": orderedLessons.enumerated().map { index, lesson in lesson.payload(order: index + 1) }
-        ]
-    }
-}
-
-private struct EditableLesson: Identifiable, Equatable {
-    var id: String
-    var title: String
-    var duration: String
-    var order: Int
-    var price: String
-    var videoUrl: String
-    var youtubeUrl: String
-    var thumbnailUrl: String
-    var isFreePreview: Bool
-    var sellSeparately: Bool
-    var pendingVideoFileURL: URL?
-    var pendingVideoFileName: String?
-
-    init(
-        id: String,
-        title: String,
-        duration: String,
-        order: Int,
-        price: String,
-        videoUrl: String,
-        youtubeUrl: String,
-        thumbnailUrl: String,
-        isFreePreview: Bool,
-        sellSeparately: Bool,
-        pendingVideoFileURL: URL? = nil,
-        pendingVideoFileName: String? = nil
-    ) {
-        self.id = id
-        self.title = title
-        self.duration = duration
-        self.order = order
-        self.price = price
-        self.videoUrl = videoUrl
-        self.youtubeUrl = youtubeUrl
-        self.thumbnailUrl = thumbnailUrl
-        self.isFreePreview = isFreePreview
-        self.sellSeparately = sellSeparately
-        self.pendingVideoFileURL = pendingVideoFileURL
-        self.pendingVideoFileName = pendingVideoFileName
-    }
-
-    init(_ lesson: CourseLesson) {
-        self.id = lesson.id
-        self.title = lesson.title
-        self.duration = lesson.duration ?? ""
-        self.order = lesson.order ?? 0
-        self.price = String(lesson.price ?? 0)
-        self.videoUrl = lesson.videoUrl ?? ""
-        self.youtubeUrl = lesson.youtubeUrl ?? ""
-        self.thumbnailUrl = lesson.thumbnailUrl ?? ""
-        self.isFreePreview = lesson.isFreePreview ?? false
-        self.sellSeparately = lesson.sellSeparately ?? false
-        self.pendingVideoFileURL = nil
-        self.pendingVideoFileName = nil
-    }
-
-    static func new(order: Int) -> EditableLesson {
-        EditableLesson(
-            id: "lesson_\(Int(Date().timeIntervalSince1970 * 1000))",
-            title: "",
-            duration: "",
-            order: order,
-            price: "0",
-            videoUrl: "",
-            youtubeUrl: "",
-            thumbnailUrl: "",
-            isFreePreview: false,
-            sellSeparately: false
-        )
-    }
-
-    var hasVideo: Bool {
-        pendingVideoFileURL != nil || !videoUrl.x5Trimmed.isEmpty || !youtubeUrl.x5Trimmed.isEmpty
-    }
-
-    var videoLabel: String {
-        if let pendingVideoFileName, !pendingVideoFileName.x5Trimmed.isEmpty { return pendingVideoFileName }
-        if !videoUrl.x5Trimmed.isEmpty { return "Video URL" }
-        if !youtubeUrl.x5Trimmed.isEmpty { return "YouTube" }
-        return "Видео не задано"
-    }
-
-    func payload(order: Int) -> [String: Any] {
-        var dict: [String: Any] = [
-            "id": id,
-            "title": title,
-            "order": order,
-            "price": Int(price) ?? 0,
-            "isFreePreview": isFreePreview,
-            "sellSeparately": sellSeparately
-        ]
-        if !duration.x5Trimmed.isEmpty { dict["duration"] = duration.x5Trimmed }
-        if !videoUrl.x5Trimmed.isEmpty { dict["videoUrl"] = videoUrl.x5Trimmed }
-        if !youtubeUrl.x5Trimmed.isEmpty { dict["youtubeUrl"] = youtubeUrl.x5Trimmed }
-        if !thumbnailUrl.x5Trimmed.isEmpty { dict["thumbnailUrl"] = thumbnailUrl.x5Trimmed }
-        return dict
-    }
-}
-
 private struct LessonDraftRow: View {
     let lesson: EditableLesson
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: lesson.hasVideo ? "play.circle.fill" : "play.slash")
-                .foregroundStyle(lesson.hasVideo ? Color.accentColor : .secondary)
-                .font(.system(size: 22))
+            lessonThumb
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(lesson.title.x5Trimmed.isEmpty ? "Новый урок" : lesson.title)
                     .foregroundStyle(.primary)
                 HStack(spacing: 8) {
                     Text(lesson.videoLabel)
-                    if !lesson.duration.x5Trimmed.isEmpty {
-                        Text(lesson.duration)
-                    }
                     if lesson.isFreePreview {
                         Text("Бесплатный preview")
                     }
@@ -646,19 +1022,52 @@ private struct LessonDraftRow: View {
         }
         .padding(.vertical, 4)
     }
+
+    @ViewBuilder
+    private var lessonThumb: some View {
+        ZStack {
+            if let data = lesson.pendingThumbnailData, let img = UIImage(data: data) {
+                Image(uiImage: img).resizable().scaledToFill()
+            } else if let url = URL(string: lesson.thumbnailUrl), !lesson.thumbnailUrl.x5Trimmed.isEmpty {
+                CachedAsyncImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    thumbPlaceholder
+                }
+            } else {
+                thumbPlaceholder
+            }
+
+            Image(systemName: lesson.hasVideo ? "play.fill" : "play.slash")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(lesson.hasVideo ? Color.black : .white.opacity(0.7))
+                .frame(width: 22, height: 22)
+                .background(lesson.hasVideo ? Color.accentColor : Color.white.opacity(0.12))
+                .clipShape(Circle())
+        }
+        .frame(width: 58, height: 38)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var thumbPlaceholder: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.06))
+            .overlay {
+                Image(systemName: "photo")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+    }
 }
 
 private struct LessonEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     private let lesson: EditableLesson
-    let uploadBlockerText: String?
-    let uploadsImmediately: Bool
-    let uploadVideo: (URL) async -> LessonVideoUploadResult
+    private let initialPendingVideoFileURL: URL?
     let onSave: (EditableLesson) -> Void
 
     @State private var title: String
-    @State private var duration: String
     @State private var price: String
     @State private var videoUrl: String
     @State private var youtubeUrl: String
@@ -667,24 +1076,22 @@ private struct LessonEditorSheet: View {
     @State private var sellSeparately: Bool
     @State private var pendingVideoFileURL: URL?
     @State private var pendingVideoFileName: String?
-    @State private var showingImporter = false
+    @State private var pendingThumbnailData: Data?
+    @State private var showingVideoPicker = false
+    @State private var thumbnailItem: PhotosPickerItem?
     @State private var uploading = false
+    @State private var uploadingThumbnail = false
     @State private var errorText: String?
+    @State private var didCommit = false
 
     init(
         lesson: EditableLesson,
-        uploadBlockerText: String?,
-        uploadsImmediately: Bool,
-        uploadVideo: @escaping (URL) async -> LessonVideoUploadResult,
         onSave: @escaping (EditableLesson) -> Void
     ) {
         self.lesson = lesson
-        self.uploadBlockerText = uploadBlockerText
-        self.uploadsImmediately = uploadsImmediately
-        self.uploadVideo = uploadVideo
+        initialPendingVideoFileURL = lesson.pendingVideoFileURL
         self.onSave = onSave
         _title = State(initialValue: lesson.title)
-        _duration = State(initialValue: lesson.duration)
         _price = State(initialValue: lesson.price)
         _videoUrl = State(initialValue: lesson.videoUrl)
         _youtubeUrl = State(initialValue: lesson.youtubeUrl)
@@ -693,6 +1100,7 @@ private struct LessonEditorSheet: View {
         _sellSeparately = State(initialValue: lesson.sellSeparately)
         _pendingVideoFileURL = State(initialValue: lesson.pendingVideoFileURL)
         _pendingVideoFileName = State(initialValue: lesson.pendingVideoFileName)
+        _pendingThumbnailData = State(initialValue: lesson.pendingThumbnailData)
     }
 
     var body: some View {
@@ -701,12 +1109,12 @@ private struct LessonEditorSheet: View {
                 Section("Урок") {
                     TextField("Название урока", text: $title)
                         .textInputAutocapitalization(.sentences)
-                    TextField("Длительность, например 12:30", text: $duration)
-                        .keyboardType(.numbersAndPunctuation)
                     Toggle("Бесплатный preview", isOn: $isFreePreview)
                 }
 
                 Section {
+                    thumbnailPicker
+
                     TextField("MP4/HLS URL", text: $videoUrl, axis: .vertical)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
@@ -717,48 +1125,43 @@ private struct LessonEditorSheet: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .lineLimit(1...3)
-                    TextField("Thumbnail URL", text: $thumbnailUrl, axis: .vertical)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .lineLimit(1...3)
 
                     Button {
-                        showingImporter = true
+                        uploading = true
+                        showingVideoPicker = true
                     } label: {
-                        Label(videoImportTitle, systemImage: "square.and.arrow.up")
+                        Label(videoImportTitle, systemImage: "photo.on.rectangle.angled")
                     }
-                    .disabled(uploading || uploadBlockerText != nil)
+                    .disabled(uploading)
 
                     if let pendingVideoFileName {
-                        Label(pendingVideoFileName, systemImage: "clock.arrow.circlepath")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label("Видео подготовлено", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text(pendingVideoFileName)
+                                .lineLimit(1)
+                            Text("Загрузится после сохранения курса")
+                        }
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                     }
 
-                    if let uploadBlockerText {
-                        Text(uploadBlockerText)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text(CourseVideoUploadPolicy.uploadGuidance)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
                 } header: {
                     Text("Видео")
                 } footer: {
-                    Text("Прямая MP4/HLS ссылка сохраняется сразу. В новом курсе файл загрузится при сохранении; в существующем уроке импорт сразу заменит videoUrl.")
+                    Text("Видео и обложка остаются черновиком до сохранения всего курса. При обрыве сети загрузка продолжится с подтвержденного блока; опубликованная ссылка не меняется до полного успеха.")
                 }
 
-                Section("Отдельная продажа") {
-                    Toggle("Продавать отдельно", isOn: $sellSeparately)
-                    if sellSeparately {
-                        HStack {
-                            Text("Цена")
-                            Spacer()
-                            TextField("0", text: $price)
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.trailing)
-                                .frame(width: 90)
-                        }
-                    }
+                Section {
+                    Text("Доступ к уроку задаётся покупкой всего курса или флагом бесплатного preview.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("Доступ")
                 }
 
                 if let errorText {
@@ -769,99 +1172,180 @@ private struct LessonEditorSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") { dismiss() }
+                    Button("Отмена") { cancelAndDismiss() }
+                        .disabled(uploading || uploadingThumbnail)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Сохранить") {
-                        onSave(updatedLesson())
-                        dismiss()
+                        commitAndDismiss()
                     }
-                    .disabled(title.x5Trimmed.isEmpty || uploading)
+                    .disabled(title.x5Trimmed.isEmpty || uploading || uploadingThumbnail)
                 }
             }
-            .fileImporter(
-                isPresented: $showingImporter,
-                allowedContentTypes: [.movie, .mpeg4Movie, .quickTimeMovie],
-                allowsMultipleSelection: false
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    guard let url = urls.first else { return }
-                    Task { await importVideo(url) }
-                case .failure(let error):
-                    errorText = error.localizedDescription
-                }
+            .onChange(of: thumbnailItem) { newValue in
+                guard let newValue else { return }
+                Task { await importThumbnail(newValue) }
+            }
+            .sheet(isPresented: $showingVideoPicker, onDismiss: {
+                uploading = false
+            }) {
+                GalleryVideoPicker(
+                    stagingID: "lesson-\(lesson.id)",
+                    onResult: handleVideoPickerResult,
+                    onCancel: {
+                        uploading = false
+                        showingVideoPicker = false
+                    }
+                )
+                .ignoresSafeArea()
             }
         }
+        .interactiveDismissDisabled(uploading || uploadingThumbnail)
+        .onDisappear {
+            if !didCommit {
+                cleanupUncommittedVideo()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var thumbnailPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Обложка видео")
+                .font(.subheadline.weight(.semibold))
+
+            PhotosPicker(selection: $thumbnailItem, matching: .images) {
+                ZStack {
+                    if let data = pendingThumbnailData, let img = UIImage(data: data) {
+                        Image(uiImage: img).resizable().scaledToFill()
+                    } else if let url = URL(string: thumbnailUrl), !thumbnailUrl.x5Trimmed.isEmpty {
+                        CachedAsyncImage(url: url) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            thumbnailPlaceholder
+                        }
+                    } else {
+                        thumbnailPlaceholder
+                    }
+
+                    if uploadingThumbnail {
+                        Color.black.opacity(0.38)
+                        ProgressView().tint(.white)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 154)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .disabled(uploadingThumbnail)
+
+            HStack {
+                PhotosPicker(selection: $thumbnailItem, matching: .images) {
+                    Label(thumbnailActionTitle, systemImage: "photo.on.rectangle")
+                }
+                .disabled(uploadingThumbnail)
+
+                Spacer()
+
+                if pendingThumbnailData != nil || !thumbnailUrl.x5Trimmed.isEmpty {
+                    Button(role: .destructive) {
+                        pendingThumbnailData = nil
+                        thumbnailUrl = ""
+                    } label: {
+                        Label("Убрать", systemImage: "trash")
+                    }
+                    .disabled(uploadingThumbnail)
+                }
+            }
+            .font(.footnote)
+
+            TextField("Thumbnail URL", text: $thumbnailUrl, axis: .vertical)
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .lineLimit(1...3)
+        }
+    }
+
+    private var thumbnailActionTitle: String {
+        if uploadingThumbnail { return "Загрузка..." }
+        if pendingThumbnailData != nil || !thumbnailUrl.x5Trimmed.isEmpty { return "Заменить обложку" }
+        return "Добавить обложку"
+    }
+
+    private var thumbnailPlaceholder: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "photo.badge.plus")
+                .font(.system(size: 28, weight: .light))
+            Text("Добавить обложку видео")
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundColor(.white.opacity(0.62))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.white.opacity(0.06))
     }
 
     private var videoImportTitle: String {
-        if uploading { return "Загрузка..." }
-        if pendingVideoFileURL != nil || !videoUrl.x5Trimmed.isEmpty { return "Заменить видеофайл" }
-        return "Импортировать видеофайл"
+        if uploading { return "Подготовка видео..." }
+        if pendingVideoFileURL != nil || !videoUrl.x5Trimmed.isEmpty { return "Заменить видео из галереи" }
+        return "Выбрать видео из галереи"
     }
 
-    private func importVideo(_ url: URL) async {
-        uploading = true
-        defer { uploading = false }
+    @MainActor
+    private func handleVideoPickerResult(_ result: Result<CourseGalleryVideo, Error>) {
+        uploading = false
+        showingVideoPicker = false
         errorText = nil
 
-        guard uploadsImmediately else {
-            stagePendingVideo(url)
+        switch result {
+        case .success(let imported):
+            if pendingVideoFileURL != initialPendingVideoFileURL {
+                CourseVideoStaging.removeIfManaged(pendingVideoFileURL)
+            }
+            pendingVideoFileURL = imported.fileURL
+            pendingVideoFileName = imported.originalFileName
+        case .failure(let error):
+            errorText = "Не удалось подготовить видео из галереи: \(error.localizedDescription)"
+        }
+    }
+
+    private func importThumbnail(_ item: PhotosPickerItem) async {
+        uploadingThumbnail = true
+        defer { uploadingThumbnail = false }
+        errorText = nil
+
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let ui = UIImage(data: data),
+              let jpeg = ui.jpegData(compressionQuality: 0.84) else {
+            errorText = "Не удалось прочитать обложку."
             return
         }
 
-        let result = await uploadVideo(url)
-        if let publicURL = result.url {
-            videoUrl = publicURL
-            pendingVideoFileURL = nil
-            pendingVideoFileName = nil
-        } else {
-            errorText = result.error ?? "Видео не загружено."
-        }
+        pendingThumbnailData = jpeg
     }
 
-    private func stagePendingVideo(_ url: URL) {
-        let didAccess = url.startAccessingSecurityScopedResource()
-        defer {
-            if didAccess { url.stopAccessingSecurityScopedResource() }
+    private func commitAndDismiss() {
+        if pendingVideoFileURL != initialPendingVideoFileURL {
+            CourseVideoStaging.removeIfManaged(initialPendingVideoFileURL)
         }
-
-        do {
-            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("x5-course-videos", isDirectory: true)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-
-            let ext = normalizedVideoExtension(from: url)
-            let fileName = "\(lesson.id)-\(UUID().uuidString).\(ext)"
-            let destination = directory.appendingPathComponent(fileName)
-            if FileManager.default.fileExists(atPath: destination.path) {
-                try FileManager.default.removeItem(at: destination)
-            }
-            try FileManager.default.copyItem(at: url, to: destination)
-
-            videoUrl = ""
-            pendingVideoFileURL = destination
-            pendingVideoFileName = url.lastPathComponent
-        } catch {
-            errorText = "Не удалось подготовить видеофайл: \(error.localizedDescription)"
-        }
+        didCommit = true
+        onSave(updatedLesson())
+        dismiss()
     }
 
-    private func normalizedVideoExtension(from url: URL) -> String {
-        let ext = url.pathExtension.lowercased()
-        guard !ext.isEmpty else { return "mp4" }
-        switch ext {
-        case "mov", "m4v", "mp4": return ext
-        default: return "mp4"
-        }
+    private func cancelAndDismiss() {
+        cleanupUncommittedVideo()
+        dismiss()
+    }
+
+    private func cleanupUncommittedVideo() {
+        guard pendingVideoFileURL != initialPendingVideoFileURL else { return }
+        CourseVideoStaging.removeIfManaged(pendingVideoFileURL)
     }
 
     private func updatedLesson() -> EditableLesson {
-        EditableLesson(
-            id: lesson.id,
+        lesson.applyingEditorChanges(
             title: title.x5Trimmed,
-            duration: duration.x5Trimmed,
-            order: lesson.order,
             price: price.x5Trimmed.isEmpty ? "0" : price.x5Trimmed,
             videoUrl: videoUrl.x5Trimmed,
             youtubeUrl: youtubeUrl.x5Trimmed,
@@ -869,21 +1353,9 @@ private struct LessonEditorSheet: View {
             isFreePreview: isFreePreview,
             sellSeparately: sellSeparately,
             pendingVideoFileURL: pendingVideoFileURL,
-            pendingVideoFileName: pendingVideoFileName
+            pendingVideoFileName: pendingVideoFileName,
+            pendingThumbnailData: pendingThumbnailData
         )
-    }
-}
-
-private struct LessonVideoUploadResult {
-    let url: String?
-    let error: String?
-
-    static func success(_ url: String) -> LessonVideoUploadResult {
-        LessonVideoUploadResult(url: url, error: nil)
-    }
-
-    static func failure(_ error: String) -> LessonVideoUploadResult {
-        LessonVideoUploadResult(url: nil, error: error)
     }
 }
 

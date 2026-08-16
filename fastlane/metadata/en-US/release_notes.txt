@@ -1,10 +1,23 @@
-This update expands X5 into a fuller creator workspace.
+This build completes the requested course, notification, chat, Home, purchase
+and portfolio fixes in X five marketing.
 
-New in this version:
-- Updated Home screen with creator and marketing tools.
-- Image generation for marketing creatives, logos, stories, posts, product photos and packaging ideas.
-- Hub improvements for specialists, tasks and proposals.
-- Direct chats with text, photos, voice messages, search, replies, pin, mute, archive, report and block controls.
-- Portfolio improvements with photos, videos, likes, comments and pinned work.
-- CourseUP video lessons and Pro-gated course access.
-- Profile, onboarding, language, Face ID lock, push notification and subscription improvements.
+- Full-length lesson videos upload without truncation. Oversized sources are
+  prepared locally and continue through resumable private upload.
+- Task notifications open the exact task; message notifications open the exact
+  chat even after a cold launch.
+- Chat photo, video and voice media use private storage and short-lived links.
+- Portfolio photos and video previews use private storage and are checked
+  automatically before publication. There is no manual-review queue.
+- CourseUP management remains restricted to the two authorized developer
+  accounts, with corrected typography and retry-safe uploads.
+
+- One-time 1,000/2,000/5,000 credit packs stay consumable and can be purchased
+  again. Interrupted delivery retries safely after relaunch.
+- The Verified Badge action keeps readable black text on its bright button.
+- Muted Home card previews pause offscreen, while the app is inactive or when
+  Reduce Motion is enabled; static posters remain as a safe fallback.
+- AI Video adds Seedance 1.5 Pro for text/image video, 480p/720p/1080p choices
+  and optional native audio.
+- AI Voice generates speech with ElevenLabs Eleven v3 through a protected
+  server-side route.
+- Course, Hub and author-profile fixes from version 1.1.6 remain included.

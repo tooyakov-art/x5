@@ -1,0 +1,29 @@
+{
+  "fixtureVersion": 1,
+  "capturedAt": "2026-08-01T20:36:00+06:00",
+  "sourceCommit": "a718d17cdbb288af96c70fee60d46da66f7767cf",
+  "appVersion": "1.1.6",
+  "buildNumber": "194",
+  "device": {
+    "name": "X5 Build 194 QA",
+    "runtime": "iOS 26.5"
+  },
+  "launchEnvironment": {
+    "X5_HOME_QA_PREVIEW": "1"
+  },
+  "state": {
+    "screen": "home",
+    "selectedTab": "home",
+    "scrollPosition": "top",
+    "activeRoute": null,
+    "activeTrendVideoID": null
+  },
+  "evidence": {
+    "localScreenshotLabel": "x5-build194-pre-fix.png",
+    "screenshotSHA256": "2b22d2c9269f46e56866caf2f749dfab7eb29ff419c304834736d039c5ceee37",
+    "stateServerAvailable": false,
+    "stateServerNote": "This app target has no StateServer wiring; the equivalent reproducible simulator state and screenshot hash are recorded here without publishing the private artwork."
+  },
+  "observed": "Build 194 replaced the native five-tab contract with a safe-area-dependent overlay, removed three hero actions, and made all trend cards preview-only.",
+  "expected": "The compact approved interface remains unchanged while all five tabs stay visible and tappable, hero pages remain functional, and every visible Home card opens its intended route."
+}

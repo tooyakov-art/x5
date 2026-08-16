@@ -1,14 +1,18 @@
 import SwiftUI
+import PhotosUI
 
 struct CoursesView: View {
-    @EnvironmentObject private var sub: Subscription
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var loc: LocalizationService
     @StateObject private var service = CoursesService()
     @State private var showingPaywall = false
     @State private var editorTarget: EditorTarget?
+    @State private var showingCourseSubmission = false
+    @State private var showingSubmissions = false
 
-    private var isDev: Bool { Roles.isDeveloper(auth.userEmail) }
+    private var isDev: Bool { Roles.isDeveloper(email: auth.userEmail, userId: auth.userId) }
+    private var featuredCourse: Course? { service.courses.first }
+    private var academyCourses: [Course] { Array(service.courses.dropFirst()) + Self.upcomingCourses }
 
     /// Sheet payload — `.create` for new course, `.edit(course)` for existing.
     private enum EditorTarget: Identifiable {
@@ -30,12 +34,22 @@ struct CoursesView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let err = service.error, service.courses.isEmpty {
                     ErrorState(message: err) {
-                        Task { await service.loadCourses() }
+                        Task { await reloadCourses() }
                     }
                 } else {
                     ScrollView {
-                        VStack(spacing: 16) {
-                            ForEach(service.courses) { course in
+                        VStack(alignment: .leading, spacing: 18) {
+                            HStack(alignment: .center, spacing: 12) {
+                                Text("CourseUP")
+                                    .font(.system(size: 34, weight: .black))
+                                    .foregroundColor(.white)
+                                    .kerning(0)
+
+                                Spacer()
+                            }
+                            .padding(.top, 4)
+
+                            if let course = featuredCourse {
                                 ZStack(alignment: .topLeading) {
                                     NavigationLink {
                                         CourseDetailView(course: course, openPaywall: { showingPaywall = true })
@@ -54,7 +68,7 @@ struct CoursesView: View {
                                                 Task {
                                                     guard let token = auth.accessToken else { return }
                                                     _ = await service.deleteCourse(id: course.id, accessToken: token)
-                                                    await service.loadCourses(includeHidden: isDev)
+                                                    await reloadCourses()
                                                 }
                                             } label: {
                                                 Label("Удалить", systemImage: "trash")
@@ -80,6 +94,58 @@ struct CoursesView: View {
                                     }
                                 }
                             }
+
+                            ForEach(Array(academyCourses.enumerated()), id: \.element.id) { index, course in
+                                let isEditableCourse = service.courses.contains(where: { $0.id == course.id })
+
+                                ZStack(alignment: .topLeading) {
+                                    NavigationLink {
+                                        if isEditableCourse {
+                                            CourseDetailView(course: course, openPaywall: { showingPaywall = true })
+                                        } else {
+                                            CourseInDevelopmentView(course: course)
+                                        }
+                                    } label: {
+                                        AcademyCourseCard(course: course, paletteIndex: index)
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    if isDev && isEditableCourse {
+                                        Button {
+                                            editorTarget = .edit(course)
+                                        } label: {
+                                            Image(systemName: "pencil")
+                                                .font(.system(size: 14, weight: .bold))
+                                                .foregroundColor(.black)
+                                                .frame(width: 36, height: 36)
+                                                .background(Color.accentColor)
+                                                .clipShape(Circle())
+                                                .shadow(color: .black.opacity(0.4), radius: 6)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .padding(12)
+                                        .accessibilityLabel("Редактировать курс")
+                                    }
+                                }
+                                .contextMenu {
+                                    if isDev && isEditableCourse {
+                                        Button {
+                                            editorTarget = .edit(course)
+                                        } label: {
+                                            Label("Редактировать", systemImage: "pencil")
+                                        }
+                                        Button(role: .destructive) {
+                                            Task {
+                                                guard let token = await auth.freshAccessToken() else { return }
+                                                _ = await service.deleteCourse(id: course.id, accessToken: token)
+                                                await reloadCourses()
+                                            }
+                                        } label: {
+                                            Label("Удалить", systemImage: "trash")
+                                        }
+                                    }
+                                }
+                            }
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 2)
@@ -87,7 +153,7 @@ struct CoursesView: View {
                         .frame(maxWidth: 640)
                         .frame(maxWidth: .infinity)
                     }
-                    .refreshable { await service.loadCourses() }
+                    .refreshable { await reloadCourses() }
                 }
             }
             .background { X5Background() }
@@ -97,6 +163,13 @@ struct CoursesView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 if isDev {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            showingSubmissions = true
+                        } label: {
+                            Label("Заявки", systemImage: "tray.full")
+                        }
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             editorTarget = .create
@@ -112,10 +185,10 @@ struct CoursesView: View {
                             .clipShape(Capsule())
                         }
                     }
-                } else if !sub.isPro {
+                } else {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button { showingPaywall = true } label: {
-                            Text(loc.t("courses_pro_chip"))
+                        Button { showingCourseSubmission = true } label: {
+                            Text("Оставить заявку")
                                 .font(.system(size: 13, weight: .bold))
                                 .foregroundColor(.black)
                                 .padding(.horizontal, 12).padding(.vertical, 6)
@@ -126,20 +199,167 @@ struct CoursesView: View {
                 }
             }
             .sheet(isPresented: $showingPaywall) { PaywallView() }
+            .sheet(isPresented: $showingCourseSubmission) {
+                CourseSubmissionView()
+            }
+            .sheet(isPresented: $showingSubmissions) {
+                CourseSubmissionsAdminView()
+            }
             .sheet(item: $editorTarget) { target in
                 switch target {
                 case .create:
                     CourseEditorView(editing: nil) {
-                        Task { await service.loadCourses(includeHidden: isDev) }
+                        Task { await reloadCourses() }
                     }
                 case .edit(let course):
                     CourseEditorView(editing: course) {
-                        Task { await service.loadCourses(includeHidden: isDev) }
+                        Task { await reloadCourses() }
                     }
                 }
             }
-            .task { await service.loadCourses(includeHidden: isDev) }
+            .task { await reloadCourses() }
         }
+    }
+
+    private func reloadCourses() async {
+        let accessToken = isDev ? await auth.freshAccessToken() : nil
+        await service.loadCourses(includeHidden: isDev, accessToken: accessToken)
+    }
+
+    private static let upcomingCourses: [Course] = [
+        makeUpcomingCourse(
+            id: "upcoming-vibecoding",
+            title: "Вайбкодинг для маркетолога",
+            description: "Собери лендинг, квиз и Telegram-бота без команды разработки",
+            lessons: ["Как ставить задачу ИИ", "Лендинг за вечер", "Форма заявки и аналитика", "Публикация и проверка"]
+        ),
+        makeUpcomingCourse(
+            id: "upcoming-ai-reels",
+            title: "AI Reels и TikTok",
+            description: "Сценарии, аватары, липсинк и монтаж коротких роликов",
+            lessons: ["Хук в первые 2 секунды", "ИИ-аватар", "Озвучка и липсинк", "Пакет роликов на неделю"]
+        ),
+        makeUpcomingCourse(
+            id: "upcoming-marketplace",
+            title: "Карточки товара",
+            description: "Фото, инфографика и тексты для Kaspi, Wildberries и сайта",
+            lessons: ["Главное фото", "Инфографика выгод", "A/B варианты", "Подготовка к загрузке"]
+        ),
+        makeUpcomingCourse(
+            id: "upcoming-smm-system",
+            title: "SMM-система на месяц",
+            description: "Контент-план, рубрики, сторис и прогрев без хаоса",
+            lessons: ["Рубрикатор", "30 идей постов", "Сторис-воронки", "Еженедельный отчет"]
+        ),
+        makeUpcomingCourse(
+            id: "upcoming-youtube",
+            title: "Обложки YouTube",
+            description: "Превью, заголовки и визуальная упаковка роликов",
+            lessons: ["Кликабельная идея", "Композиция лица", "Текст на обложке", "Серия в одном стиле"]
+        ),
+        makeUpcomingCourse(
+            id: "upcoming-target-analytics",
+            title: "Таргет и аналитика",
+            description: "Связки, гипотезы, бюджет и понятный отчет по рекламе",
+            lessons: ["Оффер и аудитория", "Креативы для теста", "Запуск кампании", "Что отключать первым"]
+        )
+    ]
+
+    private static func makeUpcomingCourse(id: String, title: String, description: String, lessons: [String]) -> Course {
+        Course(
+            id: id,
+            title: title,
+            description: description,
+            marketingHook: nil,
+            coverUrl: nil,
+            authorName: "X Five CourseUP",
+            price: 0,
+            isFree: true,
+            isPublic: true,
+            courseLanguage: "ru",
+            averageRating: nil,
+            studentsCount: nil,
+            sortOrder: nil,
+            categoriesRaw: [
+                CourseCategory(
+                    id: "\(id)-cat",
+                    title: "Программа",
+                    order: 1,
+                    icon: "graduationcap",
+                    days: [
+                        CourseDay(
+                            id: "\(id)-day",
+                            title: "Модули",
+                            order: 1,
+                            lessons: lessons.enumerated().map { index, title in
+                                CourseLesson(
+                                    id: "\(id)-lesson-\(index + 1)",
+                                    title: title,
+                                    duration: nil,
+                                    order: index + 1,
+                                    price: nil,
+                                    videoUrl: nil,
+                                    youtubeUrl: nil,
+                                    thumbnailUrl: nil,
+                                    isFreePreview: index == 0,
+                                    sellSeparately: false
+                                )
+                            }
+                        )
+                    ]
+                )
+            ]
+        )
+    }
+}
+
+private struct CourseAuthorLine: View {
+    let authorName: String?
+    let authorId: String?
+    var compact = false
+
+    init(authorName: String?, authorId: String? = nil, compact: Bool = false) {
+        self.authorName = authorName
+        self.authorId = authorId
+        self.compact = compact
+    }
+
+    private var cleanName: String? {
+        let value = (authorName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    private var cleanAuthorId: String? {
+        let value = (authorId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if let cleanName {
+            if let authorId = cleanAuthorId {
+                NavigationLink {
+                    UserProfileView(userId: authorId, fallback: nil)
+                } label: {
+                    content(cleanName)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Открыть профиль автора")
+            } else {
+                content(cleanName)
+            }
+        }
+    }
+
+    private func content(_ name: String) -> some View {
+        HStack(spacing: compact ? 4 : 6) {
+            Image(systemName: "person.crop.circle.fill")
+            Text("Автор: \(name)")
+                .lineLimit(1)
+        }
+        .font(.system(size: compact ? 10 : 12, weight: .semibold))
+        .foregroundColor(.white.opacity(compact ? 0.46 : 0.58))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -181,7 +401,7 @@ private struct CourseCard: View {
                             .clipShape(Capsule())
                     }
                     if !(course.isFree ?? false) && (course.price ?? 0) > 0 {
-                        Text(loc.t("courses_pro_chip").uppercased())
+                        Text("\(max(course.price ?? 0, 0).formatted()) кр.")
                             .font(.system(size: 10, weight: .heavy))
                             .padding(.horizontal, 8).padding(.vertical, 4)
                             .background(Color.accentColor)
@@ -197,6 +417,8 @@ private struct CourseCard: View {
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(2)
+
+                CourseAuthorLine(authorName: course.authorName, authorId: course.authorId)
 
                 if let desc = course.description, !desc.isEmpty {
                     Text(desc)
@@ -269,7 +491,7 @@ private struct CourseRow: View {
                         .foregroundColor(.white)
                         .lineLimit(2)
                     if !(course.isFree ?? false) && (course.price ?? 0) > 0 {
-                        Text(loc.t("courses_pro_chip").uppercased())
+                        Text("\(max(course.price ?? 0, 0).formatted()) кр.")
                             .font(.system(size: 9, weight: .heavy))
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(Color.accentColor)
@@ -277,6 +499,11 @@ private struct CourseRow: View {
                             .clipShape(Capsule())
                     }
                 }
+                CourseAuthorLine(
+                    authorName: course.authorName,
+                    authorId: course.authorId,
+                    compact: true
+                )
                 if let summary = course.description, !summary.isEmpty {
                     Text(summary)
                         .font(.system(size: 13))
@@ -287,13 +514,6 @@ private struct CourseRow: View {
                     Text("\(course.totalLessons) \(loc.t("courses_lessons_word"))")
                         .font(.system(size: 11))
                         .foregroundColor(.white.opacity(0.4))
-                    if !course.totalDurationLabel.isEmpty {
-                        Text("·")
-                            .foregroundColor(.white.opacity(0.3))
-                        Text(course.totalDurationLabel)
-                            .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.4))
-                    }
                     if let r = course.averageRating, r > 0 {
                         Text("·")
                             .foregroundColor(.white.opacity(0.3))
@@ -317,14 +537,370 @@ private struct CourseRow: View {
     }
 }
 
+private struct UpcomingCourseCard: View {
+    let course: Course
+
+    private var accent: Color {
+        switch course.id {
+        case "upcoming-vibecoding": return X5Style.blue
+        case "upcoming-ai-reels": return Color.purple
+        case "upcoming-marketplace": return Color.cyan
+        case "upcoming-smm-system": return Color.green
+        case "upcoming-youtube": return Color.red
+        case "upcoming-target-analytics": return Color.orange
+        default: return Color.accentColor
+        }
+    }
+
+    private var icon: String {
+        switch course.id {
+        case "upcoming-vibecoding": return "curlybraces"
+        case "upcoming-ai-reels": return "play.rectangle.on.rectangle"
+        case "upcoming-marketplace": return "shippingbox"
+        case "upcoming-smm-system": return "calendar.badge.clock"
+        case "upcoming-youtube": return "rectangle.on.rectangle"
+        case "upcoming-target-analytics": return "scope"
+        default: return "graduationcap"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .bottomLeading) {
+                LinearGradient(
+                    colors: [
+                        accent.opacity(0.34),
+                        Color(red: 0.03, green: 0.04, blue: 0.07),
+                        Color.black.opacity(0.94)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                HStack(alignment: .center, spacing: 16) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(accent.opacity(0.18))
+                        Image(systemName: icon)
+                            .font(.system(size: 36, weight: .bold))
+                            .foregroundColor(accent)
+                    }
+                    .frame(width: 84, height: 84)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("COURSEUP")
+                            .font(.system(size: 11, weight: .heavy))
+                            .tracking(2.2)
+                            .foregroundColor(.white.opacity(0.45))
+
+                        Text(course.title)
+                            .font(.system(size: 23, weight: .heavy))
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.82)
+
+                        Text("В разработке")
+                            .font(.system(size: 11, weight: .heavy))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.accentColor)
+                            .clipShape(Capsule())
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(18)
+            }
+            .frame(height: 154)
+
+            VStack(alignment: .leading, spacing: 10) {
+                if let desc = course.description, !desc.isEmpty {
+                    Text(desc)
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.62))
+                        .lineLimit(2)
+                }
+
+                HStack(spacing: 14) {
+                    Label("\(course.totalLessons) урока", systemImage: "book")
+                    Spacer()
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 36, height: 36)
+                        .background(Color.accentColor)
+                        .clipShape(Circle())
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white.opacity(0.48))
+            }
+            .padding(16)
+        }
+        .background(Color.white.opacity(0.055))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
+private struct AcademyCourseCard: View {
+    let course: Course
+    let paletteIndex: Int
+
+    private var palette: [Color] {
+        let palettes: [[Color]] = [
+            [Color(red: 0.17, green: 0.44, blue: 1.0), Color(red: 0.17, green: 0.93, blue: 0.96)],
+            [Color(red: 0.07, green: 0.86, blue: 0.42), Color(red: 0.05, green: 0.65, blue: 0.58)],
+            [Color(red: 0.98, green: 0.34, blue: 0.57), Color(red: 0.96, green: 0.75, blue: 0.24)],
+            [Color(red: 0.48, green: 0.37, blue: 0.96), Color(red: 0.28, green: 0.13, blue: 0.55)],
+            [Color(red: 0.95, green: 0.31, blue: 0.82), Color(red: 0.67, green: 0.12, blue: 0.24)]
+        ]
+        return palettes[paletteIndex % palettes.count]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack {
+                LinearGradient(colors: palette, startPoint: .topLeading, endPoint: .bottomTrailing)
+
+                if let cover = course.coverUrl, !cover.isEmpty, let url = URL(string: cover) {
+                    CachedAsyncImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        Color.clear
+                    }
+                    .overlay(Color.black.opacity(0.10))
+                }
+
+                Circle()
+                    .fill(.white.opacity(0.18))
+                    .frame(width: 64, height: 64)
+                    .overlay(
+                        Circle()
+                            .stroke(.white.opacity(0.28), lineWidth: 1)
+                    )
+                Image(systemName: "play.circle")
+                    .font(.system(size: 31, weight: .light))
+                    .foregroundColor(.white.opacity(0.9))
+            }
+            .frame(height: 210)
+            .frame(maxWidth: .infinity)
+            .clipped()
+
+            VStack(alignment: .leading, spacing: 13) {
+                Text(course.title)
+                    .font(.system(size: 21, weight: .heavy))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+
+                CourseAuthorLine(authorName: course.authorName, authorId: course.authorId)
+
+                if let desc = course.description, !desc.isEmpty {
+                    Text(desc)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.white.opacity(0.56))
+                        .lineSpacing(3)
+                        .lineLimit(2)
+                }
+
+                HStack(spacing: 16) {
+                    Label("\(course.totalLessons) уроков", systemImage: "book")
+                    Label("\(course.studentsCount ?? fallbackStudents)", systemImage: "person.2")
+                    Spacer()
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 18, weight: .black))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(Color.accentColor)
+                        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.white.opacity(0.42))
+            }
+            .padding(18)
+            .background(
+                LinearGradient(
+                    colors: [Color.white.opacity(0.070), Color.white.opacity(0.038)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+        }
+        .background(Color(red: 0.08, green: 0.085, blue: 0.13))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 12)
+    }
+
+    private var fallbackStudents: Int {
+        let values = [156, 201, 98, 143, 89, 124]
+        return values[paletteIndex % values.count]
+    }
+}
+
+struct CourseInDevelopmentView: View {
+    let course: Course
+    @State private var expandedCategoryIds: Set<String> = []
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("CourseUP")
+                        .font(.system(size: 12, weight: .heavy))
+                        .tracking(2)
+                        .foregroundColor(.accentColor)
+
+                    Text(course.title)
+                        .font(.system(size: 32, weight: .heavy))
+                        .foregroundColor(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let desc = course.description, !desc.isEmpty {
+                        Text(desc)
+                            .font(.system(size: 15))
+                            .foregroundColor(.white.opacity(0.66))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    LinearGradient(
+                        colors: [Color.accentColor.opacity(0.20), Color.white.opacity(0.055)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+
+                HStack(spacing: 12) {
+                    Image(systemName: "hammer.fill")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(Color.accentColor)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Курс в разработке")
+                            .font(.system(size: 18, weight: .heavy))
+                            .foregroundColor(.white)
+                        Text("Скоро добавим уроки, видео и материалы.")
+                            .font(.system(size: 13))
+                            .foregroundColor(.white.opacity(0.58))
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.white.opacity(0.055))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                programHeader
+
+                ForEach(sortedCategories) { category in
+                    CourseProgramCategorySection(
+                        category: category,
+                        isExpanded: categoryBinding(category.id)
+                    ) { lesson in
+                        LockedSoonLessonRow(lesson: lesson)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 32)
+            .frame(maxWidth: 640)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+        .navigationTitle("В разработке")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .onAppear { expandAllIfNeeded() }
+    }
+
+    private var sortedCategories: [CourseCategory] {
+        course.categories.sorted { ($0.order ?? 0) < ($1.order ?? 0) }
+    }
+
+    private var allCategoryIds: Set<String> {
+        Set(sortedCategories.map(\.id))
+    }
+
+    private var isFullyExpanded: Bool {
+        !allCategoryIds.isEmpty && expandedCategoryIds == allCategoryIds
+    }
+
+    private var programHeader: some View {
+        HStack {
+            Text("Программа")
+                .font(.system(size: 11, weight: .bold))
+                .tracking(1.4)
+                .foregroundColor(.white.opacity(0.45))
+            Spacer()
+            Button(isFullyExpanded ? "Свернуть все" : "Развернуть все") {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    if isFullyExpanded {
+                        expandedCategoryIds.removeAll()
+                    } else {
+                        expandedCategoryIds = allCategoryIds
+                    }
+                }
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundColor(.accentColor)
+        }
+    }
+
+    private func expandAllIfNeeded() {
+        guard expandedCategoryIds.isEmpty else { return }
+        expandedCategoryIds = allCategoryIds
+    }
+
+    private func categoryBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedCategoryIds.contains(id) },
+            set: { isExpanded in
+                if isExpanded {
+                    expandedCategoryIds.insert(id)
+                } else {
+                    expandedCategoryIds.remove(id)
+                }
+            }
+        )
+    }
+}
+
 struct CourseDetailView: View {
     let course: Course
     var openPaywall: () -> Void
 
-    @EnvironmentObject private var sub: Subscription
+    @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var loc: LocalizationService
+    @StateObject private var purchaseService = CoursePurchaseService()
+    @State private var expandedCategoryIds: Set<String> = []
+    @State private var showingPurchaseConfirmation = false
+    @State private var purchaseNotice: CoursePurchaseNotice?
+    @State private var serverConfirmedPrice: Int?
 
-    var hasFullAccess: Bool { (course.isFree ?? false) || (course.price ?? 0) == 0 || sub.isPro }
+    private var activeProfile: UserProfile? {
+        guard let profile = currentUser.profile,
+              let userId = auth.userId,
+              profile.id.caseInsensitiveCompare(userId) == .orderedSame
+        else { return nil }
+        return profile
+    }
+
+    var hasFullAccess: Bool {
+        CourseAccessPolicy.hasFullAccess(to: course, profile: activeProfile)
+    }
 
     var body: some View {
         ScrollView {
@@ -345,6 +921,8 @@ struct CourseDetailView: View {
                     .font(.system(size: 26, weight: .heavy))
                     .foregroundColor(.white)
 
+                CourseAuthorLine(authorName: course.authorName, authorId: course.authorId)
+
                 if let hook = course.marketingHook, !hook.isEmpty {
                     Text(hook)
                         .font(.system(size: 14, weight: .semibold))
@@ -359,37 +937,33 @@ struct CourseDetailView: View {
 
                 HStack(spacing: 12) {
                     StatBubble(value: "\(course.totalLessons)", label: "lessons")
-                    if !course.totalDurationLabel.isEmpty {
-                        StatBubble(value: course.totalDurationLabel, label: "duration")
-                    }
                     if let r = course.averageRating, r > 0 {
                         StatBubble(value: String(format: "%.1f ⭐", r), label: "\(course.studentsCount ?? 0) students")
                     }
                 }
 
                 if !hasFullAccess {
-                    Button(action: openPaywall) {
-                        HStack {
-                            Image(systemName: "lock.fill")
-                            Text(loc.t("courses_unlock_pro"))
-                        }
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Color.accentColor)
-                        .cornerRadius(14)
-                    }
+                    purchaseButton
                 }
 
-                Text(loc.t("courses_lessons_section"))
-                    .font(.system(size: 11, weight: .bold))
-                    .tracking(1.4)
-                    .foregroundColor(.white.opacity(0.45))
+                lessonsHeader
                     .padding(.top, 8)
 
-                ForEach(course.categories.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) })) { category in
-                    CategorySection(category: category, hasFullAccess: hasFullAccess, openPaywall: openPaywall)
+                ForEach(sortedCategories) { category in
+                    CourseProgramCategorySection(
+                        category: category,
+                        isExpanded: categoryBinding(category.id)
+                    ) { lesson in
+                        LessonRow(
+                            lesson: lesson,
+                            canPlay: CourseAccessPolicy.canAccess(
+                                lesson: lesson,
+                                in: course,
+                                profile: activeProfile
+                            ),
+                            requestUnlock: requestUnlock
+                        )
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -401,6 +975,231 @@ struct CourseDetailView: View {
         .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .onAppear { expandAllIfNeeded() }
+        .confirmationDialog(
+            "Купить курс?",
+            isPresented: $showingPurchaseConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Купить за \(formattedPrice) кредитов") {
+                Task { await completePurchase() }
+            }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Баланс: \(formattedCredits) кредитов. Списание и выдача доступа выполняются одной операцией.")
+        }
+        .alert(item: $purchaseNotice) { notice in
+            notice.makeAlert(openTopUp: openPaywall)
+        }
+    }
+
+    private var coursePrice: Int { max(serverConfirmedPrice ?? course.price ?? 0, 0) }
+    private var availableCredits: Int { max(activeProfile?.credits ?? 0, 0) }
+    private var formattedPrice: String { coursePrice.formatted() }
+    private var formattedCredits: String { availableCredits.formatted() }
+
+    private var purchaseButton: some View {
+        Button(action: requestUnlock) {
+            HStack(spacing: 12) {
+                if purchaseService.isPurchasing {
+                    ProgressView()
+                        .tint(.black)
+                } else {
+                    Image(systemName: "creditcard.fill")
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Купить курс · \(formattedPrice) кредитов")
+                        .font(.system(size: 15, weight: .bold))
+                    Text("Баланс: \(formattedCredits)")
+                        .font(.system(size: 11, weight: .semibold))
+                        .opacity(0.68)
+                }
+                Spacer()
+            }
+            .foregroundColor(.black)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
+            .background(Color.accentColor)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .disabled(purchaseService.isPurchasing)
+        .accessibilityHint("Открывает подтверждение покупки этого курса за кредиты")
+    }
+
+    private func requestUnlock() {
+        guard auth.isAuthenticated else {
+            purchaseNotice = CoursePurchaseNotice(
+                title: "Нужен вход",
+                message: "Войдите в X five marketing, чтобы купить курс.",
+                offersTopUp: false
+            )
+            return
+        }
+
+        showingPurchaseConfirmation = true
+    }
+
+    @MainActor
+    private func completePurchase() async {
+        guard let token = await auth.freshAccessToken() else {
+            purchaseNotice = CoursePurchaseNotice(
+                title: "Сессия истекла",
+                message: "Войдите снова и повторите покупку.",
+                offersTopUp: false
+            )
+            return
+        }
+
+        do {
+            let response = try await purchaseService.purchase(
+                courseId: course.id,
+                expectedPrice: coursePrice,
+                accessToken: token,
+                refreshAccessToken: { await auth.freshAccessToken() }
+            )
+            currentUser.applyCoursePurchase(response)
+
+            switch response.status {
+            case .purchased:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Курс куплен",
+                    message: "Доступ ко всем урокам открыт.",
+                    offersTopUp: false
+                )
+            case .alreadyOwned:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Курс уже доступен",
+                    message: "Повторного списания не было.",
+                    offersTopUp: false
+                )
+            case .insufficientCredits:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Недостаточно кредитов",
+                    message: "Баланс изменился. Пополните его и повторите покупку.",
+                    offersTopUp: true
+                )
+            case .priceChanged:
+                let latestPrice = response.reconciledExpectedPrice(currentPrice: coursePrice)
+                serverConfirmedPrice = latestPrice
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Цена изменилась",
+                    message: "Списание не выполнялось. Новая цена — \(latestPrice.formatted()) кредитов. Нажмите купить ещё раз и подтвердите новую цену.",
+                    offersTopUp: false
+                )
+            case .courseUnavailable:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Курс недоступен",
+                    message: "Обновите список курсов и попробуйте позже.",
+                    offersTopUp: false
+                )
+            case .profileUnavailable:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Профиль не готов",
+                    message: "Перезапустите приложение или войдите снова.",
+                    offersTopUp: false
+                )
+            case .notAuthenticated:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Нужен вход",
+                    message: "Войдите снова и повторите покупку.",
+                    offersTopUp: false
+                )
+            case .unknown(let status):
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Покупка не завершена",
+                    message: "Сервер вернул статус: \(status).",
+                    offersTopUp: false
+                )
+            }
+
+            if response.grantsOwnership,
+               let userId = auth.userId,
+               let refreshedToken = await auth.freshAccessToken() {
+                await currentUser.load(userId: userId, accessToken: refreshedToken)
+            }
+        } catch {
+            purchaseNotice = CoursePurchaseNotice(
+                title: "Покупка не выполнена",
+                message: purchaseService.error ?? error.localizedDescription,
+                offersTopUp: false
+            )
+        }
+    }
+
+    private var sortedCategories: [CourseCategory] {
+        course.categories.sorted { ($0.order ?? 0) < ($1.order ?? 0) }
+    }
+
+    private var allCategoryIds: Set<String> {
+        Set(sortedCategories.map(\.id))
+    }
+
+    private var isFullyExpanded: Bool {
+        !allCategoryIds.isEmpty && expandedCategoryIds == allCategoryIds
+    }
+
+    private var lessonsHeader: some View {
+        HStack {
+            Text(loc.t("courses_lessons_section"))
+                .font(.system(size: 11, weight: .bold))
+                .tracking(1.4)
+                .foregroundColor(.white.opacity(0.45))
+            Spacer()
+            Button(isFullyExpanded ? "Свернуть все" : "Развернуть все") {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    if isFullyExpanded {
+                        expandedCategoryIds.removeAll()
+                    } else {
+                        expandedCategoryIds = allCategoryIds
+                    }
+                }
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundColor(.accentColor)
+        }
+    }
+
+    private func expandAllIfNeeded() {
+        guard expandedCategoryIds.isEmpty else { return }
+        expandedCategoryIds = allCategoryIds
+    }
+
+    private func categoryBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedCategoryIds.contains(id) },
+            set: { isExpanded in
+                if isExpanded {
+                    expandedCategoryIds.insert(id)
+                } else {
+                    expandedCategoryIds.remove(id)
+                }
+            }
+        )
+    }
+}
+
+private struct CoursePurchaseNotice: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+    let offersTopUp: Bool
+
+    func makeAlert(openTopUp: @escaping () -> Void) -> Alert {
+        if offersTopUp {
+            return Alert(
+                title: Text(title),
+                message: Text(message),
+                primaryButton: .default(Text("Пополнить"), action: openTopUp),
+                secondaryButton: .cancel(Text("Отмена"))
+            )
+        }
+        return Alert(
+            title: Text(title),
+            message: Text(message),
+            dismissButton: .default(Text("OK"))
+        )
     }
 }
 
@@ -420,53 +1219,129 @@ private struct StatBubble: View {
     }
 }
 
-private struct CategorySection: View {
+private struct CourseProgramCategorySection<LessonContent: View>: View {
     let category: CourseCategory
-    let hasFullAccess: Bool
-    let openPaywall: () -> Void
+    let isExpanded: Binding<Bool>
+    @ViewBuilder let lessonContent: (CourseLesson) -> LessonContent
+
+    private var lessonsCount: Int {
+        category.days.reduce(0) { $0 + $1.lessons.count }
+    }
+
+    private var sortedDays: [CourseDay] {
+        category.days.sorted { ($0.order ?? 0) < ($1.order ?? 0) }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(category.title)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundColor(.white)
-                .padding(.top, 4)
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded.wrappedValue.toggle()
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: isExpanded.wrappedValue ? "chevron.down.circle.fill" : "chevron.right.circle.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.accentColor)
 
-            ForEach(category.days.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) })) { day in
-                DaySection(day: day, hasFullAccess: hasFullAccess, openPaywall: openPaywall)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(category.title)
+                            .font(.system(size: 17, weight: .heavy))
+                            .foregroundColor(.white)
+                        Text("\(lessonsCount) уроков")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.45))
+                    }
+
+                    Spacer()
+                }
+                .padding(14)
+                .background(Color.white.opacity(0.055))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded.wrappedValue {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(sortedDays) { day in
+                        VStack(alignment: .leading, spacing: 8) {
+                            if !day.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text(day.title)
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.68))
+                                    .padding(.horizontal, 4)
+                            }
+
+                            ForEach(day.lessons.sorted { ($0.order ?? 0) < ($1.order ?? 0) }) { lesson in
+                                lessonContent(lesson)
+                            }
+                        }
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
     }
 }
 
-private struct DaySection: View {
-    let day: CourseDay
-    let hasFullAccess: Bool
-    let openPaywall: () -> Void
+private struct LockedSoonLessonRow: View {
+    let lesson: CourseLesson
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(day.title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.white.opacity(0.55))
-                .padding(.leading, 4)
+        HStack(spacing: 12) {
+            lessonThumbnail
 
-            VStack(spacing: 6) {
-                ForEach(day.lessons.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) })) { lesson in
-                    LessonRow(lesson: lesson, hasFullAccess: hasFullAccess, openPaywall: openPaywall)
+            Text(lesson.title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white.opacity(0.82))
+                .lineLimit(2)
+
+            Spacer()
+
+            Text("скоро")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.white.opacity(0.36))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var lessonThumbnail: some View {
+        if let url = lesson.safeThumbnailURL {
+            ZStack {
+                CachedAsyncImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    Color.white.opacity(0.06)
                 }
+                Color.black.opacity(0.24)
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white.opacity(0.82))
             }
+            .frame(width: 58, height: 38)
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        } else {
+            ZStack {
+                Circle().fill(Color.white.opacity(0.06))
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white.opacity(0.38))
+            }
+            .frame(width: 32, height: 32)
         }
     }
 }
 
 private struct LessonRow: View {
     let lesson: CourseLesson
-    let hasFullAccess: Bool
-    let openPaywall: () -> Void
+    let canPlay: Bool
+    let requestUnlock: () -> Void
     @EnvironmentObject private var loc: LocalizationService
 
-    var canPlay: Bool { hasFullAccess || lesson.freePreview }
     var hasVideo: Bool { lesson.playableURL != nil }
 
     var body: some View {
@@ -477,7 +1352,7 @@ private struct LessonRow: View {
                 } label: { content }
                 .buttonStyle(.plain)
             } else {
-                Button(action: { if !canPlay { openPaywall() } }) { content }
+                Button(action: { if !canPlay { requestUnlock() } }) { content }
                     .buttonStyle(.plain)
             }
         }
@@ -485,13 +1360,7 @@ private struct LessonRow: View {
 
     private var content: some View {
         HStack(spacing: 12) {
-            ZStack {
-                Circle().fill(Color.white.opacity(0.06))
-                Image(systemName: !hasVideo ? "doc.text" : (canPlay ? "play.fill" : "lock.fill"))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(canPlay ? .accentColor : .white.opacity(0.45))
-            }
-            .frame(width: 32, height: 32)
+            lessonThumbnail
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(lesson.title)
@@ -499,9 +1368,6 @@ private struct LessonRow: View {
                     .foregroundColor(.white)
                     .lineLimit(2)
                 HStack(spacing: 8) {
-                    if let d = lesson.duration, !d.isEmpty {
-                        Text(d).font(.system(size: 11)).foregroundColor(.white.opacity(0.4))
-                    }
                     if lesson.freePreview {
                         Text(loc.t("courses_free_preview"))
                             .font(.system(size: 9, weight: .heavy))
@@ -523,6 +1389,327 @@ private struct LessonRow: View {
         .padding(.vertical, 10)
         .background(Color.white.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var lessonThumbnail: some View {
+        if let url = lesson.safeThumbnailURL {
+            ZStack {
+                CachedAsyncImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    Color.white.opacity(0.06)
+                }
+                LinearGradient(colors: [.black.opacity(0.04), .black.opacity(0.34)], startPoint: .top, endPoint: .bottom)
+                Image(systemName: !hasVideo ? "doc.text" : (canPlay ? "play.fill" : "lock.fill"))
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(canPlay ? .black : .white.opacity(0.82))
+                    .frame(width: 22, height: 22)
+                    .background(canPlay ? Color.accentColor : Color.white.opacity(0.14))
+                    .clipShape(Circle())
+            }
+            .frame(width: 58, height: 38)
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        } else {
+            ZStack {
+                Circle().fill(Color.white.opacity(0.06))
+                Image(systemName: !hasVideo ? "doc.text" : (canPlay ? "play.fill" : "lock.fill"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(canPlay ? .accentColor : .white.opacity(0.45))
+            }
+            .frame(width: 32, height: 32)
+        }
+    }
+}
+
+private extension CourseLesson {
+    var safeThumbnailURL: URL? {
+        guard let raw = thumbnailUrl, !raw.isEmpty, let url = URL(string: raw),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "https" || scheme == "http" else { return nil }
+        return url
+    }
+}
+
+private struct CourseSubmissionView: View {
+    @EnvironmentObject private var auth: Auth
+    @EnvironmentObject private var currentUser: CurrentUser
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var service = CoursesService()
+
+    @State private var title = ""
+    @State private var description = ""
+    @State private var contact = ""
+    @State private var videoFileURL: URL?
+    @State private var videoFileName: String?
+    @State private var showingVideoPicker = false
+    @State private var isImportingVideo = false
+    @State private var isSending = false
+    @State private var message: String?
+
+    private var canSend: Bool {
+        !title.x5Trimmed.isEmpty && !description.x5Trimmed.isEmpty && !contact.x5Trimmed.isEmpty && videoFileURL != nil && !isImportingVideo && !isSending
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Название курса", text: $title)
+                        .textInputAutocapitalization(.sentences)
+                    TextField("Что будет в курсе", text: $description, axis: .vertical)
+                        .lineLimit(3...6)
+                    TextField("Контакт для связи", text: $contact)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.emailAddress)
+                } header: {
+                    Text("Заявка на курс")
+                } footer: {
+                    Text("Опиши идею курса и прикрепи первое видео. Команда X five marketing проверит заявку и свяжется с тобой.")
+                }
+
+                Section("Видео") {
+                    Button {
+                        isImportingVideo = true
+                        showingVideoPicker = true
+                    } label: {
+                        Label(
+                            isImportingVideo ? "Подготовка видео..." : (videoFileName == nil ? "Выбрать видео из галереи" : "Заменить видео из галереи"),
+                            systemImage: "photo.on.rectangle.angled"
+                        )
+                    }
+                    .disabled(isImportingVideo || isSending)
+
+                    if let videoFileName {
+                        Label(videoFileName, systemImage: "film")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if isSending, let progress = service.videoUploadProgress {
+                        ProgressView(value: progress)
+                            .tint(.accentColor)
+                        Text("Загрузка видео: \(Int((progress * 100).rounded()))%")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let message {
+                    Section {
+                        Text(message)
+                            .foregroundColor(message.contains("отправлена") ? .green : .red)
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color(red: 0.04, green: 0.05, blue: 0.10))
+            .navigationTitle("Оставить заявку")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Отмена") { cancelAndDismiss() }
+                        .disabled(isImportingVideo || isSending)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await send() }
+                    } label: {
+                        if isSending { ProgressView() } else { Text("Отправить").bold() }
+                    }
+                    .disabled(!canSend)
+                }
+            }
+            .sheet(isPresented: $showingVideoPicker, onDismiss: {
+                isImportingVideo = false
+            }) {
+                GalleryVideoPicker(
+                    stagingID: "course-submission",
+                    onResult: handleVideoPickerResult,
+                    onCancel: {
+                        isImportingVideo = false
+                        showingVideoPicker = false
+                    }
+                )
+                .ignoresSafeArea()
+            }
+        }
+        .preferredColorScheme(.dark)
+        .interactiveDismissDisabled(isImportingVideo || isSending)
+        .onDisappear { CourseVideoStaging.removeIfManaged(videoFileURL) }
+    }
+
+    @MainActor
+    private func handleVideoPickerResult(_ result: Result<CourseGalleryVideo, Error>) {
+        isImportingVideo = false
+        showingVideoPicker = false
+        message = nil
+
+        switch result {
+        case .success(let imported):
+            CourseVideoStaging.removeIfManaged(videoFileURL)
+            videoFileURL = imported.fileURL
+            videoFileName = imported.originalFileName
+        case .failure(let error):
+            message = "Не удалось подготовить видео из галереи: \(error.localizedDescription)"
+        }
+    }
+
+    private func cancelAndDismiss() {
+        CourseVideoStaging.removeIfManaged(videoFileURL)
+        videoFileURL = nil
+        dismiss()
+    }
+
+    private func send() async {
+        guard !isSending else { return }
+        guard let selectedVideoURL = videoFileURL else {
+            message = "Нужно войти и прикрепить видео."
+            return
+        }
+        isSending = true
+        defer { isSending = false }
+
+        guard let token = await auth.freshAccessToken(),
+              let userID = auth.userId else {
+            message = "Нужно войти и прикрепить видео."
+            return
+        }
+
+        let uploadedVideo = await service.uploadCourseSubmissionVideo(
+            fileURL: selectedVideoURL,
+            userID: userID,
+            accessToken: token,
+            accessTokenProvider: {
+                await auth.accessTokenForUpload()
+            }
+        )
+        guard let uploadedVideo else {
+            message = service.error ?? "Видео не загрузилось."
+            return
+        }
+
+        guard let postUploadToken = await auth.accessTokenForUpload() else {
+            message = "Сессия истекла во время загрузки. Войди снова."
+            return
+        }
+
+        let ok = await service.createSubmission(
+            title: title.x5Trimmed,
+            description: description.x5Trimmed,
+            contact: contact.x5Trimmed,
+            authorId: auth.userId,
+            authorEmail: auth.userEmail,
+            authorName: currentUser.profile?.name ?? auth.userEmail,
+            videoURL: uploadedVideo,
+            accessToken: postUploadToken
+        )
+
+        if ok {
+            X5Feedback.success()
+            message = "Заявка отправлена. Проверим видео и напишем."
+            CourseVideoStaging.removeIfManaged(selectedVideoURL)
+            self.videoFileURL = nil
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            dismiss()
+        } else {
+            X5Feedback.error()
+            message = service.error ?? "Не удалось отправить заявку."
+        }
+    }
+}
+
+private struct CourseSubmissionsAdminView: View {
+    @EnvironmentObject private var auth: Auth
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var service = CoursesService()
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if service.isLoadingSubmissions {
+                    ProgressView().tint(.accentColor)
+                } else if service.submissions.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "tray")
+                            .font(.system(size: 38, weight: .light))
+                            .foregroundColor(.white.opacity(0.52))
+                        Text("Заявок пока нет")
+                            .font(.system(size: 20, weight: .heavy))
+                            .foregroundColor(.white)
+                        Text("Когда люди предложат курс, он появится здесь.")
+                            .font(.system(size: 14, weight: .medium))
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.white.opacity(0.55))
+                    }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(service.submissions) { item in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(item.title)
+                                    .font(.headline)
+                                Spacer()
+                                Text((item.status ?? "new").uppercased())
+                                    .font(.caption2.weight(.heavy))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.accentColor.opacity(0.18))
+                                    .foregroundColor(.accentColor)
+                                    .clipShape(Capsule())
+                            }
+
+                            if let description = item.description, !description.isEmpty {
+                                Text(description)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            if let contact = item.contact, !contact.isEmpty {
+                                Label(contact, systemImage: "at")
+                                    .font(.caption)
+                            }
+
+                            if let email = item.authorEmail, !email.isEmpty {
+                                Label(email, systemImage: "person")
+                                    .font(.caption)
+                            }
+
+                            if let raw = item.videoUrl, let url = URL(string: raw) {
+                                Link(destination: url) {
+                                    Label("Открыть видео", systemImage: "play.rectangle")
+                                }
+                                .font(.caption.weight(.semibold))
+                            }
+                        }
+                        .padding(.vertical, 6)
+                    }
+                    .scrollContentBackground(.hidden)
+                }
+            }
+            .background(Color(red: 0.04, green: 0.05, blue: 0.10))
+            .navigationTitle("Заявки")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Закрыть") { dismiss() }
+                }
+            }
+            .task {
+                guard let token = await auth.freshAccessToken() else { return }
+                await service.loadSubmissions(accessToken: token)
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
+private extension String {
+    var x5Trimmed: String {
+        trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

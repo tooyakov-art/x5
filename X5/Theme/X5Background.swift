@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Premium black/navy background with a controlled blue glow.
+/// Premium black background with a controlled blue glow.
 /// Apply with `.x5Background()` to any root view.
 struct X5Background: View {
     var body: some View {
@@ -9,7 +9,7 @@ struct X5Background: View {
 
             RadialGradient(
                 colors: [
-                    X5Style.backgroundBlue.opacity(0.58),
+                    X5Style.backgroundBlue.opacity(0.24),
                     .clear
                 ],
                 center: .init(x: 0.5, y: -0.05),
@@ -19,7 +19,7 @@ struct X5Background: View {
 
             RadialGradient(
                 colors: [
-                    X5Style.backgroundCyan.opacity(0.30),
+                    X5Style.backgroundCyan.opacity(0.10),
                     .clear
                 ],
                 center: .init(x: -0.06, y: 0.34),
@@ -29,7 +29,7 @@ struct X5Background: View {
 
             RadialGradient(
                 colors: [
-                    X5Style.backgroundCyan.opacity(0.16),
+                    X5Style.backgroundCyan.opacity(0.06),
                     .clear
                 ],
                 center: .init(x: 0.74, y: 0.04),
@@ -39,9 +39,9 @@ struct X5Background: View {
 
             LinearGradient(
                 colors: [
-                    Color.black.opacity(0.08),
+                    Color.black.opacity(0.20),
                     Color.clear,
-                    Color.black.opacity(0.20)
+                    Color.black.opacity(0.36)
                 ],
                 startPoint: .top,
                 endPoint: .bottom

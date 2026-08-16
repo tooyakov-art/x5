@@ -14,7 +14,6 @@ struct AppLockView: View {
             X5Background()
             VStack(spacing: 22) {
                 Spacer()
-                X5LogoMark(size: 56)
 
                 Image(systemName: "faceid")
                     .font(.system(size: 64, weight: .light))

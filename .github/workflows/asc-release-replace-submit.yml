@@ -1,0 +1,519 @@
+name: ASC replace pending release with latest build
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+
+jobs:
+  replace-submit:
+    runs-on: macos-26
+    environment: app-store-production
+    timeout-minutes: 90
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      BUNDLE_ID: com.x5studio.app
+      EXPECTED_VERSION: "1.1.6"
+      EXPECTED_BUILD: "220"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: "3.3.12"
+          bundler-cache: true
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - run: python -m pip install --require-hashes -r .github/requirements/asc-requirements.lock
+
+      - name: Stamp latest build in review notes
+        run: |
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path("fastlane/metadata/review_information/notes.txt")
+          text = path.read_text(encoding="utf-8")
+          import re
+          text = re.sub(
+              r"build \d+",
+              f"build {os.environ['EXPECTED_BUILD']}",
+              text,
+              count=1,
+          )
+          path.write_text(text, encoding="utf-8")
+          print(f"Review notes stamped for build {os.environ['EXPECTED_BUILD']}")
+          PY
+
+      - name: Wait for expected build before changing review
+        run: |
+          python <<'PY'
+          import base64
+          import os
+          import sys
+          import time
+
+          import jwt
+          import requests
+
+          BASE = "https://api.appstoreconnect.apple.com/v1"
+
+          def headers():
+              now = int(time.time())
+              token = jwt.encode(
+                  {
+                      "iss": os.environ["ASC_API_ISSUER_ID"],
+                      "iat": now,
+                      "exp": now + 600,
+                      "aud": "appstoreconnect-v1",
+                  },
+                  base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+                  algorithm="ES256",
+                  headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+              )
+              return {"Authorization": f"Bearer {token}"}
+
+          def get(path):
+              response = requests.get(
+                  path if path.startswith("http") else f"{BASE}{path}",
+                  headers=headers(),
+                  timeout=60,
+              )
+              if response.status_code >= 300:
+                  print(f"GET {response.url} -> HTTP {response.status_code}")
+                  print(response.text[:3000])
+                  raise SystemExit(1)
+              return response.json()
+
+          apps = get(
+              f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}"
+          ).get("data", [])
+          if len(apps) != 1:
+              sys.exit(
+                  f"Expected one ASC app for {os.environ['BUNDLE_ID']}, "
+                  f"found {len(apps)}"
+              )
+          app_id = apps[0]["id"]
+
+          for attempt in range(1, 121):
+              payload = get(
+                  f"/builds?filter[app]={app_id}"
+                  "&filter[preReleaseVersion.platform]=IOS"
+                  "&limit=200&sort=-uploadedDate"
+              )
+              build = next(
+                  (
+                      row for row in payload.get("data", [])
+                      if row.get("attributes", {}).get("version")
+                      == os.environ["EXPECTED_BUILD"]
+                  ),
+                  None,
+              )
+              if build:
+                  attrs = build.get("attributes", {})
+                  state = attrs.get("processingState")
+                  expired = attrs.get("expired")
+                  print(
+                      f"Build {os.environ['EXPECTED_BUILD']}: "
+                      f"id={build['id']} state={state} expired={expired}"
+                  )
+                  if state == "VALID" and not expired:
+                      print(
+                          "Expected build is valid; review replacement may start."
+                      )
+                      raise SystemExit(0)
+                  if state == "INVALID":
+                      sys.exit(
+                          f"Build {os.environ['EXPECTED_BUILD']} is INVALID"
+                      )
+              print(
+                  f"Build {os.environ['EXPECTED_BUILD']} is not VALID yet; "
+                  f"wait attempt {attempt}/120"
+              )
+              time.sleep(30)
+
+          sys.exit(
+              f"Build {os.environ['EXPECTED_BUILD']} did not become VALID"
+          )
+          PY
+
+      - name: Developer-reject pending App Store version when replacing old build
+        run: |
+          bundle exec ruby <<'RUBY'
+          require "base64"
+          require "spaceship"
+
+          token = Spaceship::ConnectAPI::Token.create(
+            key_id: ENV.fetch("ASC_API_KEY_ID"),
+            issuer_id: ENV.fetch("ASC_API_ISSUER_ID"),
+            key: Base64.decode64(ENV.fetch("ASC_API_KEY_BASE64"))
+          )
+          Spaceship::ConnectAPI.token = token
+
+          app = Spaceship::ConnectAPI::App.find(ENV.fetch("BUNDLE_ID"))
+          version = app.get_app_store_versions(
+            filter: { platform: "IOS" },
+            includes: "appStoreVersionSubmission"
+          ).find do |row|
+            row.version_string == ENV.fetch("EXPECTED_VERSION")
+          end
+          abort "No iOS version #{ENV.fetch("EXPECTED_VERSION")}" unless version
+
+          puts "Version #{version.version_string}: #{version.id} state=#{version.app_store_state}"
+          if version.app_store_state == "PENDING_DEVELOPER_RELEASE"
+            puts "Developer-rejecting pending release so build #{ENV.fetch("EXPECTED_BUILD")} can be attached."
+            if version.can_reject?
+              abort "Developer reject returned false." unless version.reject!
+              puts "Developer rejected."
+            else
+              puts "ASC does not expose a rejectable submission for this pending release; will try direct build replacement with rollback."
+            end
+          elsif ["PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "READY_FOR_REVIEW"].include?(version.app_store_state)
+            puts "Version is editable/submittable; no developer reject needed."
+          elsif version.app_store_state == "WAITING_FOR_REVIEW"
+            puts "Version is waiting for review; the active review submission will be cancelled before replacing the build."
+          elsif version.app_store_state == "IN_REVIEW"
+            abort "Version is already in Apple review; do not replace while state=#{version.app_store_state}"
+          elsif version.app_store_state == "READY_FOR_SALE"
+            abort "Version is already live; create a new marketing version instead."
+          else
+            abort "Version state is not safe to replace: #{version.app_store_state}"
+          end
+          RUBY
+
+      - name: Cancel waiting review submission before replacing build
+        run: |
+          python <<'PY'
+          import base64
+          import os
+          import sys
+          import time
+
+          import jwt
+          import requests
+
+          BASE = "https://api.appstoreconnect.apple.com/v1"
+          READY_TO_REPLACE = {"PREPARE_FOR_SUBMISSION", "READY_FOR_REVIEW", "DEVELOPER_REJECTED", "REJECTED"}
+
+          token = jwt.encode(
+              {
+                  "iss": os.environ["ASC_API_ISSUER_ID"],
+                  "iat": int(time.time()),
+                  "exp": int(time.time()) + 600,
+                  "aud": "appstoreconnect-v1",
+              },
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          headers = {"Authorization": f"Bearer {token}"}
+
+          def api(method, path, expected=(200,), **kwargs):
+              url = path if path.startswith("http") else f"{BASE}{path}"
+              response = requests.request(method, url, headers=headers, timeout=60, **kwargs)
+              if response.status_code not in expected:
+                  print(f"{method} {url} -> HTTP {response.status_code}")
+                  print(response.text[:3000])
+                  raise SystemExit(1)
+              return response.json() if response.text else {}
+
+          def list_all(path):
+              rows = []
+              url = f"{BASE}{path}"
+              while url:
+                  response = requests.get(url, headers=headers, timeout=60)
+                  if response.status_code >= 300:
+                      print(f"GET {url} -> HTTP {response.status_code}")
+                      print(response.text[:3000])
+                      raise SystemExit(1)
+                  payload = response.json()
+                  rows.extend(payload.get("data", []))
+                  url = payload.get("links", {}).get("next")
+              return rows
+
+          app_rows = api("GET", f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}").get("data", [])
+          if not app_rows:
+              sys.exit(f"No ASC app found for {os.environ['BUNDLE_ID']}")
+          app_id = app_rows[0]["id"]
+
+          def find_version():
+              versions = list_all(f"/apps/{app_id}/appStoreVersions?limit=50")
+              return next(
+                  (
+                      row
+                      for row in versions
+                      if row.get("attributes", {}).get("versionString") == os.environ["EXPECTED_VERSION"]
+                      and row.get("attributes", {}).get("platform") == "IOS"
+                  ),
+                  None,
+              )
+
+          version = find_version()
+          if not version:
+              sys.exit(f"No iOS AppStoreVersion {os.environ['EXPECTED_VERSION']}")
+          version_id = version["id"]
+          state = version["attributes"].get("appStoreState")
+          print(f"Version {os.environ['EXPECTED_VERSION']}: {version_id} state={state}")
+
+          attached = api("GET", f"/appStoreVersions/{version_id}/build").get("data")
+          attached_build = attached.get("attributes", {}).get("version") if attached else None
+          print(f"Attached build before replace: {attached_build}")
+          if attached_build == os.environ["EXPECTED_BUILD"]:
+              print("Expected build is already attached; no review cancellation needed.")
+              raise SystemExit(0)
+
+          if state == "IN_REVIEW":
+              sys.exit("Version is already IN_REVIEW; refusing to replace build automatically.")
+          if state in READY_TO_REPLACE:
+              print("Version is not in a waiting review state; no review cancellation needed.")
+              raise SystemExit(0)
+          if state != "WAITING_FOR_REVIEW":
+              sys.exit(f"Version is not safe to replace yet: {state}")
+
+          review_payload = api(
+              "GET",
+              f"/reviewSubmissions?filter[app]={app_id}&filter[platform]=IOS&include=items",
+          )
+          included = {
+              (row.get("type"), row.get("id")): row
+              for row in review_payload.get("included", [])
+          }
+          active = []
+          for row in review_payload.get("data", []):
+              row_state = row.get("attributes", {}).get("state")
+              if row_state not in {"WAITING_FOR_REVIEW", "READY_FOR_REVIEW"}:
+                  continue
+              item_refs = row.get("relationships", {}).get("items", {}).get("data", []) or []
+              item_rows = [included.get((ref.get("type"), ref.get("id"))) for ref in item_refs]
+              item_rows = [item for item in item_rows if item]
+              version_item = any(
+                  (item.get("relationships", {})
+                       .get("appStoreVersion", {})
+                       .get("data", {})
+                       .get("id") == version_id)
+                  for item in item_rows
+              )
+              print(f"Review submission {row['id']} state={row_state} includes_target_version={version_item}")
+              if version_item:
+                  active.append(row)
+
+          if not active:
+              fallback = [
+                  row for row in review_payload.get("data", [])
+                  if row.get("attributes", {}).get("state") == "WAITING_FOR_REVIEW"
+              ]
+              if len(fallback) == 1:
+                  print("No item relationship matched; using the single WAITING_FOR_REVIEW submission as fallback.")
+                  active = fallback
+              else:
+                  sys.exit("Version is waiting for review, but no matching active review submission was found.")
+          if len(active) > 1:
+              for row in active:
+                  print(f"Active review submission: {row['id']} state={row.get('attributes', {}).get('state')}")
+              sys.exit("More than one matching active review submission exists; refusing to choose automatically.")
+
+          submission_id = active[0]["id"]
+          submission_state = active[0].get("attributes", {}).get("state")
+          print(f"Cancelling review submission: {submission_id} state={submission_state}")
+          cancel_response = requests.patch(
+              f"{BASE}/reviewSubmissions/{submission_id}",
+              headers={**headers, "Content-Type": "application/json"},
+              json={
+                  "data": {
+                      "type": "reviewSubmissions",
+                      "id": submission_id,
+                      "attributes": {"canceled": True},
+                  }
+              },
+              timeout=60,
+          )
+          if cancel_response.status_code >= 300:
+              print(f"PATCH reviewSubmissions/{submission_id} -> HTTP {cancel_response.status_code}")
+              print(cancel_response.text[:3000])
+              raise SystemExit(1)
+          print(f"Cancel response state={cancel_response.json()['data']['attributes'].get('state')}")
+
+          for attempt in range(1, 31):
+              refreshed = find_version()
+              if not refreshed:
+                  sys.exit(f"Version {os.environ['EXPECTED_VERSION']} disappeared after cancellation.")
+              refreshed_state = refreshed["attributes"].get("appStoreState")
+              print(f"Version state after cancellation attempt {attempt}: {refreshed_state}")
+              if refreshed_state in READY_TO_REPLACE:
+                  print("Version is editable again.")
+                  raise SystemExit(0)
+              if refreshed_state == "IN_REVIEW":
+                  sys.exit("Version moved to IN_REVIEW after cancellation; refusing to continue.")
+              time.sleep(10)
+
+          sys.exit("Version did not become editable after cancelling the review submission.")
+          PY
+
+      - name: Upload latest review metadata
+        run: bundle exec fastlane ios upload
+
+      - name: Attach build and submit for review
+        run: |
+          python <<'PY'
+          import base64
+          import os
+          import sys
+          import time
+
+          import jwt
+          import requests
+
+          BASE = "https://api.appstoreconnect.apple.com/v1"
+          READY_TO_SUBMIT = {"PREPARE_FOR_SUBMISSION", "READY_FOR_REVIEW", "DEVELOPER_REJECTED", "REJECTED"}
+          REVIEW_ACTIVE = {"WAITING_FOR_REVIEW", "IN_REVIEW", "COMPLETING"}
+          PENDING_RELEASE = "PENDING_DEVELOPER_RELEASE"
+
+          token = jwt.encode(
+              {
+                  "iss": os.environ["ASC_API_ISSUER_ID"],
+                  "iat": int(time.time()),
+                  "exp": int(time.time()) + 600,
+                  "aud": "appstoreconnect-v1",
+              },
+              base64.b64decode(os.environ["ASC_API_KEY_BASE64"]),
+              algorithm="ES256",
+              headers={"kid": os.environ["ASC_API_KEY_ID"], "typ": "JWT"},
+          )
+          headers = {"Authorization": f"Bearer {token}"}
+          json_headers = {**headers, "Content-Type": "application/json"}
+
+          def api(method, path, expected=(200,), **kwargs):
+              url = path if path.startswith("http") else f"{BASE}{path}"
+              response = requests.request(method, url, headers=headers, timeout=60, **kwargs)
+              if response.status_code not in expected:
+                  print(f"{method} {url} -> HTTP {response.status_code}")
+                  print(response.text[:3000])
+                  raise SystemExit(1)
+              return response.json() if response.text else {}
+
+          def json_api(method, path, payload, expected=(200,)):
+              url = path if path.startswith("http") else f"{BASE}{path}"
+              response = requests.request(method, url, headers=json_headers, json=payload, timeout=60)
+              if response.status_code not in expected:
+                  print(f"{method} {url} -> HTTP {response.status_code}")
+                  print(response.text[:3000])
+                  raise SystemExit(1)
+              return response.json() if response.text else {}
+
+          def list_all(path):
+              rows = []
+              url = f"{BASE}{path}"
+              while url:
+                  response = requests.get(url, headers=headers, timeout=60)
+                  if response.status_code >= 300:
+                      print(f"GET {url} -> HTTP {response.status_code}")
+                      print(response.text[:3000])
+                      raise SystemExit(1)
+                  payload = response.json()
+                  rows.extend(payload.get("data", []))
+                  url = payload.get("links", {}).get("next")
+              return rows
+
+          app_rows = api("GET", f"/apps?filter[bundleId]={os.environ['BUNDLE_ID']}").get("data", [])
+          if not app_rows:
+              sys.exit(f"No ASC app found for {os.environ['BUNDLE_ID']}")
+          app_id = app_rows[0]["id"]
+          print(f"App: {app_id}")
+
+          versions = list_all(f"/apps/{app_id}/appStoreVersions?limit=50")
+          version = next(
+              (
+                  row for row in versions
+                  if row.get("attributes", {}).get("versionString") == os.environ["EXPECTED_VERSION"]
+                  and row.get("attributes", {}).get("platform") == "IOS"
+              ),
+              None,
+          )
+          if not version:
+              sys.exit(f"No iOS AppStoreVersion {os.environ['EXPECTED_VERSION']}")
+          version_id = version["id"]
+          version_state = version["attributes"].get("appStoreState")
+          print(f"Version {os.environ['EXPECTED_VERSION']}: {version_id} state={version_state}")
+          if version_state in REVIEW_ACTIVE:
+              print(f"Version is already in review flow: {version_state}")
+              raise SystemExit(0)
+          if version_state not in READY_TO_SUBMIT and version_state != PENDING_RELEASE:
+              sys.exit(f"Version is not editable/submittable after reject/upload: {version_state}")
+
+          previous = api("GET", f"/appStoreVersions/{version_id}/build").get("data")
+          previous_build_id = previous["id"] if previous else None
+          previous_build_version = previous.get("attributes", {}).get("version") if previous else None
+          print(f"Previously attached build: id={previous_build_id} version={previous_build_version}")
+
+          build = None
+          for attempt in range(1, 121):
+              builds = list_all(f"/builds?filter[app]={app_id}&filter[preReleaseVersion.platform]=IOS&limit=200&sort=-uploadedDate")
+              build = next(
+                  (
+                      row for row in builds
+                      if row.get("attributes", {}).get("version") == os.environ["EXPECTED_BUILD"]
+                  ),
+                  None,
+              )
+              if build:
+                  attrs = build.get("attributes", {})
+                  print(
+                      f"Build {os.environ['EXPECTED_BUILD']}: id={build['id']} "
+                      f"state={attrs.get('processingState')} expired={attrs.get('expired')}"
+                  )
+                  if attrs.get("processingState") == "VALID" and not attrs.get("expired"):
+                      break
+              print(f"Build {os.environ['EXPECTED_BUILD']} is not VALID yet; wait attempt {attempt}/120")
+              time.sleep(30)
+          else:
+              sys.exit(f"Build {os.environ['EXPECTED_BUILD']} is not VALID in App Store Connect")
+
+          json_api(
+              "PATCH",
+              f"/appStoreVersions/{version_id}/relationships/build",
+              {"data": {"type": "builds", "id": build["id"]}},
+              expected=(200, 204),
+          )
+          print(f"Attached build {os.environ['EXPECTED_BUILD']} to version {os.environ['EXPECTED_VERSION']}.")
+
+          def restore_previous_build(reason):
+              if previous_build_id and previous_build_id != build["id"]:
+                  print(f"{reason}; restoring previous build {previous_build_version} ({previous_build_id}).")
+                  json_api(
+                      "PATCH",
+                      f"/appStoreVersions/{version_id}/relationships/build",
+                      {"data": {"type": "builds", "id": previous_build_id}},
+                      expected=(200, 204),
+                  )
+              sys.exit(reason)
+
+          attached = api("GET", f"/appStoreVersions/{version_id}/build").get("data")
+          if not attached:
+              sys.exit("No build attached after PATCH")
+          attached_attrs = attached.get("attributes", {})
+          print(f"Attached verification: build={attached_attrs.get('version')} state={attached_attrs.get('processingState')}")
+          if attached_attrs.get("version") != os.environ["EXPECTED_BUILD"]:
+              sys.exit(f"Wrong build attached: {attached_attrs.get('version')}")
+
+          refreshed_versions = list_all(f"/apps/{app_id}/appStoreVersions?limit=50")
+          refreshed = next(row for row in refreshed_versions if row["id"] == version_id)
+          refreshed_state = refreshed["attributes"].get("appStoreState")
+          print(f"Version state after attach: {refreshed_state}")
+          if refreshed_state == PENDING_RELEASE:
+              restore_previous_build("Apple kept the version in PENDING_DEVELOPER_RELEASE after direct build replacement")
+          if refreshed_state not in READY_TO_SUBMIT:
+              restore_previous_build(f"Version is not submittable after build replacement: {refreshed_state}")
+
+          print("Build attachment verified; the next guarded step creates the combined app + IAP review.")
+          PY
+
+      - name: Submit one combined app and consumable review
+        run: python scripts/asc_submit_credit_packs.py --action submit

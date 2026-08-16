@@ -83,7 +83,7 @@ struct MainView: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("X5")
+            .navigationTitle("X five marketing")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
             .toolbarBackground(.hidden, for: .navigationBar)

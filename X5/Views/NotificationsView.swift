@@ -32,7 +32,13 @@ struct NotificationsView: View {
         } else {
             List {
                 ForEach(service.items) { item in
-                    NotificationRow(item: item)
+                    Button {
+                        open(item)
+                    } label: {
+                        NotificationRow(item: item)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(AppDeepLinkParser.parse(notification: item) == nil)
                         .listRowBackground(Color.clear)
                         .listRowSeparatorTint(Color.white.opacity(0.08))
                         .task { await markRead(item) }
@@ -68,6 +74,12 @@ struct NotificationsView: View {
     private func markRead(_ item: AppNotification) async {
         guard let token = await auth.freshAccessToken() else { return }
         await service.markRead(item, accessToken: token)
+    }
+
+    private func open(_ item: AppNotification) {
+        guard let link = AppDeepLinkParser.parse(notification: item) else { return }
+        AppDeepLinkRouter.shared.route(link)
+        dismiss()
     }
 }
 

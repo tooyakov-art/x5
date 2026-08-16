@@ -1,24 +1,338 @@
 import Foundation
 import StoreKit
 
+enum IAPEntitlementDisposition: Equatable {
+    case applied
+    case skipped
+    case failed
+
+    var shouldFinishTransaction: Bool {
+        switch self {
+        case .applied, .skipped: return true
+        case .failed: return false
+        }
+    }
+
+    var isPurchaseSuccess: Bool {
+        self == .applied
+    }
+}
+
+struct IAPTransactionDeliveryKey: Hashable {
+    let transactionID: UInt64
+    let authenticatedUserID: String?
+    let revocationDate: Date?
+}
+
+/// Coalesces every StoreKit delivery path for the lifetime of the service.
+/// A server failure remains retryable, while a delivered transaction is never
+/// verified or finished twice if `purchase`, `updates`, and `unfinished`
+/// surface the same transaction for the same X5 account during one app session.
+@MainActor
+final class IAPTransactionLifecycleCoordinator {
+    private var inFlight: [IAPTransactionDeliveryKey: Task<IAPEntitlementDisposition, Never>] = [:]
+    private var completed: [IAPTransactionDeliveryKey: IAPEntitlementDisposition] = [:]
+
+    func deliver(
+        transactionID: UInt64,
+        authenticatedUserID: String?,
+        revocationDate: Date? = nil,
+        verifyDelivery: @escaping @MainActor () async -> IAPEntitlementDisposition,
+        finish: @escaping @MainActor () async -> Void
+    ) async -> IAPEntitlementDisposition {
+        let deliveryKey = IAPTransactionDeliveryKey(
+            transactionID: transactionID,
+            authenticatedUserID: authenticatedUserID,
+            revocationDate: revocationDate
+        )
+
+        if let completedDisposition = completed[deliveryKey] {
+            return completedDisposition
+        }
+
+        if let existingDelivery = inFlight[deliveryKey] {
+            return await existingDelivery.value
+        }
+
+        let delivery = Task { @MainActor in
+            await verifyDelivery()
+        }
+        inFlight[deliveryKey] = delivery
+        let disposition = await delivery.value
+        inFlight[deliveryKey] = nil
+
+        guard disposition.shouldFinishTransaction else {
+            return disposition
+        }
+
+        // Only a successfully delivered entitlement is safe to cache across
+        // calls. `.skipped` may mean a different X5 account owns a restorable
+        // subscription, so it must remain eligible for a later account retry.
+        if disposition == .applied {
+            // Store completion before the suspension point so a duplicate
+            // listener event for this account cannot enter a second finish
+            // while this one awaits. Another signed-in account must still ask
+            // the server to resolve ownership for the same StoreKit transaction.
+            completed[deliveryKey] = disposition
+        }
+        await finish()
+        return disposition
+    }
+}
+
+enum IAPCreditPurchaseConfirmation {
+    static func messageKey(profileReloadSucceeded: Bool) -> String {
+        profileReloadSucceeded
+            ? "credit_store_success_message"
+            : "credit_store_success_refresh_pending"
+    }
+}
+
+enum IAPVerificationRetryPolicy {
+    static func shouldRetry(statusCode: Int, retryCount: Int) -> Bool {
+        statusCode == 401 && retryCount == 0
+    }
+}
+
+/// Keeps repeatable consumable purchases stateless. Every tap first asks
+/// StoreKit to replay pending delivery; a new charge starts only when that
+/// recovery is complete. No product id or date is cached locally.
+enum IAPRepeatPurchaseCoordinator {
+    @MainActor
+    static func perform<PurchaseResult>(
+        recoverUnfinished: () async -> Bool,
+        startPurchase: () async throws -> PurchaseResult
+    ) async rethrows -> PurchaseResult? {
+        guard await recoverUnfinished() else {
+            return nil
+        }
+        return try await startPurchase()
+    }
+}
+
+enum IAPPrePurchaseRecoveryPolicy {
+    static func shouldRequireDelivery(
+        productID: String,
+        transactionAppAccountToken: UUID?,
+        currentUserToken: UUID
+    ) -> Bool {
+        guard transactionAppAccountToken == currentUserToken else {
+            return false
+        }
+        if case .creditPack = IAPProductCatalog.kind(for: productID) {
+            return true
+        }
+        return false
+    }
+}
+
+enum IAPOwnershipRoutingPolicy {
+    /// Apple JWS ownership is decided only by the server. A non-nil token that
+    /// differs from the current user can be either another account or one of
+    /// the exact legacy chains in the private server allowlist; the client
+    /// cannot distinguish those cases safely.
+    static func shouldVerifyOnServer(
+        signedInUserID: String?,
+        transactionAppAccountToken: UUID?
+    ) -> Bool {
+        _ = transactionAppAccountToken
+        guard let signedInUserID else { return false }
+        return UUID(uuidString: signedInUserID.trimmingCharacters(in: .whitespacesAndNewlines)) != nil
+    }
+}
+
+struct IAPCreditPack: Identifiable, Equatable, Sendable {
+    let productID: String
+    let credits: Int
+    let fallbackDisplayPrice: String
+
+    var id: String { productID }
+}
+
+enum IAPProductKind: Equatable, Sendable {
+    case creditPack(IAPCreditPack)
+    case legacySubscription
+    case verificationSubscription
+    case unknown
+
+    var activatesLegacyPro: Bool {
+        self == .legacySubscription
+    }
+}
+
+enum IAPProductCatalog {
+    static let liteMonthlyProductID = "com.x5studio.app.lite.monthly"
+    static let proMonthlyProductID = "com.x5studio.app.pro.monthly"
+    static let maxMonthlyProductID = "com.x5studio.app.max.monthly"
+    static let verifiedMonthlyProductID = "com.x5studio.app.verified.monthly"
+
+    static let visibleCreditPacks = [
+        IAPCreditPack(
+            productID: "com.x5studio.app.credits.1000",
+            credits: 1_000,
+            fallbackDisplayPrice: "1000 ₸"
+        ),
+        IAPCreditPack(
+            productID: "com.x5studio.app.credits.2000",
+            credits: 2_000,
+            fallbackDisplayPrice: "2000 ₸"
+        ),
+        IAPCreditPack(
+            productID: "com.x5studio.app.credits.5000",
+            credits: 5_000,
+            fallbackDisplayPrice: "5000 ₸"
+        )
+    ]
+
+    static let legacySubscriptionProductIDs = [
+        liteMonthlyProductID,
+        proMonthlyProductID,
+        maxMonthlyProductID
+    ]
+    static let restorableProductIDs = legacySubscriptionProductIDs + [verifiedMonthlyProductID]
+    static let allProductIDs = legacySubscriptionProductIDs
+        + visibleCreditPacks.map(\.productID)
+        + [verifiedMonthlyProductID]
+
+    static func kind(for productID: String) -> IAPProductKind {
+        if let pack = visibleCreditPacks.first(where: { $0.productID == productID }) {
+            return .creditPack(pack)
+        }
+        if legacySubscriptionProductIDs.contains(productID) {
+            return .legacySubscription
+        }
+        if productID == verifiedMonthlyProductID {
+            return .verificationSubscription
+        }
+        return .unknown
+    }
+
+    static func shouldReplayUnfinishedTransaction(
+        productID: String,
+        hasRevocation: Bool = false
+    ) -> Bool {
+        if case .creditPack = kind(for: productID) {
+            return true
+        }
+        return productID == verifiedMonthlyProductID && hasRevocation
+    }
+
+    static func shouldReconcileRevocation(productID: String) -> Bool {
+        if case .creditPack = kind(for: productID) {
+            return true
+        }
+        return productID == verifiedMonthlyProductID
+    }
+}
+
+enum IAPProductAvailability {
+    static func missingCreditPackIDs<S: Sequence>(
+        loadedProductIDs: S
+    ) -> [String] where S.Element == String {
+        let loaded = Set(loadedProductIDs)
+        return IAPProductCatalog.visibleCreditPacks
+            .map(\.productID)
+            .filter { !loaded.contains($0) }
+    }
+
+    static func hasAnyCreditPack<S: Sequence>(
+        loadedProductIDs: S
+    ) -> Bool where S.Element == String {
+        missingCreditPackIDs(loadedProductIDs: loadedProductIDs).count
+            < IAPProductCatalog.visibleCreditPacks.count
+    }
+}
+
+enum IAPSettingsPurchaseVisibilityPolicy {
+    static let shouldShowRestorePurchases = true
+
+    static func shouldShowManageSubscription(
+        hasActiveLegacyAppStoreSubscription: Bool,
+        hasActiveVerifiedAppStoreSubscription: Bool
+    ) -> Bool {
+        hasActiveLegacyAppStoreSubscription || hasActiveVerifiedAppStoreSubscription
+    }
+}
+
+struct IAPActiveSubscriptionSnapshot: Equatable, Sendable {
+    let productIDs: Set<String>
+
+    init<S: Sequence>(productIDs: S) where S.Element == String {
+        self.productIDs = Set(productIDs)
+    }
+
+    var hasActiveLegacySubscription: Bool {
+        !productIDs.isDisjoint(with: IAPProductCatalog.legacySubscriptionProductIDs)
+    }
+
+    var hasActiveVerifiedSubscription: Bool {
+        productIDs.contains(IAPProductCatalog.verifiedMonthlyProductID)
+    }
+
+    var hasAnyActiveSubscription: Bool {
+        hasActiveLegacySubscription || hasActiveVerifiedSubscription
+    }
+
+    func recordingActivePurchase(productID: String) -> IAPActiveSubscriptionSnapshot {
+        guard IAPProductCatalog.restorableProductIDs.contains(productID) else {
+            return self
+        }
+        return IAPActiveSubscriptionSnapshot(productIDs: productIDs.union([productID]))
+    }
+}
+
 @MainActor
 final class IAPService: ObservableObject {
-    static let monthlyProductID = "com.x5studio.app.pro.monthly"
+    nonisolated static let liteMonthlyProductID = IAPProductCatalog.liteMonthlyProductID
+    nonisolated static let proMonthlyProductID = IAPProductCatalog.proMonthlyProductID
+    nonisolated static let maxMonthlyProductID = IAPProductCatalog.maxMonthlyProductID
+    nonisolated static let verifiedMonthlyProductID = IAPProductCatalog.verifiedMonthlyProductID
+    nonisolated static let creditPackProductIDs = IAPProductCatalog.visibleCreditPacks.map(\.productID)
+    nonisolated static let monthlyProductID = proMonthlyProductID
+    nonisolated static let monthlyProductIDs = IAPProductCatalog.legacySubscriptionProductIDs
+    nonisolated static let allProductIDs = IAPProductCatalog.allProductIDs
 
-    /// Cost in credits to activate the verified badge for 30 days.
-    /// Credits are earned via Pro subscription (1000 credits/month).
-    static let verifiedCostCredits: Int = 500
+    nonisolated static let verifiedDisplayPrice = "1000 ₸"
 
-    @Published private(set) var product: Product?
+    @Published private(set) var products: [String: Product] = [:]
+    @Published private(set) var activeSubscriptionSnapshot = IAPActiveSubscriptionSnapshot(
+        productIDs: [String]()
+    )
+    @Published private(set) var isLoadingProducts: Bool = false
     @Published private(set) var isPurchasing: Bool = false
     @Published var lastError: String?
 
+    var product: Product? { products[Self.proMonthlyProductID] }
+
     private var updatesTask: Task<Void, Never>?
+    private let auth: Auth
+    private let transactionLifecycle = IAPTransactionLifecycleCoordinator()
 
     private var baseURL: URL { X5Config.supabaseBaseURL }
     private var anonKey: String { X5Config.supabaseAnonKey }
 
-    init() {
+    private enum ServerVerificationResult: Equatable {
+        case applied
+        case alreadyApplied
+        case ownedByOther
+        case failed
+    }
+
+    private struct ServerVerificationRequest: Encodable {
+        let signedTransaction: String
+
+        enum CodingKeys: String, CodingKey {
+            case signedTransaction = "signed_transaction"
+        }
+    }
+
+    private struct ServerVerificationResponse: Decodable {
+        let status: String
+        let error: String?
+    }
+
+    init(auth: Auth) {
+        self.auth = auth
         startTransactionListener()
     }
 
@@ -27,42 +341,45 @@ final class IAPService: ObservableObject {
     }
 
     func loadProducts() async {
+        guard !isLoadingProducts else { return }
+        isLoadingProducts = true
+        lastError = nil
+        defer { isLoadingProducts = false }
         do {
-            let products = try await Product.products(for: [Self.monthlyProductID])
-            product = products.first { $0.id == Self.monthlyProductID }
+            let loaded = try await Product.products(for: Self.allProductIDs)
+            products = Dictionary(uniqueKeysWithValues: loaded.map { ($0.id, $0) })
+            if !IAPProductAvailability.hasAnyCreditPack(
+                loadedProductIDs: products.keys
+            ) {
+                lastError = LocalizationService.shared.t("iap_products_unavailable")
+            }
+            await syncCurrentEntitlements(source: "load")
         } catch {
             lastError = error.localizedDescription
         }
     }
 
-    /// Spends `verifiedCostCredits` from the user's balance and activates the verified badge
-    /// for 30 days. Returns false if the user has insufficient credits.
-    func activateVerifiedWithCredits(currentUser: CurrentUser, accessToken: String) async -> Bool {
-        guard let profile = currentUser.profile else { return false }
-        let credits = profile.credits ?? 0
-        guard credits >= Self.verifiedCostCredits else {
-            lastError = "Не хватает кредитов: нужно \(Self.verifiedCostCredits), у тебя \(credits). Купи Pro — получишь 1000 кредитов."
-            return false
-        }
-        let endIso = ISO8601DateFormatter().string(
-            from: Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date().addingTimeInterval(30 * 24 * 3600)
-        )
-        await currentUser.patchMany([
-            "is_verified": AnyEncodable(true),
-            "verified_until": AnyEncodable(endIso),
-            "credits": AnyEncodable(credits - Self.verifiedCostCredits)
-        ], accessToken: accessToken)
-        return true
+    func product(id: String) -> Product? {
+        products[id]
     }
 
-    /// Initiates purchase flow. On verified transaction, upgrades the local profile and credits.
+    /// Initiates the App Store purchase flow and delivers the signed transaction through
+    /// the server. Credit amounts and entitlement changes are derived server-side.
     /// The current X5 user id is bound to the StoreKit transaction via
     /// `appAccountToken` so subsequent restore / Transaction.updates events
     /// can verify the entitlement belongs to *this* user — preventing the
     /// "log in to a second X5 account on the same Apple ID and inherit Pro
     /// for free" exploit Diaz hit in build 43.
     func purchaseMonthly() async -> Bool {
-        guard let product else { return false }
+        await purchase(productID: Self.proMonthlyProductID)
+    }
+
+    func purchase(productID: String) async -> Bool {
+        lastError = nil
+        guard let product = products[productID] else {
+            lastError = LocalizationService.shared.t("iap_products_unavailable")
+            return false
+        }
         guard let appUserToken = currentUserToken() else {
             lastError = LocalizationService.shared.t("iap_signin_first")
             return false
@@ -70,23 +387,53 @@ final class IAPService: ObservableObject {
         isPurchasing = true
         defer { isPurchasing = false }
         do {
-            let result = try await product.purchase(options: [
-                .appAccountToken(appUserToken)
-            ])
+            let result = try await IAPRepeatPurchaseCoordinator.perform(
+                recoverUnfinished: { [self] in
+                    await retryUnfinishedConsumables(
+                        source: "purchase_unfinished",
+                        requiredAppAccountToken: appUserToken
+                    )
+                },
+                startPurchase: {
+                    try await product.purchase(options: [
+                        .appAccountToken(appUserToken)
+                    ])
+                }
+            )
+            guard let result else {
+                if lastError == nil {
+                    lastError = LocalizationService.shared.t("iap_delivery_pending")
+                }
+                return false
+            }
             switch result {
             case .success(let verification):
                 if case .verified(let transaction) = verification {
-                    await applyEntitlement(transaction: transaction, grantCredits: true)
-                    await transaction.finish()
-                    return true
+                    let applyResult = await deliverVerifiedTransaction(
+                        transaction: transaction,
+                        signedTransaction: verification.jwsRepresentation,
+                        source: "purchase"
+                    )
+
+                    if applyResult.isPurchaseSuccess,
+                       IAPProductCatalog.kind(for: transaction.productID) == .verificationSubscription {
+                        activeSubscriptionSnapshot = activeSubscriptionSnapshot.recordingActivePurchase(
+                            productID: transaction.productID
+                        )
+                        await syncCurrentEntitlements(source: "purchase")
+                        activeSubscriptionSnapshot = activeSubscriptionSnapshot.recordingActivePurchase(
+                            productID: transaction.productID
+                        )
+                    }
+                    return applyResult.isPurchaseSuccess
                 } else {
-                    lastError = "Purchase failed verification"
+                    lastError = LocalizationService.shared.t("iap_purchase_unverified")
                     return false
                 }
             case .userCancelled:
                 return false
             case .pending:
-                lastError = "Purchase pending"
+                lastError = LocalizationService.shared.t("iap_purchase_pending")
                 return false
             @unknown default:
                 return false
@@ -98,12 +445,16 @@ final class IAPService: ObservableObject {
     }
 
     func restore() async {
+        lastError = nil
         do {
+            _ = await retryUnfinishedConsumables(source: "restore_unfinished")
             try await AppStore.sync()
-            for await result in Transaction.currentEntitlements {
-                if case .verified(let t) = result, t.productID == Self.monthlyProductID {
-                    await applyEntitlement(transaction: t, grantCredits: false)
-                }
+            let didReconcileRevocation = await syncRevokedStoreTransactions(
+                source: "restore_revoked"
+            )
+            await syncCurrentEntitlements(source: "restore")
+            if didReconcileRevocation {
+                notifyStoreRefundReconciled()
             }
         } catch {
             lastError = error.localizedDescription
@@ -114,10 +465,178 @@ final class IAPService: ObservableObject {
         updatesTask = Task.detached { [weak self] in
             for await update in Transaction.updates {
                 if case .verified(let transaction) = update {
-                    await self?.applyEntitlement(transaction: transaction, grantCredits: false)
-                    await transaction.finish()
+                    let disposition = await self?.deliverVerifiedTransaction(
+                        transaction: transaction,
+                        signedTransaction: update.jwsRepresentation,
+                        source: "update"
+                    )
+                    if disposition == .applied,
+                       transaction.revocationDate != nil {
+                        await self?.notifyStoreRefundReconciled()
+                    }
                 }
             }
+        }
+    }
+
+    func syncCurrentEntitlements(source: String) async {
+        var activeSubscriptionProductIDs = Set<String>()
+        for await result in Transaction.currentEntitlements {
+            guard case .verified(let transaction) = result else { continue }
+            if IAPProductCatalog.restorableProductIDs.contains(transaction.productID) {
+                activeSubscriptionProductIDs.insert(transaction.productID)
+            }
+            _ = await deliverVerifiedTransaction(
+                transaction: transaction,
+                signedTransaction: result.jwsRepresentation,
+                source: source
+            )
+        }
+        activeSubscriptionSnapshot = IAPActiveSubscriptionSnapshot(
+            productIDs: activeSubscriptionProductIDs
+        )
+    }
+
+    /// `Transaction.all` is finite and includes finished purchases that Apple
+    /// refunded while the app was offline. Stream every supported revocation
+    /// through the idempotent server path so memory stays bounded without
+    /// permanently dropping older refunds.
+    @discardableResult
+    func syncRevokedStoreTransactions(source: String) async -> Bool {
+        var didReconcile = false
+        for await result in Transaction.all {
+            guard case .verified(let transaction) = result,
+                  IAPProductCatalog.shouldReconcileRevocation(
+                    productID: transaction.productID
+                  ),
+                  transaction.revocationDate != nil else {
+                continue
+            }
+
+            let disposition = await deliverVerifiedTransaction(
+                transaction: transaction,
+                signedTransaction: result.jwsRepresentation,
+                source: source
+            )
+            didReconcile = didReconcile || disposition == .applied
+        }
+        return didReconcile
+    }
+
+    /// Consumables are not part of `Transaction.currentEntitlements`, and revoked
+    /// subscriptions disappear from it. StoreKit keeps either transaction unfinished
+    /// until the server confirms delivery.
+    func retryUnfinishedConsumables(
+        source: String,
+        requiredAppAccountToken: UUID? = nil
+    ) async -> Bool {
+        var didDeliverEveryTransaction = true
+
+        for await result in Transaction.unfinished {
+            switch result {
+            case .verified(let transaction):
+                let shouldReplay: Bool
+                if let requiredAppAccountToken {
+                    shouldReplay = IAPPrePurchaseRecoveryPolicy.shouldRequireDelivery(
+                        productID: transaction.productID,
+                        transactionAppAccountToken: transaction.appAccountToken,
+                        currentUserToken: requiredAppAccountToken
+                    )
+                } else {
+                    shouldReplay = IAPProductCatalog.shouldReplayUnfinishedTransaction(
+                        productID: transaction.productID,
+                        hasRevocation: transaction.revocationDate != nil
+                    )
+                }
+                guard shouldReplay else {
+                    continue
+                }
+
+                let disposition = await deliverVerifiedTransaction(
+                    transaction: transaction,
+                    signedTransaction: result.jwsRepresentation,
+                    source: source
+                )
+                if !disposition.shouldFinishTransaction {
+                    didDeliverEveryTransaction = false
+                }
+
+            case .unverified(let transaction, let verificationError):
+                if requiredAppAccountToken != nil {
+                    // Purchase preflight only trusts a verified owner token.
+                    // Leave this transaction pending for StoreKit to retry.
+                    continue
+                }
+                guard IAPProductCatalog.shouldReplayUnfinishedTransaction(
+                    productID: transaction.productID,
+                    hasRevocation: transaction.revocationDate != nil
+                ) else {
+                    continue
+                }
+
+                // Never finish or charge again while StoreKit cannot verify a
+                // pending consumable. A later tap/listener can retry it.
+                didDeliverEveryTransaction = false
+                lastError = LocalizationService.shared.t("iap_purchase_unverified")
+                DiagnosticLogger.log(event: "iap_unfinished_unverified", extra: [
+                    "source": source,
+                    "product": transaction.productID,
+                    "error": String(verificationError.localizedDescription.prefix(120))
+                ])
+            }
+        }
+
+        return didDeliverEveryTransaction
+    }
+
+    private func deliverVerifiedTransaction(
+        transaction: StoreKit.Transaction,
+        signedTransaction: String,
+        source: String
+    ) async -> IAPEntitlementDisposition {
+        await transactionLifecycle.deliver(
+            transactionID: transaction.id,
+            authenticatedUserID: auth.userId,
+            revocationDate: transaction.revocationDate,
+            verifyDelivery: { [self] in
+                await processVerifiedTransaction(
+                    transaction: transaction,
+                    signedTransaction: signedTransaction,
+                    source: source
+                )
+            },
+            finish: {
+                await transaction.finish()
+            }
+        )
+    }
+
+    private func processVerifiedTransaction(
+        transaction: StoreKit.Transaction,
+        signedTransaction: String,
+        source: String
+    ) async -> IAPEntitlementDisposition {
+        switch IAPProductCatalog.kind(for: transaction.productID) {
+        case .creditPack:
+            return await applyCreditPack(
+                transaction: transaction,
+                signedTransaction: signedTransaction,
+                source: source
+            )
+        case .legacySubscription:
+            return await applySubscriptionEntitlement(
+                transaction: transaction,
+                signedTransaction: signedTransaction,
+                source: source
+            )
+        case .verificationSubscription:
+            return await applyVerifiedEntitlement(
+                transaction: transaction,
+                signedTransaction: signedTransaction,
+                source: source
+            )
+        case .unknown:
+            return .skipped
         }
     }
 
@@ -127,110 +646,276 @@ final class IAPService: ObservableObject {
     /// purchase is blocked rather than silently binding the entitlement to
     /// a wrong account.
     private func currentUserToken() -> UUID? {
-        guard let raw = UserDefaults.standard.string(forKey: "x5.session.user_id") else { return nil }
+        guard let raw = auth.userId else { return nil }
         return UUID(uuidString: raw)
     }
 
-    /// Marks the user as Pro on the server.
-    ///
-    /// Credits are granted only from the direct purchase success path. Restore,
-    /// relaunch, and StoreKit re-delivery only refresh Pro state.
-    ///
-    /// Guard: only credit when the incoming `expirationDate` is later than the
-    /// `subscription_end_date` already stored. A renewal that doesn't extend
-    /// the period (re-delivery of a known transaction) is treated as a no-op
-    /// for credits. Plan/end-date are still refreshed so isPro stays true.
-    private func applyEntitlement(transaction: StoreKit.Transaction, grantCredits: Bool) async {
-        guard
-            let userId = UserDefaults.standard.string(forKey: "x5.session.user_id"),
-            let accessToken = Keychain.string(for: "x5.session.access_token")
-        else { return }
+    /// Delivers a consumable through the exact-once server ledger. Unlike legacy
+    /// subscriptions, a successful top-up never posts the Pro activation event.
+    private func applyCreditPack(
+        transaction: StoreKit.Transaction,
+        signedTransaction: String,
+        source: String
+    ) async -> IAPEntitlementDisposition {
+        guard IAPOwnershipRoutingPolicy.shouldVerifyOnServer(
+            signedInUserID: auth.userId,
+            transactionAppAccountToken: transaction.appAccountToken
+        ) else {
+            DiagnosticLogger.log(event: "iap_credit_pack_missing_session", extra: [
+                "source": source,
+                "product": transaction.productID
+            ])
+            lastError = LocalizationService.shared.t("iap_signin_restore")
+            return .failed
+        }
 
-        // Cross-account guard: an Apple ID can be shared between several X5
-        // accounts on the same device. StoreKit returns the active
-        // subscription regardless of which X5 user is currently signed in,
-        // so without this gate signing into a second X5 account would
-        // silently mark it Pro and credit +1000 for free (build 43 bug).
-        //
-        // We bind appAccountToken at purchase time to the buyer's user id;
-        // here we ignore any transaction whose token doesn't match. Old
-        // pre-fix transactions have a nil token — those we let through so
-        // legit existing subscribers don't lose their Pro on upgrade.
+        let verificationResult = await verifyAppStoreTransaction(
+            signedTransaction: signedTransaction,
+            source: source,
+            productID: transaction.productID
+        )
+        switch verificationResult {
+        case .applied, .alreadyApplied:
+            DiagnosticLogger.log(
+                event: transaction.revocationDate == nil
+                    ? "iap_credit_pack_applied"
+                    : "iap_credit_pack_refund_applied",
+                extra: [
+                    "source": source,
+                    "product": transaction.productID,
+                    "server_verification": verificationResult == .applied ? "applied" : "already_applied"
+                ]
+            )
+            return .applied
+        case .ownedByOther:
+            // A consumable cannot be restored from current entitlements. Leave it
+            // unfinished so its owning X5 account can retry delivery after sign-in.
+            return .failed
+        case .failed:
+            return .failed
+        }
+    }
+
+    /// Applies the verified subscription through the server-side, idempotent
+    /// App Store transaction verifier. The client never writes protected
+    /// profile fields or sends decoded transaction claims to the server.
+    private func applySubscriptionEntitlement(
+        transaction: StoreKit.Transaction,
+        signedTransaction: String,
+        source: String
+    ) async -> IAPEntitlementDisposition {
+        guard IAPOwnershipRoutingPolicy.shouldVerifyOnServer(
+            signedInUserID: auth.userId,
+            transactionAppAccountToken: transaction.appAccountToken
+        ) else {
+            DiagnosticLogger.log(event: "iap_subscription_missing_session", extra: [
+                "source": source,
+                "product": transaction.productID
+            ])
+            lastError = LocalizationService.shared.t("iap_signin_restore")
+            return .failed
+        }
+
+        // Never decide mismatched-token ownership locally. The server checks
+        // Apple's signed JWS against the permanent owner ledger and the exact
+        // private allowlist for the two grandfathered legacy chains.
         if let token = transaction.appAccountToken,
-           let buyerId = UUID(uuidString: userId),
-           token != buyerId {
-            return
+           let userID = auth.userId,
+           let buyerID = UUID(uuidString: userID),
+           token != buyerID {
+            DiagnosticLogger.log(event: "iap_subscription_token_mismatch_deferred_to_server", extra: [
+                "source": source,
+                "product": transaction.productID
+            ])
         }
 
-        let endDate = transaction.expirationDate
-            ?? Calendar.current.date(byAdding: .month, value: 1, to: Date())
-            ?? Date().addingTimeInterval(30 * 24 * 3600)
-        let endIso = ISO8601DateFormatter().string(from: endDate)
-        let startIso = ISO8601DateFormatter().string(from: transaction.purchaseDate)
-
-        // Read current credits + last-known subscription_end_date so we can
-        // decide whether this transaction is a NEW period (grant credits) or
-        // a re-delivery of an already-known one (skip credits).
-        var currentCredits = 0
-        var storedEndDate: Date? = nil
-        guard var getURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false) else {
-            return
+        let verificationResult = await verifyAppStoreTransaction(
+            signedTransaction: signedTransaction,
+            source: source,
+            productID: transaction.productID
+        )
+        switch verificationResult {
+        case .applied, .alreadyApplied:
+            break
+        case .ownedByOther:
+            return .skipped
+        case .failed:
+            return .failed
         }
-        getURL.queryItems = [
-            URLQueryItem(name: "id", value: "eq.\(userId)"),
-            URLQueryItem(name: "select", value: "credits,subscription_end_date")
-        ]
-        guard let getReqURL = getURL.url else { return }
-        var getReq = URLRequest(url: getReqURL)
-        getReq.setValue(anonKey, forHTTPHeaderField: "apikey")
-        getReq.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        if let (data, _) = try? await URLSession.shared.data(for: getReq),
-           let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-           let row = arr.first {
-            if let c = row["credits"] as? Int { currentCredits = c }
-            if let s = row["subscription_end_date"] as? String {
-                let f = ISO8601DateFormatter()
-                f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                storedEndDate = f.date(from: s) ?? ISO8601DateFormatter().date(from: s)
+
+        // The Edge Function verifies Apple's JWS and is the only writer of
+        // plan, balance and subscription dates.
+        DiagnosticLogger.log(event: "iap_subscription_applied", extra: [
+            "source": source,
+            "product": transaction.productID,
+            "server_verification": verificationResult == .applied ? "applied" : "already_applied"
+        ])
+        NotificationCenter.default.post(name: .x5DidActivatePro, object: nil)
+        return .applied
+    }
+
+    private func applyVerifiedEntitlement(
+        transaction: StoreKit.Transaction,
+        signedTransaction: String,
+        source: String
+    ) async -> IAPEntitlementDisposition {
+        guard IAPOwnershipRoutingPolicy.shouldVerifyOnServer(
+            signedInUserID: auth.userId,
+            transactionAppAccountToken: transaction.appAccountToken
+        ) else {
+            DiagnosticLogger.log(event: "iap_verified_missing_session", extra: ["source": source])
+            lastError = LocalizationService.shared.t("iap_signin_restore")
+            return .failed
+        }
+
+        if let token = transaction.appAccountToken,
+           let userID = auth.userId,
+           let buyerID = UUID(uuidString: userID),
+           token != buyerID {
+            DiagnosticLogger.log(event: "iap_verified_token_mismatch_deferred_to_server", extra: [
+                "source": source
+            ])
+        }
+
+        let verificationResult = await verifyAppStoreTransaction(
+            signedTransaction: signedTransaction,
+            source: source,
+            productID: transaction.productID
+        )
+        switch verificationResult {
+        case .applied, .alreadyApplied:
+            break
+        case .ownedByOther:
+            return .skipped
+        case .failed:
+            return .failed
+        }
+
+        // Verified state is written by the same idempotent server claim.
+        // Do not PATCH protected profile entitlement columns from the client.
+        DiagnosticLogger.log(event: "iap_verified_applied", extra: [
+            "source": source,
+            "server_verification": verificationResult == .applied ? "applied" : "already_applied"
+        ])
+        return .applied
+    }
+
+    private func verifyAppStoreTransaction(
+        signedTransaction: String,
+        source: String,
+        productID: String
+    ) async -> ServerVerificationResult {
+        let requestBody: Data
+        do {
+            requestBody = try JSONEncoder().encode(
+                ServerVerificationRequest(signedTransaction: signedTransaction)
+            )
+        } catch {
+            DiagnosticLogger.log(event: "iap_verification_request_encoding_failed", extra: [
+                "source": source,
+                "product": productID
+            ])
+            lastError = LocalizationService.shared.t("iap_delivery_pending")
+            return .failed
+        }
+
+        var accessToken = auth.accessToken
+        if accessToken == nil {
+            accessToken = await auth.freshAccessToken()
+        }
+        guard var accessToken else {
+            lastError = LocalizationService.shared.t("iap_signin_restore")
+            return .failed
+        }
+
+        var retryCount = 0
+        while true {
+            var request = URLRequest(url: baseURL.appendingPathComponent("functions/v1/verify-app-store-transaction"))
+            request.httpMethod = "POST"
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = requestBody
+
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                let serverResponse = try? JSONDecoder().decode(ServerVerificationResponse.self, from: data)
+                let status = serverResponse?.status
+                let serverError = serverResponse?.error
+                let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? -1
+
+                if IAPVerificationRetryPolicy.shouldRetry(statusCode: httpStatus, retryCount: retryCount) {
+                    retryCount += 1
+                    guard let refreshedToken = await auth.freshAccessToken() else {
+                        lastError = LocalizationService.shared.t("iap_signin_restore")
+                        return .failed
+                    }
+                    accessToken = refreshedToken
+                    continue
+                }
+
+                if status == "owned_by_other" {
+                    DiagnosticLogger.log(event: "iap_verification_owned_by_other", extra: [
+                        "source": source,
+                        "product": productID
+                    ])
+                    lastError = accountMismatchError
+                    return .ownedByOther
+                }
+
+                guard (200..<300).contains(httpStatus) else {
+                    DiagnosticLogger.log(event: "iap_verification_failed", extra: [
+                        "source": source,
+                        "product": productID,
+                        "status": "\(httpStatus)",
+                        "server_error": String((serverError ?? "unknown").prefix(80))
+                    ])
+                    lastError = LocalizationService.shared.t("iap_delivery_pending")
+                    return .failed
+                }
+
+                switch status {
+                case "applied":
+                    return .applied
+                case "already_applied":
+                    return .alreadyApplied
+                default:
+                    DiagnosticLogger.log(event: "iap_verification_unknown_response", extra: [
+                        "source": source,
+                        "product": productID,
+                        "response": String((status ?? "").prefix(80))
+                    ])
+                    lastError = LocalizationService.shared.t("iap_delivery_pending")
+                    return .failed
+                }
+            } catch {
+                DiagnosticLogger.log(event: "iap_verification_error", extra: [
+                    "source": source,
+                    "product": productID,
+                    "error": String(error.localizedDescription.prefix(120))
+                ])
+                lastError = LocalizationService.shared.t("iap_delivery_pending")
+                return .failed
             }
         }
-
-        // Treat the transaction as "already credited" if our stored end-date
-        // is at or beyond what this transaction reports. A 60-second slack
-        // absorbs floating-point rounding from the ISO round-trip.
-        let alreadyCredited: Bool = {
-            guard let stored = storedEndDate else { return false }
-            return stored.timeIntervalSince(endDate) >= -60
-        }()
-
-        var body: [String: Any] = [
-            "plan": "pro",
-            "subscription_type": "monthly",
-            "subscription_date": startIso,
-            "subscription_end_date": endIso
-        ]
-        if grantCredits && !alreadyCredited {
-            body["credits"] = currentCredits + 1000
-        }
-
-        guard var patchURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false) else {
-            return
-        }
-        patchURL.queryItems = [URLQueryItem(name: "id", value: "eq.\(userId)")]
-        guard let patchReqURL = patchURL.url else { return }
-        var patch = URLRequest(url: patchReqURL)
-        patch.httpMethod = "PATCH"
-        patch.setValue(anonKey, forHTTPHeaderField: "apikey")
-        patch.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        patch.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        patch.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        _ = try? await URLSession.shared.data(for: patch)
-
-        // Notify Subscription so isPro flips immediately without waiting for profile reload
-        NotificationCenter.default.post(name: .x5DidActivatePro, object: nil)
     }
+
+    private var accountMismatchError: String {
+        LocalizationService.shared.t("iap_account_mismatch")
+    }
+
+    private func notifyStoreRefundReconciled() {
+        NotificationCenter.default.post(
+            name: .x5DidReconcileStoreRefund,
+            object: nil
+        )
+    }
+
 }
 
 extension Notification.Name {
     static let x5DidActivatePro = Notification.Name("x5.iap.did_activate_pro")
+    static let x5DidReconcileStoreRefund = Notification.Name(
+        "x5.iap.did_reconcile_store_refund"
+    )
 }

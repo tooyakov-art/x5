@@ -1,0 +1,71 @@
+name: ASC configure credit store
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      credit_review_action:
+        description: "Audit only, or submit READY_TO_SUBMIT credit packs"
+        required: true
+        type: choice
+        default: audit
+        options:
+          - audit
+          - submit
+  push:
+    branches: [main, codex/x5-course-client-fixes-20260714]
+    paths:
+      - ".github/workflows/asc-configure-credit-store.yml"
+      - "scripts/asc_configure_credit_store.py"
+      - "fastlane/iap-screenshots/x5-credit-store-review.png"
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    environment: app-store-production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --require-hashes -r .github/requirements/asc-requirements.lock
+      - name: Verify configuration contract
+        run: python -m unittest discover -s scripts/tests -p "test_asc_configure_credit_store.py"
+      - name: Configure consumable credit packs
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+          SCREENSHOT_PATH: fastlane/iap-screenshots/x5-credit-store-review.png
+        run: python scripts/asc_configure_credit_store.py
+      - name: Verify server notification contract
+        run: >-
+          python -m unittest discover -s scripts/tests
+          -p "test_asc_configure_server_notifications.py"
+      - name: Configure App Store server notifications
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+          APP_STORE_NOTIFICATIONS_URL: >-
+            https://afwznqjpshybmqhlewmy.supabase.co/functions/v1/app-store-notifications
+        run: python scripts/asc_configure_server_notifications.py
+      - name: Verify guarded credit review contract
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: >-
+          python -m unittest discover -s scripts/tests
+          -p "test_asc_submit_credit_packs.py"
+      - name: Audit or submit credit packs for App Review
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+        run: >-
+          python scripts/asc_submit_credit_packs.py
+          --action "${{ inputs.credit_review_action }}"

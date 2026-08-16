@@ -1,168 +1,429 @@
-import SwiftUI
 import StoreKit
+import SwiftUI
 
+/// One-time credit store. The historical name is kept so existing callers do
+/// not need to change while legacy subscriptions remain restorable elsewhere.
 struct PaywallView: View {
-    @EnvironmentObject private var sub: Subscription
     @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var loc: LocalizationService
-    @StateObject private var iap = IAPService()
+    @EnvironmentObject private var iap: IAPService
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
 
+    @State private var didLoadProducts = false
+    @State private var paymentMethodPack: IAPCreditPack?
+    @State private var purchasingProductID: String?
+    @State private var kaspiPurchasingProductID: String?
+    @State private var kaspiPayment: KaspiCreditPayment?
+    @State private var kaspiError: String?
+    @State private var purchasedCredits = 0
+    @State private var profileReloadSucceeded = true
     @State private var showSuccess = false
+    @AppStorage("x5.kaspi.pendingPaymentID")
+    private var pendingKaspiPaymentID = ""
+
+    private let kaspiService = KaspiCreditPaymentService()
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 60, weight: .light))
-                    .foregroundColor(.accentColor)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 24)
-
-                Text(loc.t("paywall_title"))
-                    .font(.system(size: 32, weight: .heavy))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .multilineTextAlignment(.center)
-
-                Text(loc.t("paywall_desc"))
-                    .font(.system(size: 15))
-                    .foregroundColor(.white.opacity(0.65))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-
-                VStack(alignment: .leading, spacing: 14) {
-                    Feature(text: loc.t("paywall_feat_credits"))
-                    Feature(text: loc.t("paywall_feat_tools"))
-                    Feature(text: loc.t("paywall_feat_courses"))
-                    Feature(text: loc.t("paywall_feat_hub"))
-                    Feature(text: loc.t("paywall_feat_support"))
-                }
-                .padding(20)
-                .background(Color.white.opacity(0.05))
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-
-                VStack(spacing: 10) {
-                    Button {
-                        Task {
-                            let ok = await iap.purchaseMonthly()
-                            if ok {
-                                if let uid = auth.userId, let token = auth.accessToken {
-                                    await currentUser.load(userId: uid, accessToken: token)
-                                }
-                                showSuccess = true
-                            }
-                        }
-                    } label: {
-                        VStack(spacing: 4) {
-                            Text(buttonTitle)
-                                .font(.system(size: 17, weight: .bold))
-                                .foregroundColor(.black)
-                            if iap.product != nil {
-                                Text(loc.t("paywall_cancel_anytime"))
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.black.opacity(0.6))
-                            }
-                        }
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Image(systemName: "cart.fill")
+                        .font(.system(size: 48, weight: .light))
+                        .foregroundColor(.accentColor)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(iap.product != nil && !iap.isPurchasing ? Color.accentColor : Color.accentColor.opacity(0.5))
-                        .cornerRadius(16)
-                    }
-                    .disabled(iap.product == nil || iap.isPurchasing)
+                        .padding(.top, 16)
 
-                    if iap.product == nil && iap.lastError == nil {
-                        Text(loc.t("paywall_unavailable"))
-                            .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.5))
-                            .multilineTextAlignment(.center)
-                    }
+                    Text(loc.t("credit_store_title"))
+                        .font(.system(size: 32, weight: .heavy))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .multilineTextAlignment(.center)
 
-                    Button(loc.t("paywall_restore")) {
-                        Task {
-                            await iap.restore()
-                            if let uid = auth.userId, let token = auth.accessToken {
-                                await currentUser.load(userId: uid, accessToken: token)
-                            }
+                    Text(loc.t("credit_store_description"))
+                        .font(.system(size: 15))
+                        .foregroundColor(.white.opacity(0.65))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+
+                    balanceCard
+
+                    VStack(spacing: 12) {
+                        ForEach(IAPProductCatalog.visibleCreditPacks) { pack in
+                            packCard(pack)
                         }
                     }
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white.opacity(0.55))
 
-                    if let err = iap.lastError {
-                        Text(err)
-                            .font(.system(size: 11))
-                            .foregroundColor(.red.opacity(0.85))
+                    Text(loc.t("credit_store_delivery_note"))
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.55))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 18) {
+                        if let termsURL = URL(string: "https://tooyakov-art.github.io/x5site/terms.html") {
+                            Link(loc.t("credit_store_terms_link"), destination: termsURL)
+                        }
+                        if let privacyURL = URL(string: "https://tooyakov-art.github.io/x5site/privacy.html") {
+                            Link(loc.t("credit_store_privacy_link"), destination: privacyURL)
+                        }
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.7))
+                    .frame(maxWidth: .infinity)
+
+                    if let error = iap.lastError {
+                        Text(error)
+                            .font(.system(size: 12))
+                            .foregroundColor(.red.opacity(0.9))
                             .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    if let kaspiError {
+                        Text(kaspiError)
+                            .font(.system(size: 12))
+                            .foregroundColor(.red.opacity(0.9))
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    if didLoadProducts && (hasMissingCreditPacks || iap.lastError != nil) {
+                        Button {
+                            Task { await reloadProducts() }
+                        } label: {
+                            Group {
+                                if iap.isLoadingProducts {
+                                    ProgressView().tint(.black)
+                                } else {
+                                    Text(loc.t("btn_retry"))
+                                        .font(.system(size: 15, weight: .bold))
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: 24)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.accentColor)
+                        .foregroundStyle(.black)
+                        .disabled(iap.isLoadingProducts || iap.isPurchasing)
                     }
                 }
-
-                Text(loc.t("paywall_subscription_terms"))
-                    .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.45))
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 8)
-
-                HStack(spacing: 18) {
-                    if let eulaURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
-                        Link(loc.t("paywall_terms_link"), destination: eulaURL)
-                    }
-                    if let privacyURL = URL(string: "https://tooyakov-art.github.io/x5site/privacy.html") {
-                        Link(loc.t("paywall_privacy_link"), destination: privacyURL)
-                    }
-                }
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.white.opacity(0.7))
+                .padding(.horizontal, 20)
+                .padding(.bottom, 28)
+                .frame(maxWidth: 640)
                 .frame(maxWidth: .infinity)
-                .padding(.top, 4)
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 24)
-            .frame(maxWidth: 640)
-            .frame(maxWidth: .infinity)
+            .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
+            .navigationTitle(loc.t("credit_store_title"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(loc.t("btn_done")) { dismiss() }
+                }
+            }
         }
-        .background(Color(red: 0.04, green: 0.05, blue: 0.10).ignoresSafeArea())
         .preferredColorScheme(.dark)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
-        .overlay(alignment: .topTrailing) {
-            Button { dismiss() } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 26))
-                    .foregroundColor(.white.opacity(0.4))
+        .task {
+            await reloadProducts()
+            await restorePendingKaspiPayment()
+        }
+        .task(id: kaspiPayment?.id) {
+            await pollKaspiPaymentUntilFinished()
+        }
+        .confirmationDialog(
+            loc.t("credit_store_payment_method_title"),
+            isPresented: Binding(
+                get: { paymentMethodPack != nil },
+                set: { if !$0 { paymentMethodPack = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: paymentMethodPack
+        ) { pack in
+            Button(loc.t("credit_store_payment_card")) {
+                buyViaStore(pack, paymentMethod: "bank_card")
             }
-            .padding(20)
+            if canPayWithKaspi(pack) {
+                Button(loc.t("credit_store_payment_kaspi")) {
+                    buyWithKaspi(pack)
+                }
+            }
+            Button(loc.t("credit_store_payment_apple_pay")) {
+                buyViaStore(pack, paymentMethod: "apple_pay")
+            }
+            Button(loc.t("btn_cancel"), role: .cancel) {}
+        } message: { pack in
+            Text(
+                String(
+                    format: loc.t("credit_store_payment_method_message"),
+                    pack.credits,
+                    paymentAmount(for: pack)
+                )
+            )
         }
-        .task { await iap.loadProducts() }
-        .alert(loc.t("paywall_welcome_pro"), isPresented: $showSuccess) {
-            Button(loc.t("paywall_continue")) { dismiss() }
+        .alert(loc.t("credit_store_success_title"), isPresented: $showSuccess) {
+            Button(loc.t("btn_done")) { dismiss() }
         } message: {
-            Text(loc.t("paywall_credits_added"))
+            let messageKey = IAPCreditPurchaseConfirmation.messageKey(
+                profileReloadSucceeded: profileReloadSucceeded
+            )
+            if profileReloadSucceeded {
+                Text(String(format: loc.t(messageKey), purchasedCredits))
+            } else {
+                Text(loc.t(messageKey))
+            }
         }
     }
 
-    private var buttonTitle: String {
-        if iap.isPurchasing { return loc.t("btn_loading") }
-        if let p = iap.product {
-            return "\(loc.t("paywall_subscribe")) — \(p.displayPrice) / mo"
-        }
-        return loc.t("paywall_loading")
-    }
-}
-
-private struct Feature: View {
-    let text: String
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 17, weight: .semibold))
+    private var balanceCard: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "creditcard.fill")
+                .font(.system(size: 24, weight: .semibold))
                 .foregroundColor(.accentColor)
-            Text(text)
-                .font(.system(size: 15))
-                .foregroundColor(.white.opacity(0.9))
+                .frame(width: 44, height: 44)
+                .background(Color.accentColor.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(loc.t("credit_store_balance"))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.55))
+                Text((currentUser.profile?.credits ?? 0).formatted())
+                    .font(.system(size: 25, weight: .heavy))
+                    .foregroundColor(.white)
+            }
             Spacer()
         }
+        .padding(16)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.12)
+    }
+
+    private func packCard(_ pack: IAPCreditPack) -> some View {
+        let product = iap.product(id: pack.productID)
+        let isCurrentPurchase = purchasingProductID == pack.productID && iap.isPurchasing
+        let isCurrentKaspiPurchase = kaspiPurchasingProductID == pack.productID
+        let isCurrentPayment = isCurrentPurchase || isCurrentKaspiPurchase
+
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(String(format: loc.t("credit_store_pack_credits"), pack.credits))
+                        .font(.system(size: 21, weight: .heavy))
+                        .foregroundColor(.white)
+                    Text(loc.t("credit_store_one_time"))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+                Spacer()
+                Text(product?.displayPrice ?? pack.fallbackDisplayPrice)
+                    .font(.system(size: 20, weight: .heavy))
+                    .foregroundColor(.accentColor)
+            }
+
+            Button {
+                X5Feedback.selection()
+                paymentMethodPack = pack
+            } label: {
+                Group {
+                    if isCurrentPayment {
+                        ProgressView().tint(.black)
+                    } else {
+                        Text(loc.t("credit_store_buy"))
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 24)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.accentColor)
+            .foregroundStyle(.black)
+            .disabled(kaspiPurchasingProductID != nil || iap.isPurchasing)
+
+            if didLoadProducts && product == nil && !canPayWithKaspi(pack) {
+                Text(loc.t("credit_store_unavailable"))
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.5))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(16)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        }
+    }
+
+    private func buyViaStore(_ pack: IAPCreditPack, paymentMethod: String) {
+        paymentMethodPack = nil
+        DiagnosticLogger.log(event: "credit_payment_method_selected", extra: [
+            "method": paymentMethod,
+            "product": pack.productID
+        ])
+
+        Task {
+            if iap.product(id: pack.productID) == nil {
+                await reloadProducts()
+            }
+            guard iap.product(id: pack.productID) != nil else {
+                X5Feedback.error()
+                return
+            }
+            buy(pack)
+        }
+    }
+
+    private func buy(_ pack: IAPCreditPack) {
+        purchasingProductID = pack.productID
+        Task {
+            defer { purchasingProductID = nil }
+            let delivered = await iap.purchase(productID: pack.productID)
+            guard delivered else {
+                X5Feedback.error()
+                return
+            }
+
+            profileReloadSucceeded = await refreshProfile()
+            purchasedCredits = pack.credits
+            X5Feedback.success()
+            showSuccess = true
+        }
+    }
+
+    private func buyWithKaspi(_ pack: IAPCreditPack) {
+        paymentMethodPack = nil
+        guard kaspiPurchasingProductID == nil else { return }
+        kaspiPurchasingProductID = pack.productID
+        kaspiError = nil
+
+        Task {
+            defer { kaspiPurchasingProductID = nil }
+            guard let accessToken = await auth.freshAccessToken() else {
+                kaspiError = loc.t("credit_store_kaspi_sign_in")
+                X5Feedback.error()
+                return
+            }
+
+            do {
+                let payment = try await kaspiService.create(
+                    storeProductID: pack.productID,
+                    accessToken: accessToken
+                )
+                kaspiPayment = payment
+                pendingKaspiPaymentID = payment.id.uuidString.lowercased()
+                DiagnosticLogger.log(event: "kaspi_payment_opened", extra: [
+                    "payment": payment.id.uuidString.lowercased(),
+                    "product": payment.productId
+                ])
+                _ = openURL(payment.paymentUrl)
+            } catch let error as KaspiCreditPaymentError {
+                kaspiError = error == .notConfigured
+                    ? loc.t("credit_store_kaspi_not_configured")
+                    : (error.errorDescription ?? loc.t("credit_store_kaspi_failed"))
+                X5Feedback.error()
+            } catch {
+                kaspiError = loc.t("credit_store_kaspi_failed")
+                X5Feedback.error()
+            }
+        }
+    }
+
+    private func canPayWithKaspi(_ pack: IAPCreditPack) -> Bool {
+        KaspiInternalBetaAccess.isAllowed(userID: auth.userId)
+            && KaspiCreditCatalog.priceKzt(for: pack.productID) != nil
+    }
+
+    private func paymentAmount(for pack: IAPCreditPack) -> String {
+        if let amountKzt = KaspiCreditCatalog.priceKzt(for: pack.productID) {
+            return "\(amountKzt.formatted()) ₸"
+        }
+        return iap.product(id: pack.productID)?.displayPrice ?? pack.fallbackDisplayPrice
+    }
+
+    private func restorePendingKaspiPayment() async {
+        guard KaspiInternalBetaAccess.isAllowed(userID: auth.userId),
+              kaspiPayment == nil,
+              let paymentID = UUID(uuidString: pendingKaspiPaymentID),
+              let accessToken = await auth.freshAccessToken()
+        else { return }
+
+        do {
+            let payment = try await kaspiService.get(
+                paymentID: paymentID,
+                accessToken: accessToken
+            )
+            kaspiPayment = payment
+            if payment.status != .pending {
+                pendingKaspiPaymentID = ""
+            }
+        } catch {
+            // Keep a recoverable pending order across temporary network errors.
+        }
+    }
+
+    private func pollKaspiPaymentUntilFinished() async {
+        guard var payment = kaspiPayment,
+              payment.status == .pending
+        else { return }
+
+        while !Task.isCancelled && payment.status == .pending {
+            do {
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+            } catch {
+                return
+            }
+            guard let accessToken = await auth.freshAccessToken() else {
+                continue
+            }
+            do {
+                payment = try await kaspiService.get(
+                    paymentID: payment.id,
+                    accessToken: accessToken
+                )
+                kaspiPayment = payment
+            } catch {
+                continue
+            }
+        }
+
+        guard payment.status == .confirmed else {
+            if payment.status != .pending {
+                pendingKaspiPaymentID = ""
+                kaspiError = loc.t("credit_store_kaspi_not_completed")
+            }
+            return
+        }
+
+        pendingKaspiPaymentID = ""
+        profileReloadSucceeded = await refreshProfile()
+        purchasedCredits = payment.credits
+        X5Feedback.success()
+        showSuccess = true
+    }
+
+    private var hasMissingCreditPacks: Bool {
+        !IAPProductAvailability.missingCreditPackIDs(
+            loadedProductIDs: iap.products.keys
+        ).isEmpty
+    }
+
+    private func reloadProducts() async {
+        didLoadProducts = false
+        await iap.loadProducts()
+        didLoadProducts = true
+    }
+
+    private func refreshProfile() async -> Bool {
+        guard let userID = auth.userId,
+              let accessToken = await auth.freshAccessToken() else {
+            return false
+        }
+        return await currentUser.load(userId: userID, accessToken: accessToken)
     }
 }

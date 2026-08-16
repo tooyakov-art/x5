@@ -14,6 +14,7 @@ struct TaskDetailView: View {
     @State private var accepting: String?
     @State private var confirmBlock = false
     @State private var openingChat = false
+    @State private var acceptError: String?
 
     private var isAuthor: Bool { auth.userId == task.authorId }
     private var hasRespondedAlready: Bool {
@@ -23,7 +24,7 @@ struct TaskDetailView: View {
 
     private func reportTask() {
         let subject = "Report task \(task.id)"
-        let body = "Hi X5 team,\n\nI'd like to report this task. Please review the content.\n\nTask ID: \(task.id)\nAuthor ID: \(task.authorId)\n"
+        let body = "Hi X five marketing team,\n\nI'd like to report this task. Please review the content.\n\nTask ID: \(task.id)\nAuthor ID: \(task.authorId)\n"
         let to = "appreview@x5studio.app"
         let s = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let b = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
@@ -36,7 +37,7 @@ struct TaskDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 8) {
-                    Text(HubCategories.label(for: task.category).uppercased())
+                    Text(HubCategories.label(for: task.category, language: loc.current).uppercased())
                         .font(.system(size: 10, weight: .heavy))
                         .tracking(1.2)
                         .foregroundColor(.accentColor)
@@ -52,6 +53,13 @@ struct TaskDetailView: View {
                     .font(.system(size: 22, weight: .heavy))
                     .foregroundColor(.white)
 
+                if let city = task.city, !city.isEmpty {
+                    let country = task.countryCode.flatMap(CISLocations.countryName(for:))
+                    Label([city, country].compactMap { $0 }.joined(separator: ", "), systemImage: "mappin.and.ellipse")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.68))
+                }
+
                 if let desc = task.description, !desc.isEmpty {
                     Text(desc)
                         .font(.system(size: 14))
@@ -62,15 +70,22 @@ struct TaskDetailView: View {
                 Divider().background(Color.white.opacity(0.06))
 
                 HStack(spacing: 10) {
-                    AvatarView(urlString: task.authorAvatar, name: task.authorName, size: 36)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(task.authorName ?? loc.t("hub_anonymous"))
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.white)
-                        if let company = task.companyName, !company.isEmpty {
-                            Text(company).font(.system(size: 11)).foregroundColor(.white.opacity(0.5))
+                    NavigationLink {
+                        UserProfileView(userId: task.authorId, fallback: authorFallback)
+                    } label: {
+                        HStack(spacing: 10) {
+                            AvatarView(urlString: task.authorAvatar, name: task.authorName, size: 36)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(task.authorName ?? loc.t("hub_anonymous"))
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.white)
+                                if let company = task.companyName, !company.isEmpty {
+                                    Text(company).font(.system(size: 11)).foregroundColor(.white.opacity(0.5))
+                                }
+                            }
                         }
                     }
+                    .buttonStyle(.plain)
                     Spacer()
                     if let deadline = task.deadline, !deadline.isEmpty {
                         VStack(alignment: .trailing, spacing: 2) {
@@ -168,11 +183,40 @@ struct TaskDetailView: View {
         } message: {
             Text(loc.t("hub_block_author_message"))
         }
-        .task { responses = await service.loadResponses(taskId: task.id) }
+        .alert("Не удалось принять отклик", isPresented: Binding(
+            get: { acceptError != nil },
+            set: { if !$0 { acceptError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(acceptError ?? "")
+        }
+        .task {
+            chats.configureAccessTokenProvider(auth: auth)
+            responses = await service.loadResponses(taskId: task.id)
+        }
         .sheet(item: $navigatingChat) { chat in
             NavigationStack { ChatThreadView(chat: chat) }
                 .preferredColorScheme(.dark)
         }
+    }
+
+    private var authorFallback: HubSpecialist {
+        HubSpecialist(
+            id: task.authorId,
+            name: task.authorName,
+            nickname: nil,
+            avatar: task.authorAvatar,
+            bio: task.companyName,
+            specialistCategory: nil,
+            plan: nil,
+            services: nil,
+            socialLinks: nil,
+            countryCode: task.countryCode,
+            city: task.city,
+            isVerified: nil,
+            verifiedUntil: nil
+        )
     }
 
     private func openChatWithAuthor() async {
@@ -186,6 +230,12 @@ struct TaskDetailView: View {
             taskTitle: task.title,
             accessToken: token
         ) {
+            var rows = await chats.loadMessages(chatId: chat.id, accessToken: token, forceRefresh: true)
+            if !rows.contains(where: { $0.taskCard?.id == task.id }),
+               let card = await chats.sendTaskCard(chatId: chat.id, currentUserId: uid, task: task, accessToken: token) {
+                rows.append(card)
+                chats.persistMessageCache(chatId: chat.id, rows: rows)
+            }
             navigatingChat = chat
         }
     }
@@ -241,16 +291,17 @@ struct TaskDetailView: View {
     }
 
     private func accept(_ r: TaskResponse) async {
-        guard let token = auth.accessToken, let me = auth.userId else { return }
+        guard let token = await auth.freshAccessToken(), let me = auth.userId else { return }
         accepting = r.id
         defer { accepting = nil }
-        await service.acceptResponse(
+        guard await service.acceptResponse(
             taskId: task.id,
             responseId: r.id,
-            specialistId: r.specialistId,
-            specialistName: r.specialistName,
             accessToken: token
-        )
+        ) != nil else {
+            acceptError = service.error ?? "Сервер не подтвердил принятие отклика."
+            return
+        }
         if let chat = await chats.ensureChat(
             otherUserId: r.specialistId,
             currentUserId: me,
@@ -258,12 +309,20 @@ struct TaskDetailView: View {
             taskTitle: task.title,
             accessToken: token
         ) {
-            _ = await chats.sendText(
+            var rows = await chats.loadMessages(chatId: chat.id, accessToken: token, forceRefresh: true)
+            if !rows.contains(where: { $0.taskCard?.id == task.id }),
+               let card = await chats.sendTaskCard(chatId: chat.id, currentUserId: me, task: task, accessToken: token) {
+                rows.append(card)
+            }
+            if let acceptedMessage = await chats.sendText(
                 chatId: chat.id,
                 currentUserId: me,
-                text: "I accepted your response on '\(task.title)'. Let's start.",
+                text: "Принял отклик по заданию «\(task.title)». Давай начнем.",
                 accessToken: token
-            )
+            ) {
+                rows.append(acceptedMessage)
+            }
+            chats.persistMessageCache(chatId: chat.id, rows: rows)
             navigatingChat = chat
         }
         responses = await service.loadResponses(taskId: task.id)

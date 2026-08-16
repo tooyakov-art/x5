@@ -1,0 +1,71 @@
+ok=true
+app_id=6764340680
+version_id=83d6ff6e-8699-4aa3-9585-a7a0ca01e5a8
+version_state=PREPARE_FOR_SUBMISSION
+attached_build=168
+localization=270474ae-4b95-4ff1-8e98-c95c48591a0e locale=en-US whats_new_present=False
+set_whats_new_status=200
+{
+  "data" : {
+    "type" : "appStoreVersionLocalizations",
+    "id" : "270474ae-4b95-4ff1-8e98-c95c48591a0e",
+    "attributes" : {
+      "description" : "X5 is a creator workspace for marketers, entrepreneurs and creative specialists.\n\nOrganize your portfolio, learn from courses, find specialists in Hub, post tasks and keep client conversations in one app.\n\nKEY FEATURES\n• Hub — browse specialists, post tasks and respond to client requests.\n• Chats — direct messaging with text, photos, voice messages, search, replies, archive, mute, pin, report and block controls.\n• Portfolio — show photos and videos in your public profile, with likes, comments and pinned work.\n• CourseUP — watch creator and marketing lessons.\n• Profile — choose your role, edit public visibility, add social links and enable a verified badge.\n• Image generation — create marketing visuals such as logos, stories, posts, product photos and packaging concepts.\n• Sign in with Apple, Google or email.\n• Russian, English and Kazakh interface.\n\nWHO IT'S FOR\nSMM managers, designers, photographers, video editors, copywriters, marketers, founders and creators who need learning tools, client chats and a public work profile.\n\nSUBSCRIPTIONS\nX5 Lite, X5 Pro and X5 Max are optional monthly auto-renewable subscriptions. Paid plans unlock creator tools and add credits for image generation and other creator features. The verified badge is a separate optional monthly auto-renewable subscription.\n\nPayment is charged to your Apple ID at confirmation of purchase. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel the subscription in your App Store account settings.\n\nSAFETY\nChats include report and block controls. Users can delete their account from Settings. User-generated content is handled with moderation support through support@x5studio.app.\n\nPRIVACY\nAuthentication uses Sign in with Apple, Google or email. Profile data, chats, tasks and portfolio items are handled through Supabase. X5 does not use third-party advertising trackers.\n\nTerms of Service: https://tooyakov-art.github.io/x5site/terms.html\nPrivacy Policy: https://tooyakov-art.github.io/x5site/privacy.html",
+      "locale" : "en-US",
+      "keywords" : "creator,chat,hub,courses,portfolio,marketing,smm,freelance,kazakhstan,tasks,clients",
+      "marketingUrl" : "https://tooyakov-art.github.io/x5site/",
+      "promotionalText" : null,
+      "supportUrl" : "https://tooyakov-art.github.io/x5site/",
+      "whatsNew" : "Исправлены ошибки и улучшена стабильность приложения."
+    },
+    "relationships" : {
+      "appScreenshotSets" : {
+        "links" : {
+          "self" : "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/270474ae-4b95-4ff1-8e98-c95c48591a0e/relationships/appScreenshotSets",
+          "related" : "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/270474ae-4b95-4ff1-8e98-c95c48591a0e/app
+submission=9bac9495-5f30-45a3-901d-340b6b6be233 state=READY_FOR_REVIEW
+ready_submission=9bac9495-5f30-45a3-901d-340b6b6be233 items=0
+ready_add_item_status=201
+{
+  "data" : {
+    "type" : "reviewSubmissionItems",
+    "id" : "OWJhYzk0OTUtNWYzMC00NWEzLTkwMWQtMzQwYjZiNmJlMjMzfDZ8ODg2NjYyMjQx",
+    "attributes" : {
+      "state" : "READY_FOR_REVIEW"
+    },
+    "links" : {
+      "self" : "https://api.appstoreconnect.apple.com/v1/reviewSubmissionItems/OWJhYzk0OTUtNWYzMC00NWEzLTkwMWQtMzQwYjZiNmJlMjMzfDZ8ODg2NjYyMjQx"
+    }
+  },
+  "links" : {
+    "self" : "https://api.appstoreconnect.apple.com/v1/reviewSubmissionItems"
+  }
+}
+ready_item=OWJhYzk0OTUtNWYzMC00NWEzLTkwMWQtMzQwYjZiNmJlMjMzfDZ8ODg2NjYyMjQx
+submit_status=200
+{
+  "data" : {
+    "type" : "reviewSubmissions",
+    "id" : "9bac9495-5f30-45a3-901d-340b6b6be233",
+    "attributes" : {
+      "platform" : "IOS",
+      "submittedDate" : "2026-06-08T07:54:41.235Z",
+      "state" : "WAITING_FOR_REVIEW"
+    },
+    "relationships" : {
+      "items" : {
+        "links" : {
+          "self" : "https://api.appstoreconnect.apple.com/v1/reviewSubmissions/9bac9495-5f30-45a3-901d-340b6b6be233/relationships/items",
+          "related" : "https://api.appstoreconnect.apple.com/v1/reviewSubmissions/9bac9495-5f30-45a3-901d-340b6b6be233/items"
+        }
+      }
+    },
+    "links" : {
+      "self" : "https://api.appstoreconnect.apple.com/v1/reviewSubmissions/9bac9495-5f30-45a3-901d-340b6b6be233"
+    }
+  },
+  "links" : {
+    "self" : "https://api.appstoreconnect.apple.com/v1/reviewSubmissions/9bac9495-5f30-45a3-901d-340b6b6be233"
+  }
+}
+final_state=WAITING_FOR_REVIEW

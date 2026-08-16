@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct EditProfileView: View {
+    var activateSpecialistOnOpen: Bool = false
+
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var loc: LocalizationService
@@ -19,9 +21,12 @@ struct EditProfileView: View {
     @State private var facebook: String = ""
     @State private var pickedCategories: Set<String> = []
     @State private var showInHub: Bool = false
+    @State private var countryCode: String = "KZ"
+    @State private var city: String = ""
 
     @State private var saving = false
     @State private var errorMessage: String?
+    @State private var didPopulate = false
 
     var body: some View {
         NavigationStack {
@@ -54,6 +59,15 @@ struct EditProfileView: View {
                     Text("\(bio.count) / 500")
                         .font(.caption2)
                         .foregroundColor(.secondary)
+                }
+
+                Section(header: Text(loc.t("task_location_section"))) {
+                    Picker(loc.t("onb_country"), selection: $countryCode) {
+                        ForEach(CISLocations.countries, id: \.code) { country in
+                            Text(country.name).tag(country.code)
+                        }
+                    }
+                    CISCityPickerButton(city: $city, countryCode: countryCode)
                 }
 
                 Section(header: Text(loc.t("edit_social")),
@@ -90,7 +104,11 @@ struct EditProfileView: View {
                     .disabled(saving || !isValid)
                 }
             }
-            .onAppear { populate() }
+            .onAppear { populateIfNeeded() }
+            .onChange(of: currentUser.profile?.id) { _ in populateIfNeeded() }
+            .onChange(of: countryCode) { newCountry in
+                if didPopulate && newCountry != currentUser.profile?.countryCode { city = "" }
+            }
         }
         .preferredColorScheme(.dark)
     }
@@ -125,14 +143,24 @@ struct EditProfileView: View {
         let cleanNickname = nickname.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if cleanName.count < 2 || cleanName.lowercased() == "user" || cleanName.lowercased() == "x5" { return false }
         if cleanNickname.range(of: "^[a-z0-9_]{3,}$", options: .regularExpression) == nil { return false }
-        return bio.count <= 500
+        let cleanCity = city.trimmingCharacters(in: .whitespacesAndNewlines)
+        return bio.count <= 500 && !countryCode.isEmpty && cleanCity.count >= 2
+    }
+
+    private func populateIfNeeded() {
+        guard !didPopulate else { return }
+        populate()
     }
 
     private func populate() {
+        showInHub = activateSpecialistOnOpen
         guard let p = currentUser.profile else { return }
+        didPopulate = true
         name = p.name ?? ""
         nickname = p.nickname ?? ""
         bio = p.bio ?? ""
+        countryCode = p.countryCode ?? "KZ"
+        city = p.city ?? ""
         if let s = p.socialLinks {
             instagram = s.instagram ?? ""
             telegram = s.telegram ?? ""
@@ -143,13 +171,17 @@ struct EditProfileView: View {
             facebook = s.facebook ?? ""
         }
         pickedCategories = Set(p.specialistCategory ?? [])
-        showInHub = p.showInHub ?? false
+        showInHub = activateSpecialistOnOpen || (p.showInHub ?? false)
     }
 
     private func save() async {
-        guard let token = auth.accessToken else { return }
         saving = true
+        errorMessage = nil
         defer { saving = false }
+        guard let token = await auth.freshAccessToken() else {
+            errorMessage = loc.t("onb_session_expired")
+            return
+        }
 
         let socials: [String: String?] = [
             "instagram": nilIfEmpty(instagram),
@@ -160,20 +192,28 @@ struct EditProfileView: View {
             "linkedin":  nilIfEmpty(linkedin),
             "facebook":  nilIfEmpty(facebook)
         ]
+        let cleanCategories = Array(pickedCategories)
+        let cleanShowInHub = showInHub && !cleanCategories.isEmpty
 
         var fields: [String: AnyEncodable] = [
             "name": AnyEncodable(name.trimmingCharacters(in: .whitespacesAndNewlines)),
             "nickname": AnyEncodable(nickname.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()),
             "bio": AnyEncodable(nilIfEmpty(bio)),
             "social_links": AnyEncodable(socials),
-            "specialist_category": AnyEncodable(Array(pickedCategories)),
-            "show_in_hub": AnyEncodable(showInHub)
+            "country_code": AnyEncodable(countryCode),
+            "city": AnyEncodable(city.trimmingCharacters(in: .whitespacesAndNewlines)),
+            "specialist_category": AnyEncodable(cleanCategories),
+            "show_in_hub": AnyEncodable(cleanShowInHub)
         ]
-        // Auto-set role to specialist when toggling Show in Hub on for the first time
-        if showInHub && (currentUser.profile?.userRole ?? "").isEmpty {
+        // Auto-set role only after actual specialist categories are selected.
+        if cleanShowInHub {
             fields["user_role"] = AnyEncodable("specialist")
+            fields["is_public"] = AnyEncodable(true)
         }
-        await currentUser.patchMany(fields, accessToken: token)
+        guard await currentUser.patchMany(fields, accessToken: token) else {
+            errorMessage = currentUser.error ?? loc.t("onb_save_failed")
+            return
+        }
         X5Feedback.success()
         dismiss()
     }
@@ -188,24 +228,19 @@ private struct CategoriesPicker: View {
     @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
     @Binding var selected: Set<String>
+    private let maxPickedCategories = 8
 
     var body: some View {
         List {
             ForEach(HubCategories.all) { cat in
-                Button {
-                    X5Feedback.selection()
-                    toggle(cat.id)
-                } label: {
-                    HStack {
-                        Label(cat.labelEn, systemImage: HubCategories.symbol(for: cat.id))
-                        Spacer()
-                        if selected.contains(cat.id) {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(.accentColor)
-                        }
-                    }
+                Toggle(isOn: categoryBinding(for: cat.id)) {
+                    Label(HubCategories.label(for: cat.id, language: loc.current),
+                          systemImage: HubCategories.symbol(for: cat.id))
+                        .foregroundColor(.white)
                 }
-                .foregroundColor(.primary)
+                .tint(.accentColor)
+                .disabled(!selected.contains(cat.id) && selected.count >= maxPickedCategories)
+                .listRowBackground(selected.contains(cat.id) ? Color.accentColor.opacity(0.12) : Color.white.opacity(0.04))
             }
         }
         .scrollContentBackground(.hidden)
@@ -223,8 +258,18 @@ private struct CategoriesPicker: View {
         }
     }
 
-    private func toggle(_ id: String) {
-        if selected.contains(id) { selected.remove(id) }
-        else if selected.count < 3 { selected.insert(id) }
+    private func categoryBinding(for id: String) -> Binding<Bool> {
+        Binding {
+            selected.contains(id)
+        } set: { isSelected in
+            X5Feedback.selection()
+            if isSelected {
+                if selected.count < maxPickedCategories {
+                    selected.insert(id)
+                }
+            } else {
+                selected.remove(id)
+            }
+        }
     }
 }

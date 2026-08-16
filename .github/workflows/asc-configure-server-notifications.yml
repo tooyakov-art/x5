@@ -1,0 +1,52 @@
+name: ASC configure server notifications
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: HTTPS App Store Server Notifications V2 endpoint
+        required: true
+        default: https://afwznqjpshybmqhlewmy.supabase.co/functions/v1/app-store-notifications
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    environment: app-store-production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --require-hashes -r .github/requirements/asc-requirements.lock
+      - name: Verify configuration contract
+        run: >-
+          python -m unittest
+          scripts/tests/test_asc_configure_server_notifications.py
+      - name: Confirm public webhook rejects an invalid Apple signature
+        env:
+          APP_STORE_NOTIFICATIONS_URL: ${{ inputs.server_url }}
+        run: |
+          status=$(curl --silent --show-error --output /tmp/apple-hook-response \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header 'Content-Type: application/json' \
+            --data '{"signedPayload":"invalid"}' \
+            "$APP_STORE_NOTIFICATIONS_URL")
+          if [ "$status" != "400" ] && [ "$status" != "422" ]; then
+            printf 'Webhook preflight returned HTTP %s\n' "$status"
+            cat /tmp/apple-hook-response
+            exit 1
+          fi
+      - name: Configure Production and Sandbox V2 URLs
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+          APP_STORE_NOTIFICATIONS_URL: ${{ inputs.server_url }}
+        run: python scripts/asc_configure_server_notifications.py

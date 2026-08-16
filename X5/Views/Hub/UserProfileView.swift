@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 
 /// Public profile — same hero language as the main profile, with public actions.
 struct UserProfileView: View {
@@ -8,6 +8,7 @@ struct UserProfileView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var chats = ChatsService()
 
     @State private var profile: UserProfile?
@@ -18,12 +19,12 @@ struct UserProfileView: View {
     @State private var portfolioCount: Int = 0
     @State private var isFollowing = false
     @State private var followBusy = false
-    @State private var followersCount: Int?
-    @State private var followingCount: Int?
+    @State private var followCounts: ProfileFollowCounts?
     @State private var isRefreshing = false
 
     private var baseURL: URL { X5Config.supabaseBaseURL }
     private var anonKey: String { X5Config.supabaseAnonKey }
+    private let followService = ProfileFollowService()
     private var heroHeight: CGFloat { max(UIScreen.main.bounds.height * 0.78, 640) }
     private var profileContentWidth: CGFloat { min(UIScreen.main.bounds.width - 32, 390) }
 
@@ -32,10 +33,9 @@ struct UserProfileView: View {
             VStack(spacing: 18) {
                 coverHeader
                 VStack(spacing: 16) {
-                    bioBlock
-                    categoryChips
-                    socialButtons
+                    publicBioCard
                     PortfolioGrid(userId: userId, canEdit: false)
+                    publicSpecialistCard
                 }
                 .frame(maxWidth: profileContentWidth)
                 .frame(maxWidth: .infinity)
@@ -62,9 +62,8 @@ struct UserProfileView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Button { dismiss() } label: {
                     Image(systemName: "chevron.left")
+                        .font(.system(size: 20, weight: .semibold))
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
                 .accessibilityLabel("Back")
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -84,9 +83,8 @@ struct UserProfileView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
+                        .font(.system(size: 20, weight: .semibold))
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
             }
         }
         .alert(loc.t("hub_block_user_title"), isPresented: $confirmBlock) {
@@ -99,12 +97,25 @@ struct UserProfileView: View {
             Text(loc.t("hub_block_user_message"))
         }
         .task {
+            chats.configureAccessTokenProvider(auth: auth)
             if isMe {
                 NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
                 dismiss()
                 return
             }
             await load()
+        }
+        // Refresh server counts after returning from another app/device path.
+        // A task keyed to ScenePhase has view-bound cancellation semantics.
+        .task(id: scenePhase) {
+            guard scenePhase == .active, !isMe else { return }
+            await loadFollowState()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .x5FollowStateDidChange)
+        ) { note in
+            guard !followBusy, followEventAffectsDisplayedProfile(note) else { return }
+            Task { await loadFollowState() }
         }
         .sheet(item: $navigatingChat) { chat in
             NavigationStack { ChatThreadView(chat: chat) }
@@ -166,7 +177,7 @@ struct UserProfileView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.72)
                             .shadow(color: .black.opacity(0.5), radius: 10, x: 0, y: 4)
-                        if (profile?.hasActiveVerifiedBadge ?? (fallback?.isVerified == true)) {
+                        if (profile?.hasActiveVerifiedBadge ?? fallback?.hasActiveVerifiedBadge ?? false) {
                             VerifiedChip(size: 18)
                         }
                     }
@@ -179,26 +190,9 @@ struct UserProfileView: View {
 
                     actionRow
 
-                    HStack(spacing: 6) {
-                        if (profile?.plan ?? fallback?.plan) == "pro" || isMe {
-                            Text("PRO")
-                                .font(.system(size: 10, weight: .heavy))
-                                .foregroundColor(.black)
-                                .tracking(0.8)
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(Color.accentColor)
-                                .clipShape(Capsule())
-                        }
-                        Text("#\(profile?.signupNumber ?? 505)")
-                            .font(.system(size: 10, weight: .heavy))
-                            .tracking(0.8)
-                            .foregroundColor(.white.opacity(0.6))
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Color.white.opacity(0.06))
-                            .clipShape(Capsule())
-                    }
-
                     statsRow
+
+                    ProfileSocialLinksStrip(items: socialItems)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 28)
@@ -219,37 +213,51 @@ struct UserProfileView: View {
             Button {
                 Task { await toggleFollow() }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: 7) {
                     if followBusy {
-                        ProgressView().tint(.white)
+                        ProgressView()
+                            .tint(.black)
+                            .scaleEffect(0.78)
                     } else {
                         Image(systemName: isFollowing ? "checkmark" : "plus")
                     }
                     Text(isFollowing ? loc.t("profile_following_action") : loc.t("profile_follow_action"))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
                 }
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(size: 14, weight: .heavy))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(Color.white)
+                .clipShape(Capsule())
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(.white)
-            .foregroundStyle(.black)
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
+            .layoutPriority(2)
             .disabled(isMe || followBusy || auth.accessToken == nil)
 
             Button(action: openChat) {
-                HStack(spacing: 8) {
+                HStack(spacing: 7) {
                     Image(systemName: openingChat ? "ellipsis" : "bubble.left.and.bubble.right.fill")
                     Text(loc.t("tab_chats"))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
                 }
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(size: 14, weight: .heavy))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(Color.white.opacity(0.22))
+                .clipShape(Capsule())
             }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-            .tint(.white)
-            .foregroundStyle(.white)
+            .buttonStyle(.plain)
+            .frame(width: 112)
             .disabled(isMe || openingChat || auth.accessToken == nil)
         }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - 3 колонки статистики
@@ -262,77 +270,79 @@ struct UserProfileView: View {
         }
     }
 
-    private var followingValue: String { followingCount.map(String.init) ?? "—" }
-    private var followersValue: String { followersCount.map(String.init) ?? "—" }
+    private var followingValue: String { followCounts.map { "\($0.following)" } ?? "—" }
+    private var followersValue: String { followCounts.map { "\($0.followers)" } ?? "—" }
     private var creationsValue: String { "\(portfolioCount)" }
 
-    private var bioBlock: some View {
-        Group {
-            if let bio = profile?.bio ?? fallback?.bio, !bio.isEmpty {
-                Text(bio)
-                    .font(.system(size: 14))
-                    .foregroundColor(.white.opacity(0.78))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18)
-                    .padding(.top, 14)
-            }
+    @ViewBuilder
+    private var publicBioCard: some View {
+        if let bio = profile?.bio ?? fallback?.bio, !bio.isEmpty {
+            Text(bio)
+                .font(.system(size: 13))
+                .foregroundColor(.white.opacity(0.75))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
         }
     }
 
     @ViewBuilder
-    private var categoryChips: some View {
+    private var publicSpecialistCard: some View {
         let cats = profile?.specialistCategory ?? fallback?.specialistCategory ?? []
         if !cats.isEmpty {
-            FlowLayout(spacing: 6) {
-                ForEach(cats, id: \.self) { id in
-                    Text(HubCategories.label(for: id))
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text(loc.t("profile_specialist").uppercased())
+                        .font(.system(size: 11, weight: .bold))
+                        .tracking(1.4)
+                        .foregroundColor(.white.opacity(0.45))
+                    Spacer()
+                    Text(loc.t("profile_on_hub"))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.accentColor)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(Color.accentColor.opacity(0.12))
-                        .clipShape(Capsule())
+                }
+
+                FlowLayout(spacing: 6) {
+                    ForEach(cats.prefix(6), id: \.self) { id in
+                        Text(HubCategories.label(for: id, language: loc.current))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.accentColor)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.accentColor.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(14)
+            .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
         }
     }
 
-    @ViewBuilder
-    private var socialButtons: some View {
+    private var socialItems: [ProfileSocialLinkItem] {
         let links = profile?.socialLinks ?? fallback?.socialLinks
-        if let links {
-            HStack(spacing: 8) {
-                if let v = links.telegram, !v.isEmpty {
-                    SocialLink(brand: .telegram, url: makeTelegram(v))
-                }
-                if let v = links.whatsapp, !v.isEmpty {
-                    SocialLink(brand: .whatsapp, url: makeWhatsApp(v))
-                }
-                if let v = links.instagram, !v.isEmpty {
-                    SocialLink(brand: .instagram, url: makeInstagram(v))
-                }
-                if let v = links.youtube, !v.isEmpty, let u = URL(string: v) {
-                    SocialLink(brand: .youtube, url: u)
-                }
-                if let v = links.tiktok, !v.isEmpty, let u = URL(string: v) {
-                    SocialLink(brand: .tiktok, url: u)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
-        }
+        guard let links, hasSocialLinks(links) else { return [] }
+        return makeSocialItems(from: links)
+    }
+
+    private func hasSocialLinks(_ links: SocialLinks) -> Bool {
+        !(links.telegram ?? "").isEmpty ||
+        !(links.whatsapp ?? "").isEmpty ||
+        !(links.instagram ?? "").isEmpty ||
+        !(links.youtube ?? "").isEmpty ||
+        !(links.tiktok ?? "").isEmpty ||
+        !(links.linkedin ?? "").isEmpty ||
+        !(links.facebook ?? "").isEmpty
     }
 
     // MARK: - Helpers
 
     private var displayName: String {
-        profile?.displayName ?? fallback?.name ?? fallback?.nickname ?? "X5"
+        profile?.displayName ?? fallback?.name ?? fallback?.nickname ?? "X five marketing"
     }
 
     private var isMe: Bool { auth.userId == userId }
-    private var profileShareText: String { "X5: \(displayName)" }
+    private var profileShareText: String { "X five marketing: \(displayName)" }
 
     private func openChat() {
         guard let me = auth.userId else { return }
@@ -350,7 +360,7 @@ struct UserProfileView: View {
 
     private func reportUser() {
         let subject = "Report user \(userId)"
-        let body = "Hi X5 team,\n\nI'd like to report this user. Please review their content.\n\nUser ID: \(userId)\n"
+        let body = "Hi X five marketing team,\n\nI'd like to report this user. Please review their content.\n\nUser ID: \(userId)\n"
         let to = "appreview@x5studio.app"
         let s = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let b = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
@@ -373,7 +383,10 @@ struct UserProfileView: View {
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "id", value: "eq.\(userId)"),
-            URLQueryItem(name: "select", value: "*")
+            URLQueryItem(
+                name: "select",
+                value: "id,name,nickname,avatar,bio,services,plan,social_links,user_role,specialist_category,show_in_hub,is_public,signup_number,language,last_seen,is_verified,verified_until"
+            )
         ]
         var request = URLRequest(url: components.url!)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -386,12 +399,15 @@ struct UserProfileView: View {
     }
 
     private func loadFollowState() async {
-        async let followers = countFollowers(column: "following_id", value: userId)
-        async let following = countFollowers(column: "follower_id", value: userId)
-        followersCount = await followers
-        followingCount = await following
+        let token = await auth.freshAccessToken()
+        if let counts = try? await followService.loadCounts(
+            userId: userId,
+            accessToken: token
+        ) {
+            followCounts = counts
+        }
 
-        guard let me = auth.userId, me != userId else { return }
+        guard let me = auth.userId, me != userId, let token else { return }
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/followers"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "follower_id", value: "eq.\(me)"),
@@ -400,34 +416,11 @@ struct UserProfileView: View {
         ]
         var request = URLRequest(url: components.url!)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        if let token = await auth.freshAccessToken() { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let (data, _) = try? await URLSession.shared.data(for: request),
            let rows = try? JSONDecoder().decode([[String: String]].self, from: data) {
             isFollowing = !rows.isEmpty
         }
-    }
-
-    private func countFollowers(column: String, value: String) async -> Int? {
-        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/followers"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: column, value: "eq.\(value)"),
-            URLQueryItem(name: "select", value: "follower_id")
-        ]
-        var request = URLRequest(url: components.url!)
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("count=exact", forHTTPHeaderField: "Prefer")
-        if let (data, response) = try? await URLSession.shared.data(for: request) {
-            if let http = response as? HTTPURLResponse,
-               let range = http.value(forHTTPHeaderField: "Content-Range"),
-               let total = range.split(separator: "/").last.map(String.init),
-               let n = Int(total) {
-                return n
-            }
-            if let rows = try? JSONDecoder().decode([[String: String]].self, from: data) {
-                return rows.count
-            }
-        }
-        return nil
     }
 
     private func toggleFollow() async {
@@ -448,7 +441,12 @@ struct UserProfileView: View {
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 500
                 guard status < 300 else { return }
                 isFollowing = false
-                followersCount = max((followersCount ?? 1) - 1, 0)
+                if var counts = followCounts {
+                    counts.followers = max(counts.followers - 1, 0)
+                    followCounts = counts
+                }
+                postFollowStateChange(followerId: me)
+                await loadFollowState()
             }
         } else {
             var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/followers"))
@@ -462,15 +460,35 @@ struct UserProfileView: View {
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 500
                 guard status < 300 else { return }
                 isFollowing = true
-                followersCount = (followersCount ?? 0) + 1
+                if var counts = followCounts {
+                    counts.followers += 1
+                    followCounts = counts
+                }
+                postFollowStateChange(followerId: me)
+                await loadFollowState()
             }
         }
+    }
+
+    private func postFollowStateChange(followerId: String) {
+        NotificationCenter.default.post(name: .x5FollowStateDidChange, object: nil, userInfo: [
+            "follower_id": followerId,
+            "following_id": userId
+        ])
+    }
+
+    private func followEventAffectsDisplayedProfile(_ note: Notification) -> Bool {
+        let followerId = note.userInfo?["follower_id"] as? String
+        let followingId = note.userInfo?["following_id"] as? String
+        return followerId?.caseInsensitiveCompare(userId) == .orderedSame ||
+            followingId?.caseInsensitiveCompare(userId) == .orderedSame
     }
 
     private func loadPortfolioCount() async {
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/portfolio_items"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "user_id", value: "eq.\(userId)"),
+            URLQueryItem(name: "moderation_status", value: "eq.approved"),
             URLQueryItem(name: "select", value: "id")
         ]
         var request = URLRequest(url: components.url!)
@@ -488,20 +506,27 @@ struct UserProfileView: View {
         }
     }
 
-    private func makeTelegram(_ raw: String) -> URL? {
-        if raw.hasPrefix("http") { return URL(string: raw) }
-        let user = raw.replacingOccurrences(of: "@", with: "")
-        return URL(string: "https://t.me/\(user)")
+    private func makeSocialItems(from links: SocialLinks) -> [ProfileSocialLinkItem] {
+        [
+            socialItem(id: "instagram", label: "Instagram", brand: .instagram, raw: links.instagram, fallbackHost: "https://instagram.com/"),
+            socialItem(id: "tiktok", label: "TikTok", brand: .tiktok, raw: links.tiktok, fallbackHost: "https://www.tiktok.com/@"),
+            socialItem(id: "telegram", label: "Telegram", brand: .telegram, raw: links.telegram, fallbackHost: "https://t.me/"),
+            socialItem(id: "whatsapp", label: "WhatsApp", brand: .whatsapp, raw: links.whatsapp, fallbackHost: "https://wa.me/", digitsOnly: true),
+            socialItem(id: "youtube", label: "YouTube", brand: .youtube, raw: links.youtube, fallbackHost: "https://youtube.com/"),
+            socialItem(id: "linkedin", label: "LinkedIn", brand: .linkedin, raw: links.linkedin, fallbackHost: "https://linkedin.com/in/"),
+            socialItem(id: "facebook", label: "Facebook", brand: .facebook, raw: links.facebook, fallbackHost: "https://facebook.com/")
+        ].compactMap { $0 }
     }
-    private func makeWhatsApp(_ raw: String) -> URL? {
-        if raw.hasPrefix("http") { return URL(string: raw) }
-        let digits = raw.filter("0123456789".contains)
-        return URL(string: "https://wa.me/\(digits)")
-    }
-    private func makeInstagram(_ raw: String) -> URL? {
-        if raw.hasPrefix("http") { return URL(string: raw) }
-        let user = raw.replacingOccurrences(of: "@", with: "")
-        return URL(string: "https://instagram.com/\(user)")
+
+    private func socialItem(id: String, label: String, brand: SocialBrand, raw: String?, fallbackHost: String, digitsOnly: Bool = false) -> ProfileSocialLinkItem? {
+        let value = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        if value.hasPrefix("http"), let url = URL(string: value) {
+            return ProfileSocialLinkItem(id: id, label: label, brand: brand, url: url)
+        }
+        let cleaned = digitsOnly ? value.filter("0123456789".contains) : value.replacingOccurrences(of: "@", with: "")
+        guard !cleaned.isEmpty else { return nil }
+        return ProfileSocialLinkItem(id: id, label: label, brand: brand, url: URL(string: fallbackHost + cleaned))
     }
 }
 
@@ -563,23 +588,6 @@ private struct PublicStatBubble: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .x5ClearGlass(cornerRadius: 14, highlight: 0.10)
-    }
-}
-
-private struct SocialLink: View {
-    let brand: SocialBrand
-    let url: URL?
-
-    var body: some View {
-        Button {
-            if let url { UIApplication.shared.open(url) }
-        } label: {
-            SocialBrandIcon(brand, size: 22)
-                .frame(width: 40, height: 40)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(url == nil)
     }
 }
 
