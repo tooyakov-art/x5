@@ -264,19 +264,19 @@ struct HomeView: View {
     private var trendItems: [NativeHomeTrend] {
         [
             NativeHomeTrend(
-                id: "strawberry",
-                title: "Измена клубнички",
-                subtitle: "С бананом • мультсериал",
-                assetName: "HomeTrendLiveVideo",
-                motion: .video(.bundled(resourceName: "HomeTrendStrawberry")),
-                action: .liveFruits
+                id: "original-animation",
+                title: "AI-анимация",
+                subtitle: "Новый ролик скоро",
+                assetName: "",
+                motion: .placeholder(.animation),
+                action: .videoGeneration
             ),
             NativeHomeTrend(
-                id: "tokayev",
-                title: "С Токаевым",
-                subtitle: "Видео с президентом",
-                assetName: "HomeTrendPost",
-                motion: .video(.bundled(resourceName: "HomeTrendTokayev")),
+                id: "original-effects",
+                title: "Видеоэффекты",
+                subtitle: "Новый ролик скоро",
+                assetName: "",
+                motion: .placeholder(.effects),
                 action: .videoGeneration
             ),
             NativeHomeTrend(
@@ -397,6 +397,12 @@ private struct NativeHomeTrend: Identifiable {
 
 private enum NativeHomeTrendMotion {
     case video(HomeMotionSource)
+    case placeholder(NativeHomeTrendPlaceholderKind)
+}
+
+private enum NativeHomeTrendPlaceholderKind {
+    case animation
+    case effects
 }
 
 private struct NativeHomeBusiness: Identifiable {
@@ -590,6 +596,61 @@ private struct NativeHomeTrendCard: View {
                 isActive: true,
                 isUserInitiated: false
             )
+        case .placeholder(let kind):
+            NativeHomeTrendPlaceholder(kind: kind)
+        }
+    }
+}
+
+private struct NativeHomeTrendPlaceholder: View {
+    let kind: NativeHomeTrendPlaceholderKind
+
+    @State private var pulses = false
+
+    private var colors: [Color] {
+        switch kind {
+        case .animation:
+            return [Color(red: 0.20, green: 0.07, blue: 0.37), .purple, .pink]
+        case .effects:
+            return [Color(red: 0.02, green: 0.10, blue: 0.21), .blue, .cyan]
+        }
+    }
+
+    private var symbol: String {
+        switch kind {
+        case .animation: return "sparkles.tv"
+        case .effects: return "wand.and.stars"
+        }
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+
+            Circle()
+                .stroke(.white.opacity(0.24), lineWidth: 1)
+                .frame(width: 92, height: 92)
+                .scaleEffect(pulses ? 1.08 : 0.82)
+                .opacity(pulses ? 1 : 0.55)
+
+            Image(systemName: symbol)
+                .font(.system(size: 35, weight: .medium))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.35), radius: 12, y: 8)
+
+            Text("X5 ORIGINAL")
+                .font(.system(size: 7, weight: .black, design: .rounded))
+                .tracking(0.5)
+                .foregroundStyle(X5Style.blue)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(.black.opacity(0.42), in: RoundedRectangle(cornerRadius: 6))
+                .padding(8)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                pulses = true
+            }
         }
     }
 }

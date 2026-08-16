@@ -17,19 +17,25 @@
 
 ## Release trend videos
 
-The first two Trend cards use the exact Instagram Reels selected by the X5 owner/client on 2026-08-16. They were downloaded once for the requested native release, stripped of audio, transcoded to H.264 Main/yuv420p with fast-start metadata, and bundled so playback does not depend on Instagram availability. The strawberry landscape Reel is preserved in full over a blurred vertical canvas; the Tokayev Reel keeps its original vertical composition.
+The first two Trend cards deliberately use code-native X5 placeholders. The
+previous unapproved external Reels, their hashes, URLs, files, and poster frames
+were removed on 2026-08-16 because commercial rights to the depicted people
+were not verified.
 
 | Card | Source | Bundled file | SHA-256 |
 |---|---|---|---|
-| Измена клубнички | `https://www.instagram.com/reel/DXoWkuziCX6/` | `HomeTrendStrawberry.mp4` | `4cc823b67dff5bea295c6d4bc4c6e068658b2634bde96e3cd50b3e8dc537af71` |
-| С Токаевым | `https://www.instagram.com/reel/C8RAdTZtCoT/` | `HomeTrendTokayev.mp4` | `02fa21f1b95048e2fc407bb41a76326b0f78e35fdea6783e0f7188360afd332d` |
+| AI-анимация | code-native X5 placeholder | no bundled media | n/a |
+| Видеоэффекты | code-native X5 placeholder | no bundled media | n/a |
 | Карточки WB | `ai-stylist.mp4` | `HomeTrendAIStylist.mp4` | `ff0fa0fa1805af7e09d72cd1940d6b920a950233cb59f9eed8d6b32b386fa8d7` |
 | Со знаменитостью | `face-swap.mp4` | `HomeTrendFaceSwap.mp4` | `4e7a3fd2eb6a2517487a883cee0a30243173a0687abaca75f65bebdab0f5a75a` |
 
-- Current runtime boundary: `Измена клубнички` and `С Токаевым` autoplay these exact muted clips when visible. Their fallback posters are frames from the same files (SHA-256 `291072e6405b73bb01e41e7324fa0c8774365eb7a1f19dc62ad9fb48b4f9a41e` and `ee198590238b378e65f36ea812cf6dba030b0b6438ad7196f14f3b5032df81e5`). The unrelated `HomeTrendTransitions` and `HomeTrendLipSync` files were removed from the app bundle. Reduce Motion, Low Power Mode and inactive-app states pause playback and show the matching poster.
+- Current runtime boundary: unapproved external reels never load. The first two
+  cards animate only SwiftUI shapes and SF Symbols. Remaining approved previews
+  pause with Reduce Motion, Low Power Mode, or an inactive app.
 
 - Delivery base: `https://afwznqjpshybmqhlewmy.supabase.co/storage/v1/object/public/videos/home`
-- Release delivery: all four visible previews are bundled under `X5/Resources/HomeMotion`, so every Trend preview works without a network request.
+- Release delivery: approved playable previews are bundled under
+  `X5/Resources/HomeMotion`; placeholders need no network request.
 - Existing code provenance: X5 web `src/views/HomeView.tsx` defines the same bucket and names it as the Home video source.
 - Provider rights: Higgsfield's current Terms of Use, section 4.4, state that
   Higgsfield does not claim ownership of a user's outputs and does not restrict
@@ -46,7 +52,8 @@ The first two Trend cards use the exact Instagram Reels selected by the X5 owner
   The OpenGraph pages and posters were inspected on 2026-08-05, but Instagram
   did not expose durable video files or a reuse license. Neither Reel is
   downloaded, bundled, proxied, or redistributed.
-- Release authorization boundary: the project owner explicitly directed X5 to use the two selected Reels in the app. This records the implementation instruction, not a transfer of copyright or third-party likeness rights; those rights remain the owner's release responsibility.
+- Release authorization boundary: no external Reel is accepted from an example
+  alone. Exact approved media and commercial rights confirmation are required.
 - Performance: only visible cards are eligible for playback; every preview pauses off-screen, in the background, with Reduce Motion, or in Low Power Mode.
 - Accessibility: each preview has a native button label and remains usable with Reduce Motion or failed video decoding.
 - Maintenance: content posters remain the decode fallback. Bundled resource
@@ -61,7 +68,9 @@ The first two Trend cards use the exact Instagram Reels selected by the X5 owner
 - Direction: premium black, navy, violet, and cyan campaign imagery matching the approved client reference.
 - Prompt restrictions: no text, no buttons, no app UI, no navigation, no third-party logos, and no watermarks.
 - Rights: generated specifically for the X5 project and used subject to the applicable OpenAI account terms. No external stock assets were imported.
-- Trend posters: `HomeTrendLiveVideo.jpg`, `HomeTrendPost.jpg`, `HomeTrendNanoBanana.jpg`, and `HomeTrendInfluencer.jpg` are thumbnails from their matching playable media, so static fallback art matches the actual clip.
+- Trend posters: `HomeTrendNanoBanana.jpg` and `HomeTrendInfluencer.jpg` are
+  thumbnails from their matching playable media. Removed third-party Reel
+  posters are not retained in the asset catalog.
 
 ## Instagram feature cutout
 

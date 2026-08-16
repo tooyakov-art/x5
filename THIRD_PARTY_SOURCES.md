@@ -10,15 +10,16 @@
 
 ## Client-supplied Home artwork
 
-### Client-selected Instagram Trend clips
+### Unapproved external Trend references
 
-- Selection/instruction date: 2026-08-16.
-- Strawberry source: `https://www.instagram.com/reel/DXoWkuziCX6/`.
-- Tokayev source: `https://www.instagram.com/reel/C8RAdTZtCoT/`.
-- Bundled derivatives: `HomeTrendStrawberry.mp4` and `HomeTrendTokayev.mp4`.
-- Transform: audio removed; H.264/yuv420p fast-start transcode. The strawberry Reel is placed over a blurred vertical canvas without removing its original frame; the Tokayev Reel retains its vertical frame.
-- Use: muted, looping Home Trend previews and matching poster frames.
-- Rights boundary: the X5 owner/client expressly instructed the app team to use these specific Reels. This project record is not evidence of a copyright assignment or endorsement by Instagram, the uploaders, or depicted people; public-release clearance remains the owner's responsibility.
+- Removal date: 2026-08-16.
+- Two externally sourced Reels and their poster frames were removed from every
+  release target because rights to the depicted people were not verified.
+- Runtime replacement: code-native animated X5 placeholders without third-party
+  faces, names, logos, or media.
+- Release rule: a replacement clip may be bundled only after the project owner
+  supplies the exact approved source and confirms commercial likeness and media
+  rights.
 
 ### Nano Banana + GPT Image trend card
 
