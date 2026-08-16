@@ -43,14 +43,14 @@ class HomeMotionSourceTests(unittest.TestCase):
             'url.path.hasPrefix("/storage/v1/object/public/videos/home/")',
             loop,
         )
-        self.assertIn("let videoSource: HomeMotionSource", home)
+        self.assertIn("case video(HomeMotionSource)", home)
         for name in (
-            "HomeTrendTransitions",
-            "HomeTrendLipSync",
             "HomeTrendAIStylist",
             "HomeTrendFaceSwap",
         ):
             self.assertIn(name, home)
+        self.assertNotIn('resourceName: "HomeTrendTransitions"', home)
+        self.assertNotIn('resourceName: "HomeTrendLipSync"', home)
         self.assertNotIn("HomeMotionURLs", home)
         self.assertNotIn("source: .remote(url: item.videoURL)", home)
         for forbidden in (
@@ -69,6 +69,17 @@ class HomeMotionSourceTests(unittest.TestCase):
         self.assertNotIn("@State private var activeTrendVideoID: String?", source)
         self.assertNotIn("activeTrendVideoID == item.id", source)
         self.assertNotIn("isMotionActive: item.showsPlay", source)
+
+    def test_client_reference_cards_animate_their_own_artwork(self):
+        source = HOME_VIEW.read_text(encoding="utf-8")
+
+        self.assertEqual(source.count("motion: .referencePoster"), 2)
+        self.assertIn("private struct HomeReferenceMotionPhoto", source)
+        self.assertIn("TimelineView(", source)
+        self.assertIn("accessibilityReduceMotion", source)
+        self.assertIn("scenePhase != .active", source)
+        self.assertNotIn('resourceName: "HomeTrendTransitions"', source)
+        self.assertNotIn('resourceName: "HomeTrendLipSync"', source)
 
     def test_trend_autoplay_respects_motion_and_power_preferences(self):
         home = HOME_VIEW.read_text(encoding="utf-8")

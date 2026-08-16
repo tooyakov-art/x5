@@ -317,7 +317,7 @@ struct TaskDetailView: View {
             if let acceptedMessage = await chats.sendText(
                 chatId: chat.id,
                 currentUserId: me,
-                text: "Принял отклик по задаче «\(task.title)». Давай начнем.",
+                text: "Принял отклик по заданию «\(task.title)». Давай начнем.",
                 accessToken: token
             ) {
                 rows.append(acceptedMessage)

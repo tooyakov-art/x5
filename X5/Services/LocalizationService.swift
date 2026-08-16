@@ -144,7 +144,7 @@ extension LocalizationService {
             "tool_status": "СТАТУС",
             "tool_coming_soon": "В разработке — скоро",
             "tool_what_it_does": "ЧТО БУДЕТ ДЕЛАТЬ",
-            "task_section": "Задача",
+            "task_section": "Задание",
             "task_budget_category": "Бюджет и категория",
             "task_budget": "Бюджет",
             "task_budget_placeholder": "Бюджет (например 50 000 ₸)",
@@ -241,15 +241,15 @@ extension LocalizationService {
             // Hub
             "hub_title": "Hub",
             "hub_specialists": "Специалисты",
-            "hub_tasks": "Задачи",
+            "hub_tasks": "Задания",
             "hub_post": "Пост",
-            "hub_create_task": "Создать задачу",
+            "hub_create_task": "Создать задание",
             "hub_add_portfolio": "Добавить портфолио",
             "hub_become_specialist": "Стать специалистом",
             "hub_no_specialists": "Пока нет специалистов",
             "hub_no_specialists_sub": "Загляни позже — Hub наполняется.",
-            "hub_no_tasks": "Нет открытых задач",
-            "hub_no_tasks_sub": "Когда предприниматели добавят задачи — они появятся здесь.",
+            "hub_no_tasks": "Нет открытых заданий",
+            "hub_no_tasks_sub": "Когда предприниматели добавят задания — они появятся здесь.",
             "hub_send_message": "Написать сообщение",
             "hub_all": "Все",
             "hub_tasks_by_categories": "Задания по категориям",
@@ -341,7 +341,7 @@ extension LocalizationService {
             "chats_empty_title": "Пока нет переписок",
             "chats_empty_sub": "Открой Hub и напиши кому-нибудь.",
             "chats_no_messages": "(нет сообщений)",
-            "chats_task": "Задача:",
+            "chats_task": "Задание:",
             "chats_message_placeholder": "Сообщение…",
             "chats_send": "Отправить",
             "chats_view_profile": "тапни, чтобы открыть профиль",
@@ -559,7 +559,7 @@ extension LocalizationService {
             "app_lock_passcode_fallback": "Введи код-пароль",
 
             // Notifications
-            "notif_empty_desc": "Когда кто-то ответит на твою задачу, примет твоё предложение или напишет в чат — появится здесь.",
+            "notif_empty_desc": "Когда кто-то ответит на твоё задание, примет твоё предложение или напишет в чат — появится здесь.",
 
             // Hub report/block
             "hub_report_user": "Пожаловаться",
@@ -568,7 +568,7 @@ extension LocalizationService {
             "hub_block_user_title": "Заблокировать пользователя?",
             "hub_block_author_title": "Заблокировать автора?",
             "hub_block_user_message": "Контент этого пользователя больше не будет показываться.",
-            "hub_block_author_message": "Задачи и сообщения этого автора больше не будут показываться.",
+            "hub_block_author_message": "Задания и сообщения этого автора больше не будут показываться.",
             "hub_open_profile": "Открыть профиль",
 
             // Hub task detail
@@ -577,9 +577,9 @@ extension LocalizationService {
             "hub_deadline": "Дедлайн",
             "hub_responses_label": "ОТКЛИКИ",
             "hub_no_responses": "Откликов пока нет.",
-            "hub_author_notice": "Это твоя задача — отклики выше, можешь принять одного.",
+            "hub_author_notice": "Это твоё задание — отклики выше, можешь принять одного.",
             "hub_response_sent": "Твой отклик отправлен. Ждём, пока автор примет.",
-            "hub_task_closed": "Задача закрыта для новых откликов.",
+            "hub_task_closed": "Задание закрыто для новых откликов.",
             "hub_respond_to_task": "Откликнуться",
             "hub_accepted": "ПРИНЯТ",
 
@@ -628,7 +628,7 @@ extension LocalizationService {
             "onb_pick_categories": "Выбери до 8 категорий",
             "onb_bio_label": "Короткое био (по желанию)",
             "onb_bio_placeholder": "напр. 7 лет в performance-маркетинге для SaaS",
-            "onb_entrepreneur_note": "Ты сможешь публиковать задачи в Hub и сразу писать специалистам.",
+            "onb_entrepreneur_note": "Ты сможешь публиковать задания в Hub и сразу писать специалистам.",
             "onb_continue": "Продолжить",
             "onb_finish": "Готово",
             "onb_saving": "Сохраняем…",

@@ -131,7 +131,7 @@ struct HubView: View {
             } message: {
                 Text(chatError ?? "")
             }
-            .alert("Задача не открылась", isPresented: Binding(
+            .alert("Задание не открылось", isPresented: Binding(
                 get: { taskOpenError != nil },
                 set: { if !$0 { taskOpenError = nil } }
             )) {
@@ -803,7 +803,7 @@ struct HubView: View {
         guard let token = await auth.freshAccessToken(),
               let task = await service.loadTask(id: taskID, accessToken: token)
         else {
-            taskOpenError = "Задача недоступна или была удалена."
+            taskOpenError = "Задание недоступно или было удалено."
             deepLinkRouter.consumeHubTask(id: taskID)
             return
         }
