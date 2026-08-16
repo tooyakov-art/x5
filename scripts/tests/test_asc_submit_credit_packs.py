@@ -331,7 +331,7 @@ class CreditPackSubmissionTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn('EXPECTED_VERSION: "1.1.6"', workflow)
-        self.assertIn('EXPECTED_BUILD: "193"', workflow)
+        self.assertIn('EXPECTED_BUILD: "220"', workflow)
         self.assertIn(
             "python scripts/asc_submit_credit_packs.py --action submit",
             workflow,

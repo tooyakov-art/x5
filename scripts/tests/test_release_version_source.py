@@ -62,7 +62,7 @@ class ReleaseVersionSourceTests(unittest.TestCase):
             submit_workflow,
         )
         self.assertIn(
-            'EXPECTED_BUILD: "193"',
+            'EXPECTED_BUILD: "220"',
             submit_workflow,
         )
         self.assertIn(
