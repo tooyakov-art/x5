@@ -2,10 +2,19 @@ export const VIDEO_RESULT_SIGNED_URL_TTL_SECONDS = 15 * 60;
 export const VIDEO_START_IMAGE_SIGNED_URL_TTL_SECONDS = 15 * 60;
 export const MAX_START_IMAGE_BYTES = 8 * 1024 * 1024;
 export const MAX_VIDEO_RESULT_BYTES = 50 * 1024 * 1024;
-export const VIDEO_CREDIT_COSTS = Object.freeze({
-  5: 650,
-  10: 1200,
+export const CUSTOMER_PRICE_MULTIPLIER = 2;
+export const VIDEO_PROVIDER_COST_CREDITS = Object.freeze({
+  5: 325,
+  10: 600,
 });
+export const VIDEO_CREDIT_COSTS = Object.freeze(
+  Object.fromEntries(
+    Object.entries(VIDEO_PROVIDER_COST_CREDITS).map(([duration, cost]) => [
+      duration,
+      cost * CUSTOMER_PRICE_MULTIPLIER,
+    ]),
+  ),
+);
 export const VIDEO_GENERATION_MODELS = Object.freeze([
   "auto",
   "seedance-1.5-pro",

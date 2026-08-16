@@ -45,8 +45,6 @@ class HomeMotionSourceTests(unittest.TestCase):
         )
         self.assertIn("case video(HomeMotionSource)", home)
         for name in (
-            "HomeTrendStrawberry",
-            "HomeTrendTokayev",
             "HomeTrendAIStylist",
             "HomeTrendFaceSwap",
         ):
@@ -72,17 +70,14 @@ class HomeMotionSourceTests(unittest.TestCase):
         self.assertNotIn("activeTrendVideoID == item.id", source)
         self.assertNotIn("isMotionActive: item.showsPlay", source)
 
-    def test_client_reference_cards_play_their_verified_reels(self):
+    def test_unapproved_reference_cards_use_x5_owned_placeholders(self):
         source = HOME_VIEW.read_text(encoding="utf-8")
 
-        self.assertIn(
-            'motion: .video(.bundled(resourceName: "HomeTrendStrawberry"))',
-            source,
-        )
-        self.assertIn(
-            'motion: .video(.bundled(resourceName: "HomeTrendTokayev"))',
-            source,
-        )
+        self.assertIn("motion: .placeholder(.animation)", source)
+        self.assertIn("motion: .placeholder(.effects)", source)
+        self.assertIn("X5 ORIGINAL", source)
+        self.assertNotIn("HomeTrendStrawberry", source)
+        self.assertNotIn("HomeTrendTokayev", source)
         self.assertNotIn("referencePoster", source)
         self.assertNotIn("HomeReferenceMotionPhoto", source)
         self.assertNotIn('resourceName: "HomeTrendTransitions"', source)
@@ -114,8 +109,6 @@ class HomeMotionSourceTests(unittest.TestCase):
             {
                 "HomeMotionStudio.mp4",
                 "HomeMotionFruit.mp4",
-                "HomeTrendStrawberry.mp4",
-                "HomeTrendTokayev.mp4",
                 "HomeTrendAIStylist.mp4",
                 "HomeTrendFaceSwap.mp4",
             },
@@ -125,8 +118,6 @@ class HomeMotionSourceTests(unittest.TestCase):
         expected_videos = {
             "HomeMotionStudio.mp4": 1_500_000,
             "HomeMotionFruit.mp4": 1_500_000,
-            "HomeTrendStrawberry.mp4": 1_100_000,
-            "HomeTrendTokayev.mp4": 2_300_000,
             "HomeTrendAIStylist.mp4": 300_000,
             "HomeTrendFaceSwap.mp4": 100_000,
         }
@@ -154,10 +145,9 @@ class HomeMotionSourceTests(unittest.TestCase):
         self.assertIn("debug-only", sources.lower())
         self.assertIn("X5-owned", provenance)
         self.assertIn("Higgsfield", provenance)
-        self.assertIn("DXoWkuziCX6", provenance)
-        self.assertIn("C8RAdTZtCoT", provenance)
-        self.assertIn("HomeTrendStrawberry.mp4", provenance)
-        self.assertIn("HomeTrendTokayev.mp4", provenance)
+        self.assertIn("unapproved external reels", provenance.lower())
+        self.assertNotIn("DXoWkuziCX6", provenance)
+        self.assertNotIn("C8RAdTZtCoT", provenance)
         self.assertIn("HomeTrendTransitions", provenance)
         self.assertIn("removed from the app bundle", provenance)
         self.assertIn("face-swap.mp4", provenance)

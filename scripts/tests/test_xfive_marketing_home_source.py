@@ -93,8 +93,8 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         for text in (
             "Стартап чат",
             "Hub",
-            "Измена клубнички",
-            "С Токаевым",
+            "AI-анимация",
+            "Видеоэффекты",
             "Карточки WB",
             "Со знаменитостью",
             "Обложки YouTube",
