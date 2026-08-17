@@ -122,7 +122,7 @@ struct VideoGeneratorView: View {
     @State private var prompt = ""
     @State private var aspectRatio = "9:16"
     @State private var durationSeconds = 5
-    @State private var model: VideoGenerationModel = .seedance15Pro
+    @State private var model: VideoGenerationModel = .seedance20Fast
     @State private var resolution: VideoGenerationResolution = .hd
     @State private var generateAudio = true
     @State private var currentJob: VideoGenerationJob?
@@ -148,6 +148,12 @@ struct VideoGeneratorView: View {
     private let localStore = VideoGenerationLocalStore()
     private let aspectRatios = ["9:16", "16:9"]
     private let durations = [5, 10]
+
+    private var availableResolutions: [VideoGenerationResolution] {
+        model == .seedance20Fast
+            ? [.standard, .hd]
+            : VideoGenerationResolution.allCases
+    }
 
     var body: some View {
         NavigationStack {
@@ -228,7 +234,10 @@ struct VideoGeneratorView: View {
                 beginStartImagePreparation(item)
             }
             .onChange(of: model) { selectedModel in
-                generateAudio = selectedModel == .seedance15Pro
+                generateAudio = selectedModel != .automatic
+                if selectedModel == .seedance20Fast && resolution == .fullHD {
+                    resolution = .hd
+                }
             }
             .onChange(of: currentJob?.resultURL) { resultURL in
                 guard let resultURL else {
@@ -433,7 +442,7 @@ struct VideoGeneratorView: View {
 
                 settingRow(title: "Качество", systemImage: "4k.tv") {
                     Picker("Качество", selection: $resolution) {
-                        ForEach(VideoGenerationResolution.allCases) { option in
+                        ForEach(availableResolutions) { option in
                             Text(option.title).tag(option)
                         }
                     }
@@ -448,7 +457,7 @@ struct VideoGeneratorView: View {
                         .foregroundColor(.white.opacity(0.82))
                 }
                 .tint(Color.accentColor)
-                .disabled(model != .seedance15Pro)
+                .disabled(model == .automatic)
 
                 Divider().overlay(Color.white.opacity(0.08))
 

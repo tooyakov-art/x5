@@ -49,7 +49,7 @@ type VideoJobRow = {
   status: "queued" | "rendering" | "completed" | "failed";
   progress: number;
   cost_credits: number;
-  provider_name: "fal" | "google" | "openai";
+  provider_name: "byteplus" | "fal" | "google" | "openai";
   provider_kind: "text" | "image";
   provider_request_id?: string;
   input_object_path?: string;
@@ -66,6 +66,7 @@ const serviceRoleKey = requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY");
 const videoReconcileCronSecret = requiredEnvironment(
   "VIDEO_RECONCILE_CRON_SECRET",
 );
+const bytePlusKey = Deno.env.get("ARK_API_KEY") || "";
 const falKey = Deno.env.get("FAL_KEY") || "";
 const googleKey = Deno.env.get("GOOGLE_API_KEY") ||
   Deno.env.get("GEMINI_API_KEY") || "";
@@ -164,6 +165,7 @@ async function reconcileJob(
   try {
     provider = selectVideoProviderByName(row.provider_name, {
       falKey,
+      bytePlusKey,
       googleKey,
       openAIKey,
     });
@@ -238,7 +240,7 @@ async function finalizeResultForJob({
   loadResult,
 }: {
   row: VideoJobRow;
-  providerName: "fal" | "google" | "openai";
+  providerName: "byteplus" | "fal" | "google" | "openai";
   loadResult: () => Promise<ProviderVideoResult> | ProviderVideoResult;
 }) {
   return await finalizeVideoGenerationResult({
@@ -279,6 +281,7 @@ const userHandler = createGenerateVideoHandler({
   selectProvider: (normalized: JsonRecord) =>
     selectVideoProvider({
       model: String(normalized.model || "auto"),
+      bytePlusKey,
       falKey,
       googleKey,
       openAIKey,
@@ -291,6 +294,7 @@ const userHandler = createGenerateVideoHandler({
       : null;
     return fallbackName
       ? selectVideoProviderByName(fallbackName, {
+        bytePlusKey,
         falKey,
         googleKey,
         openAIKey,

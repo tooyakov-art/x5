@@ -372,6 +372,12 @@ function isAllowedProviderHost(rawHostname, providerName) {
       hostname === "googleusercontent.com" ||
       hostname.endsWith(".googleusercontent.com");
   }
+  if (providerName === "byteplus") {
+    return hostname === "bytepluses.com" ||
+      hostname.endsWith(".bytepluses.com") ||
+      hostname === "volces.com" ||
+      hostname.endsWith(".volces.com");
+  }
   return false;
 }
 

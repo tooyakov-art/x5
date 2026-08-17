@@ -179,7 +179,24 @@ bundled in the app.
 - Integration: server-side HTTP contract adapted to the documented queue
   submit/status/result API. `FAL_KEY` is never included in the iOS binary.
 
-### fal ByteDance Seedance 1.5 Pro
+### BytePlus ModelArk Seedance 2.0 Fast and 1.5 Pro
+
+- Official create-task API:
+  https://docs.byteplus.com/en/docs/modelark/1520757
+- Official task-status API:
+  https://docs.byteplus.com/en/docs/ModelArk/1521309
+- Official pricing:
+  https://docs.byteplus.com/docs/ModelArk/1099320
+- Retrieved: 2026-08-17
+- Use: explicit 5- or 10-second text-to-video and image-to-video jobs through
+  ByteDance's international ModelArk endpoint. Seedance 2.0 Fast is the default
+  direct model with 480p/720p output and native audio. Legacy 1.5 requests stay
+  supported by the same official provider.
+- Integration: X5 polls the official asynchronous `cgt-*` task, copies the
+  allowlisted MP4 result into private Supabase Storage, and keeps the existing
+  exact-once credit and refund ledger. `ARK_API_KEY` is server-only.
+
+### fal ByteDance Seedance 1.5 Pro (legacy adapter)
 
 - Official combined text-to-video and image-to-video API reference:
   https://fal.ai/docs/model-api-reference/video-generation-api/bytedance-seedance-v1.5-pro
@@ -188,13 +205,10 @@ bundled in the app.
 - Official image-to-video API:
   https://fal.ai/models/fal-ai/bytedance/seedance/v1.5/pro/image-to-video/api
 - Retrieved: 2026-07-26
-- Use: explicit 5- or 10-second Seedance text-to-video and image-to-video jobs
-  with 480p, 720p, or 1080p output and optional native audio.
-- Integration: the existing server-side fal queue, signed webhook, private input
-  and exact-once credit flow is reused. X5 always sends
-  `enable_safety_checker: true`; that setting is not client-controlled. An
-  explicit Seedance request never silently falls back to a different model.
-  `FAL_KEY` remains server-only and is never included in the iOS binary.
+- Use: retained only for historical jobs already submitted through fal. New
+  explicit Seedance requests are routed directly to BytePlus.
+- Integration: the signed webhook and reconciliation code stays available so
+  accepted historical jobs can finish without a duplicate request or debit.
 
 ### Google Gemini Omni Flash
 

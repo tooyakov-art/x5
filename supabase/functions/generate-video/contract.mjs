@@ -18,6 +18,7 @@ export const VIDEO_CREDIT_COSTS = Object.freeze(
 export const VIDEO_GENERATION_MODELS = Object.freeze([
   "auto",
   "seedance-1.5-pro",
+  "seedance-2.0-fast",
 ]);
 export const VIDEO_GENERATION_RESOLUTIONS = Object.freeze([
   "480p",
@@ -92,9 +93,12 @@ export function normalizeVideoGenerationRequest(body) {
   if (!SUPPORTED_RESOLUTIONS.has(resolution)) {
     throw new VideoRequestError("unsupported_resolution");
   }
+  if (model === "seedance-2.0-fast" && resolution === "1080p") {
+    throw new VideoRequestError("unsupported_resolution");
+  }
 
   const generateAudio = body.generate_audio == null
-    ? model === "seedance-1.5-pro"
+    ? model.startsWith("seedance-")
     : body.generate_audio;
   if (typeof generateAudio !== "boolean") {
     throw new VideoRequestError("invalid_generate_audio");

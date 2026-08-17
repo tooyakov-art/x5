@@ -66,6 +66,7 @@ struct VideoGenerationStartImage: Equatable {
 }
 
 enum VideoGenerationModel: String, CaseIterable, Identifiable {
+    case seedance20Fast = "seedance-2.0-fast"
     case seedance15Pro = "seedance-1.5-pro"
     case automatic = "auto"
 
@@ -73,6 +74,8 @@ enum VideoGenerationModel: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .seedance20Fast:
+            return "Seedance 2.0 Fast · официальный"
         case .seedance15Pro:
             return "Seedance 1.5 Pro"
         case .automatic:

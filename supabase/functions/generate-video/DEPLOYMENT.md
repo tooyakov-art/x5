@@ -15,8 +15,9 @@ Required server-side environment:
 - `OPENAI_API_KEY` for text/image safety checks before any credit claim and the
   server-side OpenAI Videos fallback
 - at least one video provider:
-  - `FAL_KEY` for Kling V3 Standard automatic routing and the explicit
-    Seedance 1.5 Pro option
+  - `ARK_API_KEY` for explicit Seedance 2.0 Fast and backward-compatible
+    Seedance 1.5 Pro through ByteDance's official BytePlus ModelArk API
+  - `FAL_KEY` for Kling V3 Standard automatic routing only
   - `GOOGLE_API_KEY` or `GEMINI_API_KEY` for Gemini Omni Flash
   - `OPENAI_API_KEY` for Sora 2
 - Before applying the follow-up cron-secret migration, Supabase Vault must
@@ -34,7 +35,7 @@ Required server-side environment:
   configures a non-URI JWT audience. The secure default is the exact dynamic
   callback URI.
 
-Never put `OPENAI_API_KEY`, `FAL_KEY`, the Google/Gemini key, or
+Never put `OPENAI_API_KEY`, `ARK_API_KEY`, `FAL_KEY`, the Google/Gemini key, or
 `SUPABASE_SERVICE_ROLE_KEY` in an iOS/Android build, repository, log, response,
 or analytics event.
 
@@ -91,17 +92,18 @@ Before enabling the client:
     5-second option maps to a 4-second fallback clip, and the 10-second option
     maps to 8 seconds. Confirm completion is copied from the authenticated
     `/v1/videos/{id}/content` response into private X5 Storage.
-16. Submit explicit Seedance 1.5 Pro text-to-video and image-to-video jobs for
-    both supported aspect ratios. Confirm fal receives only 5/10-second,
-    480p/720p/1080p allowlisted values, uses `image_url` for a private signed
-    start image, and always receives `enable_safety_checker: true`.
+16. Submit explicit Seedance 2.0 Fast text-to-video and image-to-video jobs for
+    both supported aspect ratios. Confirm BytePlus receives only 5/10-second
+    and 480p/720p allowlisted values, uses `content.image_url` for a private
+    signed start image, and returns a `cgt-*` task whose result is copied from
+    the allowlisted official `*.volces.com` host into private X5 Storage.
 17. Confirm Seedance native audio follows the authenticated boolean request and
     that changing model, resolution, or audio with the same idempotency key
     returns an idempotency conflict instead of reusing a different semantic
     job.
-18. Remove `FAL_KEY` in staging while leaving Google/OpenAI configured and
+18. Remove `ARK_API_KEY` in staging while leaving Fal/Google/OpenAI configured and
     request Seedance explicitly. Confirm the request fails before the credit
-    claim. Restore `FAL_KEY`, force a definitive fal `429`, and confirm the
+    claim. Restore `ARK_API_KEY`, force a definitive BytePlus `429`, and confirm the
     explicit Seedance job refunds exactly once without switching to another
     model.
 

@@ -34,8 +34,8 @@ final class VideoGenerationServiceTests: XCTestCase {
             prompt: "A cinematic coffee advertisement",
             aspectRatio: "9:16",
             durationSeconds: 5,
-            model: .seedance15Pro,
-            resolution: .fullHD,
+            model: .seedance20Fast,
+            resolution: .hd,
             generateAudio: true,
             idempotencyKey: "22222222-2222-4222-8222-222222222222",
             accessToken: "access-token"
@@ -60,8 +60,8 @@ final class VideoGenerationServiceTests: XCTestCase {
         )
         XCTAssertEqual(payload["duration_seconds"] as? Int, 5)
         XCTAssertEqual(payload["aspect_ratio"] as? String, "9:16")
-        XCTAssertEqual(payload["model"] as? String, "seedance-1.5-pro")
-        XCTAssertEqual(payload["resolution"] as? String, "1080p")
+        XCTAssertEqual(payload["model"] as? String, "seedance-2.0-fast")
+        XCTAssertEqual(payload["resolution"] as? String, "720p")
         XCTAssertEqual(payload["generate_audio"] as? Bool, true)
         XCTAssertNil(payload["start_image"])
     }

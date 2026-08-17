@@ -410,7 +410,7 @@ async function submitToProvider(
   claimToken,
   deps,
 ) {
-  const startImageUrl = provider.name === "fal" && inputObject
+  const startImageUrl = ["fal", "byteplus"].includes(provider.name) && inputObject
     ? (await deps.signStartImage(inputObject))?.signedUrl || null
     : null;
   const submitted = await provider.adapter.submit({

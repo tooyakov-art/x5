@@ -24,6 +24,13 @@ const cronSecretMigration = cronSecretMigrationNames.length === 1
     "utf8",
   )
   : "";
+const bytePlusMigration = readFileSync(
+  new URL(
+    "../migrations/20260817150000_direct_byteplus_seedance.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
 const edgeUrl = new URL(
   "../functions/generate-video/index.ts",
   import.meta.url,
@@ -49,6 +56,10 @@ test("video jobs are owned, RLS protected, and expose no prompts or provider URL
   );
   assert.match(migration, /provider_name text not null/);
   assert.match(migration, /provider_name in \('fal', 'google'\)/);
+  assert.match(
+    bytePlusMigration,
+    /provider_name in \('byteplus', 'fal', 'google', 'openai'\)/,
+  );
   assert.match(
     migration,
     /alter table public\.video_generation_jobs enable row level security/,
@@ -191,6 +202,7 @@ test("edge contract authenticates users and keeps provider credentials server-si
     "../functions/generate-video/lifecycle.mjs",
     "../functions/generate-video/storage.mjs",
     "../functions/generate-video/fal-provider.mjs",
+    "../functions/generate-video/byteplus-provider.mjs",
     "../functions/generate-video/google-provider.mjs",
     "../functions/generate-video/openai-provider.mjs",
     "../functions/generate-video/video-provider.mjs",
@@ -199,6 +211,7 @@ test("edge contract authenticates users and keeps provider credentials server-si
     "\n",
   );
   assert.match(edge, /Deno\.env\.get\("FAL_KEY"\)/);
+  assert.match(edge, /Deno\.env\.get\("ARK_API_KEY"\)/);
   assert.match(edge, /Deno\.env\.get\("(GOOGLE_API_KEY|GEMINI_API_KEY)"\)/);
   assert.match(edge, /verifyUser/);
   assert.match(edge, /req\.method === "GET"/);
@@ -206,6 +219,7 @@ test("edge contract authenticates users and keeps provider credentials server-si
   assert.match(edge, /claim_video_generation_job/);
   assert.match(edge, /switch_video_generation_provider/);
   assert.match(edge, /FalKlingProvider/);
+  assert.match(edge, /BytePlusSeedanceProvider/);
   assert.match(edge, /GoogleGeminiVideoProvider/);
   assert.match(edge, /OpenAIVideoProvider/);
   assert.match(edge, /selectVideoProvider/);
@@ -314,6 +328,7 @@ test("deployment notes require no-JWT gateway mode because the handler verifies 
   assert.equal(existsSync(deploymentUrl), true);
   const deployment = readFileSync(deploymentUrl, "utf8");
   assert.match(deployment, /--no-verify-jwt/);
+  assert.match(deployment, /ARK_API_KEY/);
   assert.match(deployment, /FAL_KEY/);
   assert.match(deployment, /OPENAI_API_KEY/);
   assert.match(deployment, /SUPABASE_SERVICE_ROLE_KEY/);
