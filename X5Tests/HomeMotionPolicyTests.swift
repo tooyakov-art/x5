@@ -24,8 +24,20 @@ final class HomeMotionPolicyTests: XCTestCase {
                 posterAssetName: "HomeMotionStudioPoster"
             )
         )
-        XCTAssertNil(HomeMotionCatalog.asset(for: "HomeTrendLiveVideo"))
-        XCTAssertNil(HomeMotionCatalog.asset(for: "HomeTrendPost"))
+        XCTAssertEqual(
+            HomeMotionCatalog.asset(for: "HomeTrendLiveVideo"),
+            HomeMotionAsset(
+                source: .bundled(resourceName: "HomeTrendStrawberry"),
+                posterAssetName: "HomeTrendLiveVideo"
+            )
+        )
+        XCTAssertEqual(
+            HomeMotionCatalog.asset(for: "HomeTrendPost"),
+            HomeMotionAsset(
+                source: .bundled(resourceName: "HomeTrendTokayev"),
+                posterAssetName: "HomeTrendPost"
+            )
+        )
         XCTAssertNil(HomeMotionCatalog.asset(for: "HomeCoverYoutube"))
     }
 

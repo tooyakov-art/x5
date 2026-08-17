@@ -26,6 +26,16 @@ enum HomeMotionCatalog {
                 source: .bundled(resourceName: "HomeMotionFruit"),
                 posterAssetName: "HomeMotionFruitPoster"
             )
+        case "HomeTrendLiveVideo":
+            return HomeMotionAsset(
+                source: .bundled(resourceName: "HomeTrendStrawberry"),
+                posterAssetName: "HomeTrendLiveVideo"
+            )
+        case "HomeTrendPost":
+            return HomeMotionAsset(
+                source: .bundled(resourceName: "HomeTrendTokayev"),
+                posterAssetName: "HomeTrendPost"
+            )
         default:
             return nil
         }
