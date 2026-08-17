@@ -157,10 +157,23 @@ final class HubTaskBrowseStateTests: XCTestCase {
     }
 
     func testProfessionOrderStartsWithMarketingAndIsSharedByHub() {
-        let expectedStart = ["marketing", "smm", "targeting", "seo", "sales", "copy", "ugc"]
+        let expectedStart = ["marketing", "smm", "targeting", "context_ads", "seo", "sales", "copy", "ugc"]
 
         XCTAssertEqual(Array(HubCategories.all.prefix(expectedStart.count)).map(\.id), expectedStart)
         XCTAssertEqual(HubCategories.hubDisplayOrder, HubCategories.all)
+    }
+
+    func testRequestedProfessionsAreAvailableAndCrossedOutOnesAreAbsent() {
+        let available = Set(HubCategories.all.map(\.id))
+        let requested = Set([
+            "context_ads", "videographer", "camera_operator", "journalist", "correspondent",
+            "operator", "producer", "director", "actor_film", "actor_ads",
+            "actor_music_video", "accountant"
+        ])
+        let crossedOut = Set(["administrator", "artist", "manager", "editor", "screenwriter"])
+
+        XCTAssertTrue(requested.isSubset(of: available))
+        XCTAssertTrue(crossedOut.isDisjoint(with: available))
     }
 
     func testSavedProfileCategoriesFollowCanonicalProfessionOrder() {
