@@ -58,7 +58,7 @@ test("voice backend and exact-once migration exist", () => {
   assert.equal(fs.existsSync(sqlIntegrationTestPath), true);
 });
 
-test("FAL_KEY and ElevenLabs endpoint remain server-side", () => {
+test("official MiniMax and ElevenLabs credentials remain server-side", () => {
   assert.equal(fs.existsSync(path.join(functionDirectory, "index.ts")), true);
   assert.equal(
     fs.existsSync(path.join(functionDirectory, "fal-provider.mjs")),
@@ -75,7 +75,7 @@ test("FAL_KEY and ElevenLabs endpoint remain server-side", () => {
     "utf8",
   );
   const provider = fs.readFileSync(
-    path.join(functionDirectory, "fal-provider.mjs"),
+    path.join(functionDirectory, "direct-provider.mjs"),
     "utf8",
   );
   const swift = fs.readFileSync(
@@ -83,9 +83,30 @@ test("FAL_KEY and ElevenLabs endpoint remain server-side", () => {
     "utf8",
   );
 
-  assert.match(edge, /Deno\.env\.get\("FAL_KEY"\)/);
-  assert.match(provider, /fal-ai\/elevenlabs\/tts\/eleven-v3/);
-  assert.doesNotMatch(swift, /FAL_KEY|fal\.run|elevenlabs/i);
+  assert.match(edge, /Deno\.env\.get\("MINIMAX_API_KEY"\)/);
+  assert.match(edge, /Deno\.env\.get\("ELEVENLABS_API_KEY"\)/);
+  assert.match(provider, /https:\/\/api\.minimax\.io\/v1\/t2a_v2/);
+  assert.match(provider, /https:\/\/api\.elevenlabs\.io\/v1\/text-to-speech/);
+  assert.doesNotMatch(
+    swift,
+    /MINIMAX_API_KEY|ELEVENLABS_API_KEY|api\.minimax\.io|api\.elevenlabs\.io/i,
+  );
+});
+
+test("direct provider migration accepts new manifests and preserves legacy Fal", () => {
+  const sql = fs.readFileSync(
+    path.join(
+      root,
+      "supabase",
+      "migrations",
+      "20260817173000_direct_voice_providers.sql",
+    ),
+    "utf8",
+  );
+  assert.match(sql, /provider' = 'minimax'[\s\S]*model' = 'speech-2\.8-turbo'/);
+  assert.match(sql, /provider' = 'elevenlabs'[\s\S]*model' = 'eleven_v3'/);
+  assert.match(sql, /fal-ai\/elevenlabs\/tts\/eleven-v3/);
+  assert.match(sql, /complete_voice_generation_by_provider/);
 });
 
 test("migration provides private exact-once debit, replay, refund, and audio storage", () => {

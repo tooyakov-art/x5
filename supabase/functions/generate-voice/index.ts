@@ -1,15 +1,20 @@
-// Authenticated client entrypoint for persistent Eleven v3 voice jobs.
-// Required env: FAL_KEY, SUPABASE_URL, SUPABASE_ANON_KEY,
+// Authenticated client entrypoint for official MiniMax / ElevenLabs voice jobs.
+// Required provider env: MINIMAX_API_KEY or ELEVENLABS_API_KEY.
+// FAL_KEY is retained only for legacy queued jobs.
+// Required env: SUPABASE_URL, SUPABASE_ANON_KEY,
 // SUPABASE_SERVICE_ROLE_KEY.
 
 import { VoiceGenerationBackend } from "./backend.mjs";
 import { FalVoiceQueueProvider } from "./fal-provider.mjs";
+import { DirectVoiceProvider } from "./direct-provider.mjs";
 import { createGenerateVoiceHandler } from "./handler.mjs";
 
 const supabaseURL = requiredEnvironment("SUPABASE_URL");
 const anonKey = requiredEnvironment("SUPABASE_ANON_KEY");
 const serviceRoleKey = requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY");
 const falKey = Deno.env.get("FAL_KEY") || "";
+const minimaxKey = Deno.env.get("MINIMAX_API_KEY") || "";
+const elevenLabsKey = Deno.env.get("ELEVENLABS_API_KEY") || "";
 const backend = new VoiceGenerationBackend({
   supabaseURL,
   serviceRoleKey,
@@ -17,10 +22,16 @@ const backend = new VoiceGenerationBackend({
 const provider = falKey.trim()
   ? new FalVoiceQueueProvider({ apiKey: falKey })
   : null;
+const directProvider = minimaxKey.trim() || elevenLabsKey.trim()
+  ? new DirectVoiceProvider({ minimaxKey, elevenLabsKey })
+  : null;
 
 Deno.serve(createGenerateVoiceHandler({
   verifyUser,
-  providerConfigured: () => provider !== null,
+  providerConfigured: () => directProvider !== null || provider !== null,
+  directProviderConfigured: () => directProvider !== null,
+  generateDirect: (parameters: { input: Record<string, unknown> }) =>
+    directProvider!.generate(parameters),
   lookupGeneration: (parameters: Record<string, unknown>) =>
     backend.rpc("lookup_voice_generation_request", parameters),
   claimGeneration: (parameters: Record<string, unknown>) =>

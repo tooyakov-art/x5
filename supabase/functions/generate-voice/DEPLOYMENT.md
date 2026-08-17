@@ -11,11 +11,15 @@ Required server-only environment:
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `FAL_KEY`
+- `MINIMAX_API_KEY` (preferred official provider)
+- `ELEVENLABS_API_KEY` (optional official fallback)
+- `FAL_KEY` only while legacy queued jobs still exist
 
-No value is supplied by this repository. Confirm the fal account has billing and
-access to `fal-ai/elevenlabs/tts/eleven-v3`; never substitute a client key,
-invent a credential, or copy `FAL_KEY` into the app.
+No value is supplied by this repository. Provider keys must belong to the X5
+server environment. Never substitute a client key, invent a credential, or
+copy any provider key into the app. New jobs use MiniMax Speech 2.8 Turbo
+directly and fall back to the official ElevenLabs API only after a definitive
+MiniMax rejection. Ambiguous requests never double-submit to the fallback.
 
 Mandatory order:
 
@@ -28,8 +32,9 @@ Mandatory order:
 5. Confirm the private `voice-generation-results` bucket, service-only ledger
    RPC grants, five-minute reconciliation cron, and one-minute account cleanup
    cron.
-6. Deploy `voice-generation-webhook`, run the signed callback tests in staging,
-   and only then deploy `generate-voice` for authenticated client traffic.
+6. Deploy `voice-generation-webhook` for legacy Fal callbacks, run the signed
+   callback tests in staging, and only then deploy `generate-voice` for
+   authenticated client traffic.
 
 Deploy the authenticated client function normally:
 

@@ -1,4 +1,9 @@
 export const VOICE_MODEL = "fal-ai/elevenlabs/tts/eleven-v3";
+export const VOICE_RESULT_MODELS = Object.freeze({
+  fal: VOICE_MODEL,
+  minimax: "speech-2.8-turbo",
+  elevenlabs: "eleven_v3",
+});
 export const VOICE_OUTPUT_FORMAT = "mp3_44100_128";
 export const CUSTOMER_PRICE_MULTIPLIER = 2;
 export const VOICE_PROVIDER_COST_PER_1000_CHARACTERS = 30;
@@ -128,19 +133,22 @@ export async function buildVoiceGenerationIdentity(normalized) {
   };
 }
 
-export function buildVoiceResultManifest(object) {
+export function buildVoiceResultManifest(object, result = {}) {
+  const provider = String(result.provider || "fal");
+  const model = String(result.model || VOICE_MODEL);
   if (
     !object ||
     typeof object.path !== "string" ||
     object.mimeType !== "audio/mpeg" ||
-    !/^[0-9a-f]{64}$/.test(String(object.sha256 || ""))
+    !/^[0-9a-f]{64}$/.test(String(object.sha256 || "")) ||
+    VOICE_RESULT_MODELS[provider] !== model
   ) {
     throw new Error("voice_result_object_invalid");
   }
   return {
     version: 1,
-    provider: "fal",
-    model: VOICE_MODEL,
+    provider,
+    model,
     object: {
       path: object.path,
       mimeType: object.mimeType,
@@ -153,8 +161,7 @@ export function voiceResultObject(manifest) {
   const object = manifest?.object;
   if (
     manifest?.version !== 1 ||
-    manifest?.provider !== "fal" ||
-    manifest?.model !== VOICE_MODEL ||
+    VOICE_RESULT_MODELS[manifest?.provider] !== manifest?.model ||
     !object ||
     typeof object.path !== "string" ||
     object.mimeType !== "audio/mpeg" ||
