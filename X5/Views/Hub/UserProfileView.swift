@@ -288,7 +288,9 @@ struct UserProfileView: View {
 
     @ViewBuilder
     private var publicSpecialistCard: some View {
-        let cats = profile?.specialistCategory ?? fallback?.specialistCategory ?? []
+        let cats = HubCategories.orderedIDs(
+            from: profile?.specialistCategory ?? fallback?.specialistCategory ?? []
+        )
         if !cats.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {

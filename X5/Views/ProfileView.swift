@@ -264,7 +264,7 @@ struct ProfileView: View {
                 becomeSpecialistCard
             }
             if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
-                specialistCard(cats: cats)
+                specialistCard(cats: HubCategories.orderedIDs(from: cats))
             }
             if !(currentUser.profile?.hasActiveVerifiedBadge ?? false) {
                 verifiedCard

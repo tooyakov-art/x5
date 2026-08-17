@@ -156,9 +156,17 @@ final class HubTaskBrowseStateTests: XCTestCase {
         XCTAssertEqual(HubCategories.normalizedIDs(from: ["unknown", "  "]), [])
     }
 
-    func testUGCAndSEOUseRequestedGridPositions() {
-        XCTAssertEqual(HubCategories.hubDisplayOrder.first?.id, "marketing")
-        XCTAssertEqual(HubCategories.hubDisplayOrder[3].id, "ugc")
-        XCTAssertEqual(HubCategories.hubDisplayOrder[14].id, "seo")
+    func testProfessionOrderStartsWithMarketingAndIsSharedByHub() {
+        let expectedStart = ["marketing", "smm", "targeting", "seo", "sales", "copy", "ugc"]
+
+        XCTAssertEqual(Array(HubCategories.all.prefix(expectedStart.count)).map(\.id), expectedStart)
+        XCTAssertEqual(HubCategories.hubDisplayOrder, HubCategories.all)
+    }
+
+    func testSavedProfileCategoriesFollowCanonicalProfessionOrder() {
+        XCTAssertEqual(
+            HubCategories.orderedIDs(from: ["design", "ugc", "marketing", "seo"]),
+            ["marketing", "seo", "ugc", "design"]
+        )
     }
 }

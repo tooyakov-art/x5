@@ -975,7 +975,7 @@ private struct SpecialistRow: View {
     }
 
     private var categoryLabel: String {
-        let ids = person.specialistCategory ?? []
+        let ids = HubCategories.orderedIDs(from: person.specialistCategory)
         return ids.prefix(2).map { HubCategories.label(for: $0, language: loc.current) }.joined(separator: " · ")
     }
 }
