@@ -45,6 +45,17 @@ private enum HomeLayout {
     static let cardSpacing: CGFloat = 8
 }
 
+/// One native type system for every card on Home. The hero title is the
+/// reference: other feature cards must not switch to the rounded display face.
+private enum HomeTypography {
+    static let sectionTitle = Font.system(size: 23, weight: .bold)
+    static let featureTitle = Font.system(size: 25, weight: .bold)
+    static let cardTitle = Font.system(size: 17, weight: .bold)
+    static let compactCardTitle = Font.system(size: 15, weight: .bold)
+    static let trendTitle = Font.system(size: 11, weight: .semibold)
+    static let featureSubtitle = Font.system(size: 11.5, weight: .semibold)
+}
+
 /// Native Home composition. Photography and video posters are content-only assets;
 /// labels, controls, card chrome, navigation and layout are SwiftUI views.
 struct HomeView: View {
@@ -230,7 +241,7 @@ struct HomeView: View {
     private var businessSection: some View {
         VStack(alignment: .leading, spacing: HomeLayout.cardSpacing) {
             Text("Дизайн для бизнеса")
-                .font(.system(size: 23, weight: .bold, design: .rounded))
+                .font(HomeTypography.sectionTitle)
                 .foregroundColor(.white)
                 .tracking(-0.35)
 
@@ -522,7 +533,7 @@ private struct NativeHomeHeroCard: View {
                         .foregroundColor(X5Style.blue)
 
                     Text(slide.title)
-                        .font(.system(size: 25, weight: .bold))
+                        .font(HomeTypography.featureTitle)
                         .foregroundColor(.white)
                         .lineLimit(2)
                         .minimumScaleFactor(0.78)
@@ -626,7 +637,7 @@ private struct NativeHomeTrendCard: View {
                 }
 
                 Text(item.title)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(HomeTypography.trendTitle)
                     .foregroundColor(.white.opacity(0.88))
                     .lineLimit(1)
                     .minimumScaleFactor(0.76)
@@ -683,7 +694,7 @@ private struct NativeHomeAIInfluencerFeatureCard: View {
 
                     VStack(alignment: .leading, spacing: 7) {
                         Text("AI-\nинфлюенсер")
-                            .font(.system(size: 25, weight: .heavy, design: .rounded))
+                            .font(HomeTypography.featureTitle)
                             .foregroundColor(.white)
                             .lineLimit(2)
                             .minimumScaleFactor(0.8)
@@ -896,7 +907,7 @@ private struct NativeHomeBusinessCard: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(compact ? .subheadline.weight(.bold) : .headline.weight(.bold))
+                        .font(compact ? HomeTypography.compactCardTitle : HomeTypography.cardTitle)
                         .foregroundColor(.white)
                         .lineLimit(2)
                         .minimumScaleFactor(0.78)
@@ -969,23 +980,23 @@ private struct NativeHomeVoiceCard: View {
 
                 VStack(alignment: .leading, spacing: 7) {
                     Text("AI VOICE")
-                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .font(.system(size: 9, weight: .bold))
                         .tracking(1.2)
                         .foregroundColor(X5Style.blue)
 
                     Text("Озвучка")
-                        .font(.system(size: 25, weight: .heavy, design: .rounded))
+                        .font(HomeTypography.featureTitle)
                         .foregroundColor(.white)
 
                     Text("Живые голоса для видео, рекламы и подкастов")
-                        .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                        .font(HomeTypography.featureSubtitle)
                         .foregroundColor(.white.opacity(0.74))
                         .lineLimit(2)
                         .frame(maxWidth: 220, alignment: .leading)
 
                     HStack(spacing: 6) {
                         Text("Озвучить текст")
-                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                            .font(.system(size: 10.5, weight: .bold))
 
                         Image(systemName: "arrow.right")
                             .font(.system(size: 9, weight: .bold))
@@ -1058,24 +1069,22 @@ private struct NativeHomeSalesBannerCard: View {
 
                     VStack(alignment: .leading, spacing: 7) {
                         Text("X5 • AI STUDIO")
-                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                            .font(.system(size: 8.5, weight: .bold))
                             .tracking(1.1)
                             .foregroundColor(X5Style.blue)
 
                         Text("Карточки\nтоваров")
-                            .font(.system(size: 24, weight: .heavy, design: .rounded))
+                            .font(HomeTypography.featureTitle)
                             .foregroundColor(.white)
-                            .tracking(-0.5)
-                            .lineSpacing(-2)
 
                         Text("Готовая инфографика\nдля маркетплейсов")
-                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                            .font(.system(size: 10.5, weight: .medium))
                             .foregroundColor(.white.opacity(0.70))
                             .lineSpacing(1)
 
                         HStack(spacing: 7) {
                             Text("Создать")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .font(.system(size: 11, weight: .bold))
 
                             Image(systemName: "arrow.right")
                                 .font(.system(size: 9, weight: .bold))

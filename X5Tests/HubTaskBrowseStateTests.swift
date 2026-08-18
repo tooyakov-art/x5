@@ -163,6 +163,14 @@ final class HubTaskBrowseStateTests: XCTestCase {
         XCTAssertEqual(HubCategories.hubDisplayOrder, HubCategories.all)
     }
 
+    func testSMMAndMobileContentShareOneProfession() {
+        XCTAssertEqual(
+            HubCategories.label(for: "smm", language: .ru),
+            "SMM Мобилография"
+        )
+        XCTAssertEqual(HubCategories.all.filter { $0.id == "smm" }.count, 1)
+    }
+
     func testRequestedProfessionsAreAvailableAndCrossedOutOnesAreAbsent() {
         let available = Set(HubCategories.all.map(\.id))
         let requested = Set([
@@ -174,6 +182,19 @@ final class HubTaskBrowseStateTests: XCTestCase {
 
         XCTAssertTrue(requested.isSubset(of: available))
         XCTAssertTrue(crossedOut.isDisjoint(with: available))
+    }
+
+    func testEveryHubProfessionHasItsOwnIcon() {
+        let symbols = HubCategories.all.map { HubCategories.symbol(for: $0.id) }
+
+        XCTAssertEqual(symbols.count, Set(symbols).count)
+        XCTAssertFalse(symbols.contains("questionmark.circle.fill"))
+        XCTAssertEqual(HubCategories.symbol(for: "operator"), "slider.horizontal.3")
+        XCTAssertEqual(HubCategories.symbol(for: "producer"), "person.3.fill")
+        XCTAssertNotEqual(
+            HubCategories.symbol(for: "operator"),
+            HubCategories.symbol(for: "producer")
+        )
     }
 
     func testSavedProfileCategoriesFollowCanonicalProfessionOrder() {

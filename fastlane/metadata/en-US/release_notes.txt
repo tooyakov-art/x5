@@ -16,8 +16,9 @@ and portfolio fixes in X five marketing.
 - The Verified Badge action keeps readable black text on its bright button.
 - Muted Home card previews pause offscreen, while the app is inactive or when
   Reduce Motion is enabled; static posters remain as a safe fallback.
-- AI Video adds Seedance 1.5 Pro for text/image video, 480p/720p/1080p choices
-  and optional native audio.
+- Unfinished AI Video and AI Influencer tools now show a clear In Development
+  screen and never charge credits.
 - AI Voice generates speech with ElevenLabs Eleven v3 through a protected
   server-side route.
-- Course, Hub and author-profile fixes from version 1.1.6 remain included.
+- Home cards now share one clear typography system. Every Hub profession has
+  its own icon, and SMM with mobile content is one category everywhere.

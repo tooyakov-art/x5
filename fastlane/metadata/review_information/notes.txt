@@ -1,4 +1,4 @@
-X five marketing is a creator workspace and marketplace. Version 1.1.6 build 193
+X five marketing is a creator workspace and marketplace. Version 1.1.6 build 226
 adds reliable full-length course uploads, exact task/chat notification routing,
 private chat and portfolio media, safer automatic portfolio moderation,
 AI Voice, repeatable credit packs, and the updated Home experience.
@@ -10,15 +10,15 @@ Quick test:
 1. Sign in.
 2. Home -> AI Image: enter a prompt, optionally add references, choose
    size/quantity and generate.
-3. Home -> AI Video: select Seedance 1.5 Pro, enter a prompt, optionally select
-   a photo, choose 480p/720p/1080p and optional native audio, then generate.
+3. Home -> AI Video or AI Influencer: both unfinished tools show a clear
+   In Development screen and do not charge credits or call a provider.
 4. Home -> AI Voice: enter text, choose voice/language/speed, generate, preview
    and share the audio.
 5. Home -> Startup Chat: ask a business question.
 6. Home -> Live Fruits: complete the fields, create/edit the three-scene
    storyboard, then generate its reference and video.
-7. Hub -> Tasks: tap "Tasks for my categories" next to All. Categories saved in
-   the signed-in profile are applied immediately.
+7. Hub: every profession has a distinct system icon. SMM and mobile content are
+   one category. The same catalog is used in onboarding, profile and tasks.
 8. CourseUP: open a course, tap the author to open that exact public profile,
    preview a lesson and buy a paid course. The two authorized developer
    accounts can select authors and manage lessons.
@@ -36,9 +36,8 @@ A static poster remains if motion cannot play.
 
 AI processing and automatic moderation:
 - AI Image uses the authenticated generate-image Supabase Edge Function.
-- AI Video first sends prompt/reference input to OpenAI Moderations. Accepted
-  Seedance 1.5 Pro requests run through the server-side fal route; credentials
-  are never included in the app.
+- AI Video and AI Influencer are release-gated until their complete generation
+  flows pass production verification. They do not call providers or use credits.
 - AI Voice sends entered text through the authenticated generate-voice Edge
   Function to the ElevenLabs Eleven v3 model via fal. Result audio is stored
   privately and returned through a short-lived signed URL.

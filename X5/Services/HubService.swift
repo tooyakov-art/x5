@@ -116,7 +116,13 @@ enum HubCategories {
     /// разработка и только после них общие бизнес-услуги.
     static let all: [HubCategory] = [
         .init(id: "marketing", emoji: "📣", labelEn: "Marketing", labelRu: "Маркетинг", labelKk: "Маркетинг"),
-        .init(id: "smm", emoji: "📱", labelEn: "SMM", labelRu: "SMM", labelKk: "SMM"),
+        .init(
+            id: "smm",
+            emoji: "📱",
+            labelEn: "SMM / Mobile content",
+            labelRu: "SMM Мобилография",
+            labelKk: "SMM Мобилография"
+        ),
         .init(id: "targeting", emoji: "🎯", labelEn: "Ads / TikTok / Telegram", labelRu: "Таргет Ads / TikTok / Telegram", labelKk: "Таргет Ads / TikTok / Telegram"),
         .init(id: "context_ads", emoji: "📈", labelEn: "Google / Yandex Ads", labelRu: "Контекст Google / Яндекс", labelKk: "Google / Яндекс контекстік жарнамасы"),
         .init(id: "seo", emoji: "🔍", labelEn: "SEO", labelRu: "SEO", labelKk: "SEO"),
@@ -258,31 +264,44 @@ enum HubCategories {
         case "marketing": return "megaphone.fill"
         case "smm": return "iphone"
         case "targeting": return "scope"
+        case "context_ads": return "rectangle.and.pencil.and.ellipsis"
         case "seo": return "magnifyingglass"
         case "sales": return "dollarsign.circle.fill"
+        case "copy": return "pencil.and.outline"
+        case "ugc": return "video.fill"
         case "design": return "paintpalette.fill"
         case "ui_ux": return "ruler"
         case "motion": return "sparkles"
         case "3d": return "cube.transparent.fill"
+        case "videographer": return "video.square.fill"
+        case "camera_operator": return "video.circle.fill"
+        case "video": return "movieclapper.fill"
+        case "photo": return "camera.fill"
+        case "animation": return "film.stack"
+        case "audio": return "waveform"
+        case "journalist": return "newspaper.fill"
+        case "correspondent": return "mic.fill"
+        case "operator": return "slider.horizontal.3"
+        case "producer": return "person.3.fill"
+        case "director": return "eye.fill"
+        case "actor_film": return "theatermasks.fill"
+        case "actor_ads": return "tv.fill"
+        case "actor_music_video": return "music.mic"
         case "web_dev": return "globe"
         case "mobile_dev": return "apps.iphone"
         case "bot_dev": return "cpu.fill"
         case "ai_ml": return "brain.head.profile"
         case "gamedev": return "gamecontroller.fill"
-        case "ugc": return "video.fill"
-        case "copy": return "pencil.and.outline"
-        case "video": return "movieclapper.fill"
-        case "photo": return "camera.fill"
-        case "audio": return "waveform"
-        case "animation": return "film.stack"
-        case "translation": return "character.book.closed.fill"
         case "consulting": return "briefcase.fill"
+        case "accountant": return "calculator.fill"
         case "finance": return "chart.line.uptrend.xyaxis"
         case "legal": return "scalemass.fill"
         case "hr": return "person.2.fill"
         case "education": return "graduationcap.fill"
         case "assistant": return "checklist"
-        default: return "wrench.and.screwdriver.fill"
+        case "translation": return "character.book.closed.fill"
+        case "other": return "wrench.and.screwdriver.fill"
+        default: return "questionmark.circle.fill"
         }
     }
 }
