@@ -140,6 +140,32 @@ jobs:
               f"/reviewSubmissions?filter[app]={app_id}&filter[platform]=IOS&include=items",
           )
           submissions = review_payload.get("data", [])
+          included = {
+              (row.get("type"), row.get("id")): row
+              for row in review_payload.get("included", [])
+          }
+
+          def submission_has_version(submission):
+              item_refs = (
+                  submission.get("relationships", {})
+                  .get("items", {})
+                  .get("data", [])
+                  or []
+              )
+              for ref in item_refs:
+                  item = included.get((ref.get("type"), ref.get("id")))
+                  if not item:
+                      continue
+                  attached_version = (
+                      item.get("relationships", {})
+                      .get("appStoreVersion", {})
+                      .get("data", {})
+                      .get("id")
+                  )
+                  if attached_version == version_id:
+                      return True
+              return False
+
           ready = [
               row
               for row in submissions
@@ -170,6 +196,7 @@ jobs:
                       print(f"READY submission: {row['id']}")
                   sys.exit("More than one READY_FOR_REVIEW submission exists")
               submission_id = ready[0]["id"]
+              selected_submission = ready[0]
               print(f"Reusing READY_FOR_REVIEW submission: {submission_id}")
           else:
               created = json_api(
@@ -187,8 +214,10 @@ jobs:
                   expected=(201,),
               )
               submission_id = created["data"]["id"]
+              selected_submission = created["data"]
               print(f"Created ReviewSubmission: {submission_id}")
 
+          if not submission_has_version(selected_submission):
               json_api(
                   "POST",
                   "/reviewSubmissionItems",
@@ -208,6 +237,8 @@ jobs:
                   expected=(201,),
               )
               print("Attached app version item")
+          else:
+              print("App version item is already attached")
 
           submitted = json_api(
               "PATCH",
