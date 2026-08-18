@@ -174,8 +174,26 @@ jobs:
               abort "Developer reject returned false." unless version.reject!
               puts "Developer rejected."
             else
-              puts "ASC does not expose a rejectable submission for this pending release; will try direct build replacement with rollback."
+              submission = version.app_store_version_submission
+              abort "Pending release has no AppStoreVersionSubmission to reject." unless submission
+              puts "ASC reports canReject=false; deleting submission #{submission.id} directly and verifying the resulting version state."
+              submission.delete!
+              puts "Developer rejection request accepted."
             end
+            editable_states = ["PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "READY_FOR_REVIEW"]
+            refreshed_state = nil
+            30.times do |index|
+              refreshed = app.get_app_store_versions(filter: { platform: "IOS" }).find do |row|
+                row.version_string == ENV.fetch("EXPECTED_VERSION")
+              end
+              abort "Version disappeared after developer rejection." unless refreshed
+              refreshed_state = refreshed.app_store_state
+              puts "Version state after developer rejection attempt #{index + 1}: #{refreshed_state}"
+              break if editable_states.include?(refreshed_state)
+              abort "Version moved into Apple review while rejecting." if refreshed_state == "IN_REVIEW"
+              sleep 10
+            end
+            abort "Version did not become editable after developer rejection: #{refreshed_state}" unless editable_states.include?(refreshed_state)
           elsif ["PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "READY_FOR_REVIEW"].include?(version.app_store_state)
             puts "Version is editable/submittable; no developer reject needed."
           elsif version.app_store_state == "WAITING_FOR_REVIEW"
