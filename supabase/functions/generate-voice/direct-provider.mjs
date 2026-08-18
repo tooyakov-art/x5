@@ -5,8 +5,16 @@ export const ELEVENLABS_MODEL = "eleven_v3";
 const MAXIMUM_AUDIO_BYTES = 20 * 1024 * 1024;
 
 const FEMALE_VOICES = new Set([
-  "Aria", "Sarah", "Laura", "River", "Charlotte", "Alice", "Matilda",
-  "Jessica", "Lily", "Rachel",
+  "Aria",
+  "Sarah",
+  "Laura",
+  "River",
+  "Charlotte",
+  "Alice",
+  "Matilda",
+  "Jessica",
+  "Lily",
+  "Rachel",
 ]);
 const MINIMAX_FEMALE = [
   "Russian_BrightHeroine",
@@ -143,7 +151,9 @@ export class DirectVoiceProvider {
     let response;
     try {
       response = await this.fetchImpl(
-        `${ELEVENLABS_ENDPOINT}/${encodeURIComponent(voiceID)}?output_format=mp3_44100_128`,
+        `${ELEVENLABS_ENDPOINT}/${
+          encodeURIComponent(voiceID)
+        }?output_format=mp3_44100_128`,
         {
           method: "POST",
           headers: {
@@ -182,7 +192,9 @@ export class DirectVoiceProvider {
       throw new DirectVoiceProviderError("elevenlabs_audio_too_large");
     }
     const audioBytes = new Uint8Array(await response.arrayBuffer());
-    if (audioBytes.byteLength <= 3 || audioBytes.byteLength > MAXIMUM_AUDIO_BYTES) {
+    if (
+      audioBytes.byteLength <= 3 || audioBytes.byteLength > MAXIMUM_AUDIO_BYTES
+    ) {
       throw new DirectVoiceProviderError("elevenlabs_audio_invalid");
     }
     const headerID = response.headers.get("request-id") || crypto.randomUUID();
@@ -207,9 +219,18 @@ function minimaxVoice(voice) {
 
 function languageBoost(code) {
   const map = {
-    ru: "Russian", en: "English", uk: "Ukrainian", de: "German",
-    fr: "French", es: "Spanish", it: "Italian", pt: "Portuguese",
-    tr: "Turkish", pl: "Polish", ja: "Japanese", ko: "Korean",
+    ru: "Russian",
+    en: "English",
+    uk: "Ukrainian",
+    de: "German",
+    fr: "French",
+    es: "Spanish",
+    it: "Italian",
+    pt: "Portuguese",
+    tr: "Turkish",
+    pl: "Polish",
+    ja: "Japanese",
+    ko: "Korean",
   };
   return map[String(code || "").toLowerCase()] || "auto";
 }

@@ -16,10 +16,10 @@ Required server-only environment:
 - `FAL_KEY` only while legacy queued jobs still exist
 
 No value is supplied by this repository. Provider keys must belong to the X5
-server environment. Never substitute a client key, invent a credential, or
-copy any provider key into the app. New jobs use MiniMax Speech 2.8 Turbo
-directly and fall back to the official ElevenLabs API only after a definitive
-MiniMax rejection. Ambiguous requests never double-submit to the fallback.
+server environment. Never substitute a client key, invent a credential, or copy
+any provider key into the app. New jobs use MiniMax Speech 2.8 Turbo directly
+and fall back to the official ElevenLabs API only after a definitive MiniMax
+rejection. Ambiguous requests never double-submit to the fallback.
 
 Mandatory order:
 

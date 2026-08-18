@@ -65,7 +65,10 @@ test("falls back to official ElevenLabs on a definitive MiniMax rejection", asyn
   });
   const result = await provider.generate({ input });
   assert.equal(calls.length, 2);
-  assert.match(calls[1].url, /^https:\/\/api\.elevenlabs\.io\/v1\/text-to-speech\//);
+  assert.match(
+    calls[1].url,
+    /^https:\/\/api\.elevenlabs\.io\/v1\/text-to-speech\//,
+  );
   assert.equal(calls[1].options.headers["xi-api-key"], "eleven-secret");
   assert.equal(JSON.parse(calls[1].options.body).model_id, ELEVENLABS_MODEL);
   assert.equal(result.provider, "elevenlabs");
