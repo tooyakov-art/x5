@@ -295,7 +295,7 @@ struct ImageGeneratorView: View {
                         selectedSalesAngle = angle
                     } label: {
                         Label(
-                            angle.isRecommended ? "\(angle.title) · рекомендуем" : angle.title,
+                            angle.title,
                             systemImage: angle == selectedSalesAngle ? "checkmark" : "megaphone"
                         )
                     }
@@ -352,7 +352,7 @@ struct ImageGeneratorView: View {
                         selectedYouTubeMode = mode
                     } label: {
                         Label(
-                            mode.isRecommended ? "\(mode.title) · рекомендуем" : mode.title,
+                            mode.title,
                             systemImage: mode == selectedYouTubeMode ? "checkmark" : mode.icon
                         )
                     }

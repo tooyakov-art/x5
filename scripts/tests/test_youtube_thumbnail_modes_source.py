@@ -54,6 +54,13 @@ class YouTubeThumbnailModeSourceTests(unittest.TestCase):
         self.assertIn('id: "youtube"', source)
         self.assertIn('action: imageAction("youtube_cover")', source)
 
+    def test_generator_menus_do_not_show_recommendation_word(self):
+        source = GENERATOR.read_text(encoding="utf-8")
+
+        self.assertNotIn("· рекомендуем", source)
+        self.assertIn("angle.title", source)
+        self.assertIn("mode.title", source)
+
 
 if __name__ == "__main__":
     unittest.main()

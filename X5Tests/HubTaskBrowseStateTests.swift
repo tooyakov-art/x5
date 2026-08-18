@@ -157,7 +157,7 @@ final class HubTaskBrowseStateTests: XCTestCase {
     }
 
     func testProfessionOrderStartsWithMarketingAndIsSharedByHub() {
-        let expectedStart = ["marketing", "smm", "targeting", "context_ads", "seo", "sales", "copy", "ugc"]
+        let expectedStart = ["marketing", "smm", "targeting", "context_ads", "ugc", "sales", "copy", "seo"]
 
         XCTAssertEqual(Array(HubCategories.all.prefix(expectedStart.count)).map(\.id), expectedStart)
         XCTAssertEqual(HubCategories.hubDisplayOrder, HubCategories.all)
@@ -169,6 +169,13 @@ final class HubTaskBrowseStateTests: XCTestCase {
             "SMM Мобилография"
         )
         XCTAssertEqual(HubCategories.all.filter { $0.id == "smm" }.count, 1)
+    }
+
+    func testMobileDevelopmentUsesTheFullProfessionName() {
+        XCTAssertEqual(
+            HubCategories.label(for: "mobile_dev", language: .ru),
+            "Мобильная разработка"
+        )
     }
 
     func testRequestedProfessionsAreAvailableAndCrossedOutOnesAreAbsent() {
@@ -200,7 +207,7 @@ final class HubTaskBrowseStateTests: XCTestCase {
     func testSavedProfileCategoriesFollowCanonicalProfessionOrder() {
         XCTAssertEqual(
             HubCategories.orderedIDs(from: ["design", "ugc", "marketing", "seo"]),
-            ["marketing", "seo", "ugc", "design"]
+            ["marketing", "ugc", "seo", "design"]
         )
     }
 }
