@@ -10,8 +10,19 @@ final class HomeRouteTests: XCTestCase {
         XCTAssertEqual(HomeRoute.startupChat.id, "startup_chat")
         XCTAssertEqual(HomeRoute.hub.id, "hub")
         XCTAssertEqual(HomeRoute.videoGeneration.id, "video_generation")
+        XCTAssertEqual(HomeRoute.aiInfluencer.id, "ai_influencer")
         XCTAssertEqual(HomeRoute.voiceGeneration.id, "voice_generation")
         XCTAssertEqual(HomeRoute.liveFruits.id, "live_fruits")
+    }
+
+    func testOnlyUnfinishedAIRoutesAreReleaseGated() {
+        XCTAssertTrue(HomeRoute.videoGeneration.isReleaseInDevelopment)
+        XCTAssertTrue(HomeRoute.aiInfluencer.isReleaseInDevelopment)
+
+        XCTAssertFalse(HomeRoute.imageGeneration(ImageGenerationCatalog.custom).isReleaseInDevelopment)
+        XCTAssertFalse(HomeRoute.voiceGeneration.isReleaseInDevelopment)
+        XCTAssertFalse(HomeRoute.startupChat.isReleaseInDevelopment)
+        XCTAssertFalse(HomeRoute.liveFruits.isReleaseInDevelopment)
     }
 
     func testImageRoutesKeepTheirSelectedCategory() {

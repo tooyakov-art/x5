@@ -5,6 +5,7 @@ enum HomeRoute: Hashable, Identifiable {
     case startupChat
     case hub
     case videoGeneration
+    case aiInfluencer
     case voiceGeneration
     case liveFruits
 
@@ -14,8 +15,18 @@ enum HomeRoute: Hashable, Identifiable {
         case .startupChat: return "startup_chat"
         case .hub: return "hub"
         case .videoGeneration: return "video_generation"
+        case .aiInfluencer: return "ai_influencer"
         case .voiceGeneration: return "voice_generation"
         case .liveFruits: return "live_fruits"
+        }
+    }
+
+    var isReleaseInDevelopment: Bool {
+        switch self {
+        case .videoGeneration, .aiInfluencer:
+            return true
+        case .imageGeneration, .startupChat, .hub, .voiceGeneration, .liveFruits:
+            return false
         }
     }
 }
@@ -224,7 +235,7 @@ struct HomeView: View {
                 .tracking(-0.35)
 
             NativeHomeAIInfluencerFeatureCard(
-                action: { handle(.videoGeneration) }
+                action: { handle(.aiInfluencer) }
             )
             .accessibilityIdentifier("x5.home.business.ai_influencer")
 
@@ -338,6 +349,9 @@ struct HomeView: View {
         case .videoGeneration:
             DiagnosticLogger.log(event: "home_studio_video_tap")
             activeRoute = route
+        case .aiInfluencer:
+            DiagnosticLogger.log(event: "home_ai_influencer_tap")
+            activeRoute = route
         case .voiceGeneration:
             DiagnosticLogger.log(event: "home_studio_voice_tap")
             activeRoute = route
@@ -359,7 +373,10 @@ struct HomeView: View {
     @ViewBuilder
     private func sheetDestination(for route: HomeRoute) -> some View {
         switch route {
-        case .videoGeneration: VideoGeneratorView()
+        case .videoGeneration:
+            HomeFeatureInDevelopmentView(featureTitle: "Генерация видео")
+        case .aiInfluencer:
+            HomeFeatureInDevelopmentView(featureTitle: "AI-инфлюенсер")
         case .voiceGeneration: VoiceGeneratorView()
         case .startupChat: StartupChatView()
         case .liveFruits: LiveFruitsView()
@@ -374,6 +391,54 @@ struct HomeView: View {
                 if !isPresented { openImageCategory = nil }
             }
         )
+    }
+}
+
+private struct HomeFeatureInDevelopmentView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let featureTitle: String
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 18) {
+                Spacer()
+
+                Image(systemName: "hammer.fill")
+                    .font(.system(size: 34, weight: .bold))
+                    .foregroundColor(X5Style.blue)
+                    .frame(width: 80, height: 80)
+                    .background(X5Style.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(X5Style.blue.opacity(0.22), lineWidth: 1)
+                    }
+
+                Text("В разработке")
+                    .font(.title2.weight(.heavy))
+                    .foregroundColor(.white)
+
+                Text("\(featureTitle) пока недоступен. Откроем функцию после полной проверки.")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.55))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 300)
+
+                Button("Назад") { dismiss() }
+                    .font(.headline)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: 280)
+                    .frame(height: 50)
+                    .background(X5Style.blue, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .padding(.top, 8)
+
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .background { NativeHomeBackground() }
+        }
+        .preferredColorScheme(.dark)
+        .interactiveDismissDisabled(false)
     }
 }
 
@@ -592,6 +657,7 @@ private struct NativeHomeTrendCard: View {
             )
         }
     }
+
 }
 
 private struct NativeHomeAIInfluencerFeatureCard: View {
