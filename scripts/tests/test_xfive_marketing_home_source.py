@@ -74,6 +74,7 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             "case startupChat",
             "case hub",
             "case videoGeneration",
+            "case aiInfluencer",
             "case voiceGeneration",
             "case liveFruits",
         ):
@@ -85,7 +86,14 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         )
         self.assertRegex(home, r"case \.startupChat:\s+StartupChatView\(\)")
         self.assertRegex(home, r"case \.liveFruits:\s+LiveFruitsView\(\)")
-        self.assertIn("VideoGeneratorView()", home)
+        self.assertIn(
+            'HomeFeatureInDevelopmentView(featureTitle: "Генерация видео")',
+            home,
+        )
+        self.assertIn(
+            'HomeFeatureInDevelopmentView(featureTitle: "AI-инфлюенсер")',
+            home,
+        )
 
     def test_native_promos_trends_and_business_cards_are_complete(self):
         home = HOME.read_text(encoding="utf-8")
@@ -93,8 +101,8 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         for text in (
             "Стартап чат",
             "Hub",
-            "AI-анимация",
-            "Видеоэффекты",
+            "Измена клубнички",
+            "С Токаевым",
             "Карточки WB",
             "Со знаменитостью",
             "Обложки YouTube",
@@ -178,7 +186,7 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             "static let promoHeight: CGFloat = 78",
             "static let trendCardSize = CGSize(width: 112, height: 178)",
             "static let trendMediaHeight: CGFloat = 146",
-            ".font(.system(size: 11, weight: .semibold, design: .rounded))",
+            ".font(HomeTypography.trendTitle)",
             ".minimumScaleFactor(0.76)",
             ".allowsTightening(true)",
             "static let businessFeatureHeight: CGFloat = 198",
@@ -281,7 +289,9 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             "private struct NativeHomePageDots", 1
         )[0]
 
-        self.assertIn("design: .rounded", home)
+        self.assertIn("private enum HomeTypography", home)
+        self.assertIn(".font(HomeTypography.featureTitle)", home)
+        self.assertNotIn("design: .rounded", home)
         self.assertNotIn("salesLabel(", sales)
         self.assertIn("LinearGradient(", sales)
         self.assertIn("ZStack(alignment: .trailing)", sales)
