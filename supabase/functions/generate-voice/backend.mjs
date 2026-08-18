@@ -38,6 +38,16 @@ export class VoiceGenerationBackend {
     return payload;
   }
 
+  /**
+   * @param {{
+   *   audioURL?: string,
+   *   audioBytes?: Uint8Array | ArrayBuffer,
+   *   audioMimeType?: string,
+   *   userID: string,
+   *   requestKey: string,
+   *   attempt: number
+   * }} input
+   */
   async storeAudio({
     audioURL,
     audioBytes,
