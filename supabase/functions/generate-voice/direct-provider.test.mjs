@@ -21,7 +21,7 @@ test("uses official MiniMax HTTP MP3 endpoint first", async () => {
   const provider = new DirectVoiceProvider({
     minimaxKey: "mini-secret",
     elevenLabsKey: "eleven-secret",
-    fetchImpl: async (url, options) => {
+    fetchImpl: (url, options) => {
       request = { url: String(url), options };
       return Response.json({
         data: { audio: Buffer.from(mp3).toString("hex"), status: 2 },
@@ -47,7 +47,7 @@ test("falls back to official ElevenLabs on a definitive MiniMax rejection", asyn
   const provider = new DirectVoiceProvider({
     minimaxKey: "mini-secret",
     elevenLabsKey: "eleven-secret",
-    fetchImpl: async (url, options) => {
+    fetchImpl: (url, options) => {
       calls.push({ url: String(url), options });
       if (String(url).includes("minimax.io")) {
         return Response.json(
@@ -80,7 +80,7 @@ test("never double-submits to fallback after an ambiguous MiniMax transport", as
   const provider = new DirectVoiceProvider({
     minimaxKey: "mini-secret",
     elevenLabsKey: "eleven-secret",
-    fetchImpl: async () => {
+    fetchImpl: () => {
       calls += 1;
       throw new Error("timeout");
     },
