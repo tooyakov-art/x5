@@ -147,7 +147,7 @@ jobs:
 
       - name: Developer-reject pending App Store version when replacing old build
         run: |
-          ruby <<'RUBY'
+          bundle exec ruby <<'RUBY'
           require "base64"
           require "spaceship"
 
