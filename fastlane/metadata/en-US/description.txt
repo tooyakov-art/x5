@@ -4,7 +4,7 @@ Organize your portfolio, learn from courses, find specialists in Hub, create mar
 
 KEY FEATURES
 • AI Image — create logos, stories, posts, product photos, packaging concepts and other marketing visuals.
-• AI Video — turn a text prompt or selected photo into a short vertical or landscape video.
+• AI Video and AI Influencer — shown as In Development in this release; they do not spend credits or contact an AI provider yet.
 • Live Fruits — answer a short questionnaire, edit a three-scene storyboard, generate consistent frames and turn the story into a vertical video.
 • Startup Chat — work through a business idea, audience, offer, demand test and next action with an AI mentor.
 • Hub — browse specialists, filter tasks by the categories saved in your profile, post tasks and respond to client requests.
