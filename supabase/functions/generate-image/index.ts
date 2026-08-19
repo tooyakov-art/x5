@@ -21,6 +21,7 @@ import {
   normalizeGenerationRequest,
   normalizeProviderKeys,
   safeProviderErrorMessage,
+  sanitizeProviderDiagnostic,
   shouldFallbackGoogleToGPT,
   shouldRetryGoogleWithNextKey,
 } from "./economy.mjs";
@@ -298,6 +299,9 @@ Deno.serve(async (req) => {
         console.warn(JSON.stringify({
           event: "google_image_fallback",
           google_status: googleStatus,
+          google_reason: googleError instanceof Error
+            ? sanitizeProviderDiagnostic(googleError.message)
+            : "Google image generation failed",
           requested_model: normalized.model,
           fallback_provider: "gpt",
         }));
@@ -358,6 +362,15 @@ Deno.serve(async (req) => {
         { "Retry-After": "2" },
       );
     }
+    const upstreamReason = error instanceof Error
+      ? sanitizeProviderDiagnostic(error.message)
+      : "Image generation failed";
+    console.error(JSON.stringify({
+      event: "image_generation_provider_failed",
+      provider: normalized.provider,
+      model: normalized.model,
+      reason: upstreamReason,
+    }));
     const refund = await callServiceRpc("fail_image_generation_request", {
       p_user_id: user.id,
       p_request_key: identity.requestKey,

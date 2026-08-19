@@ -487,9 +487,17 @@ export function extractGoogleImageData(payload) {
 
 export function safeProviderErrorMessage(provider, _upstreamMessage = "") {
   if (provider === "google") {
-    return "Google image generation is temporarily unavailable. Please try again.";
+    return "Генерация временно недоступна. Кредиты возвращены. Повторите позже.";
   }
-  return "Image generation is temporarily unavailable. Please try again.";
+  return "Генерация временно недоступна. Кредиты возвращены. Повторите позже.";
+}
+
+export function sanitizeProviderDiagnostic(rawMessage = "") {
+  return String(rawMessage || "")
+    .replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED_GOOGLE_API_KEY]")
+    .replace(/sk-[0-9A-Za-z_-]{16,}/g, "[REDACTED_OPENAI_API_KEY]")
+    .replace(/Bearer\s+[0-9A-Za-z._-]{16,}/gi, "Bearer [REDACTED]")
+    .slice(0, 600);
 }
 
 export function buildFinalPrompt(

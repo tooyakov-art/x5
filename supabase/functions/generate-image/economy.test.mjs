@@ -12,7 +12,20 @@ import {
   normalizeGenerationRequest,
   normalizeImages,
   normalizeQuantity,
+  sanitizeProviderDiagnostic,
 } from "./economy.mjs";
+
+test("redacts provider credentials from server diagnostics", () => {
+  const message = sanitizeProviderDiagnostic(
+    "Consumer api_key:AIzaSyExampleSecretValue123456789 was suspended; " +
+      "Bearer sensitive-token-value-123456789",
+  );
+
+  assert.equal(message.includes("AIzaSyExampleSecretValue"), false);
+  assert.equal(message.includes("sensitive-token-value"), false);
+  assert.match(message, /REDACTED_GOOGLE_API_KEY/);
+  assert.match(message, /Bearer \[REDACTED\]/);
+});
 
 test("normalizes provider, category, prompt, and fixed credit cost", () => {
   const request = normalizeGenerationRequest({
@@ -485,7 +498,7 @@ test("never exposes provider API keys in user-facing errors", () => {
 
   assert.equal(
     safeMessage,
-    "Google image generation is temporarily unavailable. Please try again.",
+    "Генерация временно недоступна. Кредиты возвращены. Повторите позже.",
   );
   assert.doesNotMatch(safeMessage || "", /AIza|api_key|consumer/i);
 });
