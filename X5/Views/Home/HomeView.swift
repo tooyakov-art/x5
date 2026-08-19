@@ -446,6 +446,7 @@ private struct HomeFeatureInDevelopmentView: View {
                 Spacer()
             }
             .padding(.horizontal, 24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background { NativeHomeBackground() }
         }
         .preferredColorScheme(.dark)

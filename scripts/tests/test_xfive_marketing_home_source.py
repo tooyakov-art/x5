@@ -95,6 +95,25 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             home,
         )
 
+    def test_in_development_sheet_fills_phone_width_without_side_gutters(self):
+        home = HOME.read_text(encoding="utf-8")
+        sheet = home.split(
+            "private struct HomeFeatureInDevelopmentView", 1
+        )[1].split("private struct NativeHomeHero", 1)[0]
+
+        self.assertIn(
+            ".frame(maxWidth: .infinity, maxHeight: .infinity)",
+            sheet,
+        )
+        self.assertLess(
+            sheet.index(".padding(.horizontal, 24)"),
+            sheet.index(".frame(maxWidth: .infinity, maxHeight: .infinity)"),
+        )
+        self.assertLess(
+            sheet.index(".frame(maxWidth: .infinity, maxHeight: .infinity)"),
+            sheet.index(".background { NativeHomeBackground() }"),
+        )
+
     def test_native_promos_trends_and_business_cards_are_complete(self):
         home = HOME.read_text(encoding="utf-8")
 
