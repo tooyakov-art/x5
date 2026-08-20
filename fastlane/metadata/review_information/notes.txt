@@ -1,46 +1,40 @@
-X five marketing is a creator workspace and marketplace. Version 1.1.6 build 228
+X five marketing is a creator workspace and marketplace. Version 1.1.6 build 229
 adds reliable full-length course uploads, exact task/chat notification routing,
 private chat and portfolio media, safer automatic portfolio moderation,
-AI Voice, repeatable credit packs, and the updated Home experience.
+repeatable credit packs and the updated Home experience.
 
 Demo account:
 Use the Apple Demo Account credentials for appreview@x5studio.app.
 
 Quick test:
 1. Sign in.
-2. Home -> AI Image: enter a prompt, optionally add references, choose
-   size/quantity and generate.
-3. Home -> AI Video or AI Influencer: both unfinished tools show a clear
-   In Development screen and do not charge credits or call a provider.
-4. Home -> AI Voice: enter text, choose voice/language/speed, generate, preview
-   and share the audio.
-5. Home -> Startup Chat: ask a business question.
-6. Home -> Live Fruits: complete the fields, create/edit the three-scene
+2. Home -> AI Image, AI Video, AI Influencer or AI Voice: each unfinished tool
+   shows a clear In Development screen and does not charge credits or call a
+   provider.
+3. Home -> Startup Chat: ask a business question.
+4. Home -> Live Fruits: complete the fields, create/edit the three-scene
    storyboard, then generate its reference and video.
-7. Hub: every profession has a distinct system icon. SMM and mobile content are
+5. Hub: every profession has a distinct system icon. SMM and mobile content are
    one category. The same catalog is used in onboarding, profile and tasks.
-8. CourseUP: open a course, tap the author to open that exact public profile,
+6. CourseUP: open a course, tap the author to open that exact public profile,
    preview a lesson and buy a paid course. The two authorized developer
    accounts can select authors and manage lessons.
-9. Portfolio/Profile: add a photo or video. Photos and video previews are
+7. Portfolio/Profile: add a photo or video. Photos and video previews are
    checked automatically; pending or rejected items never become public.
-10. Chats: send text/photo/voice; report or block another user.
-11. Profile -> Store: buy one-time 1,000/2,000/5,000-credit packs. Each is an
+8. Chats: send text/photo/voice; report or block another user.
+9. Profile -> Store: buy one-time 1,000/2,000/5,000-credit packs. Each is an
     Apple consumable and remains repurchasable. Get verified opens a separate
     monthly subscription; its bright action button now uses black text.
-12. Settings: change language or delete the account.
+10. Settings: change language or delete the account.
 
 Home motion:
 Muted card previews pause offscreen, in the background or with Reduce Motion.
 A static poster remains if motion cannot play.
 
 AI processing and automatic moderation:
-- AI Image uses the authenticated generate-image Supabase Edge Function.
-- AI Video and AI Influencer are release-gated until their complete generation
-  flows pass production verification. They do not call providers or use credits.
-- AI Voice sends entered text through the authenticated generate-voice Edge
-  Function to the ElevenLabs Eleven v3 model via fal. Result audio is stored
-  privately and returned through a short-lived signed URL.
+- AI Image, AI Video, AI Influencer and AI Voice are release-gated until their
+  complete generation flows pass production verification. They do not call
+  providers or use credits in this build.
 - Startup Chat uses OpenAI Responses with storage disabled. Live Fruits uses
   OpenAI Moderations and Responses.
 - Portfolio moderation is automatic-only through OpenAI Moderations. There is

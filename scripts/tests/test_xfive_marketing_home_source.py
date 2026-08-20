@@ -55,7 +55,7 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         ):
             self.assertIn(required, home)
 
-    def test_primary_hero_opens_existing_image_generator(self):
+    def test_primary_hero_keeps_image_generation_hidden_until_provider_is_ready(self):
         home = HOME.read_text(encoding="utf-8")
 
         self.assertIn('accessibilityIdentifier("x5.home.hero.\\(slide.id).create")', home)
@@ -63,7 +63,11 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             "action: .imageGeneration(ImageGenerationCatalog.custom)",
             home,
         )
-        self.assertIn("ImageGeneratorView(category: category", home)
+        self.assertNotIn("ImageGeneratorView(category: category", home)
+        self.assertRegex(
+            home,
+            r"case \.imageGeneration\(let category\):\s+HomeFeatureInDevelopmentView\(featureTitle: category\.title\)",
+        )
 
     def test_home_routes_are_explicit_and_hub_uses_existing_tab_switch(self):
         home = HOME.read_text(encoding="utf-8")
@@ -92,6 +96,14 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         )
         self.assertIn(
             'HomeFeatureInDevelopmentView(featureTitle: "AI-инфлюенсер")',
+            home,
+        )
+        self.assertIn(
+            'HomeFeatureInDevelopmentView(featureTitle: "Озвучка")',
+            home,
+        )
+        self.assertIn(
+            "case .imageGeneration, .videoGeneration, .aiInfluencer, .voiceGeneration:",
             home,
         )
 

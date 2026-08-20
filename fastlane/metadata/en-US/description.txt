@@ -3,8 +3,7 @@ X five marketing is a creator workspace for marketers, entrepreneurs and creativ
 Organize your portfolio, learn from courses, find specialists in Hub, create marketing media, post tasks and keep client conversations in one app.
 
 KEY FEATURES
-• AI Image — create logos, stories, posts, product photos, packaging concepts and other marketing visuals.
-• AI Video and AI Influencer — shown as In Development in this release; they do not spend credits or contact an AI provider yet.
+• AI Image, AI Video, AI Influencer and AI Voice — shown as In Development in this release; they do not spend credits or contact an AI provider yet.
 • Live Fruits — answer a short questionnaire, edit a three-scene storyboard, generate consistent frames and turn the story into a vertical video.
 • Startup Chat — work through a business idea, audience, offer, demand test and next action with an AI mentor.
 • Hub — browse specialists, filter tasks by the categories saved in your profile, post tasks and respond to client requests.

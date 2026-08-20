@@ -23,9 +23,9 @@ enum HomeRoute: Hashable, Identifiable {
 
     var isReleaseInDevelopment: Bool {
         switch self {
-        case .videoGeneration, .aiInfluencer:
+        case .imageGeneration, .videoGeneration, .aiInfluencer, .voiceGeneration:
             return true
-        case .imageGeneration, .startupChat, .hub, .voiceGeneration, .liveFruits:
+        case .startupChat, .hub, .liveFruits:
             return false
         }
     }
@@ -62,7 +62,6 @@ struct HomeView: View {
     @EnvironmentObject private var loc: LocalizationService
 
     @State private var activeRoute: HomeRoute?
-    @State private var openImageCategory: ImageGenerationCategory?
     @State private var showingGeneratedGallery = false
     @State private var showingSearch = false
     @State private var pendingSearchRoute: HomeRoute?
@@ -110,12 +109,6 @@ struct HomeView: View {
             }
             .sheet(item: $activeRoute) { route in
                 sheetDestination(for: route)
-            }
-            .navigationDestination(isPresented: imageCategoryNavigationBinding) {
-                if let category = openImageCategory {
-                    ImageGeneratorView(category: category, provider: .gptImage2)
-                        .preferredColorScheme(.dark)
-                }
             }
             .sheet(isPresented: $showingGeneratedGallery) {
                 GeneratedGalleryView()
@@ -353,7 +346,7 @@ struct HomeView: View {
         switch route {
         case .imageGeneration(let category):
             DiagnosticLogger.log(event: "home_studio_\(category.id)_tap")
-            openImageCategory = category
+            activeRoute = route
         case .hub:
             DiagnosticLogger.log(event: "home_hub_promo_tap")
             NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "hub"])
@@ -384,24 +377,18 @@ struct HomeView: View {
     @ViewBuilder
     private func sheetDestination(for route: HomeRoute) -> some View {
         switch route {
+        case .imageGeneration(let category):
+            HomeFeatureInDevelopmentView(featureTitle: category.title)
         case .videoGeneration:
             HomeFeatureInDevelopmentView(featureTitle: "Генерация видео")
         case .aiInfluencer:
             HomeFeatureInDevelopmentView(featureTitle: "AI-инфлюенсер")
-        case .voiceGeneration: VoiceGeneratorView()
+        case .voiceGeneration:
+            HomeFeatureInDevelopmentView(featureTitle: "Озвучка")
         case .startupChat: StartupChatView()
         case .liveFruits: LiveFruitsView()
-        case .imageGeneration, .hub: EmptyView()
+        case .hub: EmptyView()
         }
-    }
-
-    private var imageCategoryNavigationBinding: Binding<Bool> {
-        Binding(
-            get: { openImageCategory != nil },
-            set: { isPresented in
-                if !isPresented { openImageCategory = nil }
-            }
-        )
     }
 }
 
@@ -429,7 +416,7 @@ private struct HomeFeatureInDevelopmentView: View {
                     .font(.title2.weight(.heavy))
                     .foregroundColor(.white)
 
-                Text("\(featureTitle) пока недоступен. Откроем функцию после полной проверки.")
+                Text("Функция «\(featureTitle)» пока недоступна. Откроем после полной проверки.")
                     .font(.subheadline)
                     .foregroundColor(.white.opacity(0.55))
                     .multilineTextAlignment(.center)
