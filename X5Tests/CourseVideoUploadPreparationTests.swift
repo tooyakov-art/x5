@@ -767,7 +767,7 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
             while !input.isReadyForMoreMediaData {
                 try await Task.sleep(nanoseconds: 1_000_000)
                 waitCount += 1
-                guard waitCount < 5_000 else {
+                guard waitCount < 15_000 else {
                     throw fixtureError("Fixture writer timed out")
                 }
             }

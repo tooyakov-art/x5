@@ -16,11 +16,11 @@ final class HomeRouteTests: XCTestCase {
     }
 
     func testOnlyUnfinishedAIRoutesAreReleaseGated() {
+        XCTAssertTrue(HomeRoute.imageGeneration(ImageGenerationCatalog.custom).isReleaseInDevelopment)
         XCTAssertTrue(HomeRoute.videoGeneration.isReleaseInDevelopment)
         XCTAssertTrue(HomeRoute.aiInfluencer.isReleaseInDevelopment)
+        XCTAssertTrue(HomeRoute.voiceGeneration.isReleaseInDevelopment)
 
-        XCTAssertFalse(HomeRoute.imageGeneration(ImageGenerationCatalog.custom).isReleaseInDevelopment)
-        XCTAssertFalse(HomeRoute.voiceGeneration.isReleaseInDevelopment)
         XCTAssertFalse(HomeRoute.startupChat.isReleaseInDevelopment)
         XCTAssertFalse(HomeRoute.liveFruits.isReleaseInDevelopment)
     }
