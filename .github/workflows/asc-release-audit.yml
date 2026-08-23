@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "Read only, or set 1.1.6/build229 to AFTER_APPROVAL"
+        description: "Read only, or set 1.1.6/build230 to AFTER_APPROVAL"
         required: true
         type: choice
         default: "audit"
@@ -32,7 +32,7 @@ jobs:
       ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
       BUNDLE_ID: com.x5studio.app
       EXPECTED_VERSION: "1.1.6"
-      EXPECTED_BUILD: "229"
+      EXPECTED_BUILD: "230"
       AUDIT_SCOPE: "post-submit-app-version-build-screenshots-subscriptions"
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2

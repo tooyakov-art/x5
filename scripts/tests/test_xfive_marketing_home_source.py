@@ -98,12 +98,13 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             'HomeFeatureInDevelopmentView(featureTitle: "AI-инфлюенсер")',
             home,
         )
+        self.assertRegex(home, r"case \.voiceGeneration:\s+VoiceGeneratorView\(\)")
         self.assertIn(
-            'HomeFeatureInDevelopmentView(featureTitle: "Озвучка")',
+            "case .imageGeneration, .videoGeneration, .aiInfluencer:",
             home,
         )
         self.assertIn(
-            "case .imageGeneration, .videoGeneration, .aiInfluencer, .voiceGeneration:",
+            "case .startupChat, .hub, .voiceGeneration, .liveFruits:",
             home,
         )
 

@@ -60,9 +60,9 @@ class SetAfterApprovalContractTests(unittest.TestCase):
             def get_attached_build(self, version_id):
                 self.version_id = version_id
                 return {
-                    "id": "build-229",
+                    "id": "build-230",
                     "attributes": {
-                        "version": "229",
+                        "version": "230",
                         "processingState": "VALID",
                         "expired": False,
                     },
@@ -80,7 +80,7 @@ class SetAfterApprovalContractTests(unittest.TestCase):
             client,
             bundle_id="com.x5studio.app",
             version_string="1.1.6",
-            build_number="229",
+            build_number="230",
         )
 
         self.assertEqual(client.updates, [("version-116", "AFTER_APPROVAL")])
@@ -91,7 +91,7 @@ class SetAfterApprovalContractTests(unittest.TestCase):
             client,
             bundle_id="com.x5studio.app",
             version_string="1.1.6",
-            build_number="229",
+            build_number="230",
         )
         self.assertEqual(len(client.updates), 1)
 
@@ -119,9 +119,9 @@ class SetAfterApprovalContractTests(unittest.TestCase):
 
             def get_attached_build(self, _version_id):
                 return {
-                    "id": "build-229",
+                    "id": "build-230",
                     "attributes": {
-                        "version": "229",
+                        "version": "230",
                         "processingState": "VALID",
                         "expired": False,
                     },
@@ -135,9 +135,9 @@ class SetAfterApprovalContractTests(unittest.TestCase):
 
         client = UnsafeClient()
         for version, build in (
-            ("1.1.5", "229"),
+            ("1.1.5", "230"),
             ("1.1.6", "226"),
-            ("1.1.6", "229"),
+            ("1.1.6", "230"),
         ):
             with self.subTest(version=version, build=build):
                 with self.assertRaises(ValueError):
@@ -155,7 +155,7 @@ class SetAfterApprovalContractTests(unittest.TestCase):
         self.assertIn("set_after_approval", workflow)
         self.assertIn("scripts/asc_set_after_approval.py", workflow)
         self.assertIn('EXPECTED_VERSION: "1.1.6"', workflow)
-        self.assertIn('EXPECTED_BUILD: "229"', workflow)
+        self.assertIn('EXPECTED_BUILD: "230"', workflow)
 
 
 if __name__ == "__main__":

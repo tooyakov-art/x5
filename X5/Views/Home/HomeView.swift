@@ -23,9 +23,9 @@ enum HomeRoute: Hashable, Identifiable {
 
     var isReleaseInDevelopment: Bool {
         switch self {
-        case .imageGeneration, .videoGeneration, .aiInfluencer, .voiceGeneration:
+        case .imageGeneration, .videoGeneration, .aiInfluencer:
             return true
-        case .startupChat, .hub, .liveFruits:
+        case .startupChat, .hub, .voiceGeneration, .liveFruits:
             return false
         }
     }
@@ -384,7 +384,7 @@ struct HomeView: View {
         case .aiInfluencer:
             HomeFeatureInDevelopmentView(featureTitle: "AI-инфлюенсер")
         case .voiceGeneration:
-            HomeFeatureInDevelopmentView(featureTitle: "Озвучка")
+            VoiceGeneratorView()
         case .startupChat: StartupChatView()
         case .liveFruits: LiveFruitsView()
         case .hub: EmptyView()

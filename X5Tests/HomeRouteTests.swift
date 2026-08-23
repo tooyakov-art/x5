@@ -19,7 +19,7 @@ final class HomeRouteTests: XCTestCase {
         XCTAssertTrue(HomeRoute.imageGeneration(ImageGenerationCatalog.custom).isReleaseInDevelopment)
         XCTAssertTrue(HomeRoute.videoGeneration.isReleaseInDevelopment)
         XCTAssertTrue(HomeRoute.aiInfluencer.isReleaseInDevelopment)
-        XCTAssertTrue(HomeRoute.voiceGeneration.isReleaseInDevelopment)
+        XCTAssertFalse(HomeRoute.voiceGeneration.isReleaseInDevelopment)
 
         XCTAssertFalse(HomeRoute.startupChat.isReleaseInDevelopment)
         XCTAssertFalse(HomeRoute.liveFruits.isReleaseInDevelopment)

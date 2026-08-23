@@ -16,7 +16,9 @@ and portfolio fixes in X five marketing.
 - The Verified Badge action keeps readable black text on its bright button.
 - Muted Home card previews pause offscreen, while the app is inactive or when
   Reduce Motion is enabled; static posters remain as a safe fallback.
-- AI Image, AI Video, AI Influencer and AI Voice temporarily show a clear In
-  Development screen, never charge credits and never call a provider.
+- AI Voice now uses a protected server-side MiniMax route to turn text into
+  playable and shareable MP3 audio.
+- AI Image, AI Video and AI Influencer temporarily show a clear In Development
+  screen, never charge credits and never call a provider.
 - Home cards now share one clear typography system. Every Hub profession has
   its own icon, and SMM with mobile content is one category everywhere.

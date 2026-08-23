@@ -23,7 +23,7 @@ class IOSVoiceGenerationSourceTests(unittest.TestCase):
         self.assertIn("VoiceGenerationLocalStore", source)
         self.assertIn("pendingRequestID", source)
 
-    def test_voice_route_stays_visible_but_is_guarded_until_provider_is_ready(self):
+    def test_voice_route_is_visible_and_opens_the_live_generator(self):
         self.assertTrue(VIEW.is_file())
         home = HOME.read_text(encoding="utf-8")
 
@@ -31,7 +31,11 @@ class IOSVoiceGenerationSourceTests(unittest.TestCase):
         self.assertIn('return "voice_generation"', home)
         self.assertRegex(
             home,
-            r'case \.voiceGeneration:\s+HomeFeatureInDevelopmentView\(featureTitle: "Озвучка"\)',
+            r'case \.voiceGeneration:\s+VoiceGeneratorView\(\)',
+        )
+        self.assertRegex(
+            home,
+            r'case \.startupChat, \.hub, \.voiceGeneration, \.liveFruits:\s+return false',
         )
 
         visible_collections = home[
