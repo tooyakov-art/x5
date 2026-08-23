@@ -85,23 +85,12 @@ def review_item_payload(
     }
 
 
-def submit_review_payload(
-    submission_id: str,
-    app_version_id: str,
-) -> dict[str, Any]:
+def submit_review_payload(submission_id: str) -> dict[str, Any]:
     return {
         "data": {
             "type": "reviewSubmissions",
             "id": submission_id,
             "attributes": {"submitted": True},
-            "relationships": {
-                "appStoreVersionForReview": {
-                    "data": {
-                        "type": "appStoreVersions",
-                        "id": app_version_id,
-                    }
-                }
-            },
         }
     }
 
@@ -448,7 +437,7 @@ def create_combined_review(
     submitted = api.request(
         "PATCH",
         f"/v1/reviewSubmissions/{submission_id}",
-        payload=submit_review_payload(submission_id, app_version_id),
+        payload=submit_review_payload(submission_id),
     )["data"]
     final_state = submitted.get("attributes", {}).get("state")
     print(f"Submitted combined review state={final_state}")

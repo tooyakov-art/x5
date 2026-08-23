@@ -51,20 +51,6 @@ class CreditPackSubmissionTests(unittest.TestCase):
             {"type": "apps", "id": "app-1"},
         )
 
-    def test_submit_payload_targets_app_store_version_for_review(self):
-        payload = MODULE.submit_review_payload(
-            "submission-1",
-            "version-1",
-        )
-
-        self.assertTrue(payload["data"]["attributes"]["submitted"])
-        self.assertEqual(
-            payload["data"]["relationships"][
-                "appStoreVersionForReview"
-            ]["data"],
-            {"type": "appStoreVersions", "id": "version-1"},
-        )
-
     def test_developer_rejected_iap_version_is_reused(self):
         rejected = {
             "id": "version-1",
@@ -377,14 +363,10 @@ class CreditPackSubmissionTests(unittest.TestCase):
                 raise AssertionError(f"Unexpected request {method} {path}")
 
             def assert_submit_payload(self, payload):
-                target = payload["data"]["relationships"][
-                    "appStoreVersionForReview"
-                ]["data"]
-                if target != {
-                    "type": "appStoreVersions",
-                    "id": "version-1",
-                }:
-                    raise AssertionError(f"wrong submit target {target}")
+                if payload["data"]["attributes"] != {"submitted": True}:
+                    raise AssertionError(f"wrong submit payload {payload}")
+                if "relationships" in payload["data"]:
+                    raise AssertionError("review relationship is not allowed on PATCH")
 
         api = FakeAPI()
         submission_id = MODULE.create_combined_review(
