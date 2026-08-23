@@ -354,10 +354,14 @@ def create_combined_review(
         app_target,
         *(("inAppPurchaseVersions", version["id"]) for version in iap_versions),
     }
+    expected_count = 1 + len(iap_versions)
     actual_targets: set[tuple[str, str]] = set()
     for attempt in range(1, 31):
         actual_targets = load_targets()
-        if actual_targets == expected_targets and len(actual_targets) == 4:
+        if (
+            actual_targets == expected_targets
+            and len(actual_targets) == expected_count
+        ):
             break
         print(
             "Waiting for combined review item readback "
@@ -367,10 +371,13 @@ def create_combined_review(
             time.sleep(2)
     else:
         raise RuntimeError(
-            "Combined review must contain exactly the app version and three "
-            f"consumable versions; actual targets={sorted(actual_targets)}"
+            "Review must contain exactly the app version and every pending "
+            "consumable version; "
+            f"actual targets={sorted(actual_targets)}"
         )
-    print("Verified combined review contains exactly 4 expected items")
+    print(
+        f"Verified review contains exactly {expected_count} expected items"
+    )
 
     submitted = api.request(
         "PATCH",
@@ -434,8 +441,10 @@ def run(action: str) -> None:
         print("Credit pack action=audit submitted=0")
         return
     if not products_for_review:
-        print("All credit packs are already reviewed or in review")
-        return
+        print(
+            "All credit packs are already reviewed or in review; "
+            "submitting the app version without IAP review items"
+        )
 
     target_version = app_version(api, app_id)
     target_version_id = target_version["id"]

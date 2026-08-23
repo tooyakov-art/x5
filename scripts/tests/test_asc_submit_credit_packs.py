@@ -241,6 +241,136 @@ class CreditPackSubmissionTests(unittest.TestCase):
         self.assertTrue(api.submitted)
         api.assert_exact_targets()
 
+    def test_review_can_submit_app_without_already_reviewed_iaps(self):
+        class FakeAPI:
+            def __init__(self):
+                self.targets = set()
+                self.submitted = False
+
+            def request(self, method, path, expected=(200,), payload=None):
+                if method == "GET" and "?filter[app]=" in path:
+                    return {"data": []}
+                if method == "POST" and path == "/v1/reviewSubmissions":
+                    return {
+                        "data": {
+                            "id": "submission-app-only",
+                            "attributes": {"state": "READY_FOR_REVIEW"},
+                        }
+                    }
+                if method == "GET" and "?include=items" in path:
+                    included = []
+                    for index, (resource_type, resource_id) in enumerate(
+                        sorted(self.targets)
+                    ):
+                        included.append(
+                            {
+                                "id": f"item-{index}",
+                                "type": "reviewSubmissionItems",
+                                "relationships": {
+                                    "appStoreVersion": {
+                                        "data": {
+                                            "type": resource_type,
+                                            "id": resource_id,
+                                        }
+                                    }
+                                },
+                            }
+                        )
+                    return {"included": included}
+                if method == "POST" and path == "/v1/reviewSubmissionItems":
+                    target = payload["data"]["relationships"][
+                        "appStoreVersion"
+                    ]["data"]
+                    self.targets.add((target["type"], target["id"]))
+                    return {"data": {"id": "item-app"}}
+                if method == "PATCH":
+                    self.submitted = True
+                    self.assert_app_only()
+                    return {
+                        "data": {
+                            "id": "submission-app-only",
+                            "attributes": {"state": "WAITING_FOR_REVIEW"},
+                        }
+                    }
+                raise AssertionError(f"Unexpected request {method} {path}")
+
+            def assert_app_only(self):
+                if self.targets != {("appStoreVersions", "version-1")}:
+                    raise AssertionError(
+                        f"submitted with wrong targets {self.targets}"
+                    )
+
+        api = FakeAPI()
+        submission_id = MODULE.create_combined_review(
+            api,
+            "app-1",
+            "version-1",
+            [],
+        )
+
+        self.assertEqual(submission_id, "submission-app-only")
+        self.assertTrue(api.submitted)
+        api.assert_app_only()
+
+    def test_all_reviewed_iaps_still_submit_the_app_version(self):
+        class FakeAPI:
+            def request(self, method, path, **kwargs):
+                if path.startswith("/v1/apps?filter[bundleId]="):
+                    return {"data": [{"id": "app-1"}]}
+                raise AssertionError(f"Unexpected request {method} {path}")
+
+            def list_all(self, path):
+                if path == "/v1/apps/app-1/inAppPurchasesV2?limit=200":
+                    return [
+                        {
+                            "id": f"purchase-{index}",
+                            "attributes": {
+                                "productId": pack.product_id,
+                                "inAppPurchaseType": "CONSUMABLE",
+                                "state": "APPROVED",
+                            },
+                        }
+                        for index, pack in enumerate(MODULE.CREDIT_PACKS)
+                    ]
+                if path.startswith("/v2/inAppPurchases/"):
+                    return []
+                raise AssertionError(f"Unexpected list {path}")
+
+        target_version = {"id": "version-1"}
+        with (
+            mock.patch.object(MODULE, "AppStoreConnect", return_value=FakeAPI()),
+            mock.patch.object(
+                MODULE,
+                "app_version",
+                return_value=target_version,
+            ) as find_version,
+            mock.patch.object(MODULE, "verify_target_build") as verify_build,
+            mock.patch.object(
+                MODULE,
+                "cancel_waiting_app_review",
+            ) as cancel_review,
+            mock.patch.object(
+                MODULE,
+                "create_combined_review",
+                return_value="submission-app-only",
+            ) as create_review,
+        ):
+            MODULE.run("submit")
+
+        find_version.assert_called_once_with(mock.ANY, "app-1")
+        verify_build.assert_called_once_with(mock.ANY, "version-1")
+        cancel_review.assert_called_once_with(
+            mock.ANY,
+            "app-1",
+            "version-1",
+        )
+        create_review.assert_called_once_with(
+            mock.ANY,
+            "app-1",
+            "version-1",
+            [],
+        )
+
     def test_ready_submission_waits_for_eventual_exact_target_readback(self):
         expected_targets = {
             ("appStoreVersions", "version-1"),
