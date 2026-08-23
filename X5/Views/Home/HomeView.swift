@@ -23,9 +23,9 @@ enum HomeRoute: Hashable, Identifiable {
 
     var isReleaseInDevelopment: Bool {
         switch self {
-        case .imageGeneration, .videoGeneration, .aiInfluencer:
+        case .imageGeneration, .aiInfluencer:
             return true
-        case .startupChat, .hub, .voiceGeneration, .liveFruits:
+        case .startupChat, .hub, .videoGeneration, .voiceGeneration, .liveFruits:
             return false
         }
     }
@@ -159,7 +159,7 @@ struct HomeView: View {
                 id: "video",
                 eyebrow: "X FIVE • AI VIDEO",
                 title: "Генерация\nвидео",
-                subtitle: "Текст или фото в готовый ролик",
+                subtitle: "Текст в готовый ролик со звуком",
                 assetName: "HomeUtilityVideo",
                 action: .videoGeneration
             ),
@@ -380,7 +380,7 @@ struct HomeView: View {
         case .imageGeneration(let category):
             HomeFeatureInDevelopmentView(featureTitle: category.title)
         case .videoGeneration:
-            HomeFeatureInDevelopmentView(featureTitle: "Генерация видео")
+            VideoGeneratorView()
         case .aiInfluencer:
             HomeFeatureInDevelopmentView(featureTitle: "AI-инфлюенсер")
         case .voiceGeneration:

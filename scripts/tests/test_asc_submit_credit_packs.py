@@ -15,9 +15,9 @@ SPEC.loader.exec_module(MODULE)
 
 
 class CreditPackSubmissionTests(unittest.TestCase):
-    def test_release_is_locked_to_build_230(self):
+    def test_release_is_locked_to_build_231(self):
         self.assertEqual(MODULE.TARGET_VERSION, "1.1.6")
-        self.assertEqual(MODULE.TARGET_BUILD, "230")
+        self.assertEqual(MODULE.TARGET_BUILD, "231")
 
     def test_iap_version_payload_targets_parent_purchase(self):
         payload = MODULE.iap_version_payload("iap-1")
@@ -552,11 +552,27 @@ class CreditPackSubmissionTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn('EXPECTED_VERSION: "1.1.6"', workflow)
-        self.assertIn('EXPECTED_BUILD: "230"', workflow)
+        self.assertIn('EXPECTED_BUILD: "231"', workflow)
         self.assertIn(
             "python scripts/asc_submit_credit_packs.py --action submit",
             workflow,
         )
+        self.assertIn("python scripts/asc_set_after_approval.py", workflow)
+        guard = "python scripts/asc_set_after_approval.py"
+        guard_positions = [
+            index
+            for index in range(len(workflow))
+            if workflow.startswith(guard, index)
+        ]
+        submit_position = workflow.index(
+            "python scripts/asc_submit_credit_packs.py --action submit"
+        )
+        self.assertEqual(len(guard_positions), 2)
+        self.assertLess(
+            guard_positions[0],
+            submit_position,
+        )
+        self.assertLess(submit_position, guard_positions[1])
         self.assertNotIn("Attached app version item.", workflow)
 
     def test_review_manager_delegates_submit_to_guarded_release_scripts(self):

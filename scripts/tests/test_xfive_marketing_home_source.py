@@ -90,21 +90,18 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         )
         self.assertRegex(home, r"case \.startupChat:\s+StartupChatView\(\)")
         self.assertRegex(home, r"case \.liveFruits:\s+LiveFruitsView\(\)")
-        self.assertIn(
-            'HomeFeatureInDevelopmentView(featureTitle: "Генерация видео")',
-            home,
-        )
+        self.assertRegex(home, r"case \.videoGeneration:\s+VideoGeneratorView\(\)")
         self.assertIn(
             'HomeFeatureInDevelopmentView(featureTitle: "AI-инфлюенсер")',
             home,
         )
         self.assertRegex(home, r"case \.voiceGeneration:\s+VoiceGeneratorView\(\)")
         self.assertIn(
-            "case .imageGeneration, .videoGeneration, .aiInfluencer:",
+            "case .imageGeneration, .aiInfluencer:",
             home,
         )
         self.assertIn(
-            "case .startupChat, .hub, .voiceGeneration, .liveFruits:",
+            "case .startupChat, .hub, .videoGeneration, .voiceGeneration, .liveFruits:",
             home,
         )
 

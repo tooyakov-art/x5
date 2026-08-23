@@ -22,7 +22,7 @@
   <div class="wrap">
     <a class="back" href="/">X five marketing</a>
     <h1>Privacy Policy</h1>
-    <p class="updated">Last updated: July 26, 2026</p>
+    <p class="updated">Last updated: August 23, 2026</p>
 
     <h2>What we collect</h2>
     <p>X five marketing uses Supabase to provide authentication, profiles, marketplace tasks, chats, portfolios and courses. Depending on what you choose to use, we may store:</p>
@@ -30,7 +30,7 @@
       <li>Email address, name and user ID from Sign in with Apple, Google sign-in or email sign-in.</li>
       <li>Profile information, portfolio entries, proposals, chat messages, reports and block status.</li>
       <li>Photos, videos or voice messages only when you choose to attach, upload or record them in courses, chats, portfolio or AI tools.</li>
-      <li>Prompts, questionnaire answers, generated storyboards and generation status when you choose to use AI Image, AI Video, Live Fruits or Startup Chat.</li>
+      <li>Prompts, voice-generation text, selected AI voices, questionnaire answers, generated storyboards and generation status when you choose to use AI Image, AI Video, AI Voice, Live Fruits or Startup Chat.</li>
       <li>Purchase history and entitlement status for one-time credit packs and the optional verified badge subscription, provided by Apple.</li>
     </ul>
 
@@ -52,17 +52,18 @@
 
     <h2>How we use data</h2>
     <p>We use data to operate the app: authenticate accounts, display profiles and portfolios, send messages, process reports, provide courses, deliver purchases, generate requested AI media and keep users safe.</p>
-    <p>AI requests are sent through our Supabase Edge Functions only when you start the corresponding feature. OpenAI processes Startup Chat, Live Fruits storyboards and automated safety checks. Depending on configured availability, fal Kling Video or Google Gemini can process AI Video requests. AI-video inputs and results are stored privately and the app receives short-lived signed links.</p>
-    <p>Prompts and selected reference media are screened automatically for prohibited content before an AI-video credit reservation. Flagged or inconclusive requests fail closed and are not sent for generation.</p>
+    <p>AI requests are sent through our Supabase Edge Functions only when you start the corresponding feature. OpenAI processes Startup Chat, Live Fruits storyboards and primary automated safety checks. Google Gemini and BytePlus ModelArk may process AI-video prompts or selected reference media only as failover safety classifiers. BytePlus ModelArk Seedance processes accepted AI Video requests. MiniMax Speech processes requested AI Voice text. AI-video inputs and results and generated voice audio are stored privately; the app receives short-lived signed links.</p>
+    <p>Video prompts are screened automatically for prohibited content before an AI-video credit reservation and are also subject to the provider's safety controls. Prohibited requests are rejected; definitive provider failures return the reserved credits.</p>
 
     <h2>Sharing</h2>
     <p>We do not sell or rent personal information. Service providers process data only to run the app:</p>
     <ul>
       <li>Apple for Sign in with Apple, StoreKit purchases and optional Face ID authentication.</li>
-      <li>Google for Google sign-in if you choose it.</li>
+      <li>Google for Google sign-in if you choose it and Gemini failover safety classification for AI-video inputs.</li>
       <li>Supabase for authentication, database and storage.</li>
       <li>OpenAI for requested Startup Chat and Live Fruits responses, image generation where selected, and automated safety moderation.</li>
-      <li>fal and Google Gemini for AI Video only when you choose to submit a video-generation request and that provider is configured.</li>
+      <li>BytePlus ModelArk for failover safety classification and Seedance AI Video only when you choose to submit a video-generation request.</li>
+      <li>MiniMax Speech for AI Voice only when you choose to submit voice-generation text.</li>
     </ul>
 
     <h2>Safety and moderation</h2>

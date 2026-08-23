@@ -12,8 +12,15 @@ Required server-side environment:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `VIDEO_RECONCILE_CRON_SECRET`, a dedicated random server-only credential
   shared only with the Vault entry described below
-- `OPENAI_API_KEY` for text/image safety checks before any credit claim and the
-  server-side OpenAI Videos fallback
+- `OPENAI_API_KEY` for the primary text/image safety check before any credit
+  claim and the server-side OpenAI Videos fallback. When OpenAI moderation is
+  unavailable, a configured Google key performs the same fail-closed preflight.
+  When those classifiers are unavailable, the activated BytePlus
+  `seed-2-0-lite-260428` model performs the same structured text/image safety
+  classification with `ARK_API_KEY`. If every configured classifier is
+  unavailable or returns malformed output, the request fails closed before the
+  credit claim. BytePlus Seedance also applies its own model safety policy and
+  any definitive provider rejection is refunded exactly once.
 - at least one video provider:
   - `ARK_API_KEY` for explicit Seedance 2.0 Fast and backward-compatible
     Seedance 1.5 Pro through ByteDance's official BytePlus ModelArk API

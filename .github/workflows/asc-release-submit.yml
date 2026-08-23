@@ -17,7 +17,7 @@ jobs:
       ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
       BUNDLE_ID: com.x5studio.app
       EXPECTED_VERSION: "1.1.6"
-      EXPECTED_BUILD: "230"
+      EXPECTED_BUILD: "231"
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -27,6 +27,8 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install --require-hashes -r .github/requirements/asc-requirements.lock
+      - name: Lock automatic release before review submission
+        run: python scripts/asc_set_after_approval.py
       - name: Submit App Store version for review
         run: |
           python <<'PY'
@@ -256,3 +258,5 @@ jobs:
           if final_state not in {"WAITING_FOR_REVIEW", "IN_REVIEW"}:
               sys.exit(f"Unexpected final submission state: {final_state}")
           PY
+      - name: Verify automatic release after review submission
+        run: python scripts/asc_set_after_approval.py

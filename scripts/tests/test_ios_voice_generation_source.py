@@ -35,7 +35,7 @@ class IOSVoiceGenerationSourceTests(unittest.TestCase):
         )
         self.assertRegex(
             home,
-            r'case \.startupChat, \.hub, \.voiceGeneration, \.liveFruits:\s+return false',
+            r'case \.startupChat, \.hub, \.videoGeneration, \.voiceGeneration, \.liveFruits:\s+return false',
         )
 
         visible_collections = home[

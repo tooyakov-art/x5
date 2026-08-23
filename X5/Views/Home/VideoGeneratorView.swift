@@ -1,6 +1,7 @@
 import AVKit
 import CoreTransferable
 import ImageIO
+import Photos
 import PhotosUI
 import SwiftUI
 import UIKit
@@ -21,6 +22,30 @@ private struct VideoGenerationPickedImageFile: Transferable {
             try? FileManager.default.removeItem(at: copyURL)
             try FileManager.default.copyItem(at: received.file, to: copyURL)
             return Self(url: copyURL)
+        }
+    }
+}
+
+private struct VideoGenerationShareFile: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .mpeg4Movie) { video in
+            SentTransferredFile(video.url)
+        }
+    }
+}
+
+private enum VideoGenerationPhotoSaveError: LocalizedError {
+    case permissionDenied
+    case saveFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .permissionDenied:
+            return "Разрешите добавление видео в Фото в настройках iPhone."
+        case .saveFailed:
+            return "Не удалось сохранить видео в Фото. Попробуйте ещё раз."
         }
     }
 }
@@ -122,7 +147,7 @@ struct VideoGeneratorView: View {
     @State private var prompt = ""
     @State private var aspectRatio = "9:16"
     @State private var durationSeconds = 5
-    @State private var model: VideoGenerationModel = .seedance20Fast
+    private let model: VideoGenerationModel = .seedance20Fast
     @State private var resolution: VideoGenerationResolution = .hd
     @State private var generateAudio = true
     @State private var currentJob: VideoGenerationJob?
@@ -143,16 +168,22 @@ struct VideoGeneratorView: View {
     @State private var photoPreparationID = UUID()
     @State private var isViewActive = false
     @State private var player: AVPlayer?
+    @State private var localResultURL: URL?
+    @State private var isPreparingResultFile = false
+    @State private var isSavingResult = false
+    @State private var resultMessage: String?
+    @State private var resultPreparationTask: Task<Void, Never>?
+    @State private var resultPreparationID = UUID()
+    @State private var photoSaveTask: Task<Void, Never>?
 
     private let service = VideoGenerationService()
+    private let resultFileService = VideoGenerationResultFileService()
     private let localStore = VideoGenerationLocalStore()
     private let aspectRatios = ["9:16", "16:9"]
     private let durations = [5, 10]
 
     private var availableResolutions: [VideoGenerationResolution] {
-        model == .seedance20Fast
-            ? [.standard, .hd]
-            : VideoGenerationResolution.allCases
+        [.standard, .hd]
     }
 
     var body: some View {
@@ -161,7 +192,6 @@ struct VideoGeneratorView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     header
                     promptCard
-                    startImageCard
                     settingsCard
                     submitButton
 
@@ -198,10 +228,12 @@ struct VideoGeneratorView: View {
                 photoPreparationTask?.cancel()
                 photoPreparationTask = nil
                 photoPreparationID = UUID()
+                resultPreparationTask?.cancel()
+                resultPreparationTask = nil
+                resultPreparationID = UUID()
                 isSubmitting = false
                 isPreparingStartImage = false
-                player?.pause()
-                player = nil
+                discardLocalResult()
             }
             .task(id: auth.userId) {
                 beginAccountLifecycle()
@@ -233,18 +265,8 @@ struct VideoGeneratorView: View {
             .onChange(of: startImageItem) { item in
                 beginStartImagePreparation(item)
             }
-            .onChange(of: model) { selectedModel in
-                generateAudio = selectedModel != .automatic
-                if selectedModel == .seedance20Fast && resolution == .fullHD {
-                    resolution = .hd
-                }
-            }
-            .onChange(of: currentJob?.resultURL) { resultURL in
-                guard let resultURL else {
-                    player = nil
-                    return
-                }
-                player = AVPlayer(url: resultURL)
+            .onChange(of: currentJob?.resultURL) { _ in
+                beginResultPreparation(currentJob)
             }
         }
         .preferredColorScheme(.dark)
@@ -407,13 +429,14 @@ struct VideoGeneratorView: View {
 
             VStack(spacing: 12) {
                 settingRow(title: "Модель", systemImage: "sparkles.rectangle.stack") {
-                    Picker("Модель", selection: $model) {
-                        ForEach(VideoGenerationModel.allCases) { option in
-                            Text(option.title).tag(option)
-                        }
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundColor(Color.accentColor)
+                        Text(model.title)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                        Spacer(minLength: 0)
                     }
-                    .pickerStyle(.menu)
-                    .tint(Color.accentColor)
                 }
 
                 Divider().overlay(Color.white.opacity(0.08))
@@ -457,7 +480,6 @@ struct VideoGeneratorView: View {
                         .foregroundColor(.white.opacity(0.82))
                 }
                 .tint(Color.accentColor)
-                .disabled(model == .automatic)
 
                 Divider().overlay(Color.white.opacity(0.08))
 
@@ -529,11 +551,63 @@ struct VideoGeneratorView: View {
             case .rendering:
                 progressView(job.progress)
             case .completed:
-                if job.resultURL != nil, let player {
+                if let localResultURL, let player {
                     VideoPlayer(player: player)
                         .frame(height: 330)
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .onAppear { player.play() }
+
+                    HStack(spacing: 10) {
+                        ShareLink(
+                            item: VideoGenerationShareFile(url: localResultURL)
+                        ) {
+                            Label("Поделиться", systemImage: "square.and.arrow.up")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.black)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 46)
+                                .background(Color.accentColor)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+
+                        Button {
+                            saveResultToPhotos(localResultURL, jobID: job.id)
+                        } label: {
+                            HStack(spacing: 7) {
+                                if isSavingResult {
+                                    ProgressView().tint(.white)
+                                } else {
+                                    Image(systemName: "square.and.arrow.down")
+                                }
+                                Text(isSavingResult ? "Сохраняем…" : "В Фото")
+                            }
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 46)
+                            .background(Color.white.opacity(0.10))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isSavingResult)
+                    }
+                } else if isPreparingResultFile {
+                    HStack(spacing: 10) {
+                        ProgressView().tint(Color.accentColor)
+                        Text("Готовим видео для просмотра и сохранения…")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.66))
+                    }
+                } else {
+                    Button(
+                        job.resultURL == nil
+                            ? "Обновить результат"
+                            : "Обновить и подготовить"
+                    ) {
+                        beginResultPreparation(job, refreshSignedURL: true)
+                    }
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(Color.accentColor)
                 }
             case .failed, .refunded:
                 Button("Повторить") {
@@ -551,6 +625,12 @@ struct VideoGeneratorView: View {
                 )
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(job.refunded ? Color.green : .white.opacity(0.44))
+            }
+
+            if let resultMessage {
+                Text(resultMessage)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Color.green)
             }
         }
         .padding(16)
@@ -650,6 +730,211 @@ struct VideoGeneratorView: View {
         }
     }
 
+    private func beginResultPreparation(
+        _ job: VideoGenerationJob?,
+        refreshSignedURL: Bool = false
+    ) {
+        resultPreparationTask?.cancel()
+        resultPreparationTask = nil
+        resultPreparationID = UUID()
+        discardLocalResult()
+
+        guard
+            let job,
+            let userID = auth.userId,
+            isViewActive,
+            refreshSignedURL || (job.status == .completed && job.resultURL != nil)
+        else {
+            return
+        }
+
+        let preparationID = UUID()
+        resultPreparationID = preparationID
+        let sessionID = lifecycleID
+        let jobID = job.id
+        isPreparingResultFile = true
+        errorMessage = nil
+        resultPreparationTask = Task { @MainActor in
+            defer {
+                if isResultPreparationCurrent(
+                    preparationID,
+                    lifecycleID: sessionID,
+                    userID: userID,
+                    jobID: jobID
+                ) {
+                    isPreparingResultFile = false
+                    resultPreparationTask = nil
+                }
+            }
+            do {
+                let resultURL: URL
+                if refreshSignedURL {
+                    guard let token = await accessTokenForVideoRequest() else {
+                        throw VideoGenerationServiceError.missingAccessToken
+                    }
+                    try Task.checkCancellation()
+                    guard isResultPreparationCurrent(
+                        preparationID,
+                        lifecycleID: sessionID,
+                        userID: userID,
+                        jobID: jobID
+                    ) else {
+                        return
+                    }
+
+                    let envelope = try await service.status(
+                        jobID: jobID,
+                        accessToken: token
+                    )
+                    try Task.checkCancellation()
+                    guard isResultPreparationCurrent(
+                        preparationID,
+                        lifecycleID: sessionID,
+                        userID: userID,
+                        jobID: jobID
+                    ) else {
+                        return
+                    }
+                    upsertRecentJob(envelope.job)
+                    guard envelope.job.status == .completed else {
+                        currentJob = envelope.job
+                        if envelope.job.status == .queued
+                            || envelope.job.status == .rendering {
+                            startPolling(
+                                jobIDs: [jobID],
+                                userID: userID,
+                                lifecycleID: sessionID,
+                                initialAccessToken: token
+                            )
+                        }
+                        return
+                    }
+                    guard let freshResultURL = envelope.job.resultURL else {
+                        throw VideoGenerationResultFileError.invalidResponse
+                    }
+                    resultURL = freshResultURL
+                } else {
+                    guard let existingResultURL = job.resultURL else {
+                        throw VideoGenerationResultFileError.invalidResponse
+                    }
+                    resultURL = existingResultURL
+                }
+
+                let localURL = try await resultFileService.prepare(
+                    resultURL: resultURL,
+                    jobID: jobID
+                )
+                if Task.isCancelled {
+                    resultFileService.cleanup(localURL)
+                    return
+                }
+                guard isResultPreparationCurrent(
+                    preparationID,
+                    lifecycleID: sessionID,
+                    userID: userID,
+                    jobID: jobID
+                ) else {
+                    resultFileService.cleanup(localURL)
+                    return
+                }
+                localResultURL = localURL
+                player = AVPlayer(url: localURL)
+                errorMessage = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                guard isResultPreparationCurrent(
+                    preparationID,
+                    lifecycleID: sessionID,
+                    userID: userID,
+                    jobID: jobID
+                ) else {
+                    return
+                }
+                errorMessage = (error as? LocalizedError)?.errorDescription
+                    ?? VideoGenerationResultFileError.invalidResponse.localizedDescription
+            }
+        }
+    }
+
+    private func isResultPreparationCurrent(
+        _ preparationID: UUID,
+        lifecycleID sessionID: UUID,
+        userID: String,
+        jobID: String
+    ) -> Bool {
+        isLifecycleCurrent(sessionID, userID: userID)
+            && resultPreparationID == preparationID
+            && currentJob?.id == jobID
+    }
+
+    private func discardLocalResult() {
+        let photoSaveOwnsFile = isSavingResult
+        player?.pause()
+        player = nil
+        if !photoSaveOwnsFile {
+            resultFileService.cleanup(localResultURL)
+        }
+        localResultURL = nil
+        isPreparingResultFile = false
+        resultMessage = nil
+    }
+
+    private func saveResultToPhotos(_ url: URL, jobID: String) {
+        guard !isSavingResult else { return }
+        photoSaveTask?.cancel()
+        resultMessage = nil
+        isSavingResult = true
+        let sessionID = lifecycleID
+        photoSaveTask = Task { @MainActor in
+            defer {
+                if localResultURL != url {
+                    resultFileService.cleanup(url)
+                }
+                isSavingResult = false
+                photoSaveTask = nil
+            }
+            do {
+                let authorization = await PHPhotoLibrary.requestAuthorization(
+                    for: .addOnly
+                )
+                guard authorization == .authorized || authorization == .limited else {
+                    throw VideoGenerationPhotoSaveError.permissionDenied
+                }
+                try Task.checkCancellation()
+                try await withCheckedThrowingContinuation {
+                    (continuation: CheckedContinuation<Void, Error>) in
+                    PHPhotoLibrary.shared().performChanges {
+                        PHAssetChangeRequest.creationRequestForAssetFromVideo(
+                            atFileURL: url
+                        )
+                    } completionHandler: { success, error in
+                        if success {
+                            continuation.resume(returning: ())
+                        } else {
+                            continuation.resume(
+                                throwing: error ?? VideoGenerationPhotoSaveError.saveFailed
+                            )
+                        }
+                    }
+                }
+                try Task.checkCancellation()
+                guard lifecycleID == sessionID, currentJob?.id == jobID else {
+                    return
+                }
+                resultMessage = "Видео сохранено в Фото"
+            } catch is CancellationError {
+                return
+            } catch {
+                guard lifecycleID == sessionID, currentJob?.id == jobID else {
+                    return
+                }
+                errorMessage = (error as? LocalizedError)?.errorDescription
+                    ?? VideoGenerationPhotoSaveError.saveFailed.localizedDescription
+            }
+        }
+    }
+
     private func loadStartImage(
         _ item: PhotosPickerItem,
         preparationID: UUID,
@@ -720,8 +1005,10 @@ struct VideoGeneratorView: View {
         photoPreparationTask?.cancel()
         photoPreparationTask = nil
         photoPreparationID = UUID()
-        player?.pause()
-        player = nil
+        resultPreparationTask?.cancel()
+        resultPreparationTask = nil
+        resultPreparationID = UUID()
+        discardLocalResult()
         isViewActive = true
         lifecycleID = UUID()
         isSubmitting = false
@@ -783,8 +1070,10 @@ struct VideoGeneratorView: View {
         pollTask?.cancel()
         pollTask = nil
         pollGenerationID = UUID()
-        player?.pause()
-        player = nil
+        resultPreparationTask?.cancel()
+        resultPreparationTask = nil
+        resultPreparationID = UUID()
+        discardLocalResult()
         currentJob = nil
         errorMessage = nil
         isSubmitting = true

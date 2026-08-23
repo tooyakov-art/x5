@@ -4,7 +4,8 @@ Organize your portfolio, learn from courses, find specialists in Hub, create mar
 
 KEY FEATURES
 • AI Voice — turn text into Russian or multilingual speech through a protected server-side MiniMax route, then preview and save the generated MP3.
-• AI Image, AI Video and AI Influencer — shown as In Development in this release; they do not spend credits or contact an AI provider yet.
+• AI Video — create 5- or 10-second vertical or horizontal videos with audio through the official BytePlus Seedance 2.0 Fast route. Completed MP4 files can be played, shared or saved to Photos.
+• AI Image and AI Influencer — shown as In Development in this release; they do not spend credits or contact an AI provider yet.
 • Live Fruits — answer a short questionnaire, edit a three-scene storyboard, generate consistent frames and turn the story into a vertical video.
 • Startup Chat — work through a business idea, audience, offer, demand test and next action with an AI mentor.
 • Hub — browse specialists, filter tasks by the categories saved in your profile, post tasks and respond to client requests.
@@ -26,10 +27,10 @@ The verified badge is a separate optional monthly auto-renewable subscription. I
 Payment is charged to your Apple ID at purchase confirmation. The verified badge subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel it in your App Store account settings.
 
 SAFETY
-AI video and Live Fruits requests are screened automatically before provider submission. Flagged text or selected reference images are rejected before credits are reserved. Chats include report and block controls. Users can delete their account from Settings.
+AI video and Live Fruits requests are screened automatically before provider submission. Flagged prompts are rejected before credits are reserved. Chats include report and block controls. Users can delete their account from Settings.
 
 PRIVACY
-Authentication, profiles, chats, tasks, courses, balances and portfolio items are stored through Supabase. AI Image, Startup Chat, Live Fruits, AI Video and AI Voice send only the inputs needed for the requested feature from a Supabase Edge Function to the configured AI provider. AI video, voice inputs and generated results use private storage and short-lived signed links. OpenAI is used for Startup Chat, storyboard creation and automatic moderation. AI Voice uses MiniMax Speech. Short AI-video requests can be processed by fal Kling Video or Google Gemini Omni Flash, depending on configured provider availability. X five marketing does not use third-party advertising trackers.
+Authentication, profiles, chats, tasks, courses, balances and portfolio items are stored through Supabase. AI Image, Startup Chat, Live Fruits, AI Video and AI Voice send only the inputs needed for the requested feature from a Supabase Edge Function to the configured AI provider. AI video, voice inputs and generated results use private storage and short-lived signed links. OpenAI is used for Startup Chat, storyboard creation and primary automatic moderation. Google Gemini and BytePlus ModelArk provide failover safety classification for AI-video inputs. AI Voice uses MiniMax Speech. AI Video uses the official BytePlus ModelArk Seedance route. X five marketing does not use third-party advertising trackers.
 
 Terms of Service: https://tooyakov-art.github.io/x5site/terms.html
 Privacy Policy: https://tooyakov-art.github.io/x5site/privacy.html

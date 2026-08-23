@@ -4,7 +4,12 @@ import {
   finalizeVideoGenerationResult,
   handleFalTerminalWebhook,
 } from "./lifecycle.mjs";
-import { createOpenAIVideoModerator } from "./moderation.mjs";
+import {
+  createBytePlusVideoModerator,
+  createFailoverVideoModerator,
+  createGoogleVideoModerator,
+  createOpenAIVideoModerator,
+} from "./moderation.mjs";
 import { decodeBoundedProviderVideoBase64, VideoStorage } from "./storage.mjs";
 import {
   selectVideoProvider,
@@ -71,11 +76,17 @@ const falKey = Deno.env.get("FAL_KEY") || "";
 const googleKey = Deno.env.get("GOOGLE_API_KEY") ||
   Deno.env.get("GEMINI_API_KEY") || "";
 const openAIKey = Deno.env.get("OPENAI_API_KEY") || "";
-const moderateRequest = openAIKey
-  ? createOpenAIVideoModerator({ apiKey: openAIKey })
-  : () => {
-    throw new Error("video_moderation_not_configured");
-  };
+const moderateRequest = createFailoverVideoModerator([
+  ...(openAIKey
+    ? [createOpenAIVideoModerator({ apiKey: openAIKey })]
+    : []),
+  ...(googleKey
+    ? [createGoogleVideoModerator({ apiKey: googleKey })]
+    : []),
+  ...(bytePlusKey
+    ? [createBytePlusVideoModerator({ apiKey: bytePlusKey })]
+    : []),
+]);
 
 const storage = new VideoStorage({
   supabaseUrl,

@@ -17,7 +17,7 @@ final class HomeRouteTests: XCTestCase {
 
     func testOnlyUnfinishedAIRoutesAreReleaseGated() {
         XCTAssertTrue(HomeRoute.imageGeneration(ImageGenerationCatalog.custom).isReleaseInDevelopment)
-        XCTAssertTrue(HomeRoute.videoGeneration.isReleaseInDevelopment)
+        XCTAssertFalse(HomeRoute.videoGeneration.isReleaseInDevelopment)
         XCTAssertTrue(HomeRoute.aiInfluencer.isReleaseInDevelopment)
         XCTAssertFalse(HomeRoute.voiceGeneration.isReleaseInDevelopment)
 

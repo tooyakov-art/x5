@@ -18,7 +18,9 @@ and portfolio fixes in X five marketing.
   Reduce Motion is enabled; static posters remain as a safe fallback.
 - AI Voice now uses a protected server-side MiniMax route to turn text into
   playable and shareable MP3 audio.
-- AI Image, AI Video and AI Influencer temporarily show a clear In Development
-  screen, never charge credits and never call a provider.
+- AI Video is live through the official BytePlus Seedance 2.0 Fast route. A
+  completed private MP4 can be played, shared or saved to Photos.
+- AI Image and AI Influencer still show a clear In Development screen, never
+  charge credits and never call a provider.
 - Home cards now share one clear typography system. Every Hub profession has
   its own icon, and SMM with mobile content is one category everywhere.

@@ -206,6 +206,7 @@ test("edge contract authenticates users and keeps provider credentials server-si
     "../functions/generate-video/google-provider.mjs",
     "../functions/generate-video/openai-provider.mjs",
     "../functions/generate-video/video-provider.mjs",
+    "../functions/generate-video/moderation.mjs",
     "../functions/generate-video/webhook.mjs",
   ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8")).join(
     "\n",
@@ -307,8 +308,16 @@ test("safety runs before credit claim and private inputs are cleaned after termi
     new URL("../functions/generate-video/storage.mjs", import.meta.url),
     "utf8",
   );
+  const moderation = readFileSync(
+    new URL("../functions/generate-video/moderation.mjs", import.meta.url),
+    "utf8",
+  );
 
   assert.match(edge, /Deno\.env\.get\("OPENAI_API_KEY"\)/);
+  assert.match(edge, /createBytePlusVideoModerator/);
+  assert.match(moderation, /seed-2-0-lite-260428/);
+  assert.match(moderation, /video_moderation_unavailable/);
+  assert.doesNotMatch(moderation, /BASELINE_BLOCK_PATTERNS/);
   assert.match(
     handler,
     /moderateRequest\(normalized\)[\s\S]*claimJob\(/,

@@ -9,9 +9,24 @@ from typing import Protocol
 
 
 EXPECTED_VERSION = "1.1.6"
-EXPECTED_BUILD = "230"
-EXPECTED_STATE = "WAITING_FOR_REVIEW"
+EXPECTED_BUILD = "231"
 TARGET_RELEASE_TYPE = "AFTER_APPROVAL"
+SAFE_APP_STORE_STATES = frozenset(
+    {
+        "PREPARE_FOR_SUBMISSION",
+        "READY_FOR_REVIEW",
+        "WAITING_FOR_REVIEW",
+        "IN_REVIEW",
+    }
+)
+SAFE_STATE_TRANSITIONS = {
+    "PREPARE_FOR_SUBMISSION": SAFE_APP_STORE_STATES,
+    "READY_FOR_REVIEW": frozenset(
+        {"READY_FOR_REVIEW", "WAITING_FOR_REVIEW", "IN_REVIEW"}
+    ),
+    "WAITING_FOR_REVIEW": frozenset({"WAITING_FOR_REVIEW", "IN_REVIEW"}),
+    "IN_REVIEW": frozenset({"IN_REVIEW"}),
+}
 
 
 class ReleaseTypeClient(Protocol):
@@ -54,13 +69,17 @@ def set_after_approval(
             f"Expected exactly one iOS version {version_string}, found {len(matching)}"
         )
 
-    version = matching[0]
-    version_id = version["id"]
-    before = version.get("attributes", {})
-    if before.get("appStoreState") != EXPECTED_STATE:
-        raise ValueError(
-            f"Refusing state {before.get('appStoreState')}; expected {EXPECTED_STATE}"
-        )
+    version_id = matching[0]["id"]
+
+    # Use a fresh direct read before any mutation. The version listing can be
+    # stale while Apple moves a submission from waiting to active review.
+    current = client.get_version(version_id)
+    before = current.get("attributes", {})
+    if before.get("versionString") != version_string:
+        raise ValueError("Version changed before releaseType guard")
+    before_state = before.get("appStoreState")
+    if before_state not in SAFE_APP_STORE_STATES:
+        raise ValueError(f"Refusing unsafe appStoreState {before_state}")
     if before.get("releaseType") not in {"MANUAL", TARGET_RELEASE_TYPE}:
         raise ValueError(f"Refusing releaseType {before.get('releaseType')}")
 
@@ -78,14 +97,16 @@ def set_after_approval(
     if before.get("releaseType") != TARGET_RELEASE_TYPE:
         client.update_release_type(version_id, TARGET_RELEASE_TYPE)
 
-    # Mandatory fresh GET: the review state must remain unchanged.
+    # Mandatory fresh GET: releaseType must be durable and the review state may
+    # only advance through the explicitly safe pre-review/review states.
     confirmed = client.get_version(version_id)
     attrs = confirmed.get("attributes", {})
     if attrs.get("versionString") != version_string:
         raise RuntimeError("Version changed during releaseType PATCH")
-    if attrs.get("appStoreState") != EXPECTED_STATE:
+    confirmed_state = attrs.get("appStoreState")
+    if confirmed_state not in SAFE_STATE_TRANSITIONS[before_state]:
         raise RuntimeError(
-            f"Review state changed unexpectedly: {attrs.get('appStoreState')}"
+            f"Unsafe review state transition: {before_state} -> {confirmed_state}"
         )
     if attrs.get("releaseType") != TARGET_RELEASE_TYPE:
         raise RuntimeError(
