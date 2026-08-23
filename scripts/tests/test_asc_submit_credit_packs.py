@@ -577,6 +577,22 @@ class CreditPackSubmissionTests(unittest.TestCase):
         )
         self.assertNotIn("Attached app version item.", workflow)
 
+    def test_ready_release_finalize_workflow_skips_fastlane_and_sets_auto_release(self):
+        workflow = (
+            pathlib.Path(__file__).parents[2]
+            / ".github"
+            / "workflows"
+            / "asc-release-finalize-ready.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "python scripts/asc_submit_credit_packs.py --action submit",
+            workflow,
+        )
+        self.assertIn("python scripts/asc_set_after_approval.py", workflow)
+        self.assertNotIn("fastlane ios upload", workflow)
+        self.assertNotIn("\n  push:", workflow.split("jobs:", maxsplit=1)[0])
+
     def test_replace_workflow_requires_an_explicit_manual_dispatch(self):
         workflow = (
             pathlib.Path(__file__).parents[2]
