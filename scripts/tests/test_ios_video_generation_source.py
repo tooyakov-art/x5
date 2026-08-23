@@ -66,11 +66,10 @@ class IOSVideoGenerationSourceTests(unittest.TestCase):
         result_service = RESULT_FILE_SERVICE.read_text(encoding="utf-8")
 
         self.assertIn("VideoGenerationResultFileService", view)
-        self.assertIn("VideoGenerationShareFile(url: localResultURL)", view)
+        self.assertIn("ShareLink(item: localResultURL)", view)
         self.assertIn("PHAssetChangeRequest.creationRequestForAssetFromVideo", view)
         self.assertIn("resultFileService.cleanup(localResultURL)", view)
         self.assertNotIn("AVPlayer(url: resultURL)", view)
-        self.assertIn("FileRepresentation(exportedContentType: .mpeg4Movie)", view)
         self.assertIn("refreshSignedURL: true", view)
         self.assertIn("let envelope = try await service.status(", view)
         self.assertIn("/storage/v1/object/sign/video-generation-results/", result_service)

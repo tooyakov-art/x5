@@ -26,16 +26,6 @@ private struct VideoGenerationPickedImageFile: Transferable {
     }
 }
 
-private struct VideoGenerationShareFile: Transferable {
-    let url: URL
-
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(exportedContentType: .mpeg4Movie) { video in
-            SentTransferredFile(video.url)
-        }
-    }
-}
-
 private enum VideoGenerationPhotoSaveError: LocalizedError {
     case permissionDenied
     case saveFailed
@@ -558,9 +548,7 @@ struct VideoGeneratorView: View {
                         .onAppear { player.play() }
 
                     HStack(spacing: 10) {
-                        ShareLink(
-                            item: VideoGenerationShareFile(url: localResultURL)
-                        ) {
+                        ShareLink(item: localResultURL) {
                             Label("Поделиться", systemImage: "square.and.arrow.up")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(.black)
