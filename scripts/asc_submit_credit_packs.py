@@ -85,12 +85,23 @@ def review_item_payload(
     }
 
 
-def submit_review_payload(submission_id: str) -> dict[str, Any]:
+def submit_review_payload(
+    submission_id: str,
+    app_version_id: str,
+) -> dict[str, Any]:
     return {
         "data": {
             "type": "reviewSubmissions",
             "id": submission_id,
             "attributes": {"submitted": True},
+            "relationships": {
+                "appStoreVersionForReview": {
+                    "data": {
+                        "type": "appStoreVersions",
+                        "id": app_version_id,
+                    }
+                }
+            },
         }
     }
 
@@ -112,6 +123,44 @@ def review_item_targets(
             if isinstance(resource_type, str) and isinstance(resource_id, str):
                 targets.add((resource_type, resource_id))
     return targets
+
+
+def app_only_item_readback(
+    api: AppStoreConnect,
+    submission_id: str,
+) -> tuple[bool, bool]:
+    """Return whether one opaque item exists and is ready.
+
+    App Store Connect can omit the target relationship from included
+    reviewSubmissionItems. The submission-scoped items endpoint still proves
+    the item count and state. This fallback is intentionally only used for an
+    app-only review; combined app + IAP reviews still require exact targets.
+    """
+    payload = api.request(
+        "GET",
+        f"/v1/reviewSubmissions/{submission_id}/items?limit=50",
+    )
+    if payload.get("links", {}).get("next"):
+        raise RuntimeError(
+            "App-only review has more items than can be verified safely"
+        )
+    items = payload.get("data")
+    if not isinstance(items, list):
+        raise RuntimeError("Review items response is not a list")
+    if len(items) > 1:
+        raise RuntimeError(
+            f"App-only review must contain at most one item, found {len(items)}"
+        )
+    if not items:
+        return False, False
+
+    item = items[0]
+    if item.get("type") != "reviewSubmissionItems" or not item.get("id"):
+        raise RuntimeError("App-only review item is malformed")
+    return (
+        True,
+        item.get("attributes", {}).get("state") == "READY_FOR_REVIEW",
+    )
 
 
 def single_ready_submission(
@@ -322,7 +371,13 @@ def create_combined_review(
 
     existing_targets = load_targets()
     app_target = ("appStoreVersions", app_version_id)
-    if app_target not in existing_targets:
+    opaque_app_item_exists = False
+    if not iap_versions and not existing_targets:
+        opaque_app_item_exists, _ = app_only_item_readback(
+            api,
+            submission_id,
+        )
+    if app_target not in existing_targets and not opaque_app_item_exists:
         api.request(
             "POST",
             "/v1/reviewSubmissionItems",
@@ -363,6 +418,17 @@ def create_combined_review(
             and len(actual_targets) == expected_count
         ):
             break
+        if not iap_versions and not actual_targets:
+            _, opaque_app_item_ready = app_only_item_readback(
+                api,
+                submission_id,
+            )
+            if opaque_app_item_ready:
+                print(
+                    "Verified app-only review contains exactly one ready item "
+                    "via submission item readback"
+                )
+                break
         print(
             "Waiting for combined review item readback "
             f"{attempt}/30: actual targets={sorted(actual_targets)}"
@@ -382,7 +448,7 @@ def create_combined_review(
     submitted = api.request(
         "PATCH",
         f"/v1/reviewSubmissions/{submission_id}",
-        payload=submit_review_payload(submission_id),
+        payload=submit_review_payload(submission_id, app_version_id),
     )["data"]
     final_state = submitted.get("attributes", {}).get("state")
     print(f"Submitted combined review state={final_state}")

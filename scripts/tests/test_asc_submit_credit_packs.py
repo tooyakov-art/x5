@@ -51,6 +51,20 @@ class CreditPackSubmissionTests(unittest.TestCase):
             {"type": "apps", "id": "app-1"},
         )
 
+    def test_submit_payload_targets_app_store_version_for_review(self):
+        payload = MODULE.submit_review_payload(
+            "submission-1",
+            "version-1",
+        )
+
+        self.assertTrue(payload["data"]["attributes"]["submitted"])
+        self.assertEqual(
+            payload["data"]["relationships"][
+                "appStoreVersionForReview"
+            ]["data"],
+            {"type": "appStoreVersions", "id": "version-1"},
+        )
+
     def test_developer_rejected_iap_version_is_reused(self):
         rejected = {
             "id": "version-1",
@@ -277,6 +291,8 @@ class CreditPackSubmissionTests(unittest.TestCase):
                             }
                         )
                     return {"included": included}
+                if method == "GET" and path.endswith("/items?limit=50"):
+                    return {"data": []}
                 if method == "POST" and path == "/v1/reviewSubmissionItems":
                     target = payload["data"]["relationships"][
                         "appStoreVersion"
@@ -311,6 +327,99 @@ class CreditPackSubmissionTests(unittest.TestCase):
         self.assertEqual(submission_id, "submission-app-only")
         self.assertTrue(api.submitted)
         api.assert_app_only()
+
+    def test_existing_opaque_app_only_item_is_reused_without_duplicate(self):
+        class FakeAPI:
+            def __init__(self):
+                self.submitted = False
+
+            def request(self, method, path, expected=(200,), payload=None):
+                if method == "GET" and "?filter[app]=" in path:
+                    return {
+                        "data": [
+                            {
+                                "id": "submission-ready",
+                                "attributes": {
+                                    "state": "READY_FOR_REVIEW"
+                                },
+                            }
+                        ]
+                    }
+                if method == "GET" and "?include=items" in path:
+                    return {"included": []}
+                if method == "GET" and path.endswith("/items?limit=50"):
+                    return {
+                        "data": [
+                            {
+                                "type": "reviewSubmissionItems",
+                                "id": "opaque-item-ref",
+                                "attributes": {
+                                    "state": "READY_FOR_REVIEW"
+                                },
+                            }
+                        ]
+                    }
+                if method == "POST":
+                    raise AssertionError(
+                        "must not create a duplicate app review item"
+                    )
+                if method == "PATCH":
+                    self.submitted = True
+                    self.assert_submit_payload(payload)
+                    return {
+                        "data": {
+                            "id": "submission-ready",
+                            "attributes": {
+                                "state": "WAITING_FOR_REVIEW"
+                            },
+                        }
+                    }
+                raise AssertionError(f"Unexpected request {method} {path}")
+
+            def assert_submit_payload(self, payload):
+                target = payload["data"]["relationships"][
+                    "appStoreVersionForReview"
+                ]["data"]
+                if target != {
+                    "type": "appStoreVersions",
+                    "id": "version-1",
+                }:
+                    raise AssertionError(f"wrong submit target {target}")
+
+        api = FakeAPI()
+        submission_id = MODULE.create_combined_review(
+            api,
+            "app-1",
+            "version-1",
+            [],
+        )
+
+        self.assertEqual(submission_id, "submission-ready")
+        self.assertTrue(api.submitted)
+
+    def test_app_only_opaque_item_count_fails_closed(self):
+        class FakeAPI:
+            def request(self, method, path, **kwargs):
+                return {
+                    "data": [
+                        {
+                            "type": "reviewSubmissionItems",
+                            "id": "item-1",
+                            "attributes": {"state": "READY_FOR_REVIEW"},
+                        },
+                        {
+                            "type": "reviewSubmissionItems",
+                            "id": "item-2",
+                            "attributes": {"state": "READY_FOR_REVIEW"},
+                        },
+                    ]
+                }
+
+        with self.assertRaisesRegex(RuntimeError, "at most one item"):
+            MODULE.app_only_item_readback(
+                FakeAPI(),
+                "submission-ready",
+            )
 
     def test_all_reviewed_iaps_still_submit_the_app_version(self):
         class FakeAPI:
