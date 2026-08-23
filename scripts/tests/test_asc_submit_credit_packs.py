@@ -577,12 +577,12 @@ class CreditPackSubmissionTests(unittest.TestCase):
         )
         self.assertNotIn("Attached app version item.", workflow)
 
-    def test_ready_release_finalize_workflow_skips_fastlane_and_sets_auto_release(self):
+    def test_review_manager_delegates_submit_to_guarded_release_scripts(self):
         workflow = (
             pathlib.Path(__file__).parents[2]
             / ".github"
             / "workflows"
-            / "asc-release-finalize-ready.yml"
+            / "asc-review-submission.yml"
         ).read_text(encoding="utf-8")
 
         self.assertIn(
@@ -590,8 +590,8 @@ class CreditPackSubmissionTests(unittest.TestCase):
             workflow,
         )
         self.assertIn("python scripts/asc_set_after_approval.py", workflow)
-        self.assertNotIn("fastlane ios upload", workflow)
-        self.assertNotIn("\n  push:", workflow.split("jobs:", maxsplit=1)[0])
+        self.assertIn("if: ${{ inputs.action == 'submit' }}", workflow)
+        self.assertIn("if: ${{ inputs.action != 'submit' }}", workflow)
 
     def test_replace_workflow_requires_an_explicit_manual_dispatch(self):
         workflow = (

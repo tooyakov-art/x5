@@ -41,7 +41,13 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install --require-hashes -r .github/requirements/asc-requirements.lock
+      - name: Submit guarded current X5 release
+        if: ${{ inputs.action == 'submit' }}
+        run: |
+          python scripts/asc_submit_credit_packs.py --action submit
+          python scripts/asc_set_after_approval.py
       - name: Manage review submission
+        if: ${{ inputs.action != 'submit' }}
         run: |
           python <<'PY'
           import os, base64, time, json, sys
