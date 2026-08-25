@@ -58,7 +58,7 @@ test("voice backend and exact-once migration exist", () => {
   assert.equal(fs.existsSync(sqlIntegrationTestPath), true);
 });
 
-test("official MiniMax and ElevenLabs credentials remain server-side", () => {
+test("new voice jobs use official MiniMax only and keep credentials server-side", () => {
   assert.equal(fs.existsSync(path.join(functionDirectory, "index.ts")), true);
   assert.equal(
     fs.existsSync(path.join(functionDirectory, "fal-provider.mjs")),
@@ -84,9 +84,9 @@ test("official MiniMax and ElevenLabs credentials remain server-side", () => {
   );
 
   assert.match(edge, /Deno\.env\.get\("MINIMAX_API_KEY"\)/);
-  assert.match(edge, /Deno\.env\.get\("ELEVENLABS_API_KEY"\)/);
+  assert.doesNotMatch(edge, /Deno\.env\.get\("ELEVENLABS_API_KEY"\)/);
   assert.match(provider, /https:\/\/api\.minimax\.io\/v1\/t2a_v2/);
-  assert.match(provider, /https:\/\/api\.elevenlabs\.io\/v1\/text-to-speech/);
+  assert.doesNotMatch(provider, /api\.elevenlabs\.io/i);
   assert.doesNotMatch(
     swift,
     /MINIMAX_API_KEY|ELEVENLABS_API_KEY|api\.minimax\.io|api\.elevenlabs\.io/i,
