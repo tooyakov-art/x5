@@ -1,6 +1,10 @@
-export const VOICE_MODEL = "fal-ai/elevenlabs/tts/eleven-v3";
+export const VOICE_MODEL = "speech-2.8-turbo";
+// Keep the old fingerprint seed so an installed build can replay an accepted
+// request after the provider display names changed. This value is never sent
+// to a provider or exposed as the result model.
+const LEGACY_IDENTITY_MODEL = "fal-ai/elevenlabs/tts/eleven-v3";
 export const VOICE_RESULT_MODELS = Object.freeze({
-  fal: VOICE_MODEL,
+  fal: LEGACY_IDENTITY_MODEL,
   minimax: "speech-2.8-turbo",
   elevenlabs: "eleven_v3",
 });
@@ -14,6 +18,16 @@ export const VOICE_MAX_CHARACTERS = 5_000;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SUPPORTED_VOICES = new Set([
+  "Russian_BrightHeroine",
+  "Russian_AmbitiousWoman",
+  "Russian_CrazyQueen",
+  "Russian_PessimisticGirl",
+  "Russian_ReliableMan",
+  "Russian_AttractiveGuy",
+  "Russian_Bad-temperedBoy",
+  "Russian_HandsomeChildhoodFriend",
+  // Legacy app values remain valid only to replay or finish requests made by
+  // earlier TestFlight builds. New UI versions send the MiniMax IDs above.
   "Aria",
   "Roger",
   "Sarah",
@@ -72,7 +86,7 @@ export function normalizeVoiceGenerationRequest(body) {
     throw new VoiceGenerationRequestError("invalid_text");
   }
 
-  const voice = String(body.voice || "Aria").trim();
+  const voice = String(body.voice || "Russian_BrightHeroine").trim();
   if (!SUPPORTED_VOICES.has(voice)) {
     throw new VoiceGenerationRequestError("invalid_voice");
   }
@@ -125,7 +139,7 @@ export async function buildVoiceGenerationIdentity(normalized) {
     languageCode: normalized.languageCode,
     outputFormat: normalized.outputFormat,
     costCredits: normalized.costCredits,
-    model: VOICE_MODEL,
+    model: LEGACY_IDENTITY_MODEL,
   }));
   return {
     requestKey: `explicit:${requestDigest}`,
@@ -134,8 +148,10 @@ export async function buildVoiceGenerationIdentity(normalized) {
 }
 
 export function buildVoiceResultManifest(object, result = {}) {
-  const provider = String(result.provider || "fal");
-  const model = String(result.model || VOICE_MODEL);
+  const provider = String(result.provider || "minimax");
+  const model = String(
+    result.model || VOICE_RESULT_MODELS[provider] || VOICE_MODEL,
+  );
   if (
     !object ||
     typeof object.path !== "string" ||

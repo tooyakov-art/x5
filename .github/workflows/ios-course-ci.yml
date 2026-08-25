@@ -19,6 +19,13 @@ on:
       - "supabase/functions/register-push-token/**"
       - "supabase/functions/generate-video/**"
       - "supabase/functions/generate-voice/**"
+      - "supabase/functions/ai-assets/**"
+      - "supabase/functions/ai-capabilities/**"
+      - "supabase/functions/ai-character/**"
+      - "supabase/functions/ai-presets/**"
+      - "supabase/functions/generate-lipsync/**"
+      - "supabase/functions/generate-influencer-video/**"
+      - "supabase/functions/_shared/ai-studio.mjs"
       - "supabase/functions/voice-generation-webhook/**"
       - "supabase/functions/account-deletion-cleanup/**"
       - "supabase/config.toml"
@@ -174,15 +181,35 @@ jobs:
         run: |
           deno fmt --check \
             supabase/functions/generate-voice \
+            supabase/functions/ai-assets \
+            supabase/functions/ai-capabilities \
+            supabase/functions/ai-character \
+            supabase/functions/ai-presets \
+            supabase/functions/generate-lipsync \
+            supabase/functions/generate-influencer-video \
+            supabase/functions/_shared/ai-studio.mjs \
             supabase/functions/voice-generation-webhook \
             supabase/functions/account-deletion-cleanup
           deno lint \
             supabase/functions/generate-voice \
+            supabase/functions/ai-assets \
+            supabase/functions/ai-capabilities \
+            supabase/functions/ai-character \
+            supabase/functions/ai-presets \
+            supabase/functions/generate-lipsync \
+            supabase/functions/generate-influencer-video \
+            supabase/functions/_shared/ai-studio.mjs \
             supabase/functions/voice-generation-webhook \
             supabase/functions/account-deletion-cleanup
           deno check \
             supabase/functions/generate-video/index.ts \
             supabase/functions/generate-voice/index.ts \
+            supabase/functions/ai-assets/index.ts \
+            supabase/functions/ai-capabilities/index.ts \
+            supabase/functions/ai-character/index.ts \
+            supabase/functions/ai-presets/index.ts \
+            supabase/functions/generate-lipsync/index.ts \
+            supabase/functions/generate-influencer-video/index.ts \
             supabase/functions/voice-generation-webhook/index.ts \
             supabase/functions/account-deletion-cleanup/index.ts \
             supabase/functions/startup-chat/index.ts \
@@ -190,6 +217,7 @@ jobs:
           node --test \
             supabase/functions/generate-video/*.test.mjs \
             supabase/functions/generate-voice/*.test.mjs \
+            supabase/functions/generate-lipsync/*.test.mjs \
             supabase/functions/voice-generation-webhook/*.test.mjs \
             supabase/functions/account-deletion-cleanup/*.test.mjs \
             supabase/functions/startup-chat/*.test.mjs \

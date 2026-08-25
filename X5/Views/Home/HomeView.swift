@@ -2,6 +2,7 @@ import SwiftUI
 
 enum HomeRoute: Hashable, Identifiable {
     case imageGeneration(ImageGenerationCategory)
+    case aiStudio
     case startupChat
     case hub
     case videoGeneration
@@ -12,6 +13,7 @@ enum HomeRoute: Hashable, Identifiable {
     var id: String {
         switch self {
         case .imageGeneration(let category): return "image_generation:\(category.id)"
+        case .aiStudio: return "ai_studio"
         case .startupChat: return "startup_chat"
         case .hub: return "hub"
         case .videoGeneration: return "video_generation"
@@ -23,9 +25,8 @@ enum HomeRoute: Hashable, Identifiable {
 
     var isReleaseInDevelopment: Bool {
         switch self {
-        case .imageGeneration, .aiInfluencer:
-            return true
-        case .startupChat, .hub, .videoGeneration, .voiceGeneration, .liveFruits:
+        case .imageGeneration, .aiStudio, .startupChat, .hub, .videoGeneration,
+             .aiInfluencer, .voiceGeneration, .liveFruits:
             return false
         }
     }
@@ -73,6 +74,7 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: HomeLayout.sectionSpacing) {
                     heroBanner
                     promoCards
+                    aiStudioLauncher
                     trendsSection
                     businessSection
                 }
@@ -192,6 +194,36 @@ struct HomeView: View {
             )
             .accessibilityIdentifier("x5.home.promo.hub")
         }
+    }
+
+    private var aiStudioLauncher: some View {
+        Button {
+            handle(.aiStudio)
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "sparkles.rectangle.stack.fill")
+                    .font(.system(size: 25, weight: .bold))
+                    .foregroundStyle(.black)
+                    .frame(width: 54, height: 54)
+                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 16))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Все AI-инструменты")
+                        .font(.system(size: 19, weight: .black))
+                        .foregroundStyle(.white)
+                    Text("Изображения · MiniMax · Seedance · Lipsync")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.54))
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .padding(14)
+            .x5ClearGlass(cornerRadius: 20, highlight: 0.10)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("x5.home.ai_studio")
     }
 
     private var trendsSection: some View {
@@ -347,6 +379,9 @@ struct HomeView: View {
         case .imageGeneration(let category):
             DiagnosticLogger.log(event: "home_studio_\(category.id)_tap")
             activeRoute = route
+        case .aiStudio:
+            DiagnosticLogger.log(event: "home_ai_studio_tap")
+            activeRoute = route
         case .hub:
             DiagnosticLogger.log(event: "home_hub_promo_tap")
             NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "hub"])
@@ -378,66 +413,19 @@ struct HomeView: View {
     private func sheetDestination(for route: HomeRoute) -> some View {
         switch route {
         case .imageGeneration(let category):
-            HomeFeatureInDevelopmentView(featureTitle: category.title)
+            NavigationStack { ImageGeneratorView(category: category) }
+        case .aiStudio:
+            AIStudioHubView()
         case .videoGeneration:
             VideoGeneratorView()
         case .aiInfluencer:
-            HomeFeatureInDevelopmentView(featureTitle: "AI-инфлюенсер")
+            NavigationStack { AIInfluencerView() }
         case .voiceGeneration:
             VoiceGeneratorView()
         case .startupChat: StartupChatView()
         case .liveFruits: LiveFruitsView()
         case .hub: EmptyView()
         }
-    }
-}
-
-private struct HomeFeatureInDevelopmentView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    let featureTitle: String
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 18) {
-                Spacer()
-
-                Image(systemName: "hammer.fill")
-                    .font(.system(size: 34, weight: .bold))
-                    .foregroundColor(X5Style.blue)
-                    .frame(width: 80, height: 80)
-                    .background(X5Style.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .stroke(X5Style.blue.opacity(0.22), lineWidth: 1)
-                    }
-
-                Text("В разработке")
-                    .font(.title2.weight(.heavy))
-                    .foregroundColor(.white)
-
-                Text("Функция «\(featureTitle)» пока недоступна. Откроем после полной проверки.")
-                    .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.55))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 300)
-
-                Button("Назад") { dismiss() }
-                    .font(.headline)
-                    .foregroundColor(.black)
-                    .frame(maxWidth: 280)
-                    .frame(height: 50)
-                    .background(X5Style.blue, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .padding(.top, 8)
-
-                Spacer()
-            }
-            .padding(.horizontal, 24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background { NativeHomeBackground() }
-        }
-        .preferredColorScheme(.dark)
-        .interactiveDismissDisabled(false)
     }
 }
 

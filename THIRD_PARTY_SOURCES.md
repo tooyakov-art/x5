@@ -263,28 +263,30 @@ bundled in the app.
   Transport failures, HTTP 408, and HTTP 5xx stay submission-ambiguous and never
   start a second provider request. `OPENAI_API_KEY` remains server-only.
 
-### fal ElevenLabs TTS Eleven v3
+### MiniMax Speech 2.8 Turbo
 
-- Official API reference:
-  https://fal.ai/models/fal-ai/elevenlabs/tts/eleven-v3
-- Official queue lifecycle:
-  https://fal.ai/docs/documentation/model-apis/inference/queue
-- Official webhook delivery and signature verification:
-  https://fal.ai/docs/documentation/model-apis/inference/webhooks
-- Official storage/lifecycle request headers:
-  https://fal.ai/docs/documentation/model-apis/common-parameters
-- Retrieved: 2026-07-26; model API reverified: 2026-08-01
+- Production HTTP endpoint: https://api.minimax.io/v1/t2a_v2
+- Model: `speech-2.8-turbo`.
+- Verified in production: 2026-08-25 with Russian, Kazakh and English text.
 - Use: server-side speech generation from user-supplied text with a selected
-  voice, stability, speed, and optional language hint.
-- Integration: X5 submits once to fal's persistent queue and correlates the
-  provider request ID with an exact-once credit ledger. The callback verifies
-  fal's Ed25519 signature over the untouched request bytes; callback and client
-  retries reuse the same job instead of generating twice. Provider persistence
-  is disabled with `X-Fal-Store-IO: 0`, generated provider objects request a
-  three-hour lifecycle, and `FAL_KEY` remains server-only. The returned MP3 is
-  size- and type-checked, copied into private owner-scoped X5 Storage, and
-  exposed to the app through a short-lived signed URL that is immediately
-  downloaded into an app-managed local file for playback and sharing.
+  MiniMax voice, speed and language hint. ElevenLabs is not used for new jobs.
+- Integration: the authenticated Edge Function charges through the exact-once
+  ledger, calls MiniMax once, validates the returned MP3, copies it into private
+  owner-scoped X5 Storage and returns only a short-lived signed link.
+  `MINIMAX_API_KEY` remains server-only. Historical fal/ElevenLabs queue code is
+  retained solely to finish or re-sign requests accepted by older app builds.
+
+### fal.ai Sync Lipsync
+
+- Model endpoint: https://fal.ai/models/fal-ai/sync-lipsync
+- Queue lifecycle: https://fal.ai/docs/documentation/model-apis/inference/queue
+- Use: synchronize a user-owned or X5-generated MP4 with an owner-scoped audio
+  asset after the user explicitly starts a Lipsync or AI-influencer job.
+- Integration: both inputs are signed for a short period, the request is charged
+  exactly once, the provider result is validated as MP4 and copied into private
+  X5 Storage. A provider rejection or invalid result invokes the exact-once
+  refund path. `FAL_KEY` remains server-only. The UI disables submission when
+  this key or a successful provider health check is absent.
 
 ## Push delivery infrastructure
 

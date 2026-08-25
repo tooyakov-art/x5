@@ -35,7 +35,8 @@ class IOSVoiceGenerationSourceTests(unittest.TestCase):
         )
         self.assertRegex(
             home,
-            r'case \.startupChat, \.hub, \.videoGeneration, \.voiceGeneration, \.liveFruits:\s+return false',
+            r'case \.imageGeneration, \.aiStudio, \.startupChat, \.hub, \.videoGeneration,[\s\S]{0,100}'
+            r'\.aiInfluencer, \.voiceGeneration, \.liveFruits:\s+return false',
         )
 
         visible_collections = home[
@@ -64,11 +65,8 @@ class IOSVoiceGenerationSourceTests(unittest.TestCase):
 
         self.assertIn("supabase/functions/generate-voice", workflow)
         self.assertIn("voice_generation_backend_contract_test.mjs", workflow)
-        self.assertIn(
-            "https://fal.ai/models/fal-ai/elevenlabs/tts/eleven-v3",
-            sources,
-        )
-        self.assertIn("Retrieved: 2026-07-26", sources)
+        self.assertIn("https://api.minimax.io/v1/t2a_v2", sources)
+        self.assertIn("speech-2.8-turbo", sources)
 
 
 if __name__ == "__main__":

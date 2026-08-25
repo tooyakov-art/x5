@@ -77,6 +77,7 @@ export function createGenerateVoiceHandler(deps) {
     }).catch(() => null);
     if (existing?.status === "succeeded") {
       return await signedResponse({
+        userID: user.id,
         normalized,
         creditsRemaining: Number(existing.credits_remaining || 0),
         manifest: existing.result_manifest,
@@ -141,6 +142,7 @@ export function createGenerateVoiceHandler(deps) {
     }
     if (claim.status === "replay") {
       return await signedResponse({
+        userID: user.id,
         normalized,
         creditsRemaining: Number(claim.credits_remaining || 0),
         manifest: claim.result_manifest,
@@ -327,6 +329,7 @@ async function pollProvider({ normalized, ledger, deps }) {
   });
   if (finalized.status !== "completed") return pendingResponse();
   return await signedResponse({
+    userID: ledger.userID,
     normalized,
     creditsRemaining: Number(
       finalized.creditsRemaining ?? ledger.creditsRemaining ?? 0,
@@ -432,6 +435,9 @@ async function runDirectGeneration({ normalized, ledger, deps }) {
     const failure = ledger.providerRequestID
       ? await settleProviderFailure({ ledger, deps })
       : await rejectDirectClaim({ ledger, deps });
+    await deps.recordProviderHealth?.(false, "provider_failure").catch(() =>
+      null
+    );
     return failedResponse(failure);
   }
 
@@ -480,7 +486,9 @@ async function runDirectGeneration({ normalized, ledger, deps }) {
     deps,
   });
   if (finalized.status !== "completed") return pendingResponse();
+  await deps.recordProviderHealth?.(true, null).catch(() => null);
   return await signedResponse({
+    userID: ledger.userID,
     normalized,
     creditsRemaining: Number(
       finalized.creditsRemaining ?? ledger.creditsRemaining ?? 0,
@@ -547,6 +555,7 @@ async function recoverByProvider({ ledger, deps }) {
 }
 
 async function signedResponse({
+  userID,
   normalized,
   creditsRemaining,
   manifest,
@@ -558,6 +567,10 @@ async function signedResponse({
   if (!signed?.signedURL || !signed?.expiresAt) {
     throw new Error("voice_result_signing_failed");
   }
+  const asset = await deps.assetForObject?.(
+    userID,
+    object.path,
+  ).catch(() => null);
   return json({
     audio_url: signed.signedURL,
     audio_url_expires_at: signed.expiresAt,
@@ -567,6 +580,9 @@ async function signedResponse({
     voice: normalized.voice,
     model: String(manifest?.model || "unknown"),
     replayed,
+    ...(asset?.id && String(asset.user_id || "") === String(userID)
+      ? { asset_id: String(asset.id) }
+      : {}),
   });
 }
 

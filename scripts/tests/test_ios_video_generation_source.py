@@ -26,7 +26,8 @@ class IOSVideoGenerationSourceTests(unittest.TestCase):
     def test_video_screen_exposes_real_job_states(self):
         view = VIEW.read_text(encoding="utf-8")
 
-        self.assertIn('navigationTitle("Генерация видео")', view)
+        self.assertIn(".navigationTitle(studioMode.navigationTitle)", view)
+        self.assertIn('case .standard: return "Генерация видео"', view)
         self.assertIn("VideoGenerationService", view)
         for state in ("queued", "rendering", "completed", "failed"):
             self.assertIn(f"case .{state}", view)

@@ -1,10 +1,8 @@
 const MINIMAX_ENDPOINT = "https://api.minimax.io/v1/t2a_v2";
 export const MINIMAX_MODEL = "speech-2.8-turbo";
-const ELEVENLABS_ENDPOINT = "https://api.elevenlabs.io/v1/text-to-speech";
-export const ELEVENLABS_MODEL = "eleven_v3";
 const MAXIMUM_AUDIO_BYTES = 20 * 1024 * 1024;
 
-const FEMALE_VOICES = new Set([
+const LEGACY_FEMALE_VOICES = new Set([
   "Aria",
   "Sarah",
   "Laura",
@@ -28,29 +26,7 @@ const MINIMAX_MALE = [
   "Russian_Bad-temperedBoy",
   "Russian_HandsomeChildhoodFriend",
 ];
-const ELEVENLABS_VOICE_IDS = {
-  Aria: "9BWtsMINqrJLrRacOk9x",
-  Roger: "CwhRBWXzGAHq8TQ4Fs17",
-  Sarah: "EXAVITQu4vr4xnSDxMaL",
-  Laura: "FGY2WhTYpPnrIDTdsKH5",
-  Charlie: "IKne3meq5aSn9XLyUdCD",
-  George: "JBFqnCBsd6RMkjVDRZzb",
-  Callum: "N2lVS1w4EtoT3dr4eOWO",
-  River: "SAz9YHcvj6GT2YYXdXww",
-  Liam: "TX3LPaxmHKxFdv7VOQHJ",
-  Charlotte: "XB0fDUnXU5powFXDhCwa",
-  Alice: "Xb7hH8MSUJpSbSDYk0k2",
-  Matilda: "XrExE9yKIg1WjnnlVkGX",
-  Will: "bIHbv24MWmeRgasZH58o",
-  Jessica: "cgSgspJ2msm6clMCkdW9",
-  Eric: "cjVigY5qzO86Huf0OWal",
-  Chris: "iP95p4xoKVk53GoZ742B",
-  Brian: "nPczCjzI2devNBz1zQrb",
-  Daniel: "onwK4e9ZLuTAKqWW03F9",
-  Lily: "pFZP5JQG7iQjIQuC4Bku",
-  Bill: "pqHfZKP75CvOlQylNhV4",
-  Rachel: "21m00Tcm4TlvDq8ikWAM",
-};
+const MINIMAX_VOICES = new Set([...MINIMAX_FEMALE, ...MINIMAX_MALE]);
 
 export class DirectVoiceProviderError extends Error {
   constructor(code, options = {}) {
@@ -66,26 +42,16 @@ export class DirectVoiceProviderError extends Error {
 }
 
 export class DirectVoiceProvider {
-  constructor({ minimaxKey = "", elevenLabsKey = "", fetchImpl = fetch }) {
+  constructor({ minimaxKey = "", fetchImpl = fetch }) {
     this.minimaxKey = String(minimaxKey || "").trim();
-    this.elevenLabsKey = String(elevenLabsKey || "").trim();
     this.fetchImpl = fetchImpl;
-    if (!this.minimaxKey && !this.elevenLabsKey) {
+    if (!this.minimaxKey) {
       throw new DirectVoiceProviderError("provider_not_configured");
     }
   }
 
   async generate({ input }) {
-    if (this.minimaxKey) {
-      try {
-        return await this.#generateMiniMax(input);
-      } catch (error) {
-        if (error?.submissionAmbiguous === true || !this.elevenLabsKey) {
-          throw error;
-        }
-      }
-    }
-    return await this.#generateElevenLabs(input);
+    return await this.#generateMiniMax(input);
   }
 
   async #generateMiniMax(input) {
@@ -142,74 +108,13 @@ export class DirectVoiceProvider {
       audioMimeType: "audio/mpeg",
     };
   }
-
-  async #generateElevenLabs(input) {
-    const voiceID = ELEVENLABS_VOICE_IDS[input.voice];
-    if (!this.elevenLabsKey || !voiceID) {
-      throw new DirectVoiceProviderError("elevenlabs_not_configured");
-    }
-    let response;
-    try {
-      response = await this.fetchImpl(
-        `${ELEVENLABS_ENDPOINT}/${
-          encodeURIComponent(voiceID)
-        }?output_format=mp3_44100_128`,
-        {
-          method: "POST",
-          headers: {
-            "xi-api-key": this.elevenLabsKey,
-            "Content-Type": "application/json",
-            "Accept": "audio/mpeg",
-          },
-          body: JSON.stringify({
-            text: input.text,
-            model_id: ELEVENLABS_MODEL,
-            ...(input.languageCode
-              ? { language_code: input.languageCode }
-              : {}),
-            voice_settings: {
-              stability: input.stability,
-              similarity_boost: 0.75,
-              speed: input.speed,
-            },
-          }),
-          signal: AbortSignal.timeout(90_000),
-        },
-      );
-    } catch {
-      throw new DirectVoiceProviderError("elevenlabs_transport_ambiguous", {
-        submissionAmbiguous: true,
-        terminal: false,
-      });
-    }
-    if (!response.ok) {
-      throw new DirectVoiceProviderError("elevenlabs_rejected", {
-        providerStatus: response.status,
-      });
-    }
-    const declaredLength = Number(response.headers.get("Content-Length") || 0);
-    if (declaredLength > MAXIMUM_AUDIO_BYTES) {
-      throw new DirectVoiceProviderError("elevenlabs_audio_too_large");
-    }
-    const audioBytes = new Uint8Array(await response.arrayBuffer());
-    if (
-      audioBytes.byteLength <= 3 || audioBytes.byteLength > MAXIMUM_AUDIO_BYTES
-    ) {
-      throw new DirectVoiceProviderError("elevenlabs_audio_invalid");
-    }
-    const headerID = response.headers.get("request-id") || crypto.randomUUID();
-    return {
-      provider: "elevenlabs",
-      model: ELEVENLABS_MODEL,
-      requestID: normalizeRequestID(headerID, "eleven"),
-      audioBytes,
-      audioMimeType: "audio/mpeg",
-    };
-  }
 }
 
 function minimaxVoice(voice) {
-  const source = FEMALE_VOICES.has(voice) ? MINIMAX_FEMALE : MINIMAX_MALE;
+  if (MINIMAX_VOICES.has(voice)) return voice;
+  const source = LEGACY_FEMALE_VOICES.has(voice)
+    ? MINIMAX_FEMALE
+    : MINIMAX_MALE;
   let hash = 0;
   for (const character of String(voice || "")) {
     hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
@@ -220,6 +125,9 @@ function minimaxVoice(voice) {
 function languageBoost(code) {
   const map = {
     ru: "Russian",
+    // MiniMax currently rejects the undocumented `Kazakh` boost value.
+    // Auto-detection accepts Kazakh Cyrillic and produced a valid live MP3.
+    kk: "auto",
     en: "English",
     uk: "Ukrainian",
     de: "German",

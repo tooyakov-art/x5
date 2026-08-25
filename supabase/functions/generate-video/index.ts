@@ -77,12 +77,8 @@ const googleKey = Deno.env.get("GOOGLE_API_KEY") ||
   Deno.env.get("GEMINI_API_KEY") || "";
 const openAIKey = Deno.env.get("OPENAI_API_KEY") || "";
 const moderateRequest = createFailoverVideoModerator([
-  ...(openAIKey
-    ? [createOpenAIVideoModerator({ apiKey: openAIKey })]
-    : []),
-  ...(googleKey
-    ? [createGoogleVideoModerator({ apiKey: googleKey })]
-    : []),
+  ...(openAIKey ? [createOpenAIVideoModerator({ apiKey: openAIKey })] : []),
+  ...(googleKey ? [createGoogleVideoModerator({ apiKey: googleKey })] : []),
   ...(bytePlusKey
     ? [createBytePlusVideoModerator({ apiKey: bytePlusKey })]
     : []),
@@ -203,6 +199,10 @@ async function reconcileJob(
       p_error_code: providerStatus.errorCode || "provider_failed",
     });
     const updated = await getJob({ jobId: row.id, userId: row.user_id }) || row;
+    await recordVideoHealth(
+      false,
+      providerStatus.errorCode || "provider_failed",
+    );
     if (["completed", "failed"].includes(updated.status)) {
       await cleanupStartImage(updated);
     }
@@ -231,6 +231,7 @@ async function reconcileJob(
           kind: row.provider_kind,
         }),
     });
+    await recordVideoHealth(true, null);
   } catch (error) {
     // Transient provider, storage, or ledger failures remain retryable.
     if (strict) throw error;
@@ -284,6 +285,26 @@ async function finalizeResultForJob({
 
 async function createSignedVideoUrl(path: string) {
   return await storage.signResult(path);
+}
+
+async function assetForVideoResult(path: string, userId: string) {
+  const asset = await callServiceRpc("generated_asset_by_object_service", {
+    p_bucket_id: "video-generation-results",
+    p_object_path: path,
+  });
+  return asset.status === "found" && String(asset.user_id || "") === userId
+    ? asset
+    : null;
+}
+
+async function recordVideoHealth(success: boolean, errorCode: string | null) {
+  await callServiceRpc("record_ai_provider_health", {
+    p_provider: "byteplus",
+    p_capability: "video",
+    p_success: success,
+    p_model: "seedance-2.0-fast",
+    p_error_code: errorCode,
+  }).catch(() => null);
 }
 
 const userHandler = createGenerateVideoHandler({
@@ -343,6 +364,7 @@ const userHandler = createGenerateVideoHandler({
   deleteStartImage: (path: string) => storage.deleteStartImage(path),
   signStartImage: (object: JsonRecord) => storage.signStartImage(object),
   signResult: createSignedVideoUrl,
+  assetForResult: assetForVideoResult,
   reconcileJob,
   webhookUrl,
   googleWebhookUrl,

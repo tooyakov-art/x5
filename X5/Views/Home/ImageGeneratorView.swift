@@ -29,10 +29,19 @@ struct ImageGeneratorView: View {
     @State private var isLoadingReferences = false
     @State private var selectedSalesAngle: SalesAngle
     @State private var selectedYouTubeMode: YouTubeThumbnailMode
-    @State private var generationProgress: Double = 0
-    @State private var generationProgressTask: Task<Void, Never>?
+    @State private var selectedProductCardTypes: Set<String> = [ProductCardType.main.id]
+    @State private var productName = ""
+    @State private var productPrice = ""
+    @State private var productCharacteristics = ""
+    @State private var productBenefits = ""
+    @State private var productPromotion = ""
+    @State private var productLanguage = "Русский"
+    @State private var productMarketplace = "Kaspi"
+    @State private var productStyle = "Премиальный"
     @State private var showGenerationComplete = false
+    @State private var studioCapabilities: AIStudioCapabilities?
     @StateObject private var gallery = GeneratedGalleryStore()
+    private let studioService = AIStudioService()
     @FocusState private var promptFocused: Bool
 
     init(category: ImageGenerationCategory = ImageGenerationCatalog.custom, provider: ImageGenerationProvider = .gptImage2) {
@@ -55,6 +64,9 @@ struct ImageGeneratorView: View {
                 if isSalesCreativeCategory {
                     salesAnglePanel
                 }
+                if isProductCardsCategory {
+                    productCardsPanel
+                }
                 if isYouTubeThumbnailCategory {
                     youtubeModePanel
                 }
@@ -64,8 +76,7 @@ struct ImageGeneratorView: View {
 
                 if isGenerating {
                     GenerationAnimationView(provider: selectedProvider,
-                                            category: category,
-                                            progress: generationProgress)
+                                            category: category)
                         .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 }
 
@@ -99,7 +110,10 @@ struct ImageGeneratorView: View {
                 .accessibilityLabel(loc.t("gen_gallery"))
             }
         }
-        .task { await refreshProfileIfPossible() }
+        .task {
+            await refreshProfileIfPossible()
+            await refreshCapabilities()
+        }
         .sheet(isPresented: $showingGallery) {
             GeneratedGalleryView()
         }
@@ -179,7 +193,7 @@ struct ImageGeneratorView: View {
             sectionLabel(loc.t("gen_model"))
 
             Menu {
-                ForEach(ImageGenerationProvider.allCases) { model in
+                ForEach(availableProviders) { model in
                     Button {
                         X5Feedback.selection()
                         selectedProvider = model
@@ -208,7 +222,7 @@ struct ImageGeneratorView: View {
                 .background(Color.white.opacity(0.07))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
-            .disabled(isGenerating)
+            .disabled(isGenerating || category.id == "logo")
 
             HStack {
                 Label("\(totalCreditCost)", systemImage: "creditcard")
@@ -217,6 +231,13 @@ struct ImageGeneratorView: View {
             }
             .font(.system(size: 12, weight: .semibold))
             .foregroundColor(.white.opacity(0.58))
+
+            if studioCapabilities != nil && !imageCapability.available {
+                Label(imageUnavailableMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(14)
         .x5ClearGlass(cornerRadius: 18, highlight: 0.10)
@@ -226,20 +247,22 @@ struct ImageGeneratorView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionLabel(loc.t("gen_settings"))
 
-            Stepper(value: $selectedQuantity, in: 1...4) {
-                HStack(spacing: 10) {
-                    Image(systemName: "number")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(loc.t("gen_quantity"))
-                            .font(.system(size: 15, weight: .heavy))
-                        Text("\(selectedQuantity) x \(ImageGenerationCatalog.creditCost) = \(totalCreditCost) \(loc.t("gen_credits"))")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.58))
+            if !isProductCardsCategory && category.id != "content_pack" {
+                Stepper(value: $selectedQuantity, in: 1...4) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "number")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(loc.t("gen_quantity"))
+                                .font(.system(size: 15, weight: .heavy))
+                            Text("\(selectedQuantity) x \(ImageGenerationCatalog.creditCost) = \(totalCreditCost) \(loc.t("gen_credits"))")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.58))
+                        }
                     }
+                    .foregroundColor(.white)
                 }
-                .foregroundColor(.white)
+                .disabled(isGenerating)
             }
-            .disabled(isGenerating)
 
             Menu {
                 ForEach(ImageGenerationSize.allCases) { size in
@@ -339,6 +362,114 @@ struct ImageGeneratorView: View {
         .padding(14)
         .x5ClearGlass(cornerRadius: 18, highlight: 0.11)
         .accessibilityIdentifier("x5.generator.sales_angle")
+    }
+
+    private var productCardsPanel: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            sectionLabel("Набор карточек")
+
+            ForEach(ProductCardType.all) { cardType in
+                Button {
+                    X5Feedback.selection()
+                    if selectedProductCardTypes.contains(cardType.id) {
+                        if selectedProductCardTypes.count > 1 {
+                            selectedProductCardTypes.remove(cardType.id)
+                        }
+                    } else {
+                        selectedProductCardTypes.insert(cardType.id)
+                    }
+                } label: {
+                    HStack(spacing: 11) {
+                        Image(systemName: selectedProductCardTypes.contains(cardType.id)
+                              ? "checkmark.circle.fill" : "circle")
+                            .foregroundColor(selectedProductCardTypes.contains(cardType.id)
+                                             ? X5Style.blue : .white.opacity(0.42))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(cardType.title)
+                                .font(.system(size: 14, weight: .heavy))
+                                .foregroundColor(.white)
+                            Text(cardType.summary)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.54))
+                        }
+                        Spacer()
+                        Text("60 ₸")
+                            .font(.system(size: 12, weight: .heavy))
+                            .foregroundColor(.white.opacity(0.66))
+                    }
+                    .padding(11)
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(isGenerating)
+            }
+
+            sectionLabel("Данные инфографики")
+            productField("Название товара", text: $productName)
+            productField("Цена", text: $productPrice)
+            productField("Характеристики — только точные факты", text: $productCharacteristics, lines: 3)
+            productField("Выгоды", text: $productBenefits, lines: 3)
+            productField("Акция или условие", text: $productPromotion)
+
+            HStack(spacing: 8) {
+                productMenu(title: "Язык", value: $productLanguage, values: ["Русский", "Қазақша", "English"])
+                productMenu(title: "Маркетплейс", value: $productMarketplace, values: ["Kaspi", "Wildberries", "Ozon", "Другое"])
+            }
+            productMenu(title: "Стиль", value: $productStyle, values: ["Премиальный", "Минимализм", "Яркий", "Технологичный", "Натуральный"])
+
+            Text("Каждый выбранный кадр создаётся отдельным заданием. Ошибка одного кадра не списывает деньги за остальные.")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.white.opacity(0.50))
+        }
+        .padding(14)
+        .x5ClearGlass(cornerRadius: 18, highlight: 0.11)
+        .accessibilityIdentifier("x5.generator.product_cards")
+    }
+
+    private func productField(
+        _ title: String,
+        text: Binding<String>,
+        lines: Int = 1
+    ) -> some View {
+        TextField(title, text: text, axis: lines > 1 ? .vertical : .horizontal)
+            .lineLimit(lines...max(lines, lines + 2))
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundColor(.white)
+            .padding(11)
+            .background(Color.white.opacity(0.07))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func productMenu(
+        title: String,
+        value: Binding<String>,
+        values: [String]
+    ) -> some View {
+        Menu {
+            ForEach(values, id: \.self) { option in
+                Button(option) { value.wrappedValue = option }
+            }
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundColor(.white.opacity(0.46))
+                    Text(value.wrappedValue)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                Spacer()
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white.opacity(0.45))
+            }
+            .padding(10)
+            .background(Color.white.opacity(0.07))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private var youtubeModePanel: some View {
@@ -702,14 +833,19 @@ struct ImageGeneratorView: View {
     private var canGenerate: Bool {
         hasValidPromptOrReferences &&
         currentCredits != nil &&
-        hasEnoughCredits
+        hasEnoughCredits &&
+        imageCapability.available
     }
 
     private var hasValidPromptOrReferences: Bool {
         let hasDescription = prompt.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
+        if isProductCardsCategory {
+            return hasDescription && !selectedProductCardTypes.isEmpty
+                && (!productName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || mainPhoto != nil)
+        }
         return (isSalesCreativeCategory || isYouTubeThumbnailCategory)
             ? hasDescription
-            : (hasDescription || !allReferenceAssets.isEmpty)
+            : (hasDescription || !roleAwareReferences.isEmpty)
     }
 
     private var balanceText: String {
@@ -719,6 +855,7 @@ struct ImageGeneratorView: View {
 
     private var generateButtonTitle: String {
         if isGenerating { return loc.t("gen_generating") }
+        if studioCapabilities != nil && !imageCapability.available { return "Сервис временно недоступен" }
         if currentCredits == nil { return loc.t("gen_loading_balance") }
         if !hasEnoughCredits { return "\(loc.t("gen_need")) \(totalCreditCost) \(loc.t("gen_credits"))" }
         if !hasValidPromptOrReferences { return loc.t("gen_prompt_required") }
@@ -726,11 +863,23 @@ struct ImageGeneratorView: View {
     }
 
     private var totalCreditCost: Int {
-        ImageGenerationCatalog.creditCost * selectedQuantity
+        let frameCount: Int
+        if isProductCardsCategory {
+            frameCount = max(1, selectedProductCardTypes.count)
+        } else if category.id == "content_pack" {
+            frameCount = 3
+        } else {
+            frameCount = selectedQuantity
+        }
+        return ImageGenerationCatalog.creditCost * frameCount
     }
 
     private var isSalesCreativeCategory: Bool {
         category.id == "product_cards" || category.id == "target_ad"
+    }
+
+    private var isProductCardsCategory: Bool {
+        category.id == "product_cards"
     }
 
     private var isYouTubeThumbnailCategory: Bool {
@@ -747,8 +896,64 @@ struct ImageGeneratorView: View {
         return category.examplePrompt
     }
 
-    private var allReferenceAssets: [ImageReferenceAsset] {
-        [mainPhoto, logoImage].compactMap { $0 } + referenceImages
+    private var roleAwareReferences: [ImageGenerationReference] {
+        var references: [ImageGenerationReference] = []
+        if let mainPhoto {
+            let role: ImageGenerationReferenceRole
+            if isProductCardsCategory || category.id == "product" || category.id == "packaging" {
+                role = .mainProduct
+            } else if isYouTubeThumbnailCategory {
+                role = .heroFace
+            } else if category.id == "ai_character" {
+                role = .characterReference
+            } else {
+                role = .sourceImage
+            }
+            references.append(mainPhoto.reference(with: role))
+        }
+        if let logoImage {
+            references.append(logoImage.reference(with: .logo))
+        }
+        references.append(contentsOf: referenceImages.map { $0.reference(with: .styleReference) })
+        return references
+    }
+
+    private var availableProviders: [ImageGenerationProvider] {
+        let categoryProviders: [ImageGenerationProvider] = category.id == "logo"
+            ? [.gptImage2]
+            : ImageGenerationProvider.allCases
+        guard let studioCapabilities else { return categoryProviders }
+        return categoryProviders.filter { studioCapabilities.supportsImageModel($0.rawValue) }
+    }
+
+    private var imageCapabilityID: String {
+        switch category.id {
+        case "logo": return "transparent_logo"
+        case "product_cards": return "product_cards"
+        case "youtube_cover": return "youtube_cover"
+        case "edit_image": return "image_editor"
+        case "moodboard": return "moodboard"
+        case "content_pack": return "content_pack"
+        default: return "image_generation"
+        }
+    }
+
+    private var imageCapability: AIStudioToolCapability {
+        studioCapabilities?.tool(imageCapabilityID)
+            ?? AIStudioToolCapability(available: false, unavailableReason: "checking")
+    }
+
+    private var imageUnavailableMessage: String {
+        switch imageCapability.unavailableReason {
+        case "provider_balance_or_quota":
+            return "У провайдера закончился баланс или квота. Кредиты не списываются."
+        case "provider_auth_failed":
+            return "Провайдер отклонил доступ. Кредиты не списываются."
+        case "provider_model_unavailable":
+            return "Выбранная модель временно недоступна. Кредиты не списываются."
+        default:
+            return "Провайдер не прошёл проверку. Кредиты не списываются."
+        }
     }
 
     private func generatedImageButton(_ asset: GeneratedImageAsset, compact: Bool) -> some View {
@@ -785,7 +990,7 @@ struct ImageGeneratorView: View {
         promptOverride: String? = nil,
         referencesOverride: [ImageGenerationReference]? = nil
     ) async {
-        let currentReferences = referencesOverride ?? allReferenceAssets.map { $0.reference }
+        let currentReferences = referencesOverride ?? roleAwareReferences
         let rawPrompt = promptOverride ?? prompt
         let cleanPrompt: String
         if isYouTubeThumbnailCategory && promptOverride == nil {
@@ -799,6 +1004,12 @@ struct ImageGeneratorView: View {
                 hasHeroPhoto: mainPhoto != nil,
                 referenceCount: referenceImages.count
             )
+        } else if isProductCardsCategory && promptOverride == nil {
+            guard rawPrompt.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 else {
+                errorMessage = "Опишите товар"
+                return
+            }
+            cleanPrompt = productCardBrief(description: rawPrompt)
         } else if isSalesCreativeCategory && promptOverride == nil {
             guard rawPrompt.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 else {
                 errorMessage = "Опишите товар или услугу"
@@ -826,10 +1037,7 @@ struct ImageGeneratorView: View {
         generatedAsset = nil
         generatedAssets = []
         showGenerationComplete = false
-        startGenerationProgress()
         defer {
-            generationProgressTask?.cancel()
-            generationProgressTask = nil
             isGenerating = false
         }
 
@@ -841,8 +1049,12 @@ struct ImageGeneratorView: View {
             return
         }
         let creditsBefore = currentCredits ?? 0
-        let requestQuantity = referencesOverride == nil ? selectedQuantity : 1
-        let requestCreditCost = ImageGenerationCatalog.creditCost * requestQuantity
+        let isSeries = referencesOverride == nil
+            && (isProductCardsCategory || category.id == "content_pack")
+        let requestQuantity = referencesOverride == nil && !isSeries ? selectedQuantity : 1
+        let requestCreditCost = isSeries
+            ? totalCreditCost
+            : ImageGenerationCatalog.creditCost * requestQuantity
         guard creditsBefore >= requestCreditCost else {
             errorMessage = loc.t("gen_not_enough_credits")
             X5Feedback.warning()
@@ -850,6 +1062,40 @@ struct ImageGeneratorView: View {
         }
 
         do {
+            if isSeries {
+                let series = try await generateFrameSeries(
+                    basePrompt: cleanPrompt,
+                    references: currentReferences,
+                    creditsBefore: creditsBefore
+                )
+                guard let firstAsset = series.assets.first else {
+                    throw ImageGeneratorError.invalidImage
+                }
+                generatedAsset = firstAsset
+                generatedAssets = series.assets
+                series.assets.forEach { asset in
+                    _ = saveAssetToGallery(asset, image: asset.image)
+                }
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
+                    showGenerationComplete = true
+                }
+                X5Feedback.successWithSound()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.9) {
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        showGenerationComplete = false
+                    }
+                }
+                currentUser.applyCreditsRemaining(series.creditsRemaining)
+                if let partialFailure = series.partialFailure {
+                    errorMessage = partialFailure
+                }
+                DiagnosticLogger.log(event: "image_series_generated", extra: [
+                    "provider": selectedProvider.rawValue,
+                    "category": category.id,
+                    "quantity": "\(series.assets.count)"
+                ])
+                return
+            }
             let response = try await auth.supabase.generateImage(
                 prompt: cleanPrompt,
                 provider: selectedProvider,
@@ -868,7 +1114,7 @@ struct ImageGeneratorView: View {
             }
 
             let costPerImage = max(1, (response.costCredits ?? requestCreditCost) / max(1, images.count))
-            let assets = images.map { image in
+            let assets = images.enumerated().map { index, image in
                 GeneratedImageAsset(
                     image: image,
                     prompt: response.prompt,
@@ -876,7 +1122,10 @@ struct ImageGeneratorView: View {
                     category: response.category ?? category.id,
                     sizeLabel: response.size ?? "\(selectedSize.title) \(selectedSize.subtitle)",
                     costCredits: costPerImage,
-                    creditsRemaining: response.creditsRemaining
+                    creditsRemaining: response.creditsRemaining,
+                    cloudAssetID: response.assetIds.flatMap {
+                        $0.indices.contains(index) ? $0[index] : nil
+                    }
                 )
             }
             guard let firstAsset = assets.first else { throw ImageGeneratorError.invalidImage }
@@ -885,9 +1134,7 @@ struct ImageGeneratorView: View {
             assets.forEach { asset in
                 _ = saveAssetToGallery(asset, image: asset.image)
             }
-            generationProgressTask?.cancel()
             withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
-                generationProgress = 1.0
                 showGenerationComplete = true
             }
             X5Feedback.successWithSound()
@@ -915,6 +1162,133 @@ struct ImageGeneratorView: View {
         }
     }
 
+    private func refreshCapabilities() async {
+        guard let token = await auth.freshAccessToken() else { return }
+        studioCapabilities = try? await studioService.capabilities(accessToken: token)
+        if let first = availableProviders.first,
+           !availableProviders.contains(selectedProvider) {
+            selectedProvider = first
+        }
+    }
+
+    private func generateFrameSeries(
+        basePrompt: String,
+        references: [ImageGenerationReference],
+        creditsBefore: Int
+    ) async throws -> ImageFrameSeriesResult {
+        let specs: [ImageFrameSpec]
+        if isProductCardsCategory {
+            specs = ProductCardType.all
+                .filter { selectedProductCardTypes.contains($0.id) }
+                .map { type in
+                    ImageFrameSpec(
+                        title: type.title,
+                        prompt: """
+                        \(basePrompt)
+                        Кадр набора: \(type.title).
+                        Задача кадра: \(type.promptGuidance)
+                        Это один кадр единого набора. Сохрани один товар, логотип, палитру, сетку и типографическую систему во всём наборе.
+                        """,
+                        size: selectedSize
+                    )
+                }
+        } else {
+            specs = [
+                ImageFrameSpec(
+                    title: "Пост",
+                    prompt: "\(basePrompt)\nФормат комплекта: квадратный пост 1:1. Главный визуал и короткий оффер.",
+                    size: .square
+                ),
+                ImageFrameSpec(
+                    title: "Сторис",
+                    prompt: "\(basePrompt)\nФормат комплекта: вертикальная сторис 9:16. Сохрани кампанию и адаптируй иерархию под телефон.",
+                    size: .portrait
+                ),
+                ImageFrameSpec(
+                    title: "Реклама",
+                    prompt: "\(basePrompt)\nФормат комплекта: вертикальная реклама 9:16 с ясной выгодой и зоной действия. Не меняй продукт и фирменный стиль.",
+                    size: .portrait
+                )
+            ]
+        }
+
+        var assets: [GeneratedImageAsset] = []
+        var activeReferences = references
+        var creditsRemaining = creditsBefore
+        var lastError: Error?
+
+        for spec in specs {
+            do {
+                let response = try await auth.supabase.generateImage(
+                    prompt: spec.prompt,
+                    provider: selectedProvider,
+                    category: category,
+                    quantity: 1,
+                    size: spec.size,
+                    referenceImages: activeReferences,
+                    idempotencyKey: UUID().uuidString.lowercased()
+                )
+                let encoded = response.imageBase64s?.first ?? response.imageBase64
+                guard let data = Data(base64Encoded: encoded),
+                      let image = UIImage(data: data)
+                else { throw ImageGeneratorError.invalidImage }
+                let asset = GeneratedImageAsset(
+                    image: image,
+                    prompt: "\(spec.title): \(response.prompt)",
+                    provider: response.model ?? selectedProvider.rawValue,
+                    category: response.category ?? category.id,
+                    sizeLabel: response.size ?? "\(spec.size.title) \(spec.size.subtitle)",
+                    costCredits: response.costCredits ?? ImageGenerationCatalog.creditCost,
+                    creditsRemaining: response.creditsRemaining,
+                    cloudAssetID: response.assetIds?.first
+                )
+                assets.append(asset)
+                creditsRemaining = response.creditsRemaining
+                    ?? max(creditsRemaining - ImageGenerationCatalog.creditCost, 0)
+
+                if assets.count == 1,
+                   activeReferences.count < ImageGenerationReferencePolicy.maximumCount,
+                   let anchorData = image.jpegData(compressionQuality: 0.86) {
+                    activeReferences.append(ImageGenerationReference(
+                        mimeType: "image/jpeg",
+                        base64: anchorData.base64EncodedString(),
+                        role: .styleReference
+                    ))
+                }
+            } catch {
+                lastError = error
+                break
+            }
+        }
+        if assets.isEmpty { throw lastError ?? ImageGeneratorError.invalidImage }
+        return ImageFrameSeriesResult(
+            assets: assets,
+            creditsRemaining: creditsRemaining,
+            partialFailure: assets.count == specs.count
+                ? nil
+                : "Создано \(assets.count) из \(specs.count). Неудачный кадр не списан; можно повторить отдельно."
+        )
+    }
+
+    private func productCardBrief(description: String) -> String {
+        let exactFacts = [
+            "Товар: \(productName.trimmingCharacters(in: .whitespacesAndNewlines))",
+            "Описание: \(description.trimmingCharacters(in: .whitespacesAndNewlines))",
+            "Цена: \(productPrice.trimmingCharacters(in: .whitespacesAndNewlines))",
+            "Характеристики: \(productCharacteristics.trimmingCharacters(in: .whitespacesAndNewlines))",
+            "Выгоды: \(productBenefits.trimmingCharacters(in: .whitespacesAndNewlines))",
+            "Акция: \(productPromotion.trimmingCharacters(in: .whitespacesAndNewlines))",
+            "Язык: \(productLanguage)",
+            "Маркетплейс: \(productMarketplace)",
+            "Стиль: \(productStyle)"
+        ]
+        return """
+        Создай коммерческую карточку товара с настоящей инфографикой, а не текстом поверх случайного фото.
+        \(exactFacts.joined(separator: "\n"))
+        Используй только заполненные факты. Ничего не выдумывай. Весь текст должен быть крупным, контрастным и читаемым на телефоне, не перекрывать товар.
+        """
+    }
+
     private var generationCompleteBanner: some View {
         HStack(spacing: 12) {
             Image(systemName: "checkmark.circle.fill")
@@ -933,35 +1307,6 @@ struct ImageGeneratorView: View {
         }
         .padding(14)
         .x5ClearGlass(cornerRadius: 18, highlight: 0.15)
-    }
-
-    private func startGenerationProgress() {
-        generationProgressTask?.cancel()
-        generationProgress = 0.02
-        generationProgressTask = Task {
-            let startedAt = Date()
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 180_000_000)
-                await MainActor.run {
-                    guard isGenerating else { return }
-                    let elapsed = Date().timeIntervalSince(startedAt)
-                    let target: Double
-                    if elapsed < 15 {
-                        target = 0.02 + (elapsed / 15) * 0.43
-                    } else if elapsed < 60 {
-                        target = 0.45 + ((elapsed - 15) / 45) * 0.23
-                    } else if elapsed < 180 {
-                        target = 0.68 + ((elapsed - 60) / 120) * 0.20
-                    } else {
-                        target = min(0.965, 0.88 + ((elapsed - 180) / 180) * 0.085)
-                    }
-                    let next = max(generationProgress + 0.0008, target)
-                    withAnimation(.linear(duration: 0.18)) {
-                        generationProgress = min(next, 0.965)
-                    }
-                }
-            }
-        }
     }
 
     private func loadReferenceImages(_ items: [PhotosPickerItem]) async {
@@ -1012,7 +1357,8 @@ struct ImageGeneratorView: View {
         guard let jpegData = image.jpegData(compressionQuality: 0.88) else { return nil }
         return ImageGenerationReference(
             mimeType: "image/jpeg",
-            base64: jpegData.base64EncodedString()
+            base64: jpegData.base64EncodedString(),
+            role: .sourceImage
         )
     }
 
@@ -1050,6 +1396,7 @@ private struct GeneratedImageAsset: Identifiable {
     let sizeLabel: String
     let costCredits: Int
     let creditsRemaining: Int?
+    let cloudAssetID: String?
 
     var aspectRatio: CGFloat {
         guard image.size.height > 0 else { return 1 }
@@ -1061,6 +1408,68 @@ private struct ImageReferenceAsset: Identifiable {
     let id = UUID()
     let image: UIImage
     let reference: ImageGenerationReference
+
+    func reference(with role: ImageGenerationReferenceRole) -> ImageGenerationReference {
+        ImageGenerationReference(
+            mimeType: reference.mimeType,
+            base64: reference.base64,
+            role: role
+        )
+    }
+}
+
+private struct ImageFrameSpec {
+    let title: String
+    let prompt: String
+    let size: ImageGenerationSize
+}
+
+private struct ImageFrameSeriesResult {
+    let assets: [GeneratedImageAsset]
+    let creditsRemaining: Int
+    let partialFailure: String?
+}
+
+private struct ProductCardType: Identifiable {
+    let id: String
+    let title: String
+    let summary: String
+    let promptGuidance: String
+
+    static let main = ProductCardType(
+        id: "main",
+        title: "Главная",
+        summary: "Товар, название, цена и главный оффер",
+        promptGuidance: "Покажи товар крупно, добавь точное название, цену и одну главную выгоду."
+    )
+
+    static let all: [ProductCardType] = [
+        main,
+        .init(
+            id: "benefits",
+            title: "Преимущества",
+            summary: "Короткие выгоды с визуальными акцентами",
+            promptGuidance: "Покажи только указанные выгоды, максимум четыре коротких пункта с понятной иерархией."
+        ),
+        .init(
+            id: "specifications",
+            title: "Характеристики",
+            summary: "Точные параметры без выдуманных данных",
+            promptGuidance: "Собери читаемую таблицу или блок характеристик исключительно из введённых параметров."
+        ),
+        .init(
+            id: "instructions",
+            title: "Инструкция",
+            summary: "Как пользоваться — по шагам",
+            promptGuidance: "Покажи ясную пошаговую инструкцию. Если шаги не заданы, не выдумывай их и сделай акцент на товаре."
+        ),
+        .init(
+            id: "contents",
+            title: "Комплектация",
+            summary: "Что входит в набор",
+            promptGuidance: "Покажи комплектацию только по точным данным пользователя, без добавления несуществующих предметов."
+        )
+    ]
 }
 
 private struct ProviderLogo: View {
@@ -1088,7 +1497,6 @@ private struct GenerationAnimationView: View {
 
     let provider: ImageGenerationProvider
     let category: ImageGenerationCategory
-    let progress: Double
 
     @State private var rotating = false
     @State private var pulsing = false
@@ -1121,14 +1529,14 @@ private struct GenerationAnimationView: View {
                         .font(.system(size: 15, weight: .heavy))
                         .foregroundColor(.white)
                     Spacer()
-                    Text(progressText)
+                    Text("Обработка")
                         .font(.system(size: 15, weight: .black))
                         .foregroundColor(Color.accentColor)
                 }
                 Text("\(loc.t("gen_building")) \(localizedCategoryTitle.lowercased())")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white.opacity(0.58))
-                ProgressView(value: progress)
+                ProgressView()
                     .tint(Color.accentColor)
                     .scaleEffect(x: 1, y: 1.3, anchor: .center)
                     .padding(.top, 3)
@@ -1167,14 +1575,6 @@ private struct GenerationAnimationView: View {
             }
         }
         .frame(height: 28, alignment: .bottom)
-    }
-
-    private var progressText: String {
-        if progress >= 0.96 {
-            let text = loc.t("gen_finishing")
-            return text == "gen_finishing" ? "Почти готово" : text
-        }
-        return "\(Int(progress * 100))%"
     }
 
     private var localizedCategoryTitle: String {

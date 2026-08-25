@@ -55,7 +55,7 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         ):
             self.assertIn(required, home)
 
-    def test_primary_hero_keeps_image_generation_hidden_until_provider_is_ready(self):
+    def test_primary_hero_opens_the_real_image_generator(self):
         home = HOME.read_text(encoding="utf-8")
 
         self.assertIn('accessibilityIdentifier("x5.home.hero.\\(slide.id).create")', home)
@@ -63,10 +63,10 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
             "action: .imageGeneration(ImageGenerationCatalog.custom)",
             home,
         )
-        self.assertNotIn("ImageGeneratorView(category: category", home)
+        self.assertIn("ImageGeneratorView(category: category", home)
         self.assertRegex(
             home,
-            r"case \.imageGeneration\(let category\):\s+HomeFeatureInDevelopmentView\(featureTitle: category\.title\)",
+            r"case \.imageGeneration\(let category\):\s+NavigationStack \{ ImageGeneratorView\(category: category\) \}",
         )
 
     def test_home_routes_are_explicit_and_hub_uses_existing_tab_switch(self):
@@ -75,6 +75,7 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertIn("enum HomeRoute: Hashable, Identifiable", home)
         for route in (
             "case imageGeneration(ImageGenerationCategory)",
+            "case aiStudio",
             "case startupChat",
             "case hub",
             "case videoGeneration",
@@ -91,38 +92,19 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertRegex(home, r"case \.startupChat:\s+StartupChatView\(\)")
         self.assertRegex(home, r"case \.liveFruits:\s+LiveFruitsView\(\)")
         self.assertRegex(home, r"case \.videoGeneration:\s+VideoGeneratorView\(\)")
-        self.assertIn(
-            'HomeFeatureInDevelopmentView(featureTitle: "AI-инфлюенсер")',
-            home,
-        )
+        self.assertRegex(home, r"case \.aiInfluencer:\s+NavigationStack \{ AIInfluencerView\(\) \}")
         self.assertRegex(home, r"case \.voiceGeneration:\s+VoiceGeneratorView\(\)")
         self.assertIn(
-            "case .imageGeneration, .aiInfluencer:",
+            "case .imageGeneration, .aiStudio, .startupChat, .hub, .videoGeneration,",
             home,
         )
-        self.assertIn(
-            "case .startupChat, .hub, .videoGeneration, .voiceGeneration, .liveFruits:",
-            home,
-        )
+        self.assertIn(".aiInfluencer, .voiceGeneration, .liveFruits:", home)
 
-    def test_in_development_sheet_fills_phone_width_without_side_gutters(self):
+    def test_home_no_longer_contains_the_fake_in_development_sheet(self):
         home = HOME.read_text(encoding="utf-8")
-        sheet = home.split(
-            "private struct HomeFeatureInDevelopmentView", 1
-        )[1].split("private struct NativeHomeHero", 1)[0]
-
-        self.assertIn(
-            ".frame(maxWidth: .infinity, maxHeight: .infinity)",
-            sheet,
-        )
-        self.assertLess(
-            sheet.index(".padding(.horizontal, 24)"),
-            sheet.index(".frame(maxWidth: .infinity, maxHeight: .infinity)"),
-        )
-        self.assertLess(
-            sheet.index(".frame(maxWidth: .infinity, maxHeight: .infinity)"),
-            sheet.index(".background { NativeHomeBackground() }"),
-        )
+        self.assertNotIn("private struct HomeFeatureInDevelopmentView", home)
+        self.assertIn('Text("Все AI-инструменты")', home)
+        self.assertIn("AIStudioHubView()", home)
 
     def test_native_promos_trends_and_business_cards_are_complete(self):
         home = HOME.read_text(encoding="utf-8")

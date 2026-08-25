@@ -350,7 +350,8 @@ final class SupabaseClient {
             payload["images"] = referenceImages.map { image in
                 [
                     "mimeType": image.mimeType,
-                    "data": image.base64
+                    "data": image.base64,
+                    "role": image.role.rawValue
                 ]
             }
         }
@@ -390,9 +391,29 @@ final class SupabaseClient {
     }
 }
 
+enum ImageGenerationReferenceRole: String, CaseIterable {
+    case sourceImage = "source_image"
+    case mainProduct = "main_product"
+    case logo
+    case styleReference = "style_reference"
+    case heroFace = "hero_face"
+    case characterReference = "character_reference"
+}
+
 struct ImageGenerationReference {
     let mimeType: String
     let base64: String
+    let role: ImageGenerationReferenceRole
+
+    init(
+        mimeType: String,
+        base64: String,
+        role: ImageGenerationReferenceRole = .styleReference
+    ) {
+        self.mimeType = mimeType
+        self.base64 = base64
+        self.role = role
+    }
 }
 
 enum ImageGenerationReferencePolicy {
@@ -430,6 +451,7 @@ struct GeneratedImage: Decodable {
     let quantity: Int?
     let costCredits: Int?
     let creditsRemaining: Int?
+    let assetIds: [String]?
 }
 
 enum SupabaseError: LocalizedError {

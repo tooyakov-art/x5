@@ -22,7 +22,7 @@
   <div class="wrap">
     <a class="back" href="/">X five marketing</a>
     <h1>Privacy Policy</h1>
-    <p class="updated">Last updated: August 23, 2026</p>
+    <p class="updated">Last updated: August 25, 2026</p>
 
     <h2>What we collect</h2>
     <p>X five marketing uses Supabase to provide authentication, profiles, marketplace tasks, chats, portfolios and courses. Depending on what you choose to use, we may store:</p>
@@ -30,7 +30,7 @@
       <li>Email address, name and user ID from Sign in with Apple, Google sign-in or email sign-in.</li>
       <li>Profile information, portfolio entries, proposals, chat messages, reports and block status.</li>
       <li>Photos, videos or voice messages only when you choose to attach, upload or record them in courses, chats, portfolio or AI tools.</li>
-      <li>Prompts, voice-generation text, selected AI voices, questionnaire answers, generated storyboards and generation status when you choose to use AI Image, AI Video, AI Voice, Live Fruits or Startup Chat.</li>
+      <li>Prompts, voice-generation text, selected AI voices, AI-character settings, approved character media, questionnaire answers, generated storyboards and generation status when you choose an AI tool.</li>
       <li>Purchase history and entitlement status for one-time credit packs and the optional verified badge subscription, provided by Apple.</li>
     </ul>
 
@@ -38,7 +38,7 @@
     <ul>
       <li>No tracking identifiers and no App Tracking Transparency tracking.</li>
       <li>No location, contacts, health data or advertising profiles.</li>
-      <li>No biometric or face data.</li>
+      <li>No biometric identification or face templates. A face image selected for an AI tool is handled only as user-provided media for that request and is not used to identify the person.</li>
       <li>No third-party advertising SDKs.</li>
     </ul>
 
@@ -52,7 +52,7 @@
 
     <h2>How we use data</h2>
     <p>We use data to operate the app: authenticate accounts, display profiles and portfolios, send messages, process reports, provide courses, deliver purchases, generate requested AI media and keep users safe.</p>
-    <p>AI requests are sent through our Supabase Edge Functions only when you start the corresponding feature. OpenAI processes Startup Chat, Live Fruits storyboards and primary automated safety checks. Google Gemini and BytePlus ModelArk may process AI-video prompts or selected reference media only as failover safety classifiers. BytePlus ModelArk Seedance processes accepted AI Video requests. MiniMax Speech processes requested AI Voice text. AI-video inputs and results and generated voice audio are stored privately; the app receives short-lived signed links.</p>
+    <p>AI requests are sent through our Supabase Edge Functions only when you start the corresponding feature. OpenAI processes Startup Chat, Live Fruits storyboards, selected image-generation requests and primary automated safety checks. Google Gemini may process selected image-generation requests and, together with BytePlus ModelArk, may act as a failover safety classifier for AI-video inputs. BytePlus ModelArk Seedance processes accepted AI Video requests. MiniMax Speech processes requested AI Voice text. fal.ai Sync Lipsync receives the video and audio selected for a lipsync request. AI inputs and results are stored privately; providers receive only the material needed for the selected operation, and the app receives short-lived signed links.</p>
     <p>Video prompts are screened automatically for prohibited content before an AI-video credit reservation and are also subject to the provider's safety controls. Prohibited requests are rejected; definitive provider failures return the reserved credits.</p>
 
     <h2>Sharing</h2>
@@ -64,10 +64,11 @@
       <li>OpenAI for requested Startup Chat and Live Fruits responses, image generation where selected, and automated safety moderation.</li>
       <li>BytePlus ModelArk for failover safety classification and Seedance AI Video only when you choose to submit a video-generation request.</li>
       <li>MiniMax Speech for AI Voice only when you choose to submit voice-generation text.</li>
+      <li>fal.ai for Sync Lipsync only when you choose to synchronize a selected video with selected or generated audio.</li>
     </ul>
 
     <h2>Safety and moderation</h2>
-    <p>Users can block or report accounts from chats, profiles and marketplace flows. Reports are sent to our moderation team and reviewed within 24 hours. AI prompts and selected reference media are screened automatically; prohibited requests are rejected before generation.</p>
+    <p>Users can block or report accounts from chats, profiles and marketplace flows. Reports are sent to our moderation team and reviewed within 24 hours. AI prompts and selected reference media are screened automatically; prohibited requests are rejected before generation. AI characters are synthetic unless a user selects an image and confirms that they have the rights to use it.</p>
 
     <h2>Account deletion</h2>
     <p>You can delete your account and associated app data at any time:</p>

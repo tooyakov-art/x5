@@ -172,7 +172,7 @@ export async function buildVideoGenerationIdentity(normalized) {
   return { requestKey, fingerprint, startImageSha256 };
 }
 
-export function buildPublicVideoJob(row, signedResult = null) {
+export function buildPublicVideoJob(row, signedResult = null, assetID = null) {
   const status = VIDEO_JOB_STATUSES.includes(row?.status)
     ? row.status
     : "failed";
@@ -191,6 +191,7 @@ export function buildPublicVideoJob(row, signedResult = null) {
     refunded: Boolean(row?.refunded_at),
     result_url: completedResult?.signedUrl || null,
     result_url_expires_at: completedResult?.expiresAt || null,
+    asset_id: assetID ? String(assetID) : null,
     error_code: row?.error_code ? String(row.error_code) : null,
     created_at: String(row?.created_at || ""),
     updated_at: String(row?.updated_at || ""),

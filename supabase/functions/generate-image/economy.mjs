@@ -1,9 +1,19 @@
 export const CUSTOMER_PRICE_MULTIPLIER = 2;
 export const IMAGE_PROVIDER_COST_CREDITS = 30;
-export const IMAGE_CREDIT_COST =
-  IMAGE_PROVIDER_COST_CREDITS * CUSTOMER_PRICE_MULTIPLIER;
+export const IMAGE_CREDIT_COST = IMAGE_PROVIDER_COST_CREDITS *
+  CUSTOMER_PRICE_MULTIPLIER;
 export const MIN_IMAGE_QUANTITY = 1;
 export const MAX_IMAGE_QUANTITY = 4;
+
+export const IMAGE_REFERENCE_ROLES = Object.freeze([
+  "source_image",
+  "main_product",
+  "logo",
+  "style_reference",
+  "hero_face",
+  "character_reference",
+]);
+const IMAGE_REFERENCE_ROLE_SET = new Set(IMAGE_REFERENCE_ROLES);
 
 export const generationModels = [
   { id: "gpt-image-2", provider: "gpt", title: "GPT Image 2" },
@@ -153,10 +163,40 @@ export const generationCategories = [
       "Create a product advertising visual with clean studio lighting, premium reflections, and sharp product focus.",
   },
   {
+    id: "product_cards",
+    title: "Product Cards",
+    promptGuide:
+      "Create a marketplace product infographic card. Keep the product recognizable and integrate concise readable Russian or Kazakh text into a deliberate information hierarchy.",
+  },
+  {
     id: "packaging",
     title: "Packaging",
     promptGuide:
       "Create a premium packaging concept with realistic material, label hierarchy, and shelf-ready presentation.",
+  },
+  {
+    id: "moodboard",
+    title: "Moodboard",
+    promptGuide:
+      "Create a coherent professional moodboard with color palette, material details, lighting references, typography direction, and a clear visual system.",
+  },
+  {
+    id: "edit_image",
+    title: "Image Editor",
+    promptGuide:
+      "Edit only what the user requests while preserving identity, product geometry, brand spelling, camera angle, and all unrelated details.",
+  },
+  {
+    id: "content_pack",
+    title: "Content Pack",
+    promptGuide:
+      "Create one polished component of a consistent social content system. Preserve the supplied campaign identity, colors, product, and message across formats.",
+  },
+  {
+    id: "ai_character",
+    title: "AI Character",
+    promptGuide:
+      "Create an original synthetic character reference portrait with a consistent face, neutral uncluttered background, realistic anatomy, and no resemblance to a public figure.",
   },
 ];
 
@@ -182,10 +222,22 @@ export function normalizeGenerationRequest(body) {
     prompt = prompt.slice(0, 900);
   }
 
+  const requestedCategory = body?.category == null
+    ? "custom"
+    : String(body.category).trim();
+  const category = generationCategories.find((item) =>
+    item.id === requestedCategory
+  );
+  if (!category) {
+    throw new GenerationRequestError("unsupported_category", 400);
+  }
+
   const requestedProvider = String(body?.provider || "").trim();
   const requestedModel = String(body?.model || "").trim();
   let model;
-  if (requestedModel) {
+  if (category.id === "logo") {
+    model = generationModels.find((item) => item.id === "gpt-image-2");
+  } else if (requestedModel) {
     model = generationModels.find((item) => item.id === requestedModel);
     if (!model) {
       throw new GenerationRequestError("unsupported_model", 400);
@@ -197,9 +249,6 @@ export function normalizeGenerationRequest(body) {
       generationModels[0];
   }
   const provider = model.provider;
-  const category =
-    generationCategories.find((item) => item.id === body?.category) ||
-    generationCategories[0];
   const quantity = normalizeQuantity(body?.quantity);
   const size = generationSizes.find((item) => item.id === body?.size) ||
     generationSizes[0];
@@ -212,6 +261,7 @@ export function normalizeGenerationRequest(body) {
     images,
     quantity,
     size,
+    transparentBackground: category.id === "logo",
     costCredits: IMAGE_CREDIT_COST * quantity,
   };
 }
@@ -233,9 +283,15 @@ export function normalizeImages(rawImages) {
     const mimeType = String(item?.mimeType || item?.mime_type || "image/jpeg")
       .trim();
     if (!data || !/^image\/(jpeg|jpg|png|webp)$/i.test(mimeType)) return [];
+    const requestedRole = String(item?.role || "style_reference")
+      .trim().toLowerCase();
+    const role = IMAGE_REFERENCE_ROLE_SET.has(requestedRole)
+      ? requestedRole
+      : "style_reference";
     return [{
       data,
       mimeType: mimeType.toLowerCase().replace("image/jpg", "image/jpeg"),
+      role,
     }];
   });
 }
@@ -309,6 +365,7 @@ export async function buildGenerationIdentity(
   const imageIdentities = await Promise.all(
     normalized.images.map(async (image) => ({
       mimeType: image.mimeType,
+      role: image.role,
       sha256: await sha256Hex(image.data),
     })),
   );
@@ -320,6 +377,7 @@ export async function buildGenerationIdentity(
     quantity: normalized.quantity,
     size: normalized.size.id,
     images: imageIdentities,
+    transparentBackground: normalized.transparentBackground,
   }));
   const explicitKey = String(
     headerIdempotencyKey ||
@@ -409,6 +467,7 @@ export function detectGeneratedImageFormat(base64) {
  *   model: string,
  *   fallbackFrom?: string,
  *   creditsRemaining: number,
+ *   assetIds?: string[],
  * }} input
  */
 export function buildGenerationResponse({
@@ -419,6 +478,7 @@ export function buildGenerationResponse({
   model,
   fallbackFrom,
   creditsRemaining,
+  assetIds = [],
 }) {
   return {
     imageBase64: imageBase64s[0],
@@ -433,6 +493,7 @@ export function buildGenerationResponse({
     quantity: imageBase64s.length,
     costCredits: normalized.costCredits,
     creditsRemaining,
+    assetIds,
   };
 }
 
@@ -503,15 +564,38 @@ export function sanitizeProviderDiagnostic(rawMessage = "") {
 export function buildFinalPrompt(
   prompt,
   category = generationCategories[0],
-  hasImages = false,
+  images = [],
 ) {
-  if (hasImages) {
+  // Boolean input is accepted for replay/source compatibility with clients
+  // deployed before reference roles were introduced.
+  const normalizedImages = Array.isArray(images)
+    ? images
+    : (images ? [{ role: "source_image" }] : []);
+  if (normalizedImages.length > 0) {
+    const roleGuidance = normalizedImages.map((image, index) => {
+      const position = index + 1;
+      switch (image.role) {
+        case "source_image":
+          return `Image ${position} is the source image. Preserve the original subject and everything not explicitly requested for editing.`;
+        case "main_product":
+          return `Image ${position} is the main product. Preserve its exact shape, packaging, color, label, and recognizability.`;
+        case "logo":
+          return `Image ${position} is the brand logo. Preserve its spelling and proportions and place it cleanly without redrawing random letters.`;
+        case "hero_face":
+          return `Image ${position} is the approved hero face. Preserve identity and natural anatomy; do not replace the person.`;
+        case "character_reference":
+          return `Image ${position} is an approved synthetic character reference. Preserve the same identity, face, age, and distinctive details.`;
+        default:
+          return `Image ${position} is a style reference. Borrow only palette, lighting, layout rhythm, and mood; do not copy logos, watermarks, or identities.`;
+      }
+    });
     return [
-      "Edit the provided image(s). Preserve the original subject, product, packaging, composition, layout, camera angle, background, and text placement unless the user explicitly asks to change them.",
-      "Do not invent unrelated objects or replace the scene. If the user asks to improve/enhance/upscale, only improve clarity, sharpness, lighting, cleanup, and text readability.",
-      "If the image contains text, keep the same words and make them more readable; do not create random text.",
+      ...roleGuidance,
       `User instruction: ${prompt}`,
       category.promptGuide,
+      category.id === "product_cards"
+        ? "The typography is part of the designed infographic: use only the exact supplied facts, keep every word readable on a phone, and never cover the product with body text."
+        : "Do not invent unrelated objects, facts, prices, claims, or random text. Preserve text readability and exact brand spelling.",
       "No explicit sexual content, hate, gore, real-person impersonation, or misleading medical/financial claims.",
     ].join("\n");
   }
@@ -519,6 +603,9 @@ export function buildFinalPrompt(
   return [
     prompt,
     category.promptGuide,
+    category.id === "logo"
+      ? "Return an isolated logo mark on a fully transparent background. No mockup, wall, paper, glow rectangle, or colored backdrop."
+      : "Do not invent facts, prices, claims, or random text.",
     "No explicit sexual content, hate, gore, real-person impersonation, or misleading medical/financial claims.",
     "Premium commercial composition, clean lighting, high detail, ready for social media or ads.",
   ].join("\n");

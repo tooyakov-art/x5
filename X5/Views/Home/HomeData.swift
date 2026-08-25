@@ -624,6 +624,42 @@ enum ImageGenerationCatalog {
             examplePrompt: "Концепт люксовой упаковки для крафтового шоколада, матовая черная коробка, серебряная этикетка, студийный рендер",
             gradientStart: Color(red: 0.52, green: 0.57, blue: 0.68).opacity(0.42),
             gradientEnd: .black
+        ),
+        .init(
+            id: "moodboard",
+            title: "Moodboard",
+            subtitle: "Единое визуальное направление",
+            icon: "rectangle.3.group.fill",
+            examplePrompt: "Мудборд премиального бренда: палитра, свет, материалы, типографика и примеры композиции",
+            gradientStart: Color.purple.opacity(0.40),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "edit_image",
+            title: "Редактор изображения",
+            subtitle: "Точное изменение загруженного фото",
+            icon: "wand.and.stars.inverse",
+            examplePrompt: "Уберите лишний объект, улучшите свет и сохраните лицо, товар и остальные детали без изменений",
+            gradientStart: X5Style.blue.opacity(0.42),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "content_pack",
+            title: "Контент-пак",
+            subtitle: "Пост, сторис и реклама в одном стиле",
+            icon: "square.stack.3d.up.fill",
+            examplePrompt: "Запуск нового продукта: единый оффер, фирменные цвета и согласованный стиль для трёх форматов",
+            gradientStart: Color(red: 0.36, green: 0.66, blue: 0.98).opacity(0.42),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "ai_character",
+            title: "Персонаж AI",
+            subtitle: "Синтетический образ для инфлюенсера",
+            icon: "person.crop.square.filled.and.at.rectangle",
+            examplePrompt: "Оригинальный синтетический персонаж, реалистичный портрет, нейтральный фон, естественная анатомия",
+            gradientStart: Color(red: 0.58, green: 0.30, blue: 0.92).opacity(0.42),
+            gradientEnd: .black
         )
     ]
 }

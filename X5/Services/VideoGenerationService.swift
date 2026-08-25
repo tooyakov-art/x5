@@ -16,6 +16,7 @@ struct VideoGenerationJob: Decodable, Equatable {
     let refunded: Bool
     let resultURL: URL?
     let resultURLExpiresAt: Date?
+    let assetID: String?
     let errorCode: String?
     let createdAt: Date
     let updatedAt: Date
@@ -28,6 +29,7 @@ struct VideoGenerationJob: Decodable, Equatable {
         case refunded
         case resultURL = "result_url"
         case resultURLExpiresAt = "result_url_expires_at"
+        case assetID = "asset_id"
         case errorCode = "error_code"
         case createdAt = "created_at"
         case updatedAt = "updated_at"

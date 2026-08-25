@@ -57,6 +57,7 @@ type LedgerResponse = {
   credits_remaining?: number | string;
   result_manifest?: GenerationResultManifest;
   previous_result_manifest?: GenerationResultManifest;
+  asset_ids?: unknown[];
 };
 type ProviderPayload = {
   error?: { message?: string };
@@ -197,6 +198,11 @@ Deno.serve(async (req) => {
         throw new Error("generation_result_manifest_missing");
       }
       const replay = await readGenerationResult(claim.result_manifest);
+      const assetIds = await decorateGenerationAssets(
+        user.id,
+        claim.result_manifest.objects,
+        normalized,
+      );
       return json(buildGenerationResponse({
         normalized,
         imageBase64s: replay.imageBase64s,
@@ -205,6 +211,7 @@ Deno.serve(async (req) => {
         model: claim.result_manifest.model,
         fallbackFrom: claim.result_manifest.fallbackFrom,
         creditsRemaining: Number(claim.credits_remaining || 0),
+        assetIds,
       }));
     } catch (error) {
       console.error(JSON.stringify({
@@ -252,7 +259,7 @@ Deno.serve(async (req) => {
     const finalPrompt = buildFinalPrompt(
       normalized.prompt,
       normalized.category,
-      normalized.images.length > 0,
+      normalized.images,
     );
     if (normalized.provider === "google" && providerKeys.length === 0) {
       if (!fallbackOpenAIKey) {
@@ -325,6 +332,7 @@ Deno.serve(async (req) => {
         normalized.images,
         normalized.quantity,
         normalized.size,
+        normalized.transparentBackground,
       );
     }
 
@@ -350,6 +358,13 @@ Deno.serve(async (req) => {
       claimToken,
       resultManifest,
     );
+    await callServiceRpc("record_ai_provider_health", {
+      p_provider: responseProvider === "gpt" ? "openai" : responseProvider,
+      p_capability: "image",
+      p_success: true,
+      p_model: responseModel,
+      p_error_code: null,
+    }).catch(() => null);
   } catch (error) {
     if (error instanceof GenerationCompletionUncertainError) {
       console.error(JSON.stringify({
@@ -365,19 +380,34 @@ Deno.serve(async (req) => {
     const upstreamReason = error instanceof Error
       ? sanitizeProviderDiagnostic(error.message)
       : "Image generation failed";
+    const providerStatus = Number(
+      error instanceof Error && "status" in error
+        ? (error as Error & { status?: number }).status || 0
+        : 0,
+    );
+    const providerErrorCode = providerHealthErrorCode(providerStatus);
     console.error(JSON.stringify({
       event: "image_generation_provider_failed",
       provider: normalized.provider,
       model: normalized.model,
       reason: upstreamReason,
     }));
+    await callServiceRpc("record_ai_provider_health", {
+      p_provider: normalized.provider === "gpt"
+        ? "openai"
+        : normalized.provider,
+      p_capability: "image",
+      p_success: false,
+      p_model: normalized.model,
+      p_error_code: providerErrorCode,
+    }).catch(() => null);
     const refund = await callServiceRpc("fail_image_generation_request", {
       p_user_id: user.id,
       p_request_key: identity.requestKey,
       p_request_fingerprint: identity.fingerprint,
       p_attempt: claimAttempt,
       p_claim_token: claimToken,
-      p_error_code: "provider_or_storage_error",
+      p_error_code: providerErrorCode,
     });
     if (refund?.status === "already_completed") {
       return json(
@@ -415,6 +445,8 @@ Deno.serve(async (req) => {
     return json({
       error: "provider_error",
       provider: normalized.provider,
+      provider_status: providerStatus || null,
+      error_code: providerErrorCode,
       message: safeProviderErrorMessage(
         normalized.provider,
         error instanceof Error ? error.message : "Image generation failed",
@@ -423,9 +455,15 @@ Deno.serve(async (req) => {
   }
 
   let imageUrls: string[] = [];
+  let assetIds: string[] = [];
   try {
     if (!resultManifest) throw new Error("generation_result_manifest_missing");
     imageUrls = await createSignedGenerationUrls(resultManifest.objects);
+    assetIds = await decorateGenerationAssets(
+      user.id,
+      resultManifest.objects,
+      normalized,
+    );
   } catch (error) {
     console.error(JSON.stringify({
       event: "image_generation_signing_failed",
@@ -442,8 +480,28 @@ Deno.serve(async (req) => {
     model: responseModel,
     fallbackFrom,
     creditsRemaining: Number(claim.credits_remaining || 0),
+    assetIds,
   }));
 });
+
+async function decorateGenerationAssets(
+  userId: string,
+  objects: GenerationResultObject[],
+  normalized: NormalizedGenerationRequest,
+): Promise<string[]> {
+  const result = await callServiceRpc("decorate_generated_assets", {
+    p_user_id: userId,
+    p_bucket_id: RESULT_BUCKET,
+    p_object_paths: objects.map((object) => object.path),
+    p_category: normalized.category.id,
+    p_title: normalized.prompt,
+    p_metadata: {
+      size: normalized.size.id,
+      transparent_background: normalized.transparentBackground,
+    },
+  }).catch(() => null);
+  return Array.isArray(result?.asset_ids) ? result.asset_ids.map(String) : [];
+}
 
 function getProviderKeys(provider: string): string[] {
   if (provider === "google") {
@@ -462,11 +520,21 @@ async function generateWithGPT(
   images: ReferenceImage[],
   quantity: number,
   size: GenerationSize,
+  transparentBackground = false,
 ): Promise<string[]> {
   if (images.length > 0) {
     const results = [];
     for (let index = 0; index < quantity; index += 1) {
-      results.push(await editWithGPT(apiKey, finalPrompt, model, images, size));
+      results.push(
+        await editWithGPT(
+          apiKey,
+          finalPrompt,
+          model,
+          images,
+          size,
+          transparentBackground,
+        ),
+      );
     }
     return results;
   }
@@ -482,14 +550,18 @@ async function generateWithGPT(
       prompt: finalPrompt,
       size: size.openaiSize || "1024x1024",
       quality: "low",
+      ...(transparentBackground
+        ? { background: "transparent", output_format: "png" }
+        : {}),
       n: quantity,
     }),
   });
 
   const payload = await response.json().catch(() => ({})) as ProviderPayload;
   if (!response.ok) {
-    throw new Error(
-      payload?.error?.message || `OpenAI error ${response.status}`,
+    throw Object.assign(
+      new Error(payload?.error?.message || `OpenAI error ${response.status}`),
+      { status: response.status },
     );
   }
 
@@ -507,6 +579,7 @@ async function editWithGPT(
   model: string,
   images: ReferenceImage[],
   size: GenerationSize,
+  transparentBackground = false,
 ): Promise<string> {
   const form = new FormData();
   form.append(
@@ -516,6 +589,10 @@ async function editWithGPT(
   form.append("prompt", finalPrompt);
   form.append("size", size.openaiSize || "1024x1024");
   form.append("quality", "low");
+  if (transparentBackground) {
+    form.append("background", "transparent");
+    form.append("output_format", "png");
+  }
 
   images.slice(0, 6).forEach((image, index) => {
     const bytes = decodeBase64(image.data);
@@ -542,8 +619,11 @@ async function editWithGPT(
 
   const payload = await response.json().catch(() => ({})) as ProviderPayload;
   if (!response.ok) {
-    throw new Error(
-      payload?.error?.message || `OpenAI edit error ${response.status}`,
+    throw Object.assign(
+      new Error(
+        payload?.error?.message || `OpenAI edit error ${response.status}`,
+      ),
+      { status: response.status },
     );
   }
 
@@ -552,6 +632,16 @@ async function editWithGPT(
     throw new Error("OpenAI returned no edited image");
   }
   return imageBase64;
+}
+
+function providerHealthErrorCode(status: number): string {
+  if (status === 400 || status === 404 || status === 422) {
+    return "provider_model_unavailable";
+  }
+  if (status === 401 || status === 403) return "provider_auth_failed";
+  if (status === 402 || status === 429) return "provider_balance_or_quota";
+  if (status >= 500) return "provider_temporarily_unavailable";
+  return "provider_or_storage_error";
 }
 
 async function generateWithGoogle(

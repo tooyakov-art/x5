@@ -33,7 +33,7 @@ struct VoiceGeneratorView: View {
     @EnvironmentObject private var currentUser: CurrentUser
 
     @State private var text = ""
-    @State private var selectedVoice = VoiceGenerationVoice.aria
+    @State private var selectedVoice = VoiceGenerationVoice.brightHeroine
     @State private var selectedStability = VoiceGenerationStability.balanced
     @State private var selectedLanguage = VoiceGenerationLanguage.automatic
     @State private var speed = 1.0

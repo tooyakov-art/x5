@@ -131,6 +131,20 @@ enum VideoGenerationDisplayState: Equatable {
     }
 }
 
+enum VideoStudioMode: String, Hashable {
+    case standard
+    case cinema
+    case vfx
+
+    var navigationTitle: String {
+        switch self {
+        case .standard: return "Генерация видео"
+        case .cinema: return "Cinema Studio"
+        case .vfx: return "VFX из фотографии"
+        }
+    }
+}
+
 struct VideoGeneratorView: View {
     @EnvironmentObject private var auth: Auth
 
@@ -140,6 +154,10 @@ struct VideoGeneratorView: View {
     private let model: VideoGenerationModel = .seedance20Fast
     @State private var resolution: VideoGenerationResolution = .hd
     @State private var generateAudio = true
+    @State private var cinemaStyle = "Кинематографичный реализм"
+    @State private var cameraMovement = "Медленный наезд"
+    @State private var lighting = "Мягкий студийный свет"
+    @State private var vfxEffect = "Оживление портрета"
     @State private var currentJob: VideoGenerationJob?
     @State private var recentJobs: [VideoGenerationJob] = []
     @State private var errorMessage: String?
@@ -171,6 +189,11 @@ struct VideoGeneratorView: View {
     private let localStore = VideoGenerationLocalStore()
     private let aspectRatios = ["9:16", "16:9"]
     private let durations = [5, 10]
+    let studioMode: VideoStudioMode
+
+    init(studioMode: VideoStudioMode = .standard) {
+        self.studioMode = studioMode
+    }
 
     private var availableResolutions: [VideoGenerationResolution] {
         [.standard, .hd]
@@ -182,6 +205,10 @@ struct VideoGeneratorView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     header
                     promptCard
+                    if studioMode != .standard {
+                        modeControlsCard
+                    }
+                    startImageCard
                     settingsCard
                     submitButton
 
@@ -201,7 +228,7 @@ struct VideoGeneratorView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background { X5Background() }
-            .navigationTitle("Генерация видео")
+            .navigationTitle(studioMode.navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .onDisappear {
@@ -284,11 +311,11 @@ struct VideoGeneratorView: View {
                     .clipShape(Capsule())
             }
 
-            Text("Создайте ролик из идеи")
+            Text(headerTitle)
                 .font(.system(size: 29, weight: .black))
                 .foregroundColor(.white)
 
-            Text("Опишите кадр и движение. Генерация идёт на сервере — экран можно не держать открытым.")
+            Text(headerSubtitle)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(.white.opacity(0.62))
                 .fixedSize(horizontal: false, vertical: true)
@@ -303,7 +330,7 @@ struct VideoGeneratorView: View {
 
             ZStack(alignment: .topLeading) {
                 if prompt.isEmpty {
-                    Text("Например: премиальная кофейня ночью, медленный пролёт камеры, тёплый свет и пар над чашкой")
+                    Text(promptPlaceholder)
                         .font(.system(size: 15, weight: .medium))
                         .foregroundColor(.white.opacity(0.32))
                         .padding(.horizontal, 15)
@@ -331,12 +358,75 @@ struct VideoGeneratorView: View {
         .x5ClearGlass(cornerRadius: 22, highlight: 0.08)
     }
 
+    private var modeControlsCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionTitle(studioMode == .cinema ? "РЕЖИССУРА" : "ЭФФЕКТ")
+            if studioMode == .cinema {
+                videoOptionMenu(
+                    title: "Визуальный стиль",
+                    value: $cinemaStyle,
+                    values: ["Кинематографичный реализм", "Рекламный премиум", "Документальный", "Неон и sci-fi", "Плёночная драма"],
+                    icon: "film.stack"
+                )
+                videoOptionMenu(
+                    title: "Движение камеры",
+                    value: $cameraMovement,
+                    values: ["Медленный наезд", "Плавный облёт", "Ручная камера", "Статичный кадр", "Долли-зум"],
+                    icon: "camera.metering.multispot"
+                )
+                videoOptionMenu(
+                    title: "Свет",
+                    value: $lighting,
+                    values: ["Мягкий студийный свет", "Контровой закат", "Неоновый свет", "Естественный дневной", "Драматичный низкий ключ"],
+                    icon: "light.max"
+                )
+            } else {
+                videoOptionMenu(
+                    title: "VFX",
+                    value: $vfxEffect,
+                    values: ["Оживление портрета", "Параллакс и глубина", "Ветер и движение ткани", "Кинематографичный дождь", "Световые частицы", "Трансформация окружения"],
+                    icon: "wand.and.stars"
+                )
+                Text("VFX честно создаётся как image-to-video: исходная фотография остаётся первым кадром, а выбранный эффект анимирует сцену.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.52))
+            }
+        }
+        .padding(16)
+        .x5ClearGlass(cornerRadius: 22, highlight: 0.08)
+    }
+
+    private func videoOptionMenu(
+        title: String,
+        value: Binding<String>,
+        values: [String],
+        icon: String
+    ) -> some View {
+        Menu {
+            ForEach(values, id: \.self) { option in
+                Button(option) { value.wrappedValue = option }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon).foregroundColor(Color.accentColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.caption).foregroundColor(.white.opacity(0.46))
+                    Text(value.wrappedValue).font(.subheadline.bold()).foregroundColor(.white)
+                }
+                Spacer()
+                Image(systemName: "chevron.up.chevron.down").foregroundColor(.white.opacity(0.4))
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 13))
+        }
+    }
+
     private var startImageCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 sectionTitle("СТАРТОВЫЙ КАДР")
                 Spacer()
-                Text("НЕОБЯЗАТЕЛЬНО")
+                Text(studioMode == .vfx ? "ОБЯЗАТЕЛЬНО" : "НЕОБЯЗАТЕЛЬНО")
                     .font(.system(size: 10, weight: .black))
                     .tracking(1)
                     .foregroundColor(.white.opacity(0.34))
@@ -403,7 +493,9 @@ struct VideoGeneratorView: View {
 
             Text(
                 startImagePreview == nil
-                    ? "Без фото будет создано видео только по описанию."
+                    ? (studioMode == .vfx
+                       ? "Для VFX выберите фотографию — эффект будет создан именно из неё."
+                       : "Без фото будет создано видео только по описанию.")
                     : "Видео начнётся с выбранного изображения."
             )
             .font(.system(size: 12, weight: .medium))
@@ -674,10 +766,64 @@ struct VideoGeneratorView: View {
             .foregroundColor(.white.opacity(0.46))
     }
 
+    private var headerTitle: String {
+        switch studioMode {
+        case .standard: return "Создайте ролик из идеи"
+        case .cinema: return "Соберите сцену как режиссёр"
+        case .vfx: return "Оживите фотографию"
+        }
+    }
+
+    private var headerSubtitle: String {
+        switch studioMode {
+        case .standard:
+            return "Текст → видео и изображение → видео на Seedance. Задача продолжится на сервере, даже если закрыть экран."
+        case .cinema:
+            return "Сцена, визуальный стиль, движение камеры и свет собираются в один точный промпт Seedance."
+        case .vfx:
+            return "Выберите фото и эффект. Seedance создаст новое image-to-video, не изменяя готовый ролик."
+        }
+    }
+
+    private var promptPlaceholder: String {
+        switch studioMode {
+        case .standard:
+            return "Например: премиальная кофейня ночью, медленный пролёт камеры, тёплый свет и пар над чашкой"
+        case .cinema:
+            return "Опишите сцену, действие героя и окружение"
+        case .vfx:
+            return "Опишите желаемое движение объекта и окружения"
+        }
+    }
+
     private var canSubmit: Bool {
         prompt.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
             && !isSubmitting
             && !isPreparingStartImage
+            && (studioMode != .vfx || startImage != nil)
+    }
+
+    private var effectiveSubmissionPrompt: String {
+        let scene = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch studioMode {
+        case .standard:
+            return scene
+        case .cinema:
+            return """
+            Сцена: \(scene)
+            Визуальный стиль: \(cinemaStyle).
+            Движение камеры: \(cameraMovement).
+            Свет: \(lighting).
+            Цельная кинематографичная сцена, естественная анатомия и физика, без водяных знаков и случайного текста.
+            """
+        case .vfx:
+            return """
+            Преврати приложенную фотографию в естественное видео.
+            Эффект: \(vfxEffect).
+            Движение: \(scene)
+            Сохрани личность, предметы, композицию и первый кадр. Не добавляй случайный текст, логотипы или новых людей.
+            """
+        }
     }
 
     private var estimatedCreditCost: Int {
@@ -1066,7 +1212,7 @@ struct VideoGeneratorView: View {
         errorMessage = nil
         isSubmitting = true
 
-        let cleanPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanPrompt = effectiveSubmissionPrompt
         let requestedRatio = aspectRatio
         let requestedDuration = durationSeconds
         let requestedModel = model

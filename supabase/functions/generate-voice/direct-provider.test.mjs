@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  DirectVoiceProvider,
-  ELEVENLABS_MODEL,
-  MINIMAX_MODEL,
-} from "./direct-provider.mjs";
+import { DirectVoiceProvider, MINIMAX_MODEL } from "./direct-provider.mjs";
 
 const mp3 = Uint8Array.from([0x49, 0x44, 0x33, 4, 0, 0, 1, 2, 3]);
 const input = {
@@ -42,44 +38,29 @@ test("uses official MiniMax HTTP MP3 endpoint first", async () => {
   assert.deepEqual(result.audioBytes, mp3);
 });
 
-test("falls back to official ElevenLabs on a definitive MiniMax rejection", async () => {
-  const calls = [];
+test("returns a terminal error on a definitive MiniMax rejection", async () => {
+  let calls = 0;
   const provider = new DirectVoiceProvider({
     minimaxKey: "mini-secret",
-    elevenLabsKey: "eleven-secret",
-    fetchImpl: (url, options) => {
-      calls.push({ url: String(url), options });
-      if (String(url).includes("minimax.io")) {
-        return Response.json(
-          { base_resp: { status_code: 1004, status_msg: "rejected" } },
-          { status: 400 },
-        );
-      }
-      return new Response(mp3, {
-        headers: {
-          "Content-Type": "audio/mpeg",
-          "request-id": "eleven-request-1234",
-        },
-      });
+    fetchImpl: () => {
+      calls += 1;
+      return Response.json(
+        { base_resp: { status_code: 1004, status_msg: "rejected" } },
+        { status: 400 },
+      );
     },
   });
-  const result = await provider.generate({ input });
-  assert.equal(calls.length, 2);
-  assert.match(
-    calls[1].url,
-    /^https:\/\/api\.elevenlabs\.io\/v1\/text-to-speech\//,
+  await assert.rejects(
+    provider.generate({ input }),
+    (error) => error.code === "minimax_rejected" && error.terminal === true,
   );
-  assert.equal(calls[1].options.headers["xi-api-key"], "eleven-secret");
-  assert.equal(JSON.parse(calls[1].options.body).model_id, ELEVENLABS_MODEL);
-  assert.equal(result.provider, "elevenlabs");
-  assert.equal(result.model, ELEVENLABS_MODEL);
+  assert.equal(calls, 1);
 });
 
 test("never double-submits to fallback after an ambiguous MiniMax transport", async () => {
   let calls = 0;
   const provider = new DirectVoiceProvider({
     minimaxKey: "mini-secret",
-    elevenLabsKey: "eleven-secret",
     fetchImpl: () => {
       calls += 1;
       throw new Error("timeout");
@@ -90,4 +71,29 @@ test("never double-submits to fallback after an ambiguous MiniMax transport", as
     (error) => error.submissionAmbiguous === true,
   );
   assert.equal(calls, 1);
+});
+
+test("passes an explicitly selected MiniMax voice and auto-detects Kazakh", async () => {
+  let request;
+  const provider = new DirectVoiceProvider({
+    minimaxKey: "mini-secret",
+    fetchImpl: (url, options) => {
+      request = { url: String(url), options };
+      return Response.json({
+        data: { audio: Buffer.from(mp3).toString("hex"), status: 2 },
+        trace_id: "trace-kazakh-1234",
+        base_resp: { status_code: 0, status_msg: "success" },
+      });
+    },
+  });
+  await provider.generate({
+    input: {
+      ...input,
+      voice: "Russian_ReliableMan",
+      languageCode: "kk",
+    },
+  });
+  const body = JSON.parse(request.options.body);
+  assert.equal(body.voice_setting.voice_id, "Russian_ReliableMan");
+  assert.equal(body.language_boost, "auto");
 });
