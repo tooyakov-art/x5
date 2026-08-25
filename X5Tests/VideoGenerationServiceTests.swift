@@ -410,6 +410,7 @@ final class VideoGenerationServiceTests: XCTestCase {
             refunded: true,
             resultURL: nil,
             resultURLExpiresAt: nil,
+            assetID: nil,
             errorCode: "provider_failed",
             createdAt: Date(timeIntervalSince1970: 0),
             updatedAt: Date(timeIntervalSince1970: 1)
