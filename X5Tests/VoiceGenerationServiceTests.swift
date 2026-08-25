@@ -58,7 +58,7 @@ final class VoiceGenerationServiceTests: XCTestCase {
                 as? [String: Any]
         )
         XCTAssertEqual(payload["text"] as? String, "Озвучь этот рекламный текст")
-        XCTAssertEqual(payload["voice"] as? String, "Aria")
+        XCTAssertEqual(payload["voice"] as? String, "Russian_BrightHeroine")
         XCTAssertEqual(payload["stability"] as? Double, 0.5)
         XCTAssertEqual(payload["speed"] as? Double, 1)
         XCTAssertEqual(payload["language_code"] as? String, "ru")
