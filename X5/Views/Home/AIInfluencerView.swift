@@ -65,7 +65,7 @@ struct AIInfluencerView: View {
     @State private var age = 25
     @State private var origin = "Казахстан"
     @State private var face = ""
-    @State private var body = ""
+    @State private var bodyDescription = ""
     @State private var skin = ""
     @State private var hair = ""
     @State private var outfit = ""
@@ -239,7 +239,7 @@ struct AIInfluencerView: View {
             }
             field("Происхождение", text: $origin)
             field("Лицо и черты", text: $face, lines: 2)
-            field("Телосложение", text: $body, lines: 2)
+            field("Телосложение", text: $bodyDescription, lines: 2)
             field("Кожа", text: $skin, lines: 2)
             field("Волосы", text: $hair, lines: 2)
             field("Одежда", text: $outfit, lines: 2)
@@ -601,7 +601,7 @@ struct AIInfluencerView: View {
         age = saved.age ?? 25
         origin = saved.origin ?? ""
         face = saved.faceDescription ?? ""
-        body = saved.bodyDescription ?? ""
+        bodyDescription = saved.bodyDescription ?? ""
         skin = saved.skinDescription ?? ""
         hair = saved.hairDescription ?? ""
         outfit = saved.outfitDescription ?? ""
@@ -660,7 +660,7 @@ struct AIInfluencerView: View {
                     "age": age,
                     "origin": origin,
                     "face_description": face,
-                    "body_description": body,
+                    "body_description": bodyDescription,
                     "skin_description": skin,
                     "hair_description": hair,
                     "outfit_description": outfit,
@@ -723,7 +723,7 @@ struct AIInfluencerView: View {
         """
         Создай оригинального синтетического персонажа X5. Не используй лицо известного или реального человека без приложенного разрешённого референса.
         Тип: \(kind.title). Имя: \(name). Пол: \(gender). Возраст: \(age). Происхождение: \(origin).
-        Лицо: \(face). Телосложение: \(body). Кожа: \(skin). Волосы: \(hair).
+        Лицо: \(face). Телосложение: \(bodyDescription). Кожа: \(skin). Волосы: \(hair).
         Одежда: \(outfit). Аксессуары: \(accessories). Дополнительно: \(extra).
         Реалистичный портрет по пояс, естественная анатомия, чистый нейтральный фон, без текста, водяных знаков и чужих логотипов.
         """
