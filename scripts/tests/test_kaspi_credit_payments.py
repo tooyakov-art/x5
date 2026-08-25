@@ -18,6 +18,9 @@ PAYWALL = (ROOT / "X5" / "Views" / "PaywallView.swift").read_text(
 PROVIDER = (
     ROOT / "supabase" / "functions" / "kaspi-pay-provider" / "index.ts"
 ).read_text(encoding="utf-8")
+PROTOCOL = (
+    ROOT / "supabase" / "functions" / "kaspi-pay-provider" / "protocol.mjs"
+).read_text(encoding="utf-8")
 
 
 class KaspiCreditPaymentsTests(unittest.TestCase):
@@ -69,6 +72,11 @@ class KaspiCreditPaymentsTests(unittest.TestCase):
         self.assertIn("status = 'refunded'", MIGRATION)
         self.assertIn("coalesce(credits, 0) - v_payment.credits", MIGRATION)
         self.assertIn("already_refunded", MIGRATION)
+
+    def test_official_provider_network_is_the_only_callback_source(self):
+        self.assertIn("194.187.247.152", PROTOCOL)
+        self.assertIn("KASPI_ALLOWED_IPS", PROVIDER)
+        self.assertIn("Forbidden", PROVIDER)
 
 
 if __name__ == "__main__":
