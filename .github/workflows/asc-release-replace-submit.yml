@@ -375,6 +375,12 @@ jobs:
           sys.exit("Version did not become editable after cancelling the review submission.")
           PY
 
+      - name: Prepare Russian App Store screenshots
+        run: |
+          mkdir -p fastlane/screenshots/ru
+          cp fastlane/screenshots/en-US/*.png fastlane/screenshots/ru/
+          test "$(find fastlane/screenshots/ru -maxdepth 1 -name '*.png' | wc -l | tr -d ' ')" -ge 3
+
       - name: Upload latest review metadata
         run: bundle exec fastlane ios upload
 
