@@ -55,6 +55,8 @@ final class CourseVideoPlaybackController: ObservableObject {
     @Published private(set) var isOffline = false
     @Published private(set) var showsWeakConnection = false
     @Published private(set) var playbackError: String?
+    @Published private(set) var sourceQualityLabel: String?
+    @Published private(set) var sourceQualityIsLow = false
 
     var availableQualities: [CourseVideoQuality] {
         isAdaptiveStream
@@ -71,6 +73,20 @@ final class CourseVideoPlaybackController: ObservableObject {
                 : "Слабое соединение — выберите «Авто» или 360p."
         }
         return nil
+    }
+
+    var selectedQualityTitle: String {
+        guard selectedQuality == .original,
+              let sourceQualityLabel
+        else {
+            return selectedQuality.title
+        }
+        return "\(sourceQualityLabel) · исходник"
+    }
+
+    var sourceQualityMessage: String? {
+        guard sourceQualityIsLow, let sourceQualityLabel else { return nil }
+        return "Исходный файл — \(sourceQualityLabel). Для чёткого видео замените его исходником минимум 720p."
     }
 
     private let sourceURL: URL?
@@ -98,6 +114,7 @@ final class CourseVideoPlaybackController: ObservableObject {
         observePlayer()
         observeCurrentItem()
         startNetworkMonitoring()
+        inspectSourceQuality()
     }
 
     deinit {
@@ -164,6 +181,46 @@ final class CourseVideoPlaybackController: ObservableObject {
         guard isAdaptiveStream, let item else { return }
         item.preferredPeakBitRate = selectedQuality.preferredPeakBitRate
         item.preferredMaximumResolution = selectedQuality.maximumResolution
+    }
+
+    private func inspectSourceQuality() {
+        guard !isAdaptiveStream, let sourceURL else { return }
+        Task { [weak self] in
+            let asset = AVURLAsset(url: sourceURL)
+            guard let tracks = try? await asset.loadTracks(
+                withMediaType: .video
+            ),
+                  let track = tracks.first,
+                  let naturalSize = try? await track.load(.naturalSize),
+                  let preferredTransform = try? await track.load(
+                    .preferredTransform
+                  )
+            else {
+                return
+            }
+            let presentationRect = CGRect(
+                origin: .zero,
+                size: naturalSize
+            ).applying(preferredTransform)
+            let shortSide = min(
+                abs(presentationRect.width),
+                abs(presentationRect.height)
+            )
+            guard shortSide.isFinite, shortSide > 0 else { return }
+            let height = Int(shortSide.rounded())
+            let label: String
+            switch height {
+            case 1_080...: label = "1080p"
+            case 720...: label = "720p"
+            case 480...: label = "480p"
+            case 360...: label = "360p"
+            default: label = "\(height)p"
+            }
+            await MainActor.run { [weak self] in
+                self?.sourceQualityLabel = label
+                self?.sourceQualityIsLow = height < 720
+            }
+        }
     }
 
     private func observePlayer() {

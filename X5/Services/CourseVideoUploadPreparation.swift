@@ -34,6 +34,7 @@ enum CourseVideoUploadPreparationError: Error, Equatable, LocalizedError {
     case unreadableFile
     case missingVideoTrack
     case invalidVideo
+    case sourceResolutionTooLow(width: Int, height: Int)
     case videoTooLong
     case exportFailed(
         primary: CourseVideoExportDiagnostic,
@@ -49,8 +50,10 @@ enum CourseVideoUploadPreparationError: Error, Equatable, LocalizedError {
             return "В выбранном файле не найден видеоряд."
         case .invalidVideo:
             return "Не удалось определить параметры выбранного видео."
+        case .sourceResolutionTooLow(let width, let height):
+            return "Видео \(width)×\(height) слишком низкого качества. Выберите исходник минимум 720p."
         case .videoTooLong:
-            return "Видео слишком длинное для автоматической подготовки. Разделите его на несколько уроков."
+            return "Видео не помещается в хорошем качестве. Разделите его на несколько уроков до 7 минут."
         case let .exportFailed(primary, fallback):
             return """
             Не удалось подготовить видео. Исходник сохранён — можно повторить \
@@ -69,11 +72,11 @@ enum CourseVideoUploadPolicy {
     static let directUploadLimitBytes: Int64 = 47_000_000
     static let transcodeTargetBytes: Int64 = 45_000_000
 
-    static let uploadGuidance = "До 47 МБ загружается напрямую. Большие файлы автоматически сжимаются примерно до 45 МБ и затем отправляются возобновляемой загрузкой. Очень длинное видео лучше разделить на уроки."
+    static let uploadGuidance = "Минимум 720p. До 47 МБ загружается без перекодирования; большие файлы подготавливаются в HD. Длинные ролики разделите на уроки до 7 минут, чтобы не терять качество."
 
     private static let targetPayloadFraction = 0.90
-    private static let audioBitRate = 48_000
-    private static let minimumVideoBitRate = 64_000
+    private static let audioBitRate = 96_000
+    private static let minimumVideoBitRate = 700_000
     private static let maximumVideoBitRate = 2_800_000
 
     static func requiresTranscoding(fileSizeBytes: Int64) -> Bool {
@@ -109,12 +112,10 @@ enum CourseVideoUploadPolicy {
 
         let maximumLongSide: Double
         switch videoBitRate {
-        case 1_000_000...:
+        case minimumVideoBitRate...:
             maximumLongSide = 1_280
-        case 350_000...:
-            maximumLongSide = 960
         default:
-            maximumLongSide = 640
+            throw CourseVideoUploadPreparationError.videoTooLong
         }
 
         let sourceLongSide = max(presentationWidth, presentationHeight)
@@ -128,6 +129,38 @@ enum CourseVideoUploadPolicy {
             videoBitRate: videoBitRate,
             audioBitRate: audioBitRate
         )
+    }
+
+    static func acceptsSourceResolution(width: Double, height: Double) -> Bool {
+        width.isFinite
+            && height.isFinite
+            && width > 0
+            && height > 0
+            && min(width, height) >= 720
+    }
+
+    static func validateSourceQuality(fileURL: URL) async throws {
+        let asset = AVURLAsset(url: fileURL)
+        guard let videoTracks = try? await asset.loadTracks(
+            withMediaType: .video
+        ),
+              let videoTrack = videoTracks.first else {
+            throw CourseVideoUploadPreparationError.missingVideoTrack
+        }
+        let naturalSize = try await videoTrack.load(.naturalSize)
+        let preferredTransform = try await videoTrack.load(.preferredTransform)
+        let presentationRect = CGRect(
+            origin: .zero,
+            size: naturalSize
+        ).applying(preferredTransform)
+        let width = abs(presentationRect.width)
+        let height = abs(presentationRect.height)
+        guard acceptsSourceResolution(width: width, height: height) else {
+            throw CourseVideoUploadPreparationError.sourceResolutionTooLow(
+                width: Int(width.rounded()),
+                height: Int(height.rounded())
+            )
+        }
     }
 
     static func isAcceptablePreparedOutput(

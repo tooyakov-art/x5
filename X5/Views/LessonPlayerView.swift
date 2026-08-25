@@ -109,7 +109,7 @@ private struct CourseQualityMenu: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "gauge.with.dots.needle.67percent")
-                Text(playback.selectedQuality.title)
+                Text(playback.selectedQualityTitle)
             }
             .font(.system(size: 12, weight: .bold))
             .foregroundColor(.white)
@@ -121,7 +121,7 @@ private struct CourseQualityMenu: View {
             }
         }
         .accessibilityLabel("Качество видео")
-        .accessibilityValue(playback.selectedQuality.title)
+        .accessibilityValue(playback.selectedQualityTitle)
     }
 }
 
@@ -177,6 +177,30 @@ private struct CoursePlaybackStatus: View {
                 .padding(.horizontal, 13)
                 .padding(.vertical, 11)
                 .background(Color.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 14))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                }
+            }
+
+            if let qualityMessage = playback.sourceQualityMessage,
+               playback.connectionMessage == nil,
+               !playback.isBuffering {
+                HStack(spacing: 10) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundColor(Color.accentColor)
+                    Text(qualityMessage)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 13)
+                .padding(.vertical, 11)
+                .background(
+                    Color.black.opacity(0.88),
+                    in: RoundedRectangle(cornerRadius: 14)
+                )
                 .overlay {
                     RoundedRectangle(cornerRadius: 14)
                         .stroke(Color.white.opacity(0.14), lineWidth: 1)

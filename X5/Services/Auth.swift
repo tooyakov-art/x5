@@ -154,22 +154,34 @@ final class Auth: ObservableObject {
             minimumValidity: minimumValidity
         ) else { return token }
         guard supabase.refreshToken != nil else {
-            // A short request can still attempt its current token, matching the
-            // previous-session behavior. Long uploads must not start with a JWT
-            // that cannot cover their requested validity window.
-            return minimumValidity <= 60 ? token : nil
-        }
-        do {
-            let session = try await supabase.refreshSession()
-            return session.accessToken
-        } catch let error as SupabaseError where error.invalidatesSession {
+            // An expired JWT without a refresh token can never authenticate an
+            // Edge Function. Keeping that state marked as signed in only makes
+            // feature screens fail before their requests reach the server.
             if invalidateSessionOnCredentialFailure {
                 await signOut()
             }
             return nil
-        } catch {
-            return nil
         }
+
+        // A mobile hand-off between Wi-Fi and cellular can make the first token
+        // refresh fail even though the stored credentials are still valid. One
+        // short retry avoids presenting a false authentication error while
+        // credential rejections still invalidate the local session immediately.
+        for attempt in 0..<2 {
+            do {
+                let session = try await supabase.refreshSession()
+                return session.accessToken
+            } catch let error as SupabaseError where error.invalidatesSession {
+                if invalidateSessionOnCredentialFailure {
+                    await signOut()
+                }
+                return nil
+            } catch {
+                guard attempt == 0 else { return nil }
+                try? await Task.sleep(nanoseconds: 350_000_000)
+            }
+        }
+        return nil
     }
 
     /// Supplies long-running uploads with a token that will remain valid for

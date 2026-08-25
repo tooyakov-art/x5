@@ -1,4 +1,4 @@
-X five marketing is a creator workspace and marketplace. Version 1.1.6 build 231
+X five marketing is a creator workspace and marketplace. Version 1.1.6 build 232
 adds AI Video plus course, notification, chat, purchase, Home and portfolio fixes.
 
 Demo account:

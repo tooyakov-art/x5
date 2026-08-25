@@ -404,6 +404,56 @@ final class VoiceGenerationService {
         throw VoiceGenerationServiceError.invalidResponse
     }
 
+    /// Retries exactly once when the Edge Function rejects an access token.
+    /// The request ID remains unchanged, so the server-side idempotency ledger
+    /// prevents a duplicate debit if the first response was interrupted.
+    func generateWithTokenRefresh(
+        text: String,
+        voice: VoiceGenerationVoice,
+        stability: VoiceGenerationStability,
+        speed: Double,
+        languageCode: String?,
+        requestID: String,
+        accessToken: String,
+        refreshAccessToken: @escaping (String) async -> String?
+    ) async throws -> VoiceGenerationResult {
+        do {
+            return try await generate(
+                text: text,
+                voice: voice,
+                stability: stability,
+                speed: speed,
+                languageCode: languageCode,
+                requestID: requestID,
+                accessToken: accessToken
+            )
+        } catch let error as VoiceGenerationServiceError {
+            guard case .server(let statusCode, _, _) = error,
+                  statusCode == 401
+            else {
+                throw error
+            }
+
+            guard let refreshedToken = await refreshAccessToken(accessToken),
+                  !refreshedToken.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                  ).isEmpty
+            else {
+                throw VoiceGenerationServiceError.missingAccessToken
+            }
+
+            return try await generate(
+                text: text,
+                voice: voice,
+                stability: stability,
+                speed: speed,
+                languageCode: languageCode,
+                requestID: requestID,
+                accessToken: refreshedToken
+            )
+        }
+    }
+
     private static func isSupportedSpeed(_ speed: Double) -> Bool {
         guard speed >= 0.7, speed <= 1.2 else { return false }
         return abs(speed * 10 - (speed * 10).rounded()) < 0.000_001

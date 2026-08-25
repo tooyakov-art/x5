@@ -292,6 +292,67 @@ final class VoiceGenerationServiceTests: XCTestCase {
         )
     }
 
+    func testUnauthorizedRequestRefreshesTokenAndRetriesSameOperation() async throws {
+        let recorder = VoiceGenerationRequestRecorder()
+        let service = makeService(recorder: recorder) { request in
+            if recorder.requestCount == 1 {
+                return (
+                    Self.response(for: request, statusCode: 401),
+                    Data(
+                        """
+                        {"error":{"code":"unauthorized"}}
+                        """.utf8
+                    )
+                )
+            }
+            return (
+                Self.response(for: request, statusCode: 200),
+                Data(
+                    """
+                    {
+                      "audio_url": "https://project.supabase.co/storage/v1/object/sign/audio",
+                      "audio_url_expires_at": "2026-07-26T12:15:00.000Z",
+                      "credits_remaining": 940,
+                      "cost_credits": 60,
+                      "voice": "Aria",
+                      "model": "speech-2.8-turbo",
+                      "replayed": false
+                    }
+                    """.utf8
+                )
+            )
+        }
+
+        let result = try await service.generateWithTokenRefresh(
+            text: "Озвучь это",
+            voice: .aria,
+            stability: .balanced,
+            speed: 1,
+            languageCode: "ru",
+            requestID: "22222222-2222-4222-8222-222222222222",
+            accessToken: "expired-token",
+            refreshAccessToken: { rejectedToken in
+                XCTAssertEqual(rejectedToken, "expired-token")
+                return "fresh-token"
+            }
+        )
+
+        XCTAssertEqual(result.model, "speech-2.8-turbo")
+        XCTAssertEqual(recorder.requestCount, 2)
+        XCTAssertEqual(
+            recorder.requests.map {
+                $0.value(forHTTPHeaderField: "Authorization")
+            },
+            ["Bearer expired-token", "Bearer fresh-token"]
+        )
+        XCTAssertEqual(
+            Set(recorder.requests.compactMap {
+                $0.value(forHTTPHeaderField: "Idempotency-Key")
+            }),
+            Set(["22222222-2222-4222-8222-222222222222"])
+        )
+    }
+
     func testSharePreparationDownloadsARealLocalMP3() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [VoiceGenerationURLProtocol.self]

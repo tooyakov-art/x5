@@ -1,6 +1,7 @@
 name: iOS course regression tests
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - codex/x5-course-client-fixes-20260714

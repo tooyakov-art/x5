@@ -554,7 +554,9 @@ struct VoiceGeneratorView: View {
                 generationTask = nil
             }
 
-            guard let token = await auth.freshAccessToken() else {
+            guard let token = await auth.freshAccessToken(
+                minimumValidity: 5 * 60
+            ) else {
                 errorMessage = VoiceGenerationServiceError
                     .missingAccessToken
                     .localizedDescription
@@ -562,14 +564,20 @@ struct VoiceGeneratorView: View {
             }
 
             do {
-                let response = try await service.generate(
+                let response = try await service.generateWithTokenRefresh(
                     text: requestedText,
                     voice: requestedVoice,
                     stability: requestedStability,
                     speed: requestedSpeed,
                     languageCode: requestedLanguage,
                     requestID: requestID,
-                    accessToken: token
+                    accessToken: token,
+                    refreshAccessToken: { rejectedToken in
+                        await auth.accessTokenAfterUnauthorized(
+                            rejectedAccessToken: rejectedToken,
+                            expectedUserId: userID
+                        )
+                    }
                 )
                 try Task.checkCancellation()
                 currentUser.applyCreditsRemaining(response.creditsRemaining)

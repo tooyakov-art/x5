@@ -27,8 +27,8 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
 
         XCTAssertEqual(plan.width, 1_280)
         XCTAssertEqual(plan.height, 720)
-        XCTAssertEqual(plan.audioBitRate, 48_000)
-        XCTAssertGreaterThanOrEqual(plan.videoBitRate, 64_000)
+        XCTAssertEqual(plan.audioBitRate, 96_000)
+        XCTAssertGreaterThanOrEqual(plan.videoBitRate, 700_000)
 
         let estimatedBytes = Double(plan.videoBitRate + plan.audioBitRate)
             * 120
@@ -37,6 +37,42 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
             estimatedBytes,
             Double(CourseVideoUploadPolicy.transcodeTargetBytes)
         )
+    }
+
+    func testPublishedCourseUploadRequiresAtLeast720pSource() {
+        XCTAssertTrue(
+            CourseVideoUploadPolicy.acceptsSourceResolution(
+                width: 1_280,
+                height: 720
+            )
+        )
+        XCTAssertTrue(
+            CourseVideoUploadPolicy.acceptsSourceResolution(
+                width: 1_080,
+                height: 1_920
+            )
+        )
+        XCTAssertFalse(
+            CourseVideoUploadPolicy.acceptsSourceResolution(
+                width: 480,
+                height: 300
+            )
+        )
+    }
+
+    func testLongVideoIsRejectedInsteadOfBeingCompressedBelowHDQuality() {
+        XCTAssertThrowsError(
+            try CourseVideoUploadPolicy.makeEncodingPlan(
+                durationSeconds: 15 * 60,
+                presentationWidth: 1_920,
+                presentationHeight: 1_080
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? CourseVideoUploadPreparationError,
+                .videoTooLong
+            )
+        }
     }
 
     func testEncodingPlanKeepsPortraitOrientationAndDoesNotUpscaleSmallVideo() throws {
