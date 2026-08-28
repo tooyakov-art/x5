@@ -95,23 +95,124 @@ def submit_review_payload(submission_id: str) -> dict[str, Any]:
     }
 
 
+def resolve_review_item_payload(item_id: str) -> dict[str, Any]:
+    return {
+        "data": {
+            "type": "reviewSubmissionItems",
+            "id": item_id,
+            "attributes": {"resolved": True},
+        }
+    }
+
+
+def cancel_review_payload(submission_id: str) -> dict[str, Any]:
+    return {
+        "data": {
+            "type": "reviewSubmissions",
+            "id": submission_id,
+            "attributes": {"canceled": True},
+        }
+    }
+
+
+def review_items(review_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    data = review_payload.get("data")
+    if isinstance(data, list):
+        rows.extend(row for row in data if isinstance(row, dict))
+    elif isinstance(data, dict):
+        rows.append(data)
+    included = review_payload.get("included")
+    if isinstance(included, list):
+        rows.extend(row for row in included if isinstance(row, dict))
+
+    unique: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        resource_type = row.get("type")
+        resource_id = row.get("id")
+        if resource_type == "reviewSubmissionItems" and isinstance(
+            resource_id, str
+        ):
+            unique[(resource_type, resource_id)] = row
+    return list(unique.values())
+
+
+def review_item_target(item: dict[str, Any]) -> tuple[str, str] | None:
+    relationships = item.get("relationships", {})
+    for relationship in ("appStoreVersion", "inAppPurchaseVersion"):
+        target = relationships.get(relationship, {}).get("data")
+        if not isinstance(target, dict):
+            continue
+        resource_type = target.get("type")
+        resource_id = target.get("id")
+        if isinstance(resource_type, str) and isinstance(resource_id, str):
+            return resource_type, resource_id
+    return None
+
+
 def review_item_targets(
     review_payload: dict[str, Any],
 ) -> set[tuple[str, str]]:
     targets: set[tuple[str, str]] = set()
-    for item in review_payload.get("included", []):
-        if item.get("type") != "reviewSubmissionItems":
-            continue
-        relationships = item.get("relationships", {})
-        for relationship in ("appStoreVersion", "inAppPurchaseVersion"):
-            target = relationships.get(relationship, {}).get("data")
-            if not isinstance(target, dict):
-                continue
-            resource_type = target.get("type")
-            resource_id = target.get("id")
-            if isinstance(resource_type, str) and isinstance(resource_id, str):
-                targets.add((resource_type, resource_id))
+    for item in review_items(review_payload):
+        target = review_item_target(item)
+        if target:
+            targets.add(target)
     return targets
+
+
+def review_submission_items(
+    api: AppStoreConnect,
+    submission_id: str,
+) -> dict[str, Any]:
+    return api.request(
+        "GET",
+        f"/v1/reviewSubmissions/{submission_id}/items?limit=50"
+        "&include=appStoreVersion,inAppPurchaseVersion",
+    )
+
+
+def cancel_empty_ready_submission(
+    api: AppStoreConnect,
+    submission: dict[str, Any],
+) -> None:
+    submission_id = submission["id"]
+    payload = review_submission_items(api, submission_id)
+    if review_items(payload):
+        raise RuntimeError(
+            "Refusing to cancel a READY_FOR_REVIEW submission that has items: "
+            f"{submission_id}"
+        )
+
+    result = api.request(
+        "PATCH",
+        f"/v1/reviewSubmissions/{submission_id}",
+        payload=cancel_review_payload(submission_id),
+    )["data"]
+    state = result.get("attributes", {}).get("state")
+    print(f"Canceled empty ReviewSubmission {submission_id}: state={state}")
+    if state not in {"CANCELING", "COMPLETE"}:
+        raise RuntimeError(
+            f"Unexpected canceled review state {state} for {submission_id}"
+        )
+
+    for attempt in range(1, 31):
+        current = api.request(
+            "GET",
+            f"/v1/reviewSubmissions/{submission_id}",
+        )["data"]
+        state = current.get("attributes", {}).get("state")
+        if state == "COMPLETE":
+            return
+        if state != "CANCELING":
+            raise RuntimeError(
+                f"Unexpected review cancellation state {state}"
+            )
+        if attempt < 30:
+            time.sleep(2)
+    raise RuntimeError(
+        f"ReviewSubmission {submission_id} did not finish cancellation"
+    )
 
 
 def app_only_item_readback(
@@ -332,15 +433,105 @@ def create_combined_review(
     app_version_id: str,
     iap_versions: list[dict[str, Any]],
 ) -> str:
+    app_target = ("appStoreVersions", app_version_id)
+    expected_targets = {
+        app_target,
+        *(
+            ("inAppPurchaseVersions", version["id"])
+            for version in iap_versions
+        ),
+    }
     existing = api.request(
         "GET",
         f"/v1/reviewSubmissions?filter[app]={app_id}"
         "&filter[platform]=IOS",
     ).get("data", [])
-    submission = single_ready_submission(existing)
-    if submission:
-        print(f"Reusing READY ReviewSubmission {submission['id']}")
+
+    unresolved_matches: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for row in existing:
+        if row.get("attributes", {}).get("state") != "UNRESOLVED_ISSUES":
+            continue
+        item_payload = review_submission_items(api, row["id"])
+        if app_target in review_item_targets(item_payload):
+            unresolved_matches.append((row, item_payload))
+    if len(unresolved_matches) > 1:
+        raise RuntimeError(
+            "More than one unresolved review contains the target app version"
+        )
+
+    selected_item_payload: dict[str, Any] | None = None
+    if unresolved_matches:
+        submission, selected_item_payload = unresolved_matches[0]
+        for row in existing:
+            if row.get("attributes", {}).get("state") == "READY_FOR_REVIEW":
+                cancel_empty_ready_submission(api, row)
+
+        selected_items = review_items(selected_item_payload)
+        selected_targets = {
+            target
+            for item in selected_items
+            if (target := review_item_target(item)) is not None
+        }
+        if selected_targets != expected_targets:
+            raise RuntimeError(
+                "Unresolved review targets do not match the requested review: "
+                f"actual={sorted(selected_targets)} "
+                f"expected={sorted(expected_targets)}"
+            )
+
+        for item in selected_items:
+            target = review_item_target(item)
+            if target not in expected_targets:
+                continue
+            state = item.get("attributes", {}).get("state")
+            if state == "READY_FOR_REVIEW":
+                continue
+            if state != "REJECTED":
+                raise RuntimeError(
+                    f"Cannot resolve review item {item['id']} from state {state}"
+                )
+            resolved = api.request(
+                "PATCH",
+                f"/v1/reviewSubmissionItems/{item['id']}",
+                payload=resolve_review_item_payload(item["id"]),
+            )["data"]
+            print(
+                f"Resolved rejected review item {item['id']}: "
+                f"state={resolved.get('attributes', {}).get('state')}"
+            )
+
+        for attempt in range(1, 31):
+            selected_item_payload = review_submission_items(
+                api,
+                submission["id"],
+            )
+            target_items = [
+                item
+                for item in review_items(selected_item_payload)
+                if review_item_target(item) in expected_targets
+            ]
+            if len(target_items) == len(expected_targets) and all(
+                item.get("attributes", {}).get("state")
+                == "READY_FOR_REVIEW"
+                for item in target_items
+            ):
+                break
+            if attempt < 30:
+                time.sleep(2)
+        else:
+            raise RuntimeError(
+                "Rejected review items did not become READY_FOR_REVIEW"
+            )
+        print(
+            "Reusing resolved ReviewSubmission "
+            f"{submission['id']}"
+        )
     else:
+        submission = single_ready_submission(existing)
+
+    if not unresolved_matches and submission:
+        print(f"Reusing READY ReviewSubmission {submission['id']}")
+    elif not unresolved_matches:
         submission = api.request(
             "POST",
             "/v1/reviewSubmissions",
@@ -351,15 +542,14 @@ def create_combined_review(
     submission_id = submission["id"]
 
     def load_targets() -> set[tuple[str, str]]:
-        payload = api.request(
-            "GET",
-            f"/v1/reviewSubmissions/{submission_id}"
-            "?include=items&limit[items]=50",
-        )
+        payload = review_submission_items(api, submission_id)
         return review_item_targets(payload)
 
-    existing_targets = load_targets()
-    app_target = ("appStoreVersions", app_version_id)
+    existing_targets = (
+        review_item_targets(selected_item_payload)
+        if selected_item_payload is not None
+        else load_targets()
+    )
     opaque_app_item_exists = False
     if not iap_versions and not existing_targets:
         opaque_app_item_exists, _ = app_only_item_readback(
@@ -394,10 +584,6 @@ def create_combined_review(
             )
         print(f"Attached IAP version {version['id']}")
 
-    expected_targets = {
-        app_target,
-        *(("inAppPurchaseVersions", version["id"]) for version in iap_versions),
-    }
     expected_count = 1 + len(iap_versions)
     actual_targets: set[tuple[str, str]] = set()
     for attempt in range(1, 31):

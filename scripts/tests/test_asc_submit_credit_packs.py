@@ -169,7 +169,7 @@ class CreditPackSubmissionTests(unittest.TestCase):
                             }
                         ]
                     }
-                if method == "GET" and "?include=items" in path:
+                if method == "GET" and "/items?limit=50&include=" in path:
                     included = []
                     for index, (resource_type, resource_id) in enumerate(
                         sorted(self.targets)
@@ -257,7 +257,7 @@ class CreditPackSubmissionTests(unittest.TestCase):
                             "attributes": {"state": "READY_FOR_REVIEW"},
                         }
                     }
-                if method == "GET" and "?include=items" in path:
+                if method == "GET" and "/items?limit=50&include=" in path:
                     included = []
                     for index, (resource_type, resource_id) in enumerate(
                         sorted(self.targets)
@@ -331,7 +331,7 @@ class CreditPackSubmissionTests(unittest.TestCase):
                             }
                         ]
                     }
-                if method == "GET" and "?include=items" in path:
+                if method == "GET" and "/items?limit=50&include=" in path:
                     return {"included": []}
                 if method == "GET" and path.endswith("/items?limit=50"):
                     return {
@@ -377,6 +377,128 @@ class CreditPackSubmissionTests(unittest.TestCase):
         )
 
         self.assertEqual(submission_id, "submission-ready")
+        self.assertTrue(api.submitted)
+
+    def test_rejected_app_item_is_resolved_and_existing_review_is_resubmitted(self):
+        class FakeAPI:
+            def __init__(self):
+                self.item_state = "REJECTED"
+                self.canceled_empty = False
+                self.submitted = False
+
+            def unresolved_items(self):
+                return {
+                    "data": [
+                        {
+                            "type": "reviewSubmissionItems",
+                            "id": "item-app-rejected",
+                            "attributes": {"state": self.item_state},
+                            "relationships": {
+                                "appStoreVersion": {
+                                    "data": {
+                                        "type": "appStoreVersions",
+                                        "id": "version-1",
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                }
+
+            def request(self, method, path, expected=(200,), payload=None):
+                if method == "GET" and "?filter[app]=" in path:
+                    return {
+                        "data": [
+                            {
+                                "id": "submission-empty",
+                                "attributes": {
+                                    "state": "READY_FOR_REVIEW"
+                                },
+                            },
+                            {
+                                "id": "submission-rejected",
+                                "attributes": {
+                                    "state": "UNRESOLVED_ISSUES"
+                                },
+                            },
+                        ]
+                    }
+                if (
+                    method == "GET"
+                    and "/submission-rejected/items?" in path
+                ):
+                    return self.unresolved_items()
+                if method == "GET" and "/submission-empty/items?" in path:
+                    return {"data": []}
+                if method == "GET" and path.endswith("/submission-empty"):
+                    return {
+                        "data": {
+                            "id": "submission-empty",
+                            "attributes": {"state": "COMPLETE"},
+                        }
+                    }
+                if method == "PATCH" and path.endswith("/submission-empty"):
+                    self.canceled_empty = True
+                    self.assert_cancel_payload(payload)
+                    return {
+                        "data": {
+                            "id": "submission-empty",
+                            "attributes": {"state": "CANCELING"},
+                        }
+                    }
+                if method == "PATCH" and path.endswith(
+                    "/item-app-rejected"
+                ):
+                    self.item_state = "READY_FOR_REVIEW"
+                    self.assert_resolve_payload(payload)
+                    return {
+                        "data": {
+                            "id": "item-app-rejected",
+                            "attributes": {"state": self.item_state},
+                        }
+                    }
+                if method == "PATCH" and path.endswith(
+                    "/submission-rejected"
+                ):
+                    self.submitted = True
+                    self.assert_submit_payload(payload)
+                    return {
+                        "data": {
+                            "id": "submission-rejected",
+                            "attributes": {"state": "WAITING_FOR_REVIEW"},
+                        }
+                    }
+                if method == "POST":
+                    raise AssertionError(
+                        "must resolve the existing rejected review"
+                    )
+                raise AssertionError(f"Unexpected request {method} {path}")
+
+            def assert_cancel_payload(self, payload):
+                self.assert_attributes(payload, {"canceled": True})
+
+            def assert_resolve_payload(self, payload):
+                self.assert_attributes(payload, {"resolved": True})
+
+            def assert_submit_payload(self, payload):
+                self.assert_attributes(payload, {"submitted": True})
+
+            @staticmethod
+            def assert_attributes(payload, expected):
+                if payload["data"]["attributes"] != expected:
+                    raise AssertionError(f"wrong payload {payload}")
+
+        api = FakeAPI()
+        submission_id = MODULE.create_combined_review(
+            api,
+            "app-1",
+            "version-1",
+            [],
+        )
+
+        self.assertEqual(submission_id, "submission-rejected")
+        self.assertTrue(api.canceled_empty)
+        self.assertEqual(api.item_state, "READY_FOR_REVIEW")
         self.assertTrue(api.submitted)
 
     def test_app_only_opaque_item_count_fails_closed(self):
@@ -489,7 +611,7 @@ class CreditPackSubmissionTests(unittest.TestCase):
                             }
                         ]
                     }
-                if method == "GET" and "?include=items" in path:
+                if method == "GET" and "/items?limit=50&include=" in path:
                     targets = self.target_readbacks.pop(0)
                     included = []
                     for index, (resource_type, resource_id) in enumerate(
