@@ -106,6 +106,15 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         self.assertIn('Text("Все AI-инструменты")', home)
         self.assertIn("AIStudioHubView()", home)
 
+    def test_home_hides_provider_backed_routes_until_health_check_passes(self):
+        home = HOME.read_text(encoding="utf-8")
+        self.assertIn("aiStudioService.capabilities(accessToken: token)", home)
+        self.assertIn('if isToolAvailable("image_generation")', home)
+        self.assertIn('if isToolAvailable("ai_influencer")', home)
+        self.assertIn('if isToolAvailable("voice")', home)
+        self.assertIn('if isToolAvailable("video")', home)
+        self.assertIn("HomeSearchSheet(capabilities: aiCapabilities)", home)
+
     def test_native_promos_trends_and_business_cards_are_complete(self):
         home = HOME.read_text(encoding="utf-8")
 

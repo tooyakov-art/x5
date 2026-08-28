@@ -61,12 +61,16 @@ private enum HomeTypography {
 /// labels, controls, card chrome, navigation and layout are SwiftUI views.
 struct HomeView: View {
     @EnvironmentObject private var loc: LocalizationService
+    @EnvironmentObject private var auth: Auth
 
     @State private var activeRoute: HomeRoute?
     @State private var showingGeneratedGallery = false
     @State private var showingSearch = false
     @State private var pendingSearchRoute: HomeRoute?
     @State private var activeHeroPage = 0
+    @State private var aiCapabilities: AIStudioCapabilities?
+
+    private let aiStudioService = AIStudioService()
 
     var body: some View {
         NavigationStack {
@@ -116,11 +120,12 @@ struct HomeView: View {
                 GeneratedGalleryView()
             }
             .sheet(isPresented: $showingSearch, onDismiss: completePendingSearchRoute) {
-                HomeSearchSheet { route in
+                HomeSearchSheet(capabilities: aiCapabilities) { route in
                     pendingSearchRoute = route
                     showingSearch = false
                 }
             }
+            .task { await loadAICapabilities() }
         }
     }
 
@@ -148,32 +153,42 @@ struct HomeView: View {
     }
 
     private var heroSlides: [NativeHomeHero] {
-        [
-            NativeHomeHero(
+        var slides: [NativeHomeHero] = []
+        if isToolAvailable("image_generation") {
+            slides.append(NativeHomeHero(
                 id: "image",
                 eyebrow: "X FIVE • AI STUDIO",
                 title: "Генерация\nизображений",
                 subtitle: "Креативы, товары и посты за минуту",
                 assetName: "HomeCoverTargetAds",
                 action: .imageGeneration(ImageGenerationCatalog.custom)
-            ),
-            NativeHomeHero(
+            ))
+        }
+        if isToolAvailable("video") {
+            slides.append(NativeHomeHero(
                 id: "video",
                 eyebrow: "X FIVE • AI VIDEO",
                 title: "Генерация\nвидео",
                 subtitle: "Текст в готовый ролик со звуком",
                 assetName: "HomeUtilityVideo",
                 action: .videoGeneration
-            ),
-            NativeHomeHero(
-                id: "live_products",
-                eyebrow: "X FIVE • VIDEO TREND",
-                title: "Живые\nпродукты",
-                subtitle: "Видео для Reels и коротких форматов",
-                assetName: "HomeTrendFruitVideo",
-                action: .liveFruits
-            )
-        ]
+            ))
+        }
+        if isToolAvailable("live_products", defaultValue: true) || slides.isEmpty {
+            slides.append(liveProductsHero)
+        }
+        return slides
+    }
+
+    private var liveProductsHero: NativeHomeHero {
+        NativeHomeHero(
+            id: "live_products",
+            eyebrow: "X FIVE • VIDEO TREND",
+            title: "Живые\nпродукты",
+            subtitle: "Видео для Reels и коротких форматов",
+            assetName: "HomeTrendFruitVideo",
+            action: .liveFruits
+        )
     }
 
     private var promoCards: some View {
@@ -210,7 +225,7 @@ struct HomeView: View {
                     Text("Все AI-инструменты")
                         .font(.system(size: 19, weight: .black))
                         .foregroundStyle(.white)
-                    Text("Изображения · MiniMax · Seedance · Lipsync")
+                    Text(aiStudioSubtitle)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.54))
                 }
@@ -235,16 +250,18 @@ struct HomeView: View {
 
                 Spacer()
 
-                Button {
-                    handle(.videoGeneration)
-                } label: {
-                    Label("Еще", systemImage: "chevron.right")
-                        .labelStyle(.titleAndIcon)
+                if isToolAvailable("video") {
+                    Button {
+                        handle(.videoGeneration)
+                    } label: {
+                        Label("Еще", systemImage: "chevron.right")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(.white.opacity(0.68))
+                    .accessibilityIdentifier("x5.home.trends.more")
+                    .accessibilityHint("Открывает генератор видео")
                 }
-                .font(.subheadline.weight(.medium))
-                .foregroundColor(.white.opacity(0.68))
-                .accessibilityIdentifier("x5.home.trends.more")
-                .accessibilityHint("Открывает генератор видео")
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -263,53 +280,61 @@ struct HomeView: View {
         }
     }
 
+    @ViewBuilder
     private var businessSection: some View {
-        VStack(alignment: .leading, spacing: HomeLayout.cardSpacing) {
-            Text("Дизайн для бизнеса")
-                .font(HomeTypography.sectionTitle)
-                .foregroundColor(.white)
-                .tracking(-0.35)
+        if hasBusinessTools {
+            VStack(alignment: .leading, spacing: HomeLayout.cardSpacing) {
+                Text("Дизайн для бизнеса")
+                    .font(HomeTypography.sectionTitle)
+                    .foregroundColor(.white)
+                    .tracking(-0.35)
 
-            NativeHomeAIInfluencerFeatureCard(
-                action: { handle(.aiInfluencer) }
-            )
-            .accessibilityIdentifier("x5.home.business.ai_influencer")
-
-            NativeHomeSalesBannerCard(
-                action: { handle(imageAction("target_ad")) }
-            )
-            .accessibilityIdentifier("x5.home.business.sales_banners")
-
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: HomeLayout.cardSpacing),
-                    GridItem(.flexible(), spacing: HomeLayout.cardSpacing)
-                ],
-                spacing: HomeLayout.cardSpacing
-            ) {
-                ForEach(businessItems) { item in
-                    NativeHomeBusinessCard(
-                        title: item.title,
-                        subtitle: item.subtitle,
-                        assetName: item.assetName,
-                        accent: item.accent,
-                        actionTitle: nil,
-                        action: { handle(item.action) }
+                if isToolAvailable("ai_influencer") {
+                    NativeHomeAIInfluencerFeatureCard(
+                        action: { handle(.aiInfluencer) }
                     )
-                    .accessibilityIdentifier("x5.home.business.\(item.id)")
+                    .accessibilityIdentifier("x5.home.business.ai_influencer")
+                }
+
+                if isToolAvailable("image_generation") {
+                    NativeHomeSalesBannerCard(
+                        action: { handle(imageAction("target_ad")) }
+                    )
+                    .accessibilityIdentifier("x5.home.business.sales_banners")
+
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(), spacing: HomeLayout.cardSpacing),
+                            GridItem(.flexible(), spacing: HomeLayout.cardSpacing)
+                        ],
+                        spacing: HomeLayout.cardSpacing
+                    ) {
+                        ForEach(businessItems) { item in
+                            NativeHomeBusinessCard(
+                                title: item.title,
+                                subtitle: item.subtitle,
+                                assetName: item.assetName,
+                                accent: item.accent,
+                                actionTitle: nil,
+                                action: { handle(item.action) }
+                            )
+                            .accessibilityIdentifier("x5.home.business.\(item.id)")
+                        }
+                    }
+                }
+
+                if isToolAvailable("voice") {
+                    NativeHomeVoiceCard(
+                        action: { handle(.voiceGeneration) }
+                    )
+                    .accessibilityIdentifier("x5.home.business.voice")
                 }
             }
-
-            NativeHomeVoiceCard(
-                action: { handle(.voiceGeneration) }
-            )
-            .accessibilityIdentifier("x5.home.business.voice")
-
         }
     }
 
     private var trendItems: [NativeHomeTrend] {
-        [
+        var items: [NativeHomeTrend] = [
             NativeHomeTrend(
                 id: "strawberry",
                 title: "Измена клубнички",
@@ -317,32 +342,39 @@ struct HomeView: View {
                 assetName: "HomeTrendLiveVideo",
                 motion: .video(.bundled(resourceName: "HomeTrendStrawberry")),
                 action: .liveFruits
-            ),
-            NativeHomeTrend(
+            )
+        ]
+        if isToolAvailable("video") {
+            items.append(NativeHomeTrend(
                 id: "tokayev",
                 title: "С Токаевым",
                 subtitle: "Видео с президентом",
                 assetName: "HomeTrendPost",
                 motion: .video(.bundled(resourceName: "HomeTrendTokayev")),
                 action: .videoGeneration
-            ),
-            NativeHomeTrend(
+            ))
+        }
+        if isToolAvailable("image_generation") {
+            items.append(NativeHomeTrend(
                 id: "wildberries",
                 title: "Карточки WB",
                 subtitle: "Добавь свои товары",
                 assetName: "HomeTrendNanoBanana",
                 motion: .video(.bundled(resourceName: "HomeTrendAIStylist")),
                 action: imageAction("product_cards")
-            ),
-            NativeHomeTrend(
+            ))
+        }
+        if isToolAvailable("video") {
+            items.append(NativeHomeTrend(
                 id: "celebrity",
                 title: "Со знаменитостью",
                 subtitle: "Добавь себя в сцену",
                 assetName: "HomeTrendInfluencer",
                 motion: .video(.bundled(resourceName: "HomeTrendFaceSwap")),
                 action: .videoGeneration
-            )
-        ]
+            ))
+        }
+        return items
     }
 
     private var businessItems: [NativeHomeBusiness] {
@@ -364,6 +396,44 @@ struct HomeView: View {
                 action: imageAction("product_cards")
             )
         ]
+    }
+
+    private var aiStudioSubtitle: String {
+        var names: [String] = []
+        if isToolAvailable("image_generation") { names.append("Изображения") }
+        if isToolAvailable("voice") { names.append("MiniMax") }
+        if isToolAvailable("video") { names.append("Seedance") }
+        if isToolAvailable("lipsync") { names.append("Lipsync") }
+        if names.isEmpty { return "Только проверенные рабочие функции" }
+        return names.joined(separator: " · ")
+    }
+
+    private var hasBusinessTools: Bool {
+        isToolAvailable("image_generation")
+            || isToolAvailable("ai_influencer")
+            || isToolAvailable("voice")
+    }
+
+    private func isToolAvailable(
+        _ capabilityID: String,
+        defaultValue: Bool = false
+    ) -> Bool {
+        aiCapabilities?.tool(capabilityID).available ?? defaultValue
+    }
+
+    @MainActor
+    private func loadAICapabilities() async {
+        guard let token = await auth.freshAccessToken() else {
+            aiCapabilities = nil
+            activeHeroPage = 0
+            return
+        }
+        do {
+            aiCapabilities = try await aiStudioService.capabilities(accessToken: token)
+        } catch {
+            aiCapabilities = nil
+        }
+        activeHeroPage = 0
     }
 
     private func imageAction(_ categoryID: String) -> HomeRoute {
@@ -1147,23 +1217,38 @@ private struct HomeSearchSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
 
+    let capabilities: AIStudioCapabilities?
     let onSelect: (HomeRoute) -> Void
 
     private var allItems: [HomeSearchItem] {
         var items = [
-            HomeSearchItem(title: "Генерация изображений", subtitle: "Креативы, товары и посты", icon: "photo.badge.plus", route: .imageGeneration(ImageGenerationCatalog.custom)),
             HomeSearchItem(title: "Стартап чат", subtitle: "AI-наставник для бизнеса", icon: "sparkles.rectangle.stack", route: .startupChat),
-            HomeSearchItem(title: "Генерация видео", subtitle: "AI-ролики для соцсетей", icon: "video.fill", route: .videoGeneration),
-            HomeSearchItem(title: "Озвучка", subtitle: "Текст в естественный голос", icon: "waveform", route: .voiceGeneration),
-            HomeSearchItem(title: "Живые фрукты", subtitle: "Сценарий и ролик для Reels", icon: "play.tv.fill", route: .liveFruits),
             HomeSearchItem(title: "Hub", subtitle: "Специалисты и задания", icon: "briefcase.fill", route: .hub)
         ]
-        items.append(
-            contentsOf: ImageGenerationCatalog.categories.map { category in
+
+        if isAvailable("video") {
+            items.append(HomeSearchItem(title: "Генерация видео", subtitle: "AI-ролики для соцсетей", icon: "video.fill", route: .videoGeneration))
+        }
+        if isAvailable("voice") {
+            items.append(HomeSearchItem(title: "Озвучка", subtitle: "Текст в естественный голос", icon: "waveform", route: .voiceGeneration))
+        }
+        if isAvailable("live_products", defaultValue: true) {
+            items.append(HomeSearchItem(title: "Живые фрукты", subtitle: "Сценарий и ролик для Reels", icon: "play.tv.fill", route: .liveFruits))
+        }
+        if isAvailable("image_generation") {
+            items.append(HomeSearchItem(title: "Генерация изображений", subtitle: "Креативы, товары и посты", icon: "photo.badge.plus", route: .imageGeneration(ImageGenerationCatalog.custom)))
+            items.append(contentsOf: ImageGenerationCatalog.categories.map { category in
                 HomeSearchItem(title: category.title, subtitle: category.subtitle, icon: category.icon, route: .imageGeneration(category))
-            }
-        )
+            })
+        }
         return items
+    }
+
+    private func isAvailable(
+        _ capabilityID: String,
+        defaultValue: Bool = false
+    ) -> Bool {
+        capabilities?.tool(capabilityID).available ?? defaultValue
     }
 
     private var filteredItems: [HomeSearchItem] {

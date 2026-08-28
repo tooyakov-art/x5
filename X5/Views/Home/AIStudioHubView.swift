@@ -39,8 +39,10 @@ struct AIStudioHubView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 17) {
                     header
-                    providerSummary
-                    Text("ВСЕ AI-ИНСТРУМЕНТЫ")
+                    if !availableProviderChips.isEmpty {
+                        providerSummary
+                    }
+                    Text("ДОСТУПНЫЕ AI-ИНСТРУМЕНТЫ")
                         .font(.system(size: 11, weight: .black))
                         .tracking(1.5)
                         .foregroundStyle(.white.opacity(0.46))
@@ -50,7 +52,7 @@ struct AIStudioHubView: View {
                             .padding(28)
                     } else {
                         LazyVGrid(columns: columns, spacing: 10) {
-                            ForEach(tools) { tool in
+                            ForEach(availableTools) { tool in
                                 let state = toolState(tool)
                                 NavigationLink(value: tool.route) {
                                     toolCard(tool, state: state)
@@ -113,7 +115,7 @@ struct AIStudioHubView: View {
             Text("Создавайте настоящий контент")
                 .font(.system(size: 29, weight: .black))
                 .foregroundStyle(.white)
-            Text("Изображения, дизайн, озвучка, Seedance‑видео и постоянные AI‑персонажи. Результаты сохраняются в приватной облачной галерее.")
+            Text("Здесь показаны только функции, которые прошли серверную проверку и готовы создать настоящий результат. Файлы сохраняются в приватной облачной галерее.")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.white.opacity(0.62))
         }
@@ -123,11 +125,19 @@ struct AIStudioHubView: View {
 
     private var providerSummary: some View {
         HStack(spacing: 8) {
-            statusChip("Изображения", capability: "image_generation")
-            statusChip("MiniMax", capability: "voice")
-            statusChip("Seedance", capability: "video")
-            statusChip("Lipsync", capability: "lipsync")
+            ForEach(Array(availableProviderChips.enumerated()), id: \.offset) { _, chip in
+                statusChip(chip.title, capability: chip.capability)
+            }
         }
+    }
+
+    private var availableProviderChips: [(title: String, capability: String)] {
+        [
+            ("Изображения", "image_generation"),
+            ("MiniMax", "voice"),
+            ("Seedance", "video"),
+            ("Lipsync", "lipsync")
+        ].filter { capabilities?.tool($0.capability).available == true }
     }
 
     private func statusChip(_ title: String, capability: String) -> some View {
@@ -211,6 +221,10 @@ struct AIStudioHubView: View {
         }
         return capabilities?.tool(tool.capabilityID)
             ?? AIStudioToolCapability(available: false, unavailableReason: "checking")
+    }
+
+    private var availableTools: [AIStudioToolItem] {
+        tools.filter { toolState($0).available }
     }
 
     private func unavailableLabel(_ reason: String?) -> String {

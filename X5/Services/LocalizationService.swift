@@ -637,7 +637,7 @@ extension LocalizationService {
             // Paywall extra
             "paywall_title": "X Five Pro",
             "paywall_feat_credits": "1 кредит = 1 ₸",
-            "paywall_feat_tools": "Все ИИ-инструменты (фото, видео, lipsync, дизайн)",
+            "paywall_feat_tools": "Доступные AI-инструменты: озвучка и видео",
             "paywall_feat_courses": "Курсы покупаются кредитами",
             "paywall_feat_hub": "Найм проверенных маркетологов в Hub",
             "paywall_feat_support": "Приоритетная поддержка",
@@ -1206,7 +1206,7 @@ extension LocalizationService {
             // Paywall extra
             "paywall_title": "X Five Pro",
             "paywall_feat_credits": "1 credit = 1 ₸",
-            "paywall_feat_tools": "All AI tools (image, video, lipsync, design)",
+            "paywall_feat_tools": "Available AI tools: voice and video",
             "paywall_feat_courses": "Use credits to buy courses",
             "paywall_feat_hub": "Hire vetted marketers in Hub",
             "paywall_feat_support": "Priority support",
@@ -1775,7 +1775,7 @@ extension LocalizationService {
             // Paywall extra
             "paywall_title": "X Five Pro",
             "paywall_feat_credits": "1 кредит = 1 ₸",
-            "paywall_feat_tools": "Барлық ИИ-құралдар (фото, видео, lipsync, дизайн)",
+            "paywall_feat_tools": "Қолжетімді AI-құралдар: дауыс және видео",
             "paywall_feat_courses": "Курстарды кредиттерге сатып алу",
             "paywall_feat_hub": "Hub-та расталған маркетологтарды жалдау",
             "paywall_feat_support": "Басым қолдау",

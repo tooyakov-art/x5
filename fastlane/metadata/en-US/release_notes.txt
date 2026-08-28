@@ -20,12 +20,10 @@ and portfolio fixes in X five marketing.
   playable and shareable MP3 audio.
 - AI Video is live through the official BytePlus Seedance 2.0 Fast route. A
   completed private MP4 can be played, shared or saved to Photos.
-- Added one AI Studio for image generation and editing, product cards, YouTube
-  covers, transparent PNG logos, content packs, voice, video, Cinema, VFX,
-  persistent AI characters, Lipsync, Presets and a private cloud gallery.
-- Every AI tool reflects its provider's actual availability. Rejected or
-  unavailable requests are not charged, or are refunded automatically.
-- AI Influencer keeps an approved character image and voice, then runs the
-  final MiniMax, Seedance and Sync Lipsync pipeline in order.
+- AI Studio now shows only tools whose provider passed the authenticated live
+  health check. Placeholder and "In Development" cards are no longer shown.
+- Working MiniMax voice, Seedance video, Cinema, VFX, Presets and the private
+  cloud gallery open directly and return real results.
+- Rejected provider requests are not charged, or are refunded automatically.
 - Home cards now share one clear typography system. Every Hub profession has
   its own icon, and SMM with mobile content is one category everywhere.

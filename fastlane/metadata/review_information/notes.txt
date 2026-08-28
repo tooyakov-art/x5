@@ -1,50 +1,42 @@
-X five marketing is a creator workspace and marketplace. Version 1.1.6 build 232
-adds AI Video plus course, notification, chat, purchase, Home and portfolio fixes.
+X five marketing is a creator workspace and marketplace. Version 1.1.6 build 234
+fixes the App Review completeness issue from the previous binary.
+
+This build has no placeholder, fake-progress or "In Development" AI cards.
+Home, Search and AI Studio fetch the authenticated server capability catalog
+and display only tools whose provider is configured and has passed its live
+health check. A provider outage cannot charge the user.
 
 Demo account:
 Use the Apple Demo Account credentials for appreview@x5studio.app.
 
 Quick test:
-1. Sign in.
-2. Home -> AI Video: enter a safe text prompt, keep Seedance 2.0 Fast, select
-   5 seconds and 720p, then generate. The demo account includes review credits.
-   The completed private MP4 can be played, shared or saved to Photos.
-3. Home -> AI Image or AI Influencer: each unfinished tool shows a clear In
-   Development screen and does not charge credits or call a provider.
-4. Home -> AI Voice: enter a short text, choose a voice, generate it, then play
-   or share the resulting MP3. The request uses the authenticated server route.
-5. Home -> Startup Chat: ask a business question.
-6. Home -> Live Fruits: complete the fields, create/edit the three-scene
-   storyboard, then generate its reference and video.
-7. Hub: every profession has a distinct system icon. SMM and mobile content are
-   one category. The same catalog is used in onboarding, profile and tasks.
-8. CourseUP: open a course, its author profile and a lesson; paid courses can be
+1. Sign in, then open Home -> All AI Tools. Every visible generation card is
+   enabled and opens a working flow.
+2. AI Voice: enter a short Russian, Kazakh or English text, choose a MiniMax
+   voice, generate, play and share the resulting private MP3.
+3. AI Video: enter a safe prompt, keep Seedance 2.0 Fast, select 5 seconds and
+   720p, then generate. The private MP4 can be played, shared or saved to Photos.
+4. Cinema Studio uses scene, style, camera and light inputs. VFX animates an
+   uploaded photo. Both use the same verified Seedance route.
+5. Live Products: complete the fields, create/edit the three-scene storyboard,
+   then generate its reference and video.
+6. Startup Chat: ask a business question.
+7. Hub: browse specialists and tasks by country, city and profession.
+8. CourseUP: open a course, author profile and lesson. Paid courses can be
    purchased. Only two authorized accounts can manage courses.
-9. Portfolio/Profile: add a photo or video. Photos and video previews are
-   checked automatically; pending or rejected items never become public.
+9. Portfolio/Profile: add a photo or video. Automatic moderation keeps pending
+   or rejected media private.
 10. Chats: send text/photo/voice; report or block another user.
-11. Profile -> Store: buy one-time 1,000/2,000/5,000-credit packs. Each is an
-    Apple consumable and remains repurchasable. Get verified opens a separate
-    monthly subscription; its bright action button now uses black text.
+11. Profile -> Store: buy a one-time 1,000/2,000/5,000-credit pack. Get
+   verified opens a separate monthly subscription.
 12. Settings: change language or delete the account.
 
-AI processing and automatic moderation:
-- AI Image and AI Influencer remain release-gated and do not call providers or
-  use credits in this build.
-- AI Video is live through the authenticated official BytePlus ModelArk
-  Seedance 2.0 Fast route. It costs 650 credits for 5 seconds or 1,200 credits
-  for 10 seconds. OpenAI is the primary input safety check; Google Gemini and
-  BytePlus ModelArk are failover safety classifiers. If all checks are
-  unavailable, the request fails before any credit reservation. Results are
-  copied to private storage and downloaded through a short-lived signed URL
-  before local playback, sharing or Photos saving.
-- AI Voice is live through an authenticated Supabase Edge Function. It uses
-  MiniMax Speech, stores the MP3 privately, returns a short-lived signed URL and
-  charges 60 credits per started 1,000-character block.
-- Startup Chat uses OpenAI Responses with storage disabled. Live Fruits uses
-  OpenAI Moderations and Responses.
-- Portfolio moderation is automatic through OpenAI Moderations; pending or
-  failed checks stay private.
+AI processing and safety:
+- MiniMax Speech creates requested voiceovers and stores MP3 results privately.
+- BytePlus ModelArk Seedance creates requested videos; results are copied to
+  private storage and delivered with short-lived signed URLs.
+- OpenAI powers Startup Chat, Live Products storyboards and automatic safety
+  moderation. Unsafe requests fail before credits are reserved.
 - The app does not use third-party advertising trackers.
 
 In-app purchases:
