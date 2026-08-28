@@ -9,7 +9,7 @@ from typing import Protocol
 
 
 EXPECTED_VERSION = "1.1.6"
-EXPECTED_BUILD = "232"
+EXPECTED_BUILD = "234"
 TARGET_RELEASE_TYPE = "AFTER_APPROVAL"
 SAFE_APP_STORE_STATES = frozenset(
     {

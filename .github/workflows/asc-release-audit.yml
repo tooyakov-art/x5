@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "Read only, or set 1.1.6/build232 to AFTER_APPROVAL"
+        description: "Read only, or set 1.1.6/build234 to AFTER_APPROVAL"
         required: true
         type: choice
         default: "audit"
