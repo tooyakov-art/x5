@@ -383,7 +383,7 @@ class CreditPackSubmissionTests(unittest.TestCase):
         class FakeAPI:
             def __init__(self):
                 self.item_state = "REJECTED"
-                self.canceled_empty = False
+                self.verified_empty = False
                 self.submitted = False
 
             def unresolved_items(self):
@@ -429,23 +429,8 @@ class CreditPackSubmissionTests(unittest.TestCase):
                 ):
                     return self.unresolved_items()
                 if method == "GET" and "/submission-empty/items?" in path:
+                    self.verified_empty = True
                     return {"data": []}
-                if method == "GET" and path.endswith("/submission-empty"):
-                    return {
-                        "data": {
-                            "id": "submission-empty",
-                            "attributes": {"state": "COMPLETE"},
-                        }
-                    }
-                if method == "PATCH" and path.endswith("/submission-empty"):
-                    self.canceled_empty = True
-                    self.assert_cancel_payload(payload)
-                    return {
-                        "data": {
-                            "id": "submission-empty",
-                            "attributes": {"state": "CANCELING"},
-                        }
-                    }
                 if method == "PATCH" and path.endswith(
                     "/item-app-rejected"
                 ):
@@ -474,9 +459,6 @@ class CreditPackSubmissionTests(unittest.TestCase):
                     )
                 raise AssertionError(f"Unexpected request {method} {path}")
 
-            def assert_cancel_payload(self, payload):
-                self.assert_attributes(payload, {"canceled": True})
-
             def assert_resolve_payload(self, payload):
                 self.assert_attributes(payload, {"resolved": True})
 
@@ -497,7 +479,7 @@ class CreditPackSubmissionTests(unittest.TestCase):
         )
 
         self.assertEqual(submission_id, "submission-rejected")
-        self.assertTrue(api.canceled_empty)
+        self.assertTrue(api.verified_empty)
         self.assertEqual(api.item_state, "READY_FOR_REVIEW")
         self.assertTrue(api.submitted)
 

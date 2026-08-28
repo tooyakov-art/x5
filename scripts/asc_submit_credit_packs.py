@@ -105,16 +105,6 @@ def resolve_review_item_payload(item_id: str) -> dict[str, Any]:
     }
 
 
-def cancel_review_payload(submission_id: str) -> dict[str, Any]:
-    return {
-        "data": {
-            "type": "reviewSubmissions",
-            "id": submission_id,
-            "attributes": {"canceled": True},
-        }
-    }
-
-
 def review_items(review_payload: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     data = review_payload.get("data")
@@ -172,7 +162,7 @@ def review_submission_items(
     )
 
 
-def cancel_empty_ready_submission(
+def verify_empty_ready_submission(
     api: AppStoreConnect,
     submission: dict[str, Any],
 ) -> None:
@@ -183,35 +173,9 @@ def cancel_empty_ready_submission(
             "Refusing to cancel a READY_FOR_REVIEW submission that has items: "
             f"{submission_id}"
         )
-
-    result = api.request(
-        "PATCH",
-        f"/v1/reviewSubmissions/{submission_id}",
-        payload=cancel_review_payload(submission_id),
-    )["data"]
-    state = result.get("attributes", {}).get("state")
-    print(f"Canceled empty ReviewSubmission {submission_id}: state={state}")
-    if state not in {"CANCELING", "COMPLETE"}:
-        raise RuntimeError(
-            f"Unexpected canceled review state {state} for {submission_id}"
-        )
-
-    for attempt in range(1, 31):
-        current = api.request(
-            "GET",
-            f"/v1/reviewSubmissions/{submission_id}",
-        )["data"]
-        state = current.get("attributes", {}).get("state")
-        if state == "COMPLETE":
-            return
-        if state != "CANCELING":
-            raise RuntimeError(
-                f"Unexpected review cancellation state {state}"
-            )
-        if attempt < 30:
-            time.sleep(2)
-    raise RuntimeError(
-        f"ReviewSubmission {submission_id} did not finish cancellation"
+    print(
+        "Ignoring empty READY_FOR_REVIEW draft while resolving the existing "
+        f"rejected submission: {submission_id}"
     )
 
 
@@ -464,7 +428,7 @@ def create_combined_review(
         submission, selected_item_payload = unresolved_matches[0]
         for row in existing:
             if row.get("attributes", {}).get("state") == "READY_FOR_REVIEW":
-                cancel_empty_ready_submission(api, row)
+                verify_empty_ready_submission(api, row)
 
         selected_items = review_items(selected_item_payload)
         selected_targets = {
