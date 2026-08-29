@@ -9,7 +9,7 @@ import time
 from typing import Iterable, Protocol
 
 
-EXPECTED_BUILD = "233"
+EXPECTED_BUILD = "235"
 EXPECTED_GROUP_NAMES = frozenset({"123", "321"})
 
 

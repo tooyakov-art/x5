@@ -13,6 +13,8 @@ and portfolio fixes in X five marketing.
 
 - One-time 1,000/2,000/5,000 credit packs stay consumable and can be purchased
   again. Interrupted delivery retries safely after relaunch.
+- Digital credit packs now use one direct StoreKit purchase button. Alternate
+  payment choices and external checkout routes were removed from the iOS app.
 - The Verified Badge action keeps readable black text on its bright button.
 - Muted Home card previews pause offscreen, while the app is inactive or when
   Reduce Motion is enabled; static posters remain as a safe fallback.

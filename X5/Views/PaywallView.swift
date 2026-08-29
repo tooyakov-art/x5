@@ -9,21 +9,12 @@ struct PaywallView: View {
     @EnvironmentObject private var loc: LocalizationService
     @EnvironmentObject private var iap: IAPService
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
 
     @State private var didLoadProducts = false
-    @State private var paymentMethodPack: IAPCreditPack?
     @State private var purchasingProductID: String?
-    @State private var kaspiPurchasingProductID: String?
-    @State private var kaspiPayment: KaspiCreditPayment?
-    @State private var kaspiError: String?
     @State private var purchasedCredits = 0
     @State private var profileReloadSucceeded = true
     @State private var showSuccess = false
-    @AppStorage("x5.kaspi.pendingPaymentID")
-    private var pendingKaspiPaymentID = ""
-
-    private let kaspiService = KaspiCreditPaymentService()
 
     var body: some View {
         NavigationStack {
@@ -80,14 +71,6 @@ struct PaywallView: View {
                             .frame(maxWidth: .infinity)
                     }
 
-                    if let kaspiError {
-                        Text(kaspiError)
-                            .font(.system(size: 12))
-                            .foregroundColor(.red.opacity(0.9))
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                    }
-
                     if didLoadProducts && (hasMissingCreditPacks || iap.lastError != nil) {
                         Button {
                             Task { await reloadProducts() }
@@ -129,40 +112,6 @@ struct PaywallView: View {
         .presentationDragIndicator(.visible)
         .task {
             await reloadProducts()
-            await restorePendingKaspiPayment()
-        }
-        .task(id: kaspiPayment?.id) {
-            await pollKaspiPaymentUntilFinished()
-        }
-        .confirmationDialog(
-            loc.t("credit_store_payment_method_title"),
-            isPresented: Binding(
-                get: { paymentMethodPack != nil },
-                set: { if !$0 { paymentMethodPack = nil } }
-            ),
-            titleVisibility: .visible,
-            presenting: paymentMethodPack
-        ) { pack in
-            Button(loc.t("credit_store_payment_card")) {
-                buyViaStore(pack, paymentMethod: "bank_card")
-            }
-            if canPayWithKaspi(pack) {
-                Button(loc.t("credit_store_payment_kaspi")) {
-                    buyWithKaspi(pack)
-                }
-            }
-            Button(loc.t("credit_store_payment_apple_pay")) {
-                buyViaStore(pack, paymentMethod: "apple_pay")
-            }
-            Button(loc.t("btn_cancel"), role: .cancel) {}
-        } message: { pack in
-            Text(
-                String(
-                    format: loc.t("credit_store_payment_method_message"),
-                    pack.credits,
-                    paymentAmount(for: pack)
-                )
-            )
         }
         .alert(loc.t("credit_store_success_title"), isPresented: $showSuccess) {
             Button(loc.t("btn_done")) { dismiss() }
@@ -204,8 +153,6 @@ struct PaywallView: View {
     private func packCard(_ pack: IAPCreditPack) -> some View {
         let product = iap.product(id: pack.productID)
         let isCurrentPurchase = purchasingProductID == pack.productID && iap.isPurchasing
-        let isCurrentKaspiPurchase = kaspiPurchasingProductID == pack.productID
-        let isCurrentPayment = isCurrentPurchase || isCurrentKaspiPurchase
 
         return VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
@@ -225,10 +172,10 @@ struct PaywallView: View {
 
             Button {
                 X5Feedback.selection()
-                paymentMethodPack = pack
+                buyViaAppStore(pack)
             } label: {
                 Group {
-                    if isCurrentPayment {
+                    if isCurrentPurchase {
                         ProgressView().tint(.black)
                     } else {
                         Text(loc.t("credit_store_buy"))
@@ -241,9 +188,9 @@ struct PaywallView: View {
             .buttonStyle(.borderedProminent)
             .tint(.accentColor)
             .foregroundStyle(.black)
-            .disabled(kaspiPurchasingProductID != nil || iap.isPurchasing)
+            .disabled(iap.isPurchasing)
 
-            if didLoadProducts && product == nil && !canPayWithKaspi(pack) {
+            if didLoadProducts && product == nil {
                 Text(loc.t("credit_store_unavailable"))
                     .font(.system(size: 11))
                     .foregroundColor(.white.opacity(0.5))
@@ -260,10 +207,9 @@ struct PaywallView: View {
         }
     }
 
-    private func buyViaStore(_ pack: IAPCreditPack, paymentMethod: String) {
-        paymentMethodPack = nil
+    private func buyViaAppStore(_ pack: IAPCreditPack) {
         DiagnosticLogger.log(event: "credit_payment_method_selected", extra: [
-            "method": paymentMethod,
+            "method": "app_store_storekit",
             "product": pack.productID
         ])
 
@@ -294,117 +240,6 @@ struct PaywallView: View {
             X5Feedback.success()
             showSuccess = true
         }
-    }
-
-    private func buyWithKaspi(_ pack: IAPCreditPack) {
-        paymentMethodPack = nil
-        guard kaspiPurchasingProductID == nil else { return }
-        kaspiPurchasingProductID = pack.productID
-        kaspiError = nil
-
-        Task {
-            defer { kaspiPurchasingProductID = nil }
-            guard let accessToken = await auth.freshAccessToken() else {
-                kaspiError = loc.t("credit_store_kaspi_sign_in")
-                X5Feedback.error()
-                return
-            }
-
-            do {
-                let payment = try await kaspiService.create(
-                    storeProductID: pack.productID,
-                    accessToken: accessToken
-                )
-                kaspiPayment = payment
-                pendingKaspiPaymentID = payment.id.uuidString.lowercased()
-                DiagnosticLogger.log(event: "kaspi_payment_opened", extra: [
-                    "payment": payment.id.uuidString.lowercased(),
-                    "product": payment.productId
-                ])
-                _ = openURL(payment.paymentUrl)
-            } catch let error as KaspiCreditPaymentError {
-                kaspiError = error == .notConfigured
-                    ? loc.t("credit_store_kaspi_not_configured")
-                    : (error.errorDescription ?? loc.t("credit_store_kaspi_failed"))
-                X5Feedback.error()
-            } catch {
-                kaspiError = loc.t("credit_store_kaspi_failed")
-                X5Feedback.error()
-            }
-        }
-    }
-
-    private func canPayWithKaspi(_ pack: IAPCreditPack) -> Bool {
-        KaspiInternalBetaAccess.isAllowed(userID: auth.userId)
-            && KaspiCreditCatalog.priceKzt(for: pack.productID) != nil
-    }
-
-    private func paymentAmount(for pack: IAPCreditPack) -> String {
-        if let amountKzt = KaspiCreditCatalog.priceKzt(for: pack.productID) {
-            return "\(amountKzt.formatted()) ₸"
-        }
-        return iap.product(id: pack.productID)?.displayPrice ?? pack.fallbackDisplayPrice
-    }
-
-    private func restorePendingKaspiPayment() async {
-        guard KaspiInternalBetaAccess.isAllowed(userID: auth.userId),
-              kaspiPayment == nil,
-              let paymentID = UUID(uuidString: pendingKaspiPaymentID),
-              let accessToken = await auth.freshAccessToken()
-        else { return }
-
-        do {
-            let payment = try await kaspiService.get(
-                paymentID: paymentID,
-                accessToken: accessToken
-            )
-            kaspiPayment = payment
-            if payment.status != .pending {
-                pendingKaspiPaymentID = ""
-            }
-        } catch {
-            // Keep a recoverable pending order across temporary network errors.
-        }
-    }
-
-    private func pollKaspiPaymentUntilFinished() async {
-        guard var payment = kaspiPayment,
-              payment.status == .pending
-        else { return }
-
-        while !Task.isCancelled && payment.status == .pending {
-            do {
-                try await Task.sleep(nanoseconds: 5_000_000_000)
-            } catch {
-                return
-            }
-            guard let accessToken = await auth.freshAccessToken() else {
-                continue
-            }
-            do {
-                payment = try await kaspiService.get(
-                    paymentID: payment.id,
-                    accessToken: accessToken
-                )
-                kaspiPayment = payment
-            } catch {
-                continue
-            }
-        }
-
-        guard payment.status == .confirmed else {
-            if payment.status != .pending {
-                pendingKaspiPaymentID = ""
-                kaspiError = loc.t("credit_store_kaspi_not_completed")
-            }
-            return
-        }
-
-        pendingKaspiPaymentID = ""
-        profileReloadSucceeded = await refreshProfile()
-        purchasedCredits = payment.credits
-        X5Feedback.success()
-        showSuccess = true
     }
 
     private var hasMissingCreditPacks: Bool {
