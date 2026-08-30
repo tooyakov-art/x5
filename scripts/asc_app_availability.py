@@ -23,10 +23,12 @@ MUTATION_CONFIRMATION = "EXCLUDE_CHN_KEEP_OTHER_TERRITORIES"
 TRANSIENT_HTTP_STATUSES = {429, 500, 502, 503, 504}
 
 
-def app_availability_patch(availability_id: str) -> dict[str, Any]:
+def app_availability_patch(
+    availability_id: str, resource_type: str = "appAvailabilities"
+) -> dict[str, Any]:
     return {
         "data": {
-            "type": "appAvailabilities",
+            "type": resource_type,
             "id": availability_id,
             "attributes": {"availableInNewTerritories": False},
         }
@@ -120,14 +122,57 @@ def find_app_id(api: AppStoreConnect, bundle_id: str) -> str:
 def load_availability(
     api: AppStoreConnect, app_id: str
 ) -> tuple[dict[str, Any], list[TerritoryState]]:
-    availability = api.request("GET", f"/v1/apps/{app_id}/appAvailability").get("data")
+    availability = None
+    availability_errors: list[str] = []
+    for path in (
+        f"/v1/apps/{app_id}/appAvailabilityV2",
+        f"/v1/apps/{app_id}/appAvailability",
+        f"/v1/appAvailabilitiesV2?filter[app]={app_id}",
+        f"/v1/appAvailabilities?filter[app]={app_id}",
+    ):
+        try:
+            candidate = api.request("GET", path).get("data")
+        except RuntimeError as error:
+            availability_errors.append(str(error))
+            continue
+        if isinstance(candidate, list):
+            if len(candidate) == 1:
+                availability = candidate[0]
+                break
+            if len(candidate) > 1:
+                raise RuntimeError(
+                    f"App {app_id} has multiple AppAvailability resources"
+                )
+        elif candidate:
+            availability = candidate
+            break
     if not availability:
-        raise RuntimeError(f"App {app_id} has no AppAvailability resource")
+        attempted = "\n".join(availability_errors)
+        raise RuntimeError(
+            f"App {app_id} has no readable AppAvailability resource.\n{attempted}"
+        )
     availability_id = str(availability["id"])
-    rows = api.list_all(
-        f"/v1/appAvailabilities/{availability_id}/territoryAvailabilities"
-        "?include=territory&limit=200"
-    )
+    availability_type = str(availability.get("type") or "appAvailabilities")
+    relationship_types = [availability_type]
+    for fallback in ("appAvailabilitiesV2", "appAvailabilities"):
+        if fallback not in relationship_types:
+            relationship_types.append(fallback)
+    rows = None
+    relationship_errors: list[str] = []
+    for resource_type in relationship_types:
+        try:
+            rows = api.list_all(
+                f"/v1/{resource_type}/{availability_id}/territoryAvailabilities"
+                "?include=territory&limit=200"
+            )
+            break
+        except RuntimeError as error:
+            relationship_errors.append(str(error))
+    if rows is None:
+        attempted = "\n".join(relationship_errors)
+        raise RuntimeError(
+            "Could not read territoryAvailabilities relationship.\n" + attempted
+        )
     territories: list[TerritoryState] = []
     for row in rows:
         relationship = (
@@ -173,13 +218,14 @@ def exclude_china(api: AppStoreConnect, app_id: str, confirmation: str) -> None:
     availability, territories = load_availability(api, app_id)
     print_audit(availability, territories)
     availability_id = str(availability["id"])
+    availability_type = str(availability.get("type") or "appAvailabilities")
     china = next(row for row in territories if row.territory_id == CHINA_TERRITORY)
 
     if availability.get("attributes", {}).get("availableInNewTerritories") is not False:
         api.request(
             "PATCH",
-            f"/v1/appAvailabilities/{availability_id}",
-            payload=app_availability_patch(availability_id),
+            f"/v1/{availability_type}/{availability_id}",
+            payload=app_availability_patch(availability_id, availability_type),
         )
         print("Disabled automatic availability in new territories.")
     else:

@@ -79,7 +79,7 @@ class AppAvailabilityTests(unittest.TestCase):
             [("CHN", True), ("KAZ", True)],
         )
         api.request.assert_called_once_with(
-            "GET", "/v1/apps/app-id/appAvailability"
+            "GET", "/v1/apps/app-id/appAvailabilityV2"
         )
 
     def test_exclude_china_is_idempotent_and_preserves_other_territories(self) -> None:
