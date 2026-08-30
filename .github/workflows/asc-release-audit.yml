@@ -7,17 +7,20 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "Read only, or set 1.1.6/build235 to AFTER_APPROVAL"
+        description: "Audit release/availability, exclude CHN, or set AFTER_APPROVAL"
         required: true
         type: choice
         default: "audit"
         options:
           - audit
+          - audit_availability
+          - exclude_china
           - set_after_approval
   push:
     branches: [codex/x5-kaspi-testflight-20260813]
     paths:
       - ".github/workflows/asc-release-audit.yml"
+      - "scripts/asc_app_availability.py"
       - "fastlane/**"
       - "project.yml"
 
@@ -42,6 +45,15 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install --require-hashes -r .github/requirements/asc-requirements.lock
+      - name: Audit app availability
+        if: ${{ inputs.action == 'audit_availability' }}
+        run: python scripts/asc_app_availability.py --action audit
+      - name: Exclude Mainland China only
+        if: ${{ inputs.action == 'exclude_china' }}
+        run: >-
+          python scripts/asc_app_availability.py
+          --action exclude-china
+          --confirmation EXCLUDE_CHN_KEEP_OTHER_TERRITORIES
       - name: Set automatic release after approval
         if: ${{ inputs.action == 'set_after_approval' }}
         run: python scripts/asc_set_after_approval.py
