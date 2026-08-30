@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Audit or exclude Mainland China from X5 App Store availability.
 
-The mutation is deliberately narrow: it disables automatic availability in
-future territories and marks only the CHN territory availability as false.
-Every other territory is left untouched.
+The mutation is deliberately narrow: it marks only the CHN territory
+availability as false. Every other territory is left untouched.
 """
 
 from __future__ import annotations
@@ -23,18 +22,6 @@ MUTATION_CONFIRMATION = "EXCLUDE_CHN_KEEP_OTHER_TERRITORIES"
 TRANSIENT_HTTP_STATUSES = {429, 500, 502, 503, 504}
 
 
-def app_availability_patch(
-    availability_id: str, resource_type: str = "appAvailabilities"
-) -> dict[str, Any]:
-    return {
-        "data": {
-            "type": resource_type,
-            "id": availability_id,
-            "attributes": {"availableInNewTerritories": False},
-        }
-    }
-
-
 def territory_availability_patch(territory_availability_id: str) -> dict[str, Any]:
     return {
         "data": {
@@ -43,8 +30,6 @@ def territory_availability_patch(territory_availability_id: str) -> dict[str, An
             "attributes": {"available": False},
         }
     }
-
-
 @dataclass(frozen=True)
 class TerritoryState:
     resource_id: str
@@ -153,18 +138,18 @@ def load_availability(
         )
     availability_id = str(availability["id"])
     availability_type = str(availability.get("type") or "appAvailabilities")
-    relationship_types = [availability_type]
-    for fallback in ("appAvailabilitiesV2", "appAvailabilities"):
-        if fallback not in relationship_types:
-            relationship_types.append(fallback)
     rows = None
     relationship_errors: list[str] = []
-    for resource_type in relationship_types:
+    relationship_paths = (
+        f"/v2/appAvailabilities/{availability_id}/territoryAvailabilities"
+        "?limit=200&include=territory"
+        "&fields[territoryAvailabilities]=available,contentStatuses,territory",
+        f"/v1/{availability_type}/{availability_id}/territoryAvailabilities"
+        "?include=territory&limit=200",
+    )
+    for relationship_path in relationship_paths:
         try:
-            rows = api.list_all(
-                f"/v1/{resource_type}/{availability_id}/territoryAvailabilities"
-                "?include=territory&limit=200"
-            )
+            rows = api.list_all(relationship_path)
             break
         except RuntimeError as error:
             relationship_errors.append(str(error))
@@ -204,9 +189,10 @@ def print_audit(availability: dict[str, Any], territories: list[TerritoryState])
         f"{availability.get('attributes', {}).get('availableInNewTerritories')} "
         f"availableTerritories={available_count}/{len(territories)}"
     )
-    if china is None:
-        raise RuntimeError("CHN territory availability was not returned by App Store Connect")
-    print(f"Mainland China ({CHINA_TERRITORY}) available={china.available}")
+    print(
+        f"Mainland China ({CHINA_TERRITORY}) available="
+        f"{bool(china and china.available)}"
+    )
 
 
 def exclude_china(api: AppStoreConnect, app_id: str, confirmation: str) -> None:
@@ -217,21 +203,11 @@ def exclude_china(api: AppStoreConnect, app_id: str, confirmation: str) -> None:
         )
     availability, territories = load_availability(api, app_id)
     print_audit(availability, territories)
-    availability_id = str(availability["id"])
-    availability_type = str(availability.get("type") or "appAvailabilities")
-    china = next(row for row in territories if row.territory_id == CHINA_TERRITORY)
+    china = next(
+        (row for row in territories if row.territory_id == CHINA_TERRITORY), None
+    )
 
-    if availability.get("attributes", {}).get("availableInNewTerritories") is not False:
-        api.request(
-            "PATCH",
-            f"/v1/{availability_type}/{availability_id}",
-            payload=app_availability_patch(availability_id, availability_type),
-        )
-        print("Disabled automatic availability in new territories.")
-    else:
-        print("Automatic availability in new territories is already disabled.")
-
-    if china.available:
+    if china and china.available:
         api.request(
             "PATCH",
             f"/v1/territoryAvailabilities/{china.resource_id}",
@@ -244,11 +220,14 @@ def exclude_china(api: AppStoreConnect, app_id: str, confirmation: str) -> None:
     verified_availability, verified_territories = load_availability(api, app_id)
     print_audit(verified_availability, verified_territories)
     verified_china = next(
-        row for row in verified_territories if row.territory_id == CHINA_TERRITORY
+        (
+            row
+            for row in verified_territories
+            if row.territory_id == CHINA_TERRITORY
+        ),
+        None,
     )
-    if verified_availability.get("attributes", {}).get("availableInNewTerritories") is not False:
-        raise RuntimeError("availableInNewTerritories did not become false")
-    if verified_china.available:
+    if verified_china and verified_china.available:
         raise RuntimeError("Mainland China is still available after the update")
 
 

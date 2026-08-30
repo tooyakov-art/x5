@@ -17,17 +17,7 @@ SPEC.loader.exec_module(MODULE)
 
 
 class AppAvailabilityTests(unittest.TestCase):
-    def test_payloads_are_narrow_and_disable_only_requested_flags(self) -> None:
-        self.assertEqual(
-            MODULE.app_availability_patch("availability-id"),
-            {
-                "data": {
-                    "type": "appAvailabilities",
-                    "id": "availability-id",
-                    "attributes": {"availableInNewTerritories": False},
-                }
-            },
-        )
+    def test_payload_is_narrow_and_disables_only_requested_territory(self) -> None:
         self.assertEqual(
             MODULE.territory_availability_patch("territory-id"),
             {
@@ -110,9 +100,8 @@ class AppAvailabilityTests(unittest.TestCase):
             )
 
         patch_calls = [call for call in api.request.call_args_list if call.args[0] == "PATCH"]
-        self.assertEqual(len(patch_calls), 2)
-        self.assertEqual(patch_calls[0].args[1], "/v1/appAvailabilities/availability-id")
-        self.assertEqual(patch_calls[1].args[1], "/v1/territoryAvailabilities/chn-resource")
+        self.assertEqual(len(patch_calls), 1)
+        self.assertEqual(patch_calls[0].args[1], "/v1/territoryAvailabilities/chn-resource")
 
 
 if __name__ == "__main__":
