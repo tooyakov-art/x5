@@ -1,4 +1,4 @@
-X five marketing is a creator workspace and marketplace. Version 1.1.6 build 237
+X five marketing is a creator workspace and marketplace. Version 1.1.7 build 237
 fixes the App Review completeness issue from the previous binary.
 
 Mainland China distribution update (August 30, 2026):
