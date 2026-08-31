@@ -265,7 +265,7 @@ class SetAfterApprovalContractTests(unittest.TestCase):
         self.assertIn("set_after_approval", workflow)
         self.assertIn("scripts/asc_set_after_approval.py", workflow)
         self.assertIn('EXPECTED_VERSION: "1.1.6"', workflow)
-        self.assertIn('EXPECTED_BUILD: "235"', workflow)
+        self.assertIn('EXPECTED_BUILD: "236"', workflow)
 
     def test_standalone_submit_locks_and_rechecks_after_approval(self):
         workflow = SUBMIT_WORKFLOW_PATH.read_text(encoding="utf-8")

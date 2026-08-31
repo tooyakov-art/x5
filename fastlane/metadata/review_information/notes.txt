@@ -1,4 +1,4 @@
-X five marketing is a creator workspace and marketplace. Version 1.1.6 build 235
+X five marketing is a creator workspace and marketplace. Version 1.1.6 build 236
 fixes the App Review completeness issue from the previous binary.
 
 Mainland China distribution update (August 30, 2026):
@@ -6,22 +6,24 @@ We removed Mainland China from App Availability. The app is now unavailable in
 the CHN storefront, so its OpenAI-powered features are not distributed there.
 All other storefront availability is unchanged.
 
-Build 235 removes the payment-method chooser and all alternate checkout code.
+Build 236 removes the payment-method chooser and all alternate checkout code.
 Digital credit packs are sold exclusively through StoreKit and the App Store.
 The iOS binary has no external payment link, Kaspi checkout, bank-card checkout,
 or reviewer-specific payment behavior.
 
 This build has no placeholder, fake-progress or "In Development" AI cards.
-Home, Search and AI Studio fetch the authenticated server capability catalog
-and display only tools whose provider is configured and has passed its live
-health check. A provider outage cannot charge the user.
+Home, Search and AI Studio keep every creative workflow visible, including
+image generation, editing, product cards, YouTube covers and PNG logos. Each
+screen shows the authenticated server capability status. A temporary provider
+failure blocks only the Generate action, explains the reason and cannot charge
+the user; it never removes the tool or reports a false success.
 
 Demo account:
 Use the Apple Demo Account credentials for appreview@x5studio.app.
 
 Quick test:
-1. Sign in, then open Home -> All AI Tools. Every visible generation card is
-   enabled and opens a working flow.
+1. Sign in, then open Home -> All AI Tools. Every card opens its complete flow;
+   provider status and any temporary service error are shown inside the flow.
 2. AI Voice: enter a short Russian, Kazakh or English text, choose a MiniMax
    voice, generate, play and share the resulting private MP3.
 3. AI Video: enter a safe prompt, keep Seedance 2.0 Fast, select 5 seconds and

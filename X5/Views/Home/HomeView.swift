@@ -154,16 +154,14 @@ struct HomeView: View {
 
     private var heroSlides: [NativeHomeHero] {
         var slides: [NativeHomeHero] = []
-        if isToolAvailable("image_generation") {
-            slides.append(NativeHomeHero(
-                id: "image",
-                eyebrow: "X FIVE • AI STUDIO",
-                title: "Генерация\nизображений",
-                subtitle: "Креативы, товары и посты за минуту",
-                assetName: "HomeCoverTargetAds",
-                action: .imageGeneration(ImageGenerationCatalog.custom)
-            ))
-        }
+        slides.append(NativeHomeHero(
+            id: "image",
+            eyebrow: "X FIVE • AI STUDIO",
+            title: "Генерация\nизображений",
+            subtitle: "Креативы, товары и посты за минуту",
+            assetName: "HomeCoverTargetAds",
+            action: .imageGeneration(ImageGenerationCatalog.custom)
+        ))
         if isToolAvailable("video") {
             slides.append(NativeHomeHero(
                 id: "video",
@@ -296,30 +294,28 @@ struct HomeView: View {
                     .accessibilityIdentifier("x5.home.business.ai_influencer")
                 }
 
-                if isToolAvailable("image_generation") {
-                    NativeHomeSalesBannerCard(
-                        action: { handle(imageAction("target_ad")) }
-                    )
-                    .accessibilityIdentifier("x5.home.business.sales_banners")
+                NativeHomeSalesBannerCard(
+                    action: { handle(imageAction("target_ad")) }
+                )
+                .accessibilityIdentifier("x5.home.business.sales_banners")
 
-                    LazyVGrid(
-                        columns: [
-                            GridItem(.flexible(), spacing: HomeLayout.cardSpacing),
-                            GridItem(.flexible(), spacing: HomeLayout.cardSpacing)
-                        ],
-                        spacing: HomeLayout.cardSpacing
-                    ) {
-                        ForEach(businessItems) { item in
-                            NativeHomeBusinessCard(
-                                title: item.title,
-                                subtitle: item.subtitle,
-                                assetName: item.assetName,
-                                accent: item.accent,
-                                actionTitle: nil,
-                                action: { handle(item.action) }
-                            )
-                            .accessibilityIdentifier("x5.home.business.\(item.id)")
-                        }
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: HomeLayout.cardSpacing),
+                        GridItem(.flexible(), spacing: HomeLayout.cardSpacing)
+                    ],
+                    spacing: HomeLayout.cardSpacing
+                ) {
+                    ForEach(businessItems) { item in
+                        NativeHomeBusinessCard(
+                            title: item.title,
+                            subtitle: item.subtitle,
+                            assetName: item.assetName,
+                            accent: item.accent,
+                            actionTitle: nil,
+                            action: { handle(item.action) }
+                        )
+                        .accessibilityIdentifier("x5.home.business.\(item.id)")
                     }
                 }
 
@@ -354,16 +350,14 @@ struct HomeView: View {
                 action: .videoGeneration
             ))
         }
-        if isToolAvailable("image_generation") {
-            items.append(NativeHomeTrend(
-                id: "wildberries",
-                title: "Карточки WB",
-                subtitle: "Добавь свои товары",
-                assetName: "HomeTrendNanoBanana",
-                motion: .video(.bundled(resourceName: "HomeTrendAIStylist")),
-                action: imageAction("product_cards")
-            ))
-        }
+        items.append(NativeHomeTrend(
+            id: "wildberries",
+            title: "Карточки WB",
+            subtitle: "Добавь свои товары",
+            assetName: "HomeTrendNanoBanana",
+            motion: .video(.bundled(resourceName: "HomeTrendAIStylist")),
+            action: imageAction("product_cards")
+        ))
         if isToolAvailable("video") {
             items.append(NativeHomeTrend(
                 id: "celebrity",
@@ -399,8 +393,7 @@ struct HomeView: View {
     }
 
     private var aiStudioSubtitle: String {
-        var names: [String] = []
-        if isToolAvailable("image_generation") { names.append("Изображения") }
+        var names = ["Изображения"]
         if isToolAvailable("voice") { names.append("MiniMax") }
         if isToolAvailable("video") { names.append("Seedance") }
         if isToolAvailable("lipsync") { names.append("Lipsync") }
@@ -409,9 +402,7 @@ struct HomeView: View {
     }
 
     private var hasBusinessTools: Bool {
-        isToolAvailable("image_generation")
-            || isToolAvailable("ai_influencer")
-            || isToolAvailable("voice")
+        true
     }
 
     private func isToolAvailable(
@@ -1235,12 +1226,10 @@ private struct HomeSearchSheet: View {
         if isAvailable("live_products", defaultValue: true) {
             items.append(HomeSearchItem(title: "Живые фрукты", subtitle: "Сценарий и ролик для Reels", icon: "play.tv.fill", route: .liveFruits))
         }
-        if isAvailable("image_generation") {
-            items.append(HomeSearchItem(title: "Генерация изображений", subtitle: "Креативы, товары и посты", icon: "photo.badge.plus", route: .imageGeneration(ImageGenerationCatalog.custom)))
-            items.append(contentsOf: ImageGenerationCatalog.categories.map { category in
-                HomeSearchItem(title: category.title, subtitle: category.subtitle, icon: category.icon, route: .imageGeneration(category))
-            })
-        }
+        items.append(HomeSearchItem(title: "Генерация изображений", subtitle: "Креативы, товары и посты", icon: "photo.badge.plus", route: .imageGeneration(ImageGenerationCatalog.custom)))
+        items.append(contentsOf: ImageGenerationCatalog.categories.map { category in
+            HomeSearchItem(title: category.title, subtitle: category.subtitle, icon: category.icon, route: .imageGeneration(category))
+        })
         return items
     }
 

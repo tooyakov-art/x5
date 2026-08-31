@@ -30,9 +30,11 @@ class IOSAIStudioSourceTests(unittest.TestCase):
         ):
             self.assertIn(value, source)
         self.assertIn("service.capabilities(accessToken: token)", source)
-        self.assertIn("ForEach(availableTools)", source)
-        self.assertIn('Text("ДОСТУПНЫЕ AI-ИНСТРУМЕНТЫ")', source)
-        self.assertIn("tools.filter { toolState($0).available }", source)
+        self.assertIn("ForEach(tools)", source)
+        self.assertIn('Text("ВСЕ AI-ИНСТРУМЕНТЫ")', source)
+        self.assertNotIn("tools.filter { toolState($0).available }", source)
+        self.assertNotIn(".disabled(!state.available)", source)
+        self.assertIn("при временном сбое запуск блокируется без списания кредитов", source)
         self.assertNotIn('Text("В разработке")', source)
 
     def test_influencer_is_a_confirmed_four_stage_pipeline(self):

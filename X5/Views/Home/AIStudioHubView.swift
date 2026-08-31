@@ -42,7 +42,7 @@ struct AIStudioHubView: View {
                     if !availableProviderChips.isEmpty {
                         providerSummary
                     }
-                    Text("ДОСТУПНЫЕ AI-ИНСТРУМЕНТЫ")
+                    Text("ВСЕ AI-ИНСТРУМЕНТЫ")
                         .font(.system(size: 11, weight: .black))
                         .tracking(1.5)
                         .foregroundStyle(.white.opacity(0.46))
@@ -52,13 +52,12 @@ struct AIStudioHubView: View {
                             .padding(28)
                     } else {
                         LazyVGrid(columns: columns, spacing: 10) {
-                            ForEach(availableTools) { tool in
+                            ForEach(tools) { tool in
                                 let state = toolState(tool)
                                 NavigationLink(value: tool.route) {
                                     toolCard(tool, state: state)
                                 }
                                 .buttonStyle(.plain)
-                                .disabled(!state.available)
                             }
                         }
                     }
@@ -115,7 +114,7 @@ struct AIStudioHubView: View {
             Text("Создавайте настоящий контент")
                 .font(.system(size: 29, weight: .black))
                 .foregroundStyle(.white)
-            Text("Здесь показаны только функции, которые прошли серверную проверку и готовы создать настоящий результат. Файлы сохраняются в приватной облачной галерее.")
+            Text("Все инструменты остаются на месте. Статус провайдера показан на карточке; при временном сбое запуск блокируется без списания кредитов. Результаты сохраняются в приватной облачной галерее.")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.white.opacity(0.62))
         }
@@ -137,7 +136,7 @@ struct AIStudioHubView: View {
             ("MiniMax", "voice"),
             ("Seedance", "video"),
             ("Lipsync", "lipsync")
-        ].filter { capabilities?.tool($0.capability).available == true }
+        ]
     }
 
     private func statusChip(_ title: String, capability: String) -> some View {
@@ -221,10 +220,6 @@ struct AIStudioHubView: View {
         }
         return capabilities?.tool(tool.capabilityID)
             ?? AIStudioToolCapability(available: false, unavailableReason: "checking")
-    }
-
-    private var availableTools: [AIStudioToolItem] {
-        tools.filter { toolState($0).available }
     }
 
     private func unavailableLabel(_ reason: String?) -> String {
