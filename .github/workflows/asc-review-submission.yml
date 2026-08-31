@@ -186,7 +186,15 @@ jobs:
 
           elif action == "cancel":
               print(f"Cancelling submission {tid}...")
-              r = requests.delete(f"{base}/reviewSubmissions/{tid}", headers=h)
+              r = requests.patch(
+                  f"{base}/reviewSubmissions/{tid}",
+                  headers={**h, "Content-Type": "application/json"},
+                  json={"data": {
+                      "type": "reviewSubmissions",
+                      "id": tid,
+                      "attributes": {"canceled": True},
+                  }},
+              )
               if r.status_code >= 300:
                   print(f"HTTP {r.status_code}: {r.text}")
                   sys.exit(1)

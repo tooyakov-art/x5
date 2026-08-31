@@ -694,6 +694,11 @@ class CreditPackSubmissionTests(unittest.TestCase):
         self.assertIn("python scripts/asc_set_after_approval.py", workflow)
         self.assertIn("if: ${{ inputs.action == 'submit' }}", workflow)
         self.assertIn("if: ${{ inputs.action != 'submit' }}", workflow)
+        self.assertIn('"attributes": {"canceled": True}', workflow)
+        self.assertNotIn(
+            'requests.delete(f"{base}/reviewSubmissions/{tid}"',
+            workflow,
+        )
 
     def test_replace_workflow_requires_an_explicit_manual_dispatch(self):
         workflow = (
