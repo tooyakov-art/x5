@@ -268,6 +268,13 @@ def ensure_localization(
         None,
     )
     if current:
+        attributes = current.get("attributes", {})
+        if attributes.get("state") == "ACTIVE":
+            # Apple freezes an approved localization. Re-sending an identical
+            # PATCH still returns 409, so keep the active metadata and continue
+            # auditing the immutable price schedule.
+            print(f"Keeping active {locale} localization for {iap_id}")
+            return
         api.request(
             "PATCH",
             f"/v1/inAppPurchaseLocalizations/{current['id']}",

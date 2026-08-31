@@ -125,6 +125,8 @@ final class IAPCreditStoreTests: XCTestCase {
     func testBackendFailureLeavesUnfinishedConsumablePendingForRetry() {
         XCTAssertFalse(IAPEntitlementDisposition.failed.shouldFinishTransaction)
         XCTAssertTrue(IAPEntitlementDisposition.applied.shouldFinishTransaction)
+        XCTAssertTrue(IAPEntitlementDisposition.skipped.shouldFinishTransaction)
+        XCTAssertFalse(IAPEntitlementDisposition.skipped.isPurchaseSuccess)
     }
 
     func testSettingsKeepsRestoreAvailableButManagesOnlyActiveSubscriptions() {
@@ -176,6 +178,7 @@ final class IAPCreditStoreTests: XCTestCase {
             "credit_store_success_message",
             "credit_store_success_refresh_pending",
             "iap_products_unavailable",
+            "iap_sandbox_test_not_billable",
             "profile_store_title",
             "profile_store_subtitle",
             "settings_restore_subscriptions",

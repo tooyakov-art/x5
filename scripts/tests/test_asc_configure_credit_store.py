@@ -160,6 +160,29 @@ class CreditStoreConfigurationTests(unittest.TestCase):
             source,
         )
 
+    def test_active_localization_is_not_patched(self):
+        class FakeAPI:
+            def __init__(self):
+                self.calls = []
+
+            def request(self, method, path, **kwargs):
+                self.calls.append((method, path, kwargs))
+                raise AssertionError("ACTIVE localization must stay immutable")
+
+        api = FakeAPI()
+        MODULE.ensure_localization(
+            api,
+            "iap-1",
+            [{
+                "id": "loc-1",
+                "attributes": {"locale": "ru", "state": "ACTIVE"},
+            }],
+            "ru",
+            "Пакет",
+            "Описание",
+        )
+        self.assertEqual(api.calls, [])
+
 
 if __name__ == "__main__":
     unittest.main()

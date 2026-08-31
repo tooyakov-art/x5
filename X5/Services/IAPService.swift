@@ -315,6 +315,7 @@ final class IAPService: ObservableObject {
         case applied
         case alreadyApplied
         case ownedByOther
+        case sandboxTestNotBillable
         case failed
     }
 
@@ -691,6 +692,12 @@ final class IAPService: ObservableObject {
             // A consumable cannot be restored from current entitlements. Leave it
             // unfinished so its owning X5 account can retry delivery after sign-in.
             return .failed
+        case .sandboxTestNotBillable:
+            // TestFlight uses Apple's Sandbox and never charges real money.
+            // The server deliberately grants no spendable credits outside the
+            // dedicated App Review account. Finish this test transaction so it
+            // cannot block a later production purchase for the same product.
+            return .skipped
         case .failed:
             return .failed
         }
@@ -737,7 +744,7 @@ final class IAPService: ObservableObject {
         switch verificationResult {
         case .applied, .alreadyApplied:
             break
-        case .ownedByOther:
+        case .ownedByOther, .sandboxTestNotBillable:
             return .skipped
         case .failed:
             return .failed
@@ -785,7 +792,7 @@ final class IAPService: ObservableObject {
         switch verificationResult {
         case .applied, .alreadyApplied:
             break
-        case .ownedByOther:
+        case .ownedByOther, .sandboxTestNotBillable:
             return .skipped
         case .failed:
             return .failed
@@ -861,6 +868,15 @@ final class IAPService: ObservableObject {
                     ])
                     lastError = accountMismatchError
                     return .ownedByOther
+                }
+
+                if status == "sandbox_test_not_billable" {
+                    DiagnosticLogger.log(event: "iap_sandbox_test_not_billable", extra: [
+                        "source": source,
+                        "product": productID
+                    ])
+                    lastError = LocalizationService.shared.t("iap_sandbox_test_not_billable")
+                    return .sandboxTestNotBillable
                 }
 
                 guard (200..<300).contains(httpStatus) else {

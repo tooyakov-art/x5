@@ -158,6 +158,7 @@ extension LocalizationService {
             "iap_purchase_unverified": "App Store не подтвердил покупку.",
             "iap_purchase_pending": "Покупка ожидает подтверждения App Store.",
             "iap_delivery_pending": "Покупка пока не начислена. Мы повторим доставку, когда сервер будет доступен.",
+            "iap_sandbox_test_not_billable": "TestFlight использует тестовую оплату Apple: реальные деньги не списываются и настоящие кредиты не начисляются.",
             "iap_products_unavailable": "Товары App Store не загрузились. Проверь подключение и попробуй снова.",
             "iap_account_mismatch": "Эта покупка принадлежит другому аккаунту X five marketing. Войди в него, чтобы завершить начисление.",
 
@@ -724,6 +725,7 @@ extension LocalizationService {
             "iap_purchase_unverified": "The App Store could not verify this purchase.",
             "iap_purchase_pending": "This purchase is awaiting App Store approval.",
             "iap_delivery_pending": "The purchase has not been delivered yet. We will retry when the server is available.",
+            "iap_sandbox_test_not_billable": "TestFlight uses Apple test payments: no real money is charged and no spendable credits are added.",
             "iap_products_unavailable": "App Store products could not be loaded. Check your connection and try again.",
             "iap_account_mismatch": "This purchase belongs to another X five marketing account. Sign in to that account to finish delivery.",
 
@@ -1282,6 +1284,7 @@ extension LocalizationService {
             "iap_purchase_unverified": "App Store бұл сатып алуды растамады.",
             "iap_purchase_pending": "Сатып алу App Store растауын күтуде.",
             "iap_delivery_pending": "Сатып алу әлі есептелмеді. Сервер қолжетімді болғанда қайта жеткіземіз.",
+            "iap_sandbox_test_not_billable": "TestFlight Apple тест төлемін қолданады: нақты ақша алынбайды және нақты кредиттер есептелмейді.",
             "iap_products_unavailable": "App Store тауарлары жүктелмеді. Байланысты тексеріп, қайта көріңіз.",
             "iap_account_mismatch": "Бұл сатып алу басқа X five marketing аккаунтына тиесілі. Есептеуді аяқтау үшін сол аккаунтқа кіріңіз.",
 

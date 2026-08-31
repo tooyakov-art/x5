@@ -180,7 +180,7 @@ class AssignTestFlightGroupsContractTests(unittest.TestCase):
 
     def test_existing_status_workflow_exposes_explicit_guarded_assignment(self):
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
-        self.assertIn('default: "236"', workflow)
+        self.assertIn('default: "237"', workflow)
         self.assertIn('default: "inspect"', workflow)
         self.assertIn("assign_internal_groups", workflow)
         self.assertIn(

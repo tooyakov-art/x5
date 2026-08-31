@@ -1,4 +1,4 @@
-X five marketing is a creator workspace and marketplace. Version 1.1.6 build 236
+X five marketing is a creator workspace and marketplace. Version 1.1.6 build 237
 fixes the App Review completeness issue from the previous binary.
 
 Mainland China distribution update (August 30, 2026):
@@ -6,7 +6,7 @@ We removed Mainland China from App Availability. The app is now unavailable in
 the CHN storefront, so its OpenAI-powered features are not distributed there.
 All other storefront availability is unchanged.
 
-Build 236 removes the payment-method chooser and all alternate checkout code.
+Build 237 removes the payment-method chooser and all alternate checkout code.
 Digital credit packs are sold exclusively through StoreKit and the App Store.
 The iOS binary has no external payment link, Kaspi checkout, bank-card checkout,
 or reviewer-specific payment behavior.
@@ -56,6 +56,9 @@ In-app purchases:
 - com.x5studio.app.verified.monthly is an auto-renewable subscription.
 Credit packs are delivered exactly once from Apple's signed transaction. The
 verified badge is separate and does not include credits.
+Production credits require a server-verified signed Production transaction.
+TestFlight Sandbox never charges real money and grants ordinary testers no
+spendable credits. Only the capped App Review demo account can test delivery.
 
 UGC safety:
 Chat users, Hub users and task authors can be reported; chat users can be

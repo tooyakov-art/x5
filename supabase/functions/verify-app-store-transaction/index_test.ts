@@ -418,7 +418,9 @@ Deno.test("handler rejects Sandbox users outside the server allowlist", async ()
     verifySignedTransaction: () =>
       Promise.resolve({ ...verifiedPayload, environment: "Sandbox" }),
     applyVerifiedSandboxReview: () =>
-      Promise.reject(new EntitlementApplyError("rejected", 403)),
+      Promise.reject(
+        new EntitlementApplyError("sandbox_test_not_billable", 403),
+      ),
   }));
 
   const response = await handler(
@@ -426,7 +428,10 @@ Deno.test("handler rejects Sandbox users outside the server allowlist", async ()
   );
 
   assertEquals(response.status, 403);
-  assertEquals((await response.json()).status, "rejected");
+  assertEquals(
+    (await response.json()).status,
+    "sandbox_test_not_billable",
+  );
 });
 
 Deno.test("handler requires the authenticated account token for Sandbox subscriptions", async () => {
