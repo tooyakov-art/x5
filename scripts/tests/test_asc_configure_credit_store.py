@@ -183,6 +183,38 @@ class CreditStoreConfigurationTests(unittest.TestCase):
         )
         self.assertEqual(api.calls, [])
 
+    def test_immutable_active_localization_conflict_is_an_audited_noop(self):
+        class FakeAPI:
+            def request(self, method, path, **kwargs):
+                raise RuntimeError(
+                    "HTTP 409: ENTITY_ERROR.ATTRIBUTE.INVALID.UNMODIFIABLE: "
+                    "Cannot edit InAppPurchaseLocalization when it is in ACTIVE state"
+                )
+
+        MODULE.ensure_localization(
+            FakeAPI(),
+            "iap-1",
+            [{"id": "loc-1", "attributes": {"locale": "ru"}}],
+            "ru",
+            "Пакет",
+            "Описание",
+        )
+
+    def test_other_localization_patch_failures_are_not_hidden(self):
+        class FakeAPI:
+            def request(self, method, path, **kwargs):
+                raise RuntimeError("HTTP 409: unrelated conflict")
+
+        with self.assertRaisesRegex(RuntimeError, "unrelated conflict"):
+            MODULE.ensure_localization(
+                FakeAPI(),
+                "iap-1",
+                [{"id": "loc-1", "attributes": {"locale": "ru"}}],
+                "ru",
+                "Пакет",
+                "Описание",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

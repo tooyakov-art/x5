@@ -275,17 +275,30 @@ def ensure_localization(
             # auditing the immutable price schedule.
             print(f"Keeping active {locale} localization for {iap_id}")
             return
-        api.request(
-            "PATCH",
-            f"/v1/inAppPurchaseLocalizations/{current['id']}",
-            payload={
-                "data": {
-                    "type": "inAppPurchaseLocalizations",
-                    "id": current["id"],
-                    "attributes": {"name": name, "description": description},
-                }
-            },
-        )
+        try:
+            api.request(
+                "PATCH",
+                f"/v1/inAppPurchaseLocalizations/{current['id']}",
+                payload={
+                    "data": {
+                        "type": "inAppPurchaseLocalizations",
+                        "id": current["id"],
+                        "attributes": {"name": name, "description": description},
+                    }
+                },
+            )
+        except RuntimeError as error:
+            # The list endpoint can omit `state` even though Apple already made
+            # the localization ACTIVE. Treat only Apple's exact immutable-state
+            # response as an audited no-op; every other API error still fails.
+            if (
+                "ENTITY_ERROR.ATTRIBUTE.INVALID.UNMODIFIABLE" in str(error)
+                and "Cannot edit InAppPurchaseLocalization when it is in ACTIVE state"
+                in str(error)
+            ):
+                print(f"Keeping active {locale} localization for {iap_id}")
+                return
+            raise
         print(f"Updated {locale} localization for {iap_id}")
         return
     api.request(
