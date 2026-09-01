@@ -17,6 +17,11 @@ class AppStoreReleaseAuditContractTests(unittest.TestCase):
         self.assertIn('EXPECTED_RUNTIME_BUILD: "240"', WORKFLOW)
         self.assertIn('build.group(1) != os.environ["EXPECTED_RUNTIME_BUILD"]', WORKFLOW)
 
+    def test_exact_app_name_is_a_live_audit_invariant(self):
+        self.assertIn('EXPECTED_APP_NAME: "Xfive marketing"', WORKFLOW)
+        self.assertIn("/appInfos/{app_info['id']}/appInfoLocalizations", WORKFLOW)
+        self.assertIn('localized_names.get("en-US", set())', WORKFLOW)
+
     def test_live_app_store_version_is_a_success_state(self):
         match = re.search(
             r"READY_VERSION_STATES\s*=\s*\{(?P<body>.*?)\n\s*\}",
