@@ -3,6 +3,7 @@ import inspect
 import pathlib
 import sys
 import unittest
+from datetime import date
 from decimal import Decimal
 from unittest import mock
 
@@ -16,6 +17,33 @@ SPEC.loader.exec_module(MODULE)
 
 
 class CreditStoreConfigurationTests(unittest.TestCase):
+    @staticmethod
+    def price_schedule(*rows):
+        data = []
+        included = []
+        for index, (price, start, end) in enumerate(rows):
+            row_id = f"price-{index}"
+            point_id = f"point-{index}"
+            data.append({
+                "type": "inAppPurchasePrices",
+                "id": row_id,
+                "attributes": {"startDate": start, "endDate": end},
+                "relationships": {
+                    "inAppPurchasePricePoint": {
+                        "data": {
+                            "type": "inAppPurchasePricePoints",
+                            "id": point_id,
+                        }
+                    }
+                },
+            })
+            included.append({
+                "type": "inAppPurchasePricePoints",
+                "id": point_id,
+                "attributes": {"customerPrice": str(price)},
+            })
+        return {"data": data, "included": included}
+
     def test_app_store_request_retries_transient_network_timeout(self):
         class FakeRequestException(Exception):
             pass
@@ -152,6 +180,69 @@ class CreditStoreConfigurationTests(unittest.TestCase):
             included["relationships"]["inAppPurchasePricePoint"]["data"]["id"],
             "point-1000",
         )
+
+    def test_active_price_ignores_history_and_future_rows(self):
+        schedule = self.price_schedule(
+            (5000, None, "2026-08-01"),
+            (1000, "2026-08-01", "2026-10-01"),
+            (8000, "2026-10-01", None),
+        )
+
+        row, price = MODULE.active_manual_price(
+            schedule,
+            on_date=date(2026, 9, 1),
+        )
+
+        self.assertEqual(row["id"], "price-1")
+        self.assertEqual(price, Decimal("1000"))
+
+    def test_price_end_date_is_the_first_inactive_day(self):
+        schedule = self.price_schedule(
+            (1000, None, "2026-09-01"),
+            (2000, "2026-09-01", None),
+        )
+
+        row, price = MODULE.active_manual_price(
+            schedule,
+            on_date=date(2026, 9, 1),
+        )
+
+        self.assertEqual(row["id"], "price-1")
+        self.assertEqual(price, Decimal("2000"))
+
+    def test_multiple_active_prices_fail_closed(self):
+        schedule = self.price_schedule(
+            (1000, None, None),
+            (5000, None, None),
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "exactly one active"):
+            MODULE.active_manual_price(
+                schedule,
+                on_date=date(2026, 9, 1),
+            )
+
+    def test_configurator_rejects_desired_price_only_in_history(self):
+        historical_and_wrong_active = self.price_schedule(
+            (1000, None, "2020-01-01"),
+            (5000, "2020-01-01", None),
+        )
+
+        class FakeAPI:
+            @staticmethod
+            def list_all(path):
+                return [{
+                    "type": "inAppPurchasePricePoints",
+                    "id": "desired-1000",
+                    "attributes": {"customerPrice": "1000"},
+                }]
+
+            @staticmethod
+            def request(method, path, **kwargs):
+                return historical_and_wrong_active
+
+        with self.assertRaisesRegex(RuntimeError, "active KAZ price is 5000"):
+            MODULE.ensure_initial_price(FakeAPI(), "iap-1", Decimal("1000"))
 
     def test_localizations_are_listed_through_the_v2_purchase_relationship(self):
         source = inspect.getsource(MODULE.configure)

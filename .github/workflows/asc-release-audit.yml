@@ -86,6 +86,7 @@ jobs:
               "IN_REVIEW",
               "PENDING_APPLE_RELEASE",
               "PENDING_DEVELOPER_RELEASE",
+              "READY_FOR_SALE",
           }
           BLOCKED_SUBSCRIPTION_STATES = {
               "MISSING_METADATA",
