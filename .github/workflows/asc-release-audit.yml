@@ -34,6 +34,7 @@ jobs:
       ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
       ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
       BUNDLE_ID: com.x5studio.app
+      EXPECTED_APP_NAME: "Xfive marketing"
       EXPECTED_VERSION: "1.1.8"
       EXPECTED_BUILD: "238"
       AUDIT_SCOPE: "post-submit-app-version-build-screenshots-subscriptions"
@@ -204,6 +205,37 @@ jobs:
           app_id = app["id"]
           print("\n=== App ===")
           print(f"id={app_id} bundle={os.environ['BUNDLE_ID']} attrs={app.get('attributes', {})}")
+
+          print("\n=== App name localizations ===")
+          app_infos = list_all(f"/apps/{app_id}/appInfos?limit=50")
+          localized_names = {}
+          for app_info in app_infos:
+              info_attrs = app_info.get("attributes", {})
+              print(
+                  f"appInfo id={app_info['id']} "
+                  f"state={info_attrs.get('appStoreState')}"
+              )
+              info_localizations = list_all(
+                  f"/appInfos/{app_info['id']}/appInfoLocalizations?limit=50"
+              )
+              for localization in info_localizations:
+                  attrs = localization.get("attributes", {})
+                  locale = attrs.get("locale")
+                  name = attrs.get("name")
+                  print(f"  locale={locale} name={name!r}")
+                  if locale and name:
+                      localized_names.setdefault(locale, set()).add(name)
+          expected_name = os.environ["EXPECTED_APP_NAME"]
+          if expected_name not in localized_names.get("en-US", set()):
+              issue(
+                  "App Store en-US name is not the exact expected value: "
+                  f"{expected_name!r}"
+              )
+          if "ru" in localized_names and expected_name not in localized_names["ru"]:
+              issue(
+                  "App Store ru name is not the exact expected value: "
+                  f"{expected_name!r}"
+              )
 
           print("\n=== Builds ===")
           builds = list_all(f"/builds?filter[app]={app_id}&filter[preReleaseVersion.platform]=IOS&limit=200&sort=-uploadedDate")
