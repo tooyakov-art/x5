@@ -166,7 +166,7 @@ export function buildPushDelivery(event) {
     object_type: event.objectType,
     object_id: event.objectID,
   });
-  const title = boundedText(event.title, MAX_TITLE_LENGTH, "x five marketing");
+  const title = boundedText(event.title, MAX_TITLE_LENGTH, "Xfive marketing");
   const body = boundedText(event.body, MAX_BODY_LENGTH, "Новое уведомление");
   const alert = compactStrings({
     title,

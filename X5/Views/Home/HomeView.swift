@@ -90,7 +90,7 @@ struct HomeView: View {
             }
             .scrollIndicators(.hidden)
             .background { NativeHomeBackground() }
-            .navigationTitle("X five marketing")
+            .navigationTitle("Xfive marketing")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)

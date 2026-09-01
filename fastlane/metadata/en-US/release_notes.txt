@@ -1,6 +1,7 @@
 This build completes the requested course, notification, chat, Home, purchase
-and portfolio fixes in X five marketing.
+and portfolio fixes in Xfive marketing.
 
+- The app name is now written consistently as “Xfive marketing” everywhere.
 - Full-length lesson videos upload without truncation. Oversized sources are
   prepared locally and continue through resumable private upload.
 - Task notifications open the exact task; message notifications open the exact

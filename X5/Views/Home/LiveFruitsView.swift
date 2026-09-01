@@ -136,7 +136,7 @@ struct LiveFruitsView: View {
 
     private var brandHeader: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("X five marketing")
+            Text("Xfive marketing")
                 .font(.system(size: 12, weight: .black))
                 .tracking(1.4)
                 .foregroundColor(X5Style.blue)

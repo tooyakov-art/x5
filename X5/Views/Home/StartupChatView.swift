@@ -5,7 +5,7 @@ private func makeStartupChatInitialMessages() -> [StartupChatMessage] {
         StartupChatMessage(
             role: .assistant,
             content: """
-            Я стартап-помощник X five marketing. Опишите идею — помогу проверить спрос, аудиторию и выбрать следующий шаг.
+            Я стартап-помощник Xfive marketing. Опишите идею — помогу проверить спрос, аудиторию и выбрать следующий шаг.
             """
         )
     ]

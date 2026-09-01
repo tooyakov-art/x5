@@ -449,12 +449,11 @@ struct ProfileView: View {
         if let raw,
            !raw.isEmpty,
            raw != "User",
-           raw != "Xfive marketing",
-           raw != "X five marketing" {
+           raw.replacingOccurrences(of: " ", with: "").lowercased() != "xfivemarketing" {
             return raw
         }
         if let emailName = emailPrefix { return emailName }
-        return "X five marketing"
+        return "Xfive marketing"
     }
 
     private var handleText: String {

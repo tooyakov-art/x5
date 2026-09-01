@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class BrandPrivacySourceTests(unittest.TestCase):
-    def test_user_visible_brand_uses_exact_spacing(self):
+    def test_user_visible_brand_uses_exact_client_name(self):
         visible_files = [
             ROOT / "X5" / "Services" / "LocalizationService.swift",
             ROOT / "X5" / "Views" / "CoursesView.swift",
@@ -28,7 +28,8 @@ class BrandPrivacySourceTests(unittest.TestCase):
         for path in visible_files:
             with self.subTest(path=path):
                 source = path.read_text(encoding="utf-8")
-                self.assertNotIn("Xfive marketing", source)
+                self.assertIn("Xfive marketing", source)
+                self.assertNotIn("X five marketing", source)
 
     def test_photo_permissions_cover_course_video_and_ai_media(self):
         expected_read = (

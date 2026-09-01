@@ -1,12 +1,12 @@
-X five marketing is a creator workspace and marketplace. Version 1.1.7 build 237
-fixes the App Review completeness issue from the previous binary.
+Xfive marketing is a creator workspace and marketplace. Version 1.1.8 build 238
+uses the exact customer-facing name and retains the reviewed feature set.
 
 Mainland China distribution update (August 30, 2026):
 We removed Mainland China from App Availability. The app is now unavailable in
 the CHN storefront, so its OpenAI-powered features are not distributed there.
 All other storefront availability is unchanged.
 
-Build 237 removes the payment-method chooser and all alternate checkout code.
+Build 238 removes the payment-method chooser and all alternate checkout code.
 Digital credit packs are sold exclusively through StoreKit and the App Store.
 The iOS binary has no external payment link, Kaspi checkout, bank-card checkout,
 or reviewer-specific payment behavior.

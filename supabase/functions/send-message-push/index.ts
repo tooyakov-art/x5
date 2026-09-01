@@ -645,7 +645,7 @@ async function importRS256(pem: string): Promise<CryptoKey> {
 
 function displayName(profile: unknown): string {
   const value = profile as { name?: string; nickname?: string } | null;
-  return String(value?.name || value?.nickname || "x five marketing").trim();
+  return String(value?.name || value?.nickname || "Xfive marketing").trim();
 }
 
 function messagePreview(type: string, content: string | null): string {

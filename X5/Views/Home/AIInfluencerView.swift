@@ -84,7 +84,7 @@ struct AIInfluencerView: View {
     @State private var language = InfluencerLanguage.ru
     @State private var voiceStability = VoiceGenerationStability.balanced
     @State private var speed = 1.0
-    @State private var testPhrase = "Привет! Я новый виртуальный автор X five marketing."
+    @State private var testPhrase = "Привет! Я новый виртуальный автор Xfive marketing."
     @State private var voiceResult: VoiceGenerationResult?
     @State private var voicePlayer: AVPlayer?
     @State private var scene = ""

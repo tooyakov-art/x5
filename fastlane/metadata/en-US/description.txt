@@ -1,4 +1,4 @@
-X five marketing is a creator workspace for marketers, entrepreneurs and creative specialists.
+Xfive marketing is a creator workspace for marketers, entrepreneurs and creative specialists.
 
 Organize your portfolio, learn from courses, find specialists in Hub, create marketing media, post tasks and keep client conversations in one app.
 
@@ -20,7 +20,7 @@ WHO IT'S FOR
 SMM managers, designers, photographers, video editors, copywriters, marketers, founders and creators who need AI tools, learning, client chats and a public work profile.
 
 IN-APP PURCHASES
-The Store offers optional one-time consumable packs of 1,000, 2,000 or 5,000 credits. Credits are added to the signed-in X five marketing account and can be used for credit-based creator features and courses. Each pack can be purchased again whenever the user chooses; credit packs are not subscriptions.
+The Store offers optional one-time consumable packs of 1,000, 2,000 or 5,000 credits. Credits are added to the signed-in Xfive marketing account and can be used for credit-based creator features and courses. Each pack can be purchased again whenever the user chooses; credit packs are not subscriptions.
 
 The verified badge is a separate optional monthly auto-renewable subscription. It does not include credits.
 
@@ -30,7 +30,7 @@ SAFETY
 AI video and Live Fruits requests are screened automatically before provider submission. Flagged prompts are rejected before credits are reserved. Chats include report and block controls. Users can delete their account from Settings.
 
 PRIVACY
-Authentication, profiles, chats, tasks, courses, balances and portfolio items are stored through Supabase. AI tools send only the inputs needed for the requested feature from a protected Supabase Edge Function to the configured provider. AI media inputs and generated results use private storage and short-lived signed links. OpenAI is used for Startup Chat, storyboard creation and automatic moderation. AI Voice uses MiniMax Speech. AI Video, Cinema and VFX use the official BytePlus ModelArk Seedance route. X five marketing does not use third-party advertising trackers.
+Authentication, profiles, chats, tasks, courses, balances and portfolio items are stored through Supabase. AI tools send only the inputs needed for the requested feature from a protected Supabase Edge Function to the configured provider. AI media inputs and generated results use private storage and short-lived signed links. OpenAI is used for Startup Chat, storyboard creation and automatic moderation. AI Voice uses MiniMax Speech. AI Video, Cinema and VFX use the official BytePlus ModelArk Seedance route. Xfive marketing does not use third-party advertising trackers.
 
 Terms of Service: https://tooyakov-art.github.io/x5site/terms.html
 Privacy Policy: https://tooyakov-art.github.io/x5site/privacy.html

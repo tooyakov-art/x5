@@ -16,8 +16,8 @@ jobs:
       ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
       ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
       BUNDLE_ID: com.x5studio.app
-      VERSION: "1.1.7"
-      BUILD_NUMBER: "237"
+      VERSION: "1.1.8"
+      BUILD_NUMBER: "238"
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:

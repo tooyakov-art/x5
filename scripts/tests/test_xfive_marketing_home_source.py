@@ -19,15 +19,19 @@ class XFiveMarketingHomeSourceTests(unittest.TestCase):
         store_name = (
             ROOT / "fastlane" / "metadata" / "en-US" / "name.txt"
         ).read_text(encoding="utf-8").strip()
+        russian_store_name = (
+            ROOT / "fastlane" / "metadata" / "ru" / "name.txt"
+        ).read_text(encoding="utf-8").strip()
 
-        self.assertIn('.navigationTitle("X five marketing")', home)
-        self.assertIn('.navigationTitle("X five marketing")', main)
+        self.assertIn('.navigationTitle("Xfive marketing")', home)
+        self.assertIn('.navigationTitle("Xfive marketing")', main)
         self.assertNotIn("X Five AI Studio", home)
         self.assertNotIn("X5 AI", home)
-        self.assertEqual(info["CFBundleDisplayName"], "X five marketing")
-        self.assertIn("CFBundleDisplayName: X five marketing", project)
-        self.assertIn("PRODUCT_NAME: X five marketing", project)
-        self.assertEqual(store_name, "X five marketing")
+        self.assertEqual(info["CFBundleDisplayName"], "Xfive marketing")
+        self.assertIn("CFBundleDisplayName: Xfive marketing", project)
+        self.assertIn("PRODUCT_NAME: Xfive marketing", project)
+        self.assertEqual(store_name, "Xfive marketing")
+        self.assertEqual(russian_store_name, "Xfive marketing")
 
     def test_home_rejects_full_screen_raster_mockups_and_crop_layouts(self):
         home = HOME.read_text(encoding="utf-8")

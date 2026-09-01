@@ -429,7 +429,7 @@ struct CourseEditorView: View {
            !prefix.isEmpty {
             return String(prefix).replacingOccurrences(of: ".", with: " ").capitalized
         }
-        return "X five marketing"
+        return "Xfive marketing"
     }
 
     @ViewBuilder

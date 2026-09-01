@@ -37,7 +37,7 @@
 
 - Pexels license: https://www.pexels.com/legal-pages/license/
 - Retrieved: 2026-07-26
-- Use: short, muted motion backgrounds on the X five marketing Home screen.
+- Use: short, muted motion backgrounds on the Xfive marketing Home screen.
 - App transforms: each selected source was trimmed to six seconds, resized to
   960 x 540, transcoded to H.264, and had audio removed.
   Matching local JPEG posters provide the no-motion and playback-failure

@@ -689,7 +689,7 @@ enum FruitStoryVideoPromptBuilder {
         }.joined(separator: "\n\n")
 
         return """
-        Вертикальный ролик 9:16 продолжительностью 10 секунд для X five marketing.
+        Вертикальный ролик 9:16 продолжительностью 10 секунд для Xfive marketing.
         Один главный фрукт остаётся визуально идентичным во всех кадрах.
         Паспорт персонажа: \(clipped(story.characterBible, to: 240))
         Сюжет: \(clipped(story.summary, to: 140))

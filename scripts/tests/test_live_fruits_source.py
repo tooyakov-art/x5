@@ -49,7 +49,7 @@ class LiveFruitsSourceTests(unittest.TestCase):
         self.assertIn("VideoGenerationService", view)
         self.assertIn("durationSeconds: 10", view)
         self.assertIn('aspectRatio: "9:16"', view)
-        self.assertIn("X five marketing", view)
+        self.assertIn("Xfive marketing", view)
         self.assertNotIn("Скоро добавим", view)
 
     def test_edge_function_keeps_openai_secret_server_side_and_moderates(self):

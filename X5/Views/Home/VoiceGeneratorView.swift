@@ -181,7 +181,7 @@ struct VoiceGeneratorView: View {
                     .padding(10)
 
                 if text.isEmpty {
-                    Text("Например: Добро пожаловать в X five marketing…")
+                    Text("Например: Добро пожаловать в Xfive marketing…")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(.white.opacity(0.34))
                         .padding(.horizontal, 15)
