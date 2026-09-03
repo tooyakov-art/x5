@@ -491,14 +491,13 @@ struct HubView: View {
         return specialistCategoryCounts[id] ?? 0
     }
 
+    // The "Все" tile has to promise exactly what opening it delivers. It used to
+    // drop the signed-in user while the list and the category tiles kept them,
+    // so a user who published their own profile saw "2" and then three cards.
     private var totalVisibleCount: Int {
         switch segment {
         case .specialists:
-            return service.specialists
-                .filter { !BlockList.contains($0.id) }
-                .filter { $0.id != auth.userId }
-                .filter { locationMatches(countryCode: $0.countryCode, city: $0.city) }
-                .count
+            return visibleSpecialists.count
         case .tasks:
             return service.tasks
                 .filter { !BlockList.contains($0.authorId) }

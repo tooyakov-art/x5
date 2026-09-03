@@ -316,6 +316,16 @@ final class HubService: ObservableObject {
     @Published private(set) var isLoading: Bool = false
     @Published private(set) var error: String?
 
+    /// Records a real failure only. The Hub reloads whenever the country, city
+    /// or segment changes, and that cancels the request already in flight.
+    /// Surfacing it as "Не удалось обновить задания — отменено" made a working
+    /// screen look broken every time the user touched a filter.
+    private func recordFailure(_ error: Error) {
+        if error is CancellationError { return }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return }
+        self.error = error.localizedDescription
+    }
+
     private let session: URLSession
     private let baseURL: URL
     private let anonKey: String
@@ -346,7 +356,7 @@ final class HubService: ObservableObject {
             let (data, _) = try await URLSession.shared.data(for: request)
             specialists = (try? JSONDecoder().decode([HubSpecialist].self, from: data)) ?? []
         } catch {
-            self.error = error.localizedDescription
+            recordFailure(error)
         }
     }
 
@@ -375,7 +385,7 @@ final class HubService: ObservableObject {
             }
             tasks = try JSONDecoder().decode([HubTask].self, from: data)
         } catch {
-            self.error = error.localizedDescription
+            recordFailure(error)
         }
     }
 
@@ -398,7 +408,7 @@ final class HubService: ObservableObject {
             else { return nil }
             return try JSONDecoder().decode([HubTask].self, from: data).first
         } catch {
-            self.error = error.localizedDescription
+            recordFailure(error)
             return nil
         }
     }
@@ -427,7 +437,7 @@ final class HubService: ObservableObject {
             myTasks = rows
             return rows
         } catch {
-            self.error = error.localizedDescription
+            recordFailure(error)
             return []
         }
     }
@@ -512,7 +522,7 @@ final class HubService: ObservableObject {
             myTasks.removeAll(where: { $0.id == taskId })
             return true
         } catch {
-            self.error = error.localizedDescription
+            recordFailure(error)
             return false
         }
     }
@@ -630,7 +640,7 @@ final class HubService: ObservableObject {
             replaceManagedTask(acceptedTask)
             return acceptedTask
         } catch {
-            self.error = error.localizedDescription
+            recordFailure(error)
             return nil
         }
     }
@@ -680,7 +690,7 @@ final class HubService: ObservableObject {
             replaceManagedTask(task)
             return task
         } catch {
-            self.error = error.localizedDescription
+            recordFailure(error)
             return nil
         }
     }
