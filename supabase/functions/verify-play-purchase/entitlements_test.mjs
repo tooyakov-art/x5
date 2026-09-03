@@ -449,3 +449,63 @@ test("missing consumed product recovers only from the exact owner ledger", () =>
     false,
   );
 });
+
+const testerRefusal = {
+  ok: false,
+  status: 402,
+  error: "play_test_not_billable",
+};
+
+test("license-tester product purchases are refused instead of minting credits", () => {
+  assert.equal(typeof helpers.validateBillablePurchase, "function");
+
+  const state = helpers.validateInAppPurchaseState({
+    purchaseState: 0,
+    purchaseType: 0,
+  });
+  assert.deepEqual(state, testerRefusal);
+
+  const entitlement = helpers.extractInAppEntitlement({
+    purchaseState: 0,
+    purchaseType: 0,
+    orderId: "GPA.tester-order",
+    quantity: 1,
+  });
+  assert.deepEqual(entitlement, testerRefusal);
+});
+
+test("license-tester subscriptions never become an entitlement", () => {
+  const state = helpers.validateSubscriptionPurchaseState({
+    subscriptionState: "SUBSCRIPTION_STATE_ACTIVE",
+    testPurchase: {},
+  });
+  assert.deepEqual(state, testerRefusal);
+
+  const result = helpers.extractSubscriptionEntitlement(
+    "x5_verified_monthly_v2",
+    {
+      subscriptionState: "SUBSCRIPTION_STATE_ACTIVE",
+      testPurchase: {},
+      lineItems: [{
+        productId: "x5_verified_monthly_v2",
+        expiryTime: future,
+        latestSuccessfulOrderId: "GPA.tester-renewal",
+      }],
+    },
+    now,
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "play_test_not_billable");
+});
+
+test("real billed purchases stay unaffected by the tester lockdown", () => {
+  const billed = helpers.validateBillablePurchase({ purchaseState: 0 });
+  assert.deepEqual(billed, { ok: true });
+
+  // Promo (1) and rewarded (2) grants are deliberate, only Test (0) is blocked.
+  const promo = helpers.validateBillablePurchase({ purchaseType: 1 });
+  assert.deepEqual(promo, { ok: true });
+
+  const state = helpers.validateInAppPurchaseState({ purchaseState: 0 });
+  assert.deepEqual(state, { ok: true });
+});
