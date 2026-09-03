@@ -293,6 +293,27 @@ final class CurrentUser: ObservableObject {
         self.profile = profile
     }
 
+    /// Applies the result of the atomic single-lesson RPC. Only the key the
+    /// server reported storing is trusted, so a malformed success can never
+    /// unlock a lesson the database did not actually grant. Fenced by the
+    /// same operation context as course purchases so a response that lands
+    /// after sign-out or an account switch is dropped.
+    func applyLessonPurchase(_ response: LessonPurchaseResponse, for context: ProfileOperationContext?) {
+        guard isCurrent(context), var profile, profile.id.lowercased() == context?.userID else { return }
+
+        if let credits = response.creditsRemaining {
+            profile.credits = credits
+        }
+        if response.grantsOwnership {
+            var purchased = profile.purchasedLessonIds ?? []
+            if !purchased.contains(response.lessonKey) {
+                purchased.append(response.lessonKey)
+            }
+            profile.purchasedLessonIds = purchased
+        }
+        self.profile = profile
+    }
+
     /// Loads (or refreshes) the current user's profile row using the access token.
     /// If the row does not exist yet, creates it with default values.
     @discardableResult

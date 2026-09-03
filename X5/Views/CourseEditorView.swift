@@ -1157,11 +1157,27 @@ private struct LessonEditorSheet: View {
                 }
 
                 Section {
-                    Text("Доступ к уроку задаётся покупкой всего курса или флагом бесплатного preview.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    Toggle("Продавать отдельно", isOn: $sellSeparately)
+                        .disabled(isFreePreview)
+                    if sellSeparately && !isFreePreview {
+                        HStack {
+                            Text("Цена урока")
+                            Spacer()
+                            TextField("0", text: $price)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.trailing)
+                                .frame(maxWidth: 120)
+                            Text("кр.")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 } header: {
                     Text("Доступ")
+                } footer: {
+                    Text(sellSeparately && !isFreePreview
+                        ? "Ученик сможет купить только этот урок. Цену подтверждает сервер, поэтому она должна быть больше нуля."
+                        : "Доступ к уроку задаётся покупкой всего курса или флагом бесплатного preview.")
+                        .font(.footnote)
                 }
 
                 if let errorText {
