@@ -97,7 +97,28 @@ export function getProductEntitlement(productId) {
   return productEntitlements[productId];
 }
 
+// Google never charges a license tester, yet the purchase still reports
+// purchaseState 0 and carries a real order id. Products bought outside the
+// standard billing flow expose `purchaseType` (0 Test, 1 Promo, 2 Rewarded) and
+// subscriptionsv2 reports the same case as a `testPurchase` object. Minting
+// credits for those is free money, so they are refused here exactly like the
+// Apple sandbox lockdown refuses TestFlight transactions.
+export function validateBillablePurchase(purchase) {
+  const isTestProduct = purchase?.purchaseType === 0;
+  const isTestSubscription = purchase?.testPurchase != null;
+  if (!isTestProduct && !isTestSubscription) return { ok: true };
+
+  return {
+    ok: false,
+    status: 402,
+    error: "play_test_not_billable",
+  };
+}
+
 export function validateInAppPurchaseState(purchase) {
+  const billable = validateBillablePurchase(purchase);
+  if (!billable.ok) return billable;
+
   if (purchase?.purchaseState === 0) return { ok: true };
 
   const state = purchase?.purchaseState ?? "missing";
@@ -109,6 +130,9 @@ export function validateInAppPurchaseState(purchase) {
 }
 
 export function validateSubscriptionPurchaseState(purchase) {
+  const billable = validateBillablePurchase(purchase);
+  if (!billable.ok) return billable;
+
   const state = purchase?.subscriptionState ?? "missing";
   const activeStates = new Set([
     "SUBSCRIPTION_STATE_ACTIVE",

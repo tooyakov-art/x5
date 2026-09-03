@@ -110,3 +110,26 @@ test("verifier finalizes Google Play only after the exact-once ledger", () => {
   assert.match(source, /isGooglePlayFinalizationRace/);
   assert.match(source, /isGooglePlayPurchaseGone/);
 });
+
+test("license-tester purchases can never be billed as real Google orders", () => {
+  assert.match(entitlements, /export function validateBillablePurchase/);
+  assert.match(entitlements, /purchase\?\.purchaseType === 0/);
+  assert.match(entitlements, /purchase\?\.testPurchase != null/);
+  assert.match(entitlements, /play_test_not_billable/);
+
+  for (
+    const validator of [
+      "validateInAppPurchaseState",
+      "validateSubscriptionPurchaseState",
+    ]
+  ) {
+    const body = entitlements.slice(
+      entitlements.indexOf(`export function ${validator}(`),
+    );
+    assert.match(
+      body.slice(0, 200),
+      /validateBillablePurchase\(purchase\)/,
+      `${validator} must refuse test purchases before granting anything`,
+    );
+  }
+});
