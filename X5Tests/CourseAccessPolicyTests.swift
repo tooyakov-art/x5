@@ -45,23 +45,63 @@ final class CourseAccessPolicyTests: XCTestCase {
         XCTAssertTrue(CourseAccessPolicy.hasFullAccess(to: course, profile: makeProfile()))
     }
 
-    func testLegacyLessonPurchaseDoesNotBypassCourseGate() {
+    /// `purchase_lesson` is the only writer of `purchased_lesson_ids` — a
+    /// database trigger discards any array a client tries to set — so the key
+    /// is proof of a server-priced purchase and must open exactly that lesson.
+    func testPurchasedLessonUnlocksOnlyThatLesson() {
         let course = makeCourse(id: "course-paid", price: 50_000, isFree: false)
-        let lesson = CourseLesson(
-            id: "lesson-paid",
+        let paidLesson = makeSellableLesson(id: "lesson-paid")
+        let otherLesson = makeSellableLesson(id: "lesson-other")
+        let profile = makeProfile(purchasedLessonIds: ["course-paid:lesson-paid"])
+
+        XCTAssertTrue(CourseAccessPolicy.canAccess(lesson: paidLesson, in: course, profile: profile))
+        XCTAssertFalse(CourseAccessPolicy.canAccess(lesson: otherLesson, in: course, profile: profile))
+        XCTAssertFalse(CourseAccessPolicy.hasFullAccess(to: course, profile: profile))
+    }
+
+    func testLessonEntitlementIsScopedToItsOwnCourse() {
+        let course = makeCourse(id: "course-paid", price: 50_000, isFree: false)
+        let lesson = makeSellableLesson(id: "lesson-paid")
+        let profile = makeProfile(purchasedLessonIds: ["course-other:lesson-paid"])
+
+        XCTAssertFalse(CourseAccessPolicy.canAccess(lesson: lesson, in: course, profile: profile))
+    }
+
+    func testOnlyPricedSeparatelySoldLessonsAreOfferedAlone() {
+        XCTAssertTrue(CourseAccessPolicy.isSoldSeparately(makeSellableLesson(id: "lesson-paid")))
+        XCTAssertFalse(
+            CourseAccessPolicy.isSoldSeparately(makeSellableLesson(id: "lesson-zero", price: 0))
+        )
+        XCTAssertFalse(
+            CourseAccessPolicy.isSoldSeparately(
+                makeSellableLesson(id: "lesson-bundled", sellSeparately: false)
+            )
+        )
+        XCTAssertFalse(
+            CourseAccessPolicy.isSoldSeparately(
+                makeSellableLesson(id: "lesson-preview", isFreePreview: true)
+            )
+        )
+    }
+
+    private func makeSellableLesson(
+        id: String,
+        price: Int? = 1,
+        isFreePreview: Bool = false,
+        sellSeparately: Bool = true
+    ) -> CourseLesson {
+        CourseLesson(
+            id: id,
             title: "Paid",
             duration: nil,
             order: 1,
-            price: 1,
+            price: price,
             videoUrl: nil,
             youtubeUrl: nil,
             thumbnailUrl: nil,
-            isFreePreview: false,
-            sellSeparately: true
+            isFreePreview: isFreePreview,
+            sellSeparately: sellSeparately
         )
-        let profile = makeProfile(purchasedLessonIds: ["course-paid:lesson-paid"])
-
-        XCTAssertFalse(CourseAccessPolicy.canAccess(lesson: lesson, in: course, profile: profile))
     }
 
     func testFreePreviewLessonIsAccessibleWhenCourseIsLocked() {

@@ -6,6 +6,7 @@ enum CoursePurchaseStatus: Equatable, Codable {
     case insufficientCredits
     case priceChanged
     case courseUnavailable
+    case lessonUnavailable
     case profileUnavailable
     case notAuthenticated
     case unknown(String)
@@ -18,6 +19,7 @@ enum CoursePurchaseStatus: Equatable, Codable {
         case "insufficient_credits": self = .insufficientCredits
         case "price_changed": self = .priceChanged
         case "course_unavailable": self = .courseUnavailable
+        case "lesson_unavailable": self = .lessonUnavailable
         case "profile_unavailable": self = .profileUnavailable
         case "not_authenticated": self = .notAuthenticated
         default: self = .unknown(value)
@@ -32,12 +34,50 @@ enum CoursePurchaseStatus: Equatable, Codable {
         case .insufficientCredits: value = "insufficient_credits"
         case .priceChanged: value = "price_changed"
         case .courseUnavailable: value = "course_unavailable"
+        case .lessonUnavailable: value = "lesson_unavailable"
         case .profileUnavailable: value = "profile_unavailable"
         case .notAuthenticated: value = "not_authenticated"
         case .unknown(let rawValue): value = rawValue
         }
         var container = encoder.singleValueContainer()
         try container.encode(value)
+    }
+}
+
+/// Result of `purchase_lesson`, the server-priced flow that sells one lesson
+/// without the rest of the course. `lessonKey` is the entitlement the server
+/// appended to `purchased_lesson_ids`; the client must never build it itself.
+struct LessonPurchaseResponse: Codable, Equatable {
+    let status: CoursePurchaseStatus
+    let courseId: String
+    let lessonId: String
+    let lessonKey: String
+    let creditsRemaining: Int?
+    let lessonPrice: Int?
+    let chargedAmount: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case courseId = "course_id"
+        case lessonId = "lesson_id"
+        case lessonKey = "lesson_key"
+        case creditsRemaining = "credits_remaining"
+        case lessonPrice = "lesson_price"
+        case chargedAmount = "charged_amount"
+    }
+
+    /// Ownership counts only when the server also returned the key it stored,
+    /// so a malformed success can never unlock a lesson locally.
+    var grantsOwnership: Bool {
+        guard status == .purchased || status == .alreadyOwned else { return false }
+        return !lessonKey.isEmpty
+    }
+
+    func reconciledExpectedPrice(currentPrice: Int) -> Int {
+        guard status == .priceChanged, let lessonPrice else {
+            return max(currentPrice, 0)
+        }
+        return max(lessonPrice, 0)
     }
 }
 
@@ -73,6 +113,7 @@ struct CoursePurchaseResponse: Codable, Equatable {
 
 enum CoursePurchaseServiceError: LocalizedError, Equatable {
     case invalidCourseId
+    case invalidLessonId
     case missingAccessToken
     case transport(String)
     case http(statusCode: Int, message: String)
@@ -82,6 +123,8 @@ enum CoursePurchaseServiceError: LocalizedError, Equatable {
         switch self {
         case .invalidCourseId:
             return "Некорректный идентификатор курса."
+        case .invalidLessonId:
+            return "Некорректный идентификатор урока."
         case .missingAccessToken:
             return "Войдите в аккаунт, чтобы купить курс."
         case .transport:
@@ -128,17 +171,6 @@ final class CoursePurchaseService: ObservableObject {
             throw record(.missingAccessToken)
         }
 
-        isPurchasing = true
-        error = nil
-        defer { isPurchasing = false }
-
-        let url = baseURL.appendingPathComponent("rest/v1/rpc/purchase_course")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
         struct PurchaseRequest: Encodable {
             let pCourseId: String
             let pExpectedPrice: Int
@@ -148,12 +180,82 @@ final class CoursePurchaseService: ObservableObject {
                 case pExpectedPrice = "p_expected_price"
             }
         }
-        request.httpBody = try JSONEncoder().encode(
-            PurchaseRequest(
+
+        return try await callPurchaseRPC(
+            named: "purchase_course",
+            body: PurchaseRequest(
                 pCourseId: trimmedCourseId,
                 pExpectedPrice: max(expectedPrice, 0)
-            )
+            ),
+            accessToken: accessToken,
+            refreshAccessToken: refreshAccessToken
         )
+    }
+
+    /// Buys a single lesson. The server owns the price and refuses previews,
+    /// unpriced lessons and lessons the author did not mark as sold separately,
+    /// so the caller only has to confirm the amount it displayed.
+    func purchaseLesson(
+        courseId: String,
+        lessonId: String,
+        expectedPrice: Int,
+        accessToken: String,
+        refreshAccessToken: (() async -> String?)? = nil
+    ) async throws -> LessonPurchaseResponse {
+        let trimmedCourseId = courseId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard UUID(uuidString: trimmedCourseId) != nil else {
+            throw record(.invalidCourseId)
+        }
+        let trimmedLessonId = lessonId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedLessonId.isEmpty, trimmedLessonId.count <= 256 else {
+            throw record(.invalidLessonId)
+        }
+        guard !accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw record(.missingAccessToken)
+        }
+
+        struct LessonRequest: Encodable {
+            let pCourseId: String
+            let pLessonId: String
+            let pExpectedPrice: Int
+
+            enum CodingKeys: String, CodingKey {
+                case pCourseId = "p_course_id"
+                case pLessonId = "p_lesson_id"
+                case pExpectedPrice = "p_expected_price"
+            }
+        }
+
+        return try await callPurchaseRPC(
+            named: "purchase_lesson",
+            body: LessonRequest(
+                pCourseId: trimmedCourseId,
+                pLessonId: trimmedLessonId,
+                pExpectedPrice: max(expectedPrice, 0)
+            ),
+            accessToken: accessToken,
+            refreshAccessToken: refreshAccessToken
+        )
+    }
+
+    private func callPurchaseRPC<Body: Encodable, Result: Decodable>(
+        named rpc: String,
+        body: Body,
+        accessToken: String,
+        refreshAccessToken: (() async -> String?)?
+    ) async throws -> Result {
+        isPurchasing = true
+        error = nil
+        defer { isPurchasing = false }
+
+        let url = baseURL.appendingPathComponent("rest/v1/rpc/\(rpc)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try JSONEncoder().encode(body)
 
         var didRetryUnauthorized = false
 
@@ -192,11 +294,11 @@ final class CoursePurchaseService: ObservableObject {
             }
 
             do {
-                return try JSONDecoder().decode(CoursePurchaseResponse.self, from: data)
+                return try JSONDecoder().decode(Result.self, from: data)
             } catch {
                 // Some PostgREST configurations wrap a scalar JSON result in a
                 // single-element array. Accept both forms without weakening types.
-                if let first = try? JSONDecoder().decode([CoursePurchaseResponse].self, from: data).first {
+                if let first = try? JSONDecoder().decode([Result].self, from: data).first {
                     return first
                 }
                 throw record(.invalidResponse)

@@ -889,6 +889,10 @@ struct CourseDetailView: View {
     @State private var showingPurchaseConfirmation = false
     @State private var purchaseNotice: CoursePurchaseNotice?
     @State private var serverConfirmedPrice: Int?
+    @State private var lessonToBuy: CourseLesson?
+    /// Prices the server corrected mid-flight, keyed by lesson id, so the next
+    /// confirmation shows the amount that will actually be charged.
+    @State private var serverConfirmedLessonPrices: [String: Int] = [:]
 
     private var activeProfile: UserProfile? {
         guard let profile = currentUser.profile,
@@ -961,7 +965,8 @@ struct CourseDetailView: View {
                                 in: course,
                                 profile: activeProfile
                             ),
-                            requestUnlock: requestUnlock
+                            separatePrice: separatePrice(for: lesson),
+                            requestUnlock: { requestUnlock(lesson: lesson) }
                         )
                     }
                 }
@@ -988,6 +993,25 @@ struct CourseDetailView: View {
         } message: {
             Text("Баланс: \(formattedCredits) кредитов. Списание и выдача доступа выполняются одной операцией.")
         }
+        .confirmationDialog(
+            "Купить только этот урок?",
+            isPresented: Binding(
+                get: { lessonToBuy != nil },
+                set: { if !$0 { lessonToBuy = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let lesson = lessonToBuy {
+                Button("Купить за \(lessonPrice(for: lesson).formatted()) кредитов") {
+                    Task { await completeLessonPurchase(lesson) }
+                }
+            }
+            Button("Отмена", role: .cancel) { lessonToBuy = nil }
+        } message: {
+            if let lesson = lessonToBuy {
+                Text("\(lesson.title)\nБаланс: \(formattedCredits) кредитов. Откроется только этот урок, остальной курс останется закрытым.")
+            }
+        }
         .alert(item: $purchaseNotice) { notice in
             notice.makeAlert(openTopUp: openPaywall)
         }
@@ -999,7 +1023,7 @@ struct CourseDetailView: View {
     private var formattedCredits: String { availableCredits.formatted() }
 
     private var purchaseButton: some View {
-        Button(action: requestUnlock) {
+        Button(action: { requestUnlock() }) {
             HStack(spacing: 12) {
                 if purchaseService.isPurchasing {
                     ProgressView()
@@ -1028,13 +1052,38 @@ struct CourseDetailView: View {
         .accessibilityHint("Открывает подтверждение покупки этого курса за кредиты")
     }
 
+    /// Price of a lesson that may be bought on its own, or nil when it only
+    /// unlocks with the whole course. Already-owned lessons show no price.
+    private func separatePrice(for lesson: CourseLesson) -> Int? {
+        guard !hasFullAccess,
+              CourseAccessPolicy.isSoldSeparately(lesson),
+              !CourseAccessPolicy.hasPurchasedLesson(lesson, in: course, profile: activeProfile)
+        else { return nil }
+        return lessonPrice(for: lesson)
+    }
+
+    private func lessonPrice(for lesson: CourseLesson) -> Int {
+        max(serverConfirmedLessonPrices[lesson.id] ?? lesson.price ?? 0, 0)
+    }
+
     private func requestUnlock() {
+        requestUnlock(lesson: nil)
+    }
+
+    /// A locked lesson that the author sells on its own offers exactly that
+    /// lesson; anything else falls back to buying the course.
+    private func requestUnlock(lesson: CourseLesson?) {
         guard auth.isAuthenticated else {
             purchaseNotice = CoursePurchaseNotice(
                 title: "Нужен вход",
                 message: "Войдите в Xfive marketing, чтобы купить курс.",
                 offersTopUp: false
             )
+            return
+        }
+
+        if let lesson, separatePrice(for: lesson) != nil {
+            lessonToBuy = lesson
             return
         }
 
@@ -1086,6 +1135,103 @@ struct CourseDetailView: View {
                 purchaseNotice = CoursePurchaseNotice(
                     title: "Цена изменилась",
                     message: "Списание не выполнялось. Новая цена — \(latestPrice.formatted()) кредитов. Нажмите купить ещё раз и подтвердите новую цену.",
+                    offersTopUp: false
+                )
+            case .courseUnavailable, .lessonUnavailable:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Курс недоступен",
+                    message: "Обновите список курсов и попробуйте позже.",
+                    offersTopUp: false
+                )
+            case .profileUnavailable:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Профиль не готов",
+                    message: "Перезапустите приложение или войдите снова.",
+                    offersTopUp: false
+                )
+            case .notAuthenticated:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Нужен вход",
+                    message: "Войдите снова и повторите покупку.",
+                    offersTopUp: false
+                )
+            case .unknown(let status):
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Покупка не завершена",
+                    message: "Сервер вернул статус: \(status).",
+                    offersTopUp: false
+                )
+            }
+
+            if response.grantsOwnership,
+               let userId = auth.userId,
+               let refreshedToken = await auth.freshAccessToken() {
+                await currentUser.load(userId: userId, accessToken: refreshedToken)
+            }
+        } catch {
+            purchaseNotice = CoursePurchaseNotice(
+                title: "Покупка не выполнена",
+                message: purchaseService.error ?? error.localizedDescription,
+                offersTopUp: false
+            )
+        }
+    }
+
+    @MainActor
+    private func completeLessonPurchase(_ lesson: CourseLesson) async {
+        lessonToBuy = nil
+        let confirmedPrice = lessonPrice(for: lesson)
+
+        guard let token = await auth.freshAccessToken() else {
+            purchaseNotice = CoursePurchaseNotice(
+                title: "Сессия истекла",
+                message: "Войдите снова и повторите покупку.",
+                offersTopUp: false
+            )
+            return
+        }
+
+        do {
+            let response = try await purchaseService.purchaseLesson(
+                courseId: course.id,
+                lessonId: lesson.id,
+                expectedPrice: confirmedPrice,
+                accessToken: token,
+                refreshAccessToken: { await auth.freshAccessToken() }
+            )
+            currentUser.applyLessonPurchase(response)
+
+            switch response.status {
+            case .purchased:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Урок куплен",
+                    message: "«\(lesson.title)» открыт. Остальные уроки курса остались закрытыми.",
+                    offersTopUp: false
+                )
+            case .alreadyOwned:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Урок уже доступен",
+                    message: "Повторного списания не было.",
+                    offersTopUp: false
+                )
+            case .insufficientCredits:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Недостаточно кредитов",
+                    message: "Баланс изменился. Пополните его и повторите покупку.",
+                    offersTopUp: true
+                )
+            case .priceChanged:
+                let latestPrice = response.reconciledExpectedPrice(currentPrice: confirmedPrice)
+                serverConfirmedLessonPrices[lesson.id] = latestPrice
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Цена изменилась",
+                    message: "Списание не выполнялось. Новая цена — \(latestPrice.formatted()) кредитов. Нажмите на урок ещё раз и подтвердите новую цену.",
+                    offersTopUp: false
+                )
+            case .lessonUnavailable:
+                purchaseNotice = CoursePurchaseNotice(
+                    title: "Урок нельзя купить отдельно",
+                    message: "Автор больше не продаёт его отдельно. Доступ открывается покупкой всего курса.",
                     offersTopUp: false
                 )
             case .courseUnavailable:
@@ -1339,6 +1485,9 @@ private struct LockedSoonLessonRow: View {
 private struct LessonRow: View {
     let lesson: CourseLesson
     let canPlay: Bool
+    /// Price to show when this single lesson can be bought on its own. Nil when
+    /// the lesson only comes with the whole course.
+    var separatePrice: Int? = nil
     let requestUnlock: () -> Void
     @EnvironmentObject private var loc: LocalizationService
 
@@ -1373,6 +1522,15 @@ private struct LessonRow: View {
                             .font(.system(size: 9, weight: .heavy))
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(X5Style.blue.opacity(0.18))
+                            .foregroundColor(.accentColor)
+                            .clipShape(Capsule())
+                    }
+                    if let separatePrice {
+                        Text(loc.t("courses_lesson_price_badge")
+                            .replacingOccurrences(of: "{price}", with: separatePrice.formatted()))
+                            .font(.system(size: 9, weight: .heavy))
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.accentColor.opacity(0.18))
                             .foregroundColor(.accentColor)
                             .clipShape(Capsule())
                     }

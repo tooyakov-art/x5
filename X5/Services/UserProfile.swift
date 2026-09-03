@@ -233,6 +233,25 @@ final class CurrentUser: ObservableObject {
         self.profile = profile
     }
 
+    /// Applies the result of the atomic single-lesson RPC. Only the key the
+    /// server reported storing is trusted, so a malformed success can never
+    /// unlock a lesson the database did not actually grant.
+    func applyLessonPurchase(_ response: LessonPurchaseResponse) {
+        guard var profile else { return }
+
+        if let credits = response.creditsRemaining {
+            profile.credits = credits
+        }
+        if response.grantsOwnership {
+            var purchased = profile.purchasedLessonIds ?? []
+            if !purchased.contains(response.lessonKey) {
+                purchased.append(response.lessonKey)
+            }
+            profile.purchasedLessonIds = purchased
+        }
+        self.profile = profile
+    }
+
     deinit {
         if let observer { NotificationCenter.default.removeObserver(observer) }
     }
