@@ -15,3 +15,4 @@ Production purchases require Apple's signed transaction verification.
 
 Mainland China remains excluded from availability. Existing privacy disclosures,
 AI capabilities, account deletion and portfolio moderation are unchanged.
+Portfolio moderation uses OpenAI as disclosed in the privacy policy.

@@ -8,8 +8,8 @@ import time
 from typing import Protocol
 
 
-EXPECTED_VERSION = "1.1.8"
-EXPECTED_BUILD = "238"
+EXPECTED_VERSION = "1.1.9"
+EXPECTED_BUILD = "239"
 TARGET_RELEASE_TYPE = "AFTER_APPROVAL"
 SAFE_APP_STORE_STATES = frozenset(
     {
