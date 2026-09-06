@@ -1,73 +1,17 @@
-Xfive marketing is a creator workspace and marketplace. Version 1.1.8 build 238
-uses the exact customer-facing name and retains the reviewed feature set.
+Xfive marketing. Version 1.1.9 build 239.
+This update validates the selected StoreKit product before reporting purchase
+success and clarifies credit confirmation messages. It retains the reviewed
+1.1.8 feature set; no Kaspi, external checkout, or paid-lesson feature is added.
 
-Mainland China distribution update (August 30, 2026):
-We removed Mainland China from App Availability. The app is now unavailable in
-the CHN storefront, so its OpenAI-powered features are not distributed there.
-All other storefront availability is unchanged.
+Profile -> Store offers repeatable consumable packs of 1000, 2000 and 5000
+credits. Verified badge is a separate auto-renewable monthly subscription.
+Prices are loaded from StoreKit. Cancelled, pending or unverified purchases
+do not show success. Server verification and exact-once delivery remain in place.
 
-Build 238 removes the payment-method chooser and all alternate checkout code.
-Digital credit packs are sold exclusively through StoreKit and the App Store.
-The iOS binary has no external payment link, Kaspi checkout, bank-card checkout,
-or reviewer-specific payment behavior.
+Use the supplied appreview@x5studio.app demo credentials. The review account
+has a capped isolated Sandbox allowance to exercise the purchase flow.
+Ordinary TestFlight accounts cannot receive spendable credits from Sandbox.
+Production purchases require Apple's signed transaction verification.
 
-This build has no placeholder, fake-progress or "In Development" AI cards.
-Home, Search and AI Studio keep every creative workflow visible, including
-image generation, editing, product cards, YouTube covers and PNG logos. Each
-screen shows the authenticated server capability status. A temporary provider
-failure blocks only the Generate action, explains the reason and cannot charge
-the user; it never removes the tool or reports a false success.
-
-Demo account:
-Use the Apple Demo Account credentials for appreview@x5studio.app.
-
-Quick test:
-1. Sign in, then open Home -> All AI Tools. Every card opens its complete flow;
-   provider status and any temporary service error are shown inside the flow.
-2. AI Voice: enter a short Russian, Kazakh or English text, choose a MiniMax
-   voice, generate, play and share the resulting private MP3.
-3. AI Video: enter a safe prompt, keep Seedance 2.0 Fast, select 5 seconds and
-   720p, then generate. The private MP4 can be played, shared or saved to Photos.
-4. Cinema Studio uses scene, style, camera and light inputs. VFX animates an
-   uploaded photo. Both use the same verified Seedance route.
-5. Live Products: complete the fields, create/edit the three-scene storyboard,
-   then generate its reference and video.
-6. Startup Chat: ask a business question.
-7. Hub: browse specialists and tasks by country, city and profession.
-8. CourseUP: open a course, author profile and lesson. Paid courses can be
-   purchased. Only two authorized accounts can manage courses.
-9. Portfolio/Profile: add a photo or video. Automatic moderation keeps pending
-   or rejected media private.
-10. Chats: send text/photo/voice; report or block another user.
-11. Profile -> Store: buy a one-time 1,000/2,000/5,000-credit pack. Get
-   verified opens a separate monthly subscription.
-12. Settings: change language or delete the account.
-
-AI processing and safety:
-- MiniMax Speech creates requested voiceovers and stores MP3 results privately.
-- BytePlus ModelArk Seedance creates requested videos; results are copied to
-  private storage and delivered with short-lived signed URLs.
-- OpenAI powers Startup Chat, Live Products storyboards and automatic safety
-  moderation. Unsafe requests fail before credits are reserved.
-- The app does not use third-party advertising trackers.
-
-In-app purchases:
-- com.x5studio.app.credits.1000 / .2000 / .5000 are consumables.
-- com.x5studio.app.verified.monthly is an auto-renewable subscription.
-Credit packs are delivered exactly once from Apple's signed transaction. The
-verified badge is separate and does not include credits.
-Production credits require a server-verified signed Production transaction.
-TestFlight Sandbox never charges real money and grants ordinary testers no
-spendable credits. Only the capped App Review demo account can test delivery.
-
-UGC safety:
-Chat users, Hub users and task authors can be reported; chat users can be
-blocked. Account deletion is available in Settings.
-
-Permissions:
-Photos: course media, avatars, portfolio, chats, AI references and saving
-generated media. Microphone: chat voice messages. APNs: notifications.
-
-Privacy: https://tooyakov-art.github.io/x5site/privacy.html
-Terms: https://tooyakov-art.github.io/x5site/terms.html
-Support: support@x5studio.app
+Mainland China remains excluded from availability. Existing privacy disclosures,
+AI capabilities, account deletion and portfolio moderation are unchanged.

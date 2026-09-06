@@ -50,11 +50,11 @@ class ReleaseVersionSourceTests(unittest.TestCase):
             r'APP_VERSION\s*=\s*"([^"]+)"', fastfile
         ).group(1)
 
-        self.assertEqual(marketing_version, "1.1.8")
-        self.assertEqual(runtime_build_number, "238")
+        self.assertEqual(marketing_version, "1.1.9")
+        self.assertEqual(runtime_build_number, "239")
         self.assertEqual(fastlane_version, marketing_version)
         self.assertIn(
-            f"Version {marketing_version} build 238",
+            f"Version {marketing_version} build 239",
             review_notes,
         )
         self.assertIn(
@@ -62,7 +62,7 @@ class ReleaseVersionSourceTests(unittest.TestCase):
             submit_workflow,
         )
         self.assertIn(
-            'EXPECTED_BUILD: "238"',
+            'EXPECTED_BUILD: "239"',
             submit_workflow,
         )
         self.assertIn(
@@ -70,7 +70,7 @@ class ReleaseVersionSourceTests(unittest.TestCase):
             prepare_workflow,
         )
         self.assertIn(
-            'BUILD_NUMBER: "238"',
+            'BUILD_NUMBER: "239"',
             prepare_workflow,
         )
 

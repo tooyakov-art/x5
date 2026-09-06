@@ -2,6 +2,15 @@ import XCTest
 @testable import X5
 
 final class IAPCreditStoreTests: XCTestCase {
+    func testPurchaseConfirmationRequiresTheSelectedProduct() {
+        XCTAssertTrue(IAPCreditPurchaseConfirmation.matchesSelectedProduct(
+            selected: "credits.1000", returned: "credits.1000"))
+        XCTAssertFalse(IAPCreditPurchaseConfirmation.matchesSelectedProduct(
+            selected: "credits.1000", returned: "credits.5000"))
+        XCTAssertFalse(IAPCreditPurchaseConfirmation.matchesSelectedProduct(
+            selected: "credits.1000", returned: IAPService.verifiedMonthlyProductID))
+    }
+
     func testVisibleStoreContainsExactlyThreeOrderedConsumablePacks() {
         XCTAssertEqual(
             IAPProductCatalog.visibleCreditPacks.map(\.productID),

@@ -81,6 +81,10 @@ final class IAPTransactionLifecycleCoordinator {
 }
 
 enum IAPCreditPurchaseConfirmation {
+    static func matchesSelectedProduct(selected: String, returned: String) -> Bool {
+        selected == returned
+    }
+
     static func messageKey(profileReloadSucceeded: Bool) -> String {
         profileReloadSucceeded
             ? "credit_store_success_message"
@@ -410,6 +414,17 @@ final class IAPService: ObservableObject {
             switch result {
             case .success(let verification):
                 if case .verified(let transaction) = verification {
+                    guard IAPCreditPurchaseConfirmation.matchesSelectedProduct(
+                        selected: productID, returned: transaction.productID
+                    ) else {
+                        // Leave delivery to the transaction listener; never report
+                        // the selected pack as purchased for a different product.
+                        lastError = LocalizationService.shared.t("iap_purchase_unverified")
+                        DiagnosticLogger.log(event: "iap_product_mismatch", extra: [
+                            "selected": productID, "returned": transaction.productID
+                        ])
+                        return false
+                    }
                     let applyResult = await deliverVerifiedTransaction(
                         transaction: transaction,
                         signedTransaction: verification.jwsRepresentation,
