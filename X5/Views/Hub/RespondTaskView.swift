@@ -67,6 +67,7 @@ struct RespondTaskView: View {
     }
 
     private func submit() async {
+        chats.configureAccessTokenProvider(auth: auth)
         guard let uid = auth.userId, let token = auth.accessToken else { return }
         saving = true
         defer { saving = false }

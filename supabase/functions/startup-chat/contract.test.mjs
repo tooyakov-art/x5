@@ -199,7 +199,7 @@ test("builds a server-owned startup advisor request", () => {
   );
 
   assert.equal(request.model, "gpt-5.6-sol");
-  assert.match(request.instructions, /X five marketing/);
+  assert.match(request.instructions, /Xfive marketing/);
   assert.match(request.instructions, /стартап/i);
   assert.equal(request.input[0].role, "user");
   assert.equal(request.input[0].content, "Проверь идею доставки обедов");

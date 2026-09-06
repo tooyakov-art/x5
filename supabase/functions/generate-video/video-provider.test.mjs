@@ -3,12 +3,13 @@ import test from "node:test";
 
 import { selectVideoProvider } from "./video-provider.mjs";
 
-test("an explicit Seedance request requires fal even when fallback keys exist", () => {
+test("an explicit Seedance request requires official BytePlus", () => {
   assert.throws(
     () =>
       selectVideoProvider({
-        model: "seedance-1.5-pro",
-        falKey: "",
+        model: "seedance-2.0-fast",
+        bytePlusKey: "",
+        falKey: "fal-server-key",
         googleKey: "google-server-key",
         openAIKey: "openai-server-key",
       }),
@@ -16,13 +17,14 @@ test("an explicit Seedance request requires fal even when fallback keys exist", 
   );
 
   const selected = selectVideoProvider({
-    model: "seedance-1.5-pro",
+    model: "seedance-2.0-fast",
+    bytePlusKey: "ark-server-key",
     falKey: "fal-server-key",
     googleKey: "google-server-key",
     openAIKey: "openai-server-key",
   });
-  assert.equal(selected.name, "fal");
-  assert.equal(selected.requestedModel, "seedance-1.5-pro");
+  assert.equal(selected.name, "byteplus");
+  assert.equal(selected.requestedModel, "seedance-2.0-fast");
 });
 
 test("automatic model selection keeps the existing provider order", () => {

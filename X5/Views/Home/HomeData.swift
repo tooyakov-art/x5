@@ -216,6 +216,311 @@ struct ImageGenerationCategory: Identifiable, Hashable {
     let gradientEnd: Color
 }
 
+struct YouTubeThumbnailMode: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let summary: String
+    let icon: String
+    let promptGuidance: String
+    let examples: [String]
+    let isRecommended: Bool
+
+    static let all: [YouTubeThumbnailMode] = [
+        .init(
+            id: "entertainment",
+            title: "Развлекательная",
+            summary: "Эмоция, движение и яркий контраст.",
+            icon: "theatermasks.fill",
+            promptGuidance: "Динамичная развлекательная подача: сильная эмоция, живой сюжет, яркие контрастные цвета и крупный визуальный акцент.",
+            examples: [
+                "Проверил 10 вирусных лайфхаков — работают ли они на самом деле?",
+                "24 часа живу только по советам подписчиков",
+                "Кто последний выйдет из комнаты — заберёт приз",
+                "Самый странный день моей жизни"
+            ],
+            isRecommended: true
+        ),
+        .init(
+            id: "serious",
+            title: "Серьёзная",
+            summary: "Сдержанно, убедительно и без визуального шума.",
+            icon: "building.columns.fill",
+            promptGuidance: "Серьёзная авторитетная подача: чистая композиция, спокойные глубокие цвета, уверенный герой или предмет, минимум декоративного шума.",
+            examples: [
+                "Почему рынок жилья меняется и что делать покупателю",
+                "Куда движется экономика Казахстана в 2026 году",
+                "Разбор главных ошибок при запуске бизнеса",
+                "Что на самом деле происходит с ценами"
+            ],
+            isRecommended: false
+        ),
+        .init(
+            id: "expert",
+            title: "Экспертная",
+            summary: "Знания, польза и доверие к автору.",
+            icon: "graduationcap.fill",
+            promptGuidance: "Экспертная образовательная подача: компетентный герой, понятный предмет разговора, визуальные намёки на анализ, схему или результат.",
+            examples: [
+                "5 ошибок в рекламе, которые съедают бюджет",
+                "Как настроить продажи без постоянных скидок",
+                "Пошаговый разбор успешного запуска",
+                "Как экспертно упаковать личный бренд"
+            ],
+            isRecommended: true
+        ),
+        .init(
+            id: "news",
+            title: "Новостная",
+            summary: "Актуальность и ощущение важного события.",
+            icon: "newspaper.fill",
+            promptGuidance: "Новостная подача: ощущение актуального события, чёткая иерархия, редакционная композиция и сильный информационный акцент без ложной срочности.",
+            examples: [
+                "Главные новости недели за 10 минут",
+                "Новый закон: что изменится для бизнеса",
+                "Большое обновление YouTube — полный разбор",
+                "Что произошло на рынке сегодня"
+            ],
+            isRecommended: false
+        ),
+        .init(
+            id: "provocative",
+            title: "Провокационная",
+            summary: "Контраст и интрига без обмана зрителя.",
+            icon: "bolt.fill",
+            promptGuidance: "Провокационная, но честная подача: визуальный конфликт, неожиданный контраст и интрига без ложных обещаний, шокирующих манипуляций и вводящего в заблуждение кликбейта.",
+            examples: [
+                "Почему большинство советов по продвижению не работают",
+                "Я перестал делать это — результаты удивили",
+                "Вам лгут о быстром успехе",
+                "Главная ошибка, о которой все молчат"
+            ],
+            isRecommended: false
+        ),
+        .init(
+            id: "minimal",
+            title: "Минималистичная",
+            summary: "Один герой, короткий текст и много воздуха.",
+            icon: "circle.lefthalf.filled",
+            promptGuidance: "Минималистичная подача: один главный объект или человек, короткий заголовок, много свободного пространства, точный свет и премиальная типографика.",
+            examples: [
+                "Одна привычка изменила всё",
+                "До и после: честный результат",
+                "Как начать с нуля",
+                "Главный урок года"
+            ],
+            isRecommended: false
+        ),
+        .init(
+            id: "interview",
+            title: "Интервью",
+            summary: "Сильный герой, цитата и ощущение живого разговора.",
+            icon: "mic.fill",
+            promptGuidance: "Интервью-подача: крупный выразительный портрет гостя, студийный свет, короткая сильная цитата и визуальное ощущение честного разговора.",
+            examples: [
+                "Как я построил бизнес с нуля — честный разговор",
+                "Что остаётся за кадром большого успеха",
+                "Предприниматель отвечает на неудобные вопросы",
+                "История человека, который изменил индустрию"
+            ],
+            isRecommended: true
+        ),
+        .init(
+            id: "review",
+            title: "Обзор",
+            summary: "Продукт крупно, ясная оценка и заметная деталь.",
+            icon: "star.fill",
+            promptGuidance: "Обзорная подача: продукт или предмет крупным планом, наглядная ключевая особенность, честная оценка и чистая технологичная композиция.",
+            examples: [
+                "Честный обзор нового MacBook после месяца использования",
+                "Стоит ли покупать этот смартфон в 2026 году",
+                "Тестируем бюджетную камеру в реальных условиях",
+                "Лучший микрофон для видео — подробный обзор"
+            ],
+            isRecommended: true
+        ),
+        .init(
+            id: "comparison",
+            title: "Сравнение",
+            summary: "Два варианта, визуальный конфликт и понятный выбор.",
+            icon: "arrow.left.arrow.right",
+            promptGuidance: "Сравнительная подача: два конкурирующих объекта или подхода по разные стороны кадра, понятный контраст и визуальный вопрос выбора.",
+            examples: [
+                "iPhone против Android: что лучше в 2026 году",
+                "Дорогая реклама против дешёвой — где результат",
+                "Новичок и эксперт: чем отличается их подход",
+                "Снимаем на телефон и камеру — заметна ли разница"
+            ],
+            isRecommended: false
+        ),
+        .init(
+            id: "story",
+            title: "История",
+            summary: "Драма, поворот и эмоциональный путь героя.",
+            icon: "book.closed.fill",
+            promptGuidance: "Сюжетная подача: герой в эмоциональном моменте, ощущение пути или переломного события, кинематографичный свет и интригующий заголовок.",
+            examples: [
+                "Как я потерял всё и начал заново",
+                "Один звонок полностью изменил мою жизнь",
+                "Путь от первой ошибки до большого результата",
+                "Почему я ушёл из стабильной работы"
+            ],
+            isRecommended: false
+        )
+    ]
+}
+
+enum YouTubeThumbnailBriefBuilder {
+    static func compose(
+        topic: String,
+        mode: YouTubeThumbnailMode,
+        hasHeroPhoto: Bool,
+        referenceCount: Int
+    ) -> String {
+        let cleanTopic = topic.trimmingCharacters(in: .whitespacesAndNewlines)
+        var parts = [
+            "Создай профессиональную кликабельную обложку YouTube строго в формате 16:9.",
+            "Тема ролика: \(cleanTopic)",
+            "Режим: \(mode.title). \(mode.promptGuidance)",
+            "Самостоятельно предложи короткий читаемый заголовок на русском из 2-5 слов. Заголовок должен поддерживать тему ролика и не обещать того, чего нет в описании.",
+            "Главный объект, лицо или продукт должны хорошо читаться на маленьком превью. Сохрани безопасные отступы, высокий контраст и цельную композицию. Не добавляй интерфейс YouTube, логотип YouTube, водяные знаки или мелкий текст."
+        ]
+        var imageIndex = 1
+        if hasHeroPhoto {
+            parts.append("Изображение 1 — основное фото героя. Сохрани узнаваемые черты, эмоцию и естественную внешность человека.")
+            imageIndex += 1
+        }
+        if referenceCount > 0 {
+            let range = referenceCount == 1
+                ? "Изображение \(imageIndex) — референс желаемого оформления."
+                : "Изображения \(imageIndex)-\(imageIndex + referenceCount - 1) — референсы желаемого оформления."
+            parts.append("\(range) Возьми из них композицию, цвет и визуальную динамику, но не копируй чужие логотипы или водяные знаки.")
+        }
+        return parts.joined(separator: "\n")
+    }
+}
+
+struct SalesAngle: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let summary: String
+    let examples: [String]
+    let isRecommended: Bool
+
+    static let all: [SalesAngle] = [
+        .init(
+            id: "pain",
+            title: "Через боль клиента",
+            summary: "Покажите проблему, которую человек хочет решить.",
+            examples: ["Надоело каждое утро рисовать брови?", "Устали искать клиентов?", "Замучили боли в спине?"],
+            isRecommended: true
+        ),
+        .init(
+            id: "desired_result",
+            title: "Через желаемый результат",
+            summary: "Покажите конечный результат, ради которого покупают товар или услугу.",
+            examples: ["Просыпайтесь красивой каждый день.", "Получите первых клиентов уже через месяц.", "Дом, которым будете гордиться."],
+            isRecommended: true
+        ),
+        .init(
+            id: "benefit",
+            title: "Через выгоду",
+            summary: "Сразу объясните, что именно получает клиент.",
+            examples: ["До конца месяца скидка 30%.", "Обучение и материалы уже включены.", "Бесплатная доставка."],
+            isRecommended: true
+        ),
+        .init(
+            id: "scarcity",
+            title: "Через ограниченность",
+            summary: "Покажите, что предложение ограничено по времени или количеству.",
+            examples: ["Осталось всего 5 мест.", "Цена действует до конца недели.", "Только для первых 20 клиентов."],
+            isRecommended: true
+        ),
+        .init(
+            id: "expertise",
+            title: "Через экспертность и доверие",
+            summary: "Объясните, почему клиент может доверять именно вам.",
+            examples: ["17 лет опыта.", "Более 2 000 довольных клиентов.", "Сертифицированный преподаватель."],
+            isRecommended: true
+        ),
+        .init(
+            id: "transformation",
+            title: "Через трансформацию",
+            summary: "Покажите понятное изменение до и после.",
+            examples: ["Из офисного сотрудника в мастера с высоким доходом.", "До и после процедуры.", "До рекламы и после запуска."],
+            isRecommended: true
+        ),
+        .init(
+            id: "social_proof",
+            title: "Через социальное доказательство",
+            summary: "Используйте отзывы, оценки и количество клиентов.",
+            examples: ["Более 1 500 клиентов.", "Нас рекомендуют знакомым.", "4,9 по отзывам."],
+            isRecommended: false
+        ),
+        .init(
+            id: "saving",
+            title: "Через экономию времени или денег",
+            summary: "Покажите, сколько времени или денег сэкономит клиент.",
+            examples: ["Экономьте час каждое утро.", "Перестаньте переплачивать.", "Один раз сделали и забыли."],
+            isRecommended: false
+        ),
+        .init(
+            id: "curiosity",
+            title: "Через любопытство",
+            summary: "Дайте причину остановиться и узнать больше.",
+            examples: ["Почему 9 из 10 девушек выбирают эту технику?", "Ошибка, которую совершают почти все.", "Секрет идеальных бровей."],
+            isRecommended: false
+        ),
+        .init(
+            id: "loss_aversion",
+            title: "Через страх потери",
+            summary: "Покажите, что человек может потерять, если отложит решение.",
+            examples: ["После окончания акции цена станет выше.", "Не откладывайте, пока есть свободные даты.", "Чем раньше начнете, тем быстрее получите результат."],
+            isRecommended: false
+        )
+    ]
+}
+
+enum SalesCreativeBriefBuilder {
+    static func compose(
+        description: String,
+        angle: SalesAngle,
+        hasMainPhoto: Bool,
+        hasLogo: Bool,
+        referenceCount: Int
+    ) -> String {
+        let cleanDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        var parts = [
+            "Создай профессиональный рекламный баннер или карточку товара на русском языке.",
+            "Товар или услуга: \(cleanDescription)",
+            "Угол продаж: \(angle.title). \(angle.summary)",
+            "Самостоятельно напиши короткий продающий заголовок, понятный оффер и только нужный текст. Не копируй примеры дословно, если они не подходят к описанию.",
+            "Сделай цельную профессиональную композицию. Текст должен быть частью дизайна, а не случайной надписью поверх изображения."
+        ]
+
+        var imageRoles: [String] = []
+        var imageIndex = 1
+        if hasMainPhoto {
+            imageRoles.append("изображение \(imageIndex) является основной фотографией товара или услуги")
+            imageIndex += 1
+        }
+        if hasLogo {
+            imageRoles.append("изображение \(imageIndex) является логотипом, сохрани его написание и размести аккуратно")
+            imageIndex += 1
+        }
+        if referenceCount > 0 {
+            let range = referenceCount == 1
+                ? "изображение \(imageIndex) является референсом стиля"
+                : "изображения \(imageIndex)-\(imageIndex + referenceCount - 1) являются референсами стиля"
+            imageRoles.append(range)
+        }
+        if !imageRoles.isEmpty {
+            parts.append("Роли загруженных материалов: \(imageRoles.joined(separator: "; ")).")
+        }
+
+        return parts.joined(separator: "\n")
+    }
+}
+
 enum ImageGenerationCatalog {
     static let creditCost: Int = 60
 
@@ -318,6 +623,42 @@ enum ImageGenerationCatalog {
             icon: "cube.box.fill",
             examplePrompt: "Концепт люксовой упаковки для крафтового шоколада, матовая черная коробка, серебряная этикетка, студийный рендер",
             gradientStart: Color(red: 0.52, green: 0.57, blue: 0.68).opacity(0.42),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "moodboard",
+            title: "Moodboard",
+            subtitle: "Единое визуальное направление",
+            icon: "rectangle.3.group.fill",
+            examplePrompt: "Мудборд премиального бренда: палитра, свет, материалы, типографика и примеры композиции",
+            gradientStart: Color.purple.opacity(0.40),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "edit_image",
+            title: "Редактор изображения",
+            subtitle: "Точное изменение загруженного фото",
+            icon: "wand.and.stars.inverse",
+            examplePrompt: "Уберите лишний объект, улучшите свет и сохраните лицо, товар и остальные детали без изменений",
+            gradientStart: X5Style.blue.opacity(0.42),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "content_pack",
+            title: "Контент-пак",
+            subtitle: "Пост, сторис и реклама в одном стиле",
+            icon: "square.stack.3d.up.fill",
+            examplePrompt: "Запуск нового продукта: единый оффер, фирменные цвета и согласованный стиль для трёх форматов",
+            gradientStart: Color(red: 0.36, green: 0.66, blue: 0.98).opacity(0.42),
+            gradientEnd: .black
+        ),
+        .init(
+            id: "ai_character",
+            title: "Персонаж AI",
+            subtitle: "Синтетический образ для инфлюенсера",
+            icon: "person.crop.square.filled.and.at.rectangle",
+            examplePrompt: "Оригинальный синтетический персонаж, реалистичный портрет, нейтральный фон, естественная анатомия",
+            gradientStart: Color(red: 0.58, green: 0.30, blue: 0.92).opacity(0.42),
             gradientEnd: .black
         )
     ]

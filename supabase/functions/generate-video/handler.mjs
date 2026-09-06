@@ -410,9 +410,10 @@ async function submitToProvider(
   claimToken,
   deps,
 ) {
-  const startImageUrl = provider.name === "fal" && inputObject
-    ? (await deps.signStartImage(inputObject))?.signedUrl || null
-    : null;
+  const startImageUrl =
+    ["fal", "byteplus"].includes(provider.name) && inputObject
+      ? (await deps.signStartImage(inputObject))?.signedUrl || null
+      : null;
   const submitted = await provider.adapter.submit({
     model: normalized.model,
     prompt: normalized.prompt,
@@ -606,7 +607,12 @@ async function loadOwnedJob(jobId, userId, deps, reconcile) {
   const signedResult = row.status === "completed" && row.result_object_path
     ? await deps.signResult(row.result_object_path).catch(() => null)
     : null;
-  return buildPublicVideoJob(row, signedResult);
+  const assetID = row.status === "completed" && row.result_object_path
+    ? await deps.assetForResult?.(row.result_object_path, userId)
+      .then((asset) => asset?.id || null)
+      .catch(() => null)
+    : null;
+  return buildPublicVideoJob(row, signedResult, assetID);
 }
 
 function createClaimToken() {

@@ -7,6 +7,7 @@ struct ProfileView: View {
     @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     var showsDoneButton: Bool = true
 
@@ -106,6 +107,13 @@ struct ProfileView: View {
             }
             .onAppear { showInHubToggle = currentUser.profile?.showInHub ?? false }
             .task(id: currentUser.profile?.id) {
+                await refreshFollowCounts()
+            }
+            // Cross-device follow changes do not emit this process's local
+            // notification. Refresh whenever the app returns to the foreground;
+            // SwiftUI cancels this task automatically when the view disappears.
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
                 await refreshFollowCounts()
             }
             .onReceive(
@@ -240,6 +248,8 @@ struct ProfileView: View {
             overviewSection
         case .works:
             worksSection
+        case .saved:
+            savedWorksSection
         }
     }
 
@@ -254,7 +264,7 @@ struct ProfileView: View {
                 becomeSpecialistCard
             }
             if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
-                specialistCard(cats: cats)
+                specialistCard(cats: HubCategories.orderedIDs(from: cats))
             }
             if !(currentUser.profile?.hasActiveVerifiedBadge ?? false) {
                 verifiedCard
@@ -266,6 +276,13 @@ struct ProfileView: View {
     private var worksSection: some View {
         if let uid = currentUser.profile?.id {
             PortfolioGrid(userId: uid, canEdit: true)
+        }
+    }
+
+    @ViewBuilder
+    private var savedWorksSection: some View {
+        if let uid = currentUser.profile?.id {
+            PortfolioGrid(userId: uid, canEdit: false, mode: .saved)
         }
     }
 
@@ -432,12 +449,11 @@ struct ProfileView: View {
         if let raw,
            !raw.isEmpty,
            raw != "User",
-           raw != "Xfive marketing",
-           raw != "X five marketing" {
+           raw.replacingOccurrences(of: " ", with: "").lowercased() != "xfivemarketing" {
             return raw
         }
         if let emailName = emailPrefix { return emailName }
-        return "X five marketing"
+        return "Xfive marketing"
     }
 
     private var handleText: String {
@@ -683,6 +699,7 @@ struct ProfileSocialLinksStrip: View {
 private enum ProfileSection: String, CaseIterable, Identifiable {
     case overview
     case works
+    case saved
 
     var id: String { rawValue }
 
@@ -691,6 +708,7 @@ private enum ProfileSection: String, CaseIterable, Identifiable {
         switch self {
         case .overview: return loc.t("profile_tab_overview")
         case .works: return loc.t("profile_tab_works")
+        case .saved: return "Сохранённые"
         }
     }
 }

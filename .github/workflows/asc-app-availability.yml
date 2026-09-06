@@ -1,0 +1,46 @@
+name: ASC app availability
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Audit availability or exclude Mainland China only"
+        required: true
+        type: choice
+        default: audit
+        options:
+          - audit
+          - exclude-china
+      confirmation:
+        description: "For exclude-china: EXCLUDE_CHN_KEEP_OTHER_TERRITORIES"
+        required: false
+        default: ""
+
+jobs:
+  availability:
+    runs-on: ubuntu-latest
+    environment: app-store-production
+    timeout-minutes: 10
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - run: python -m pip install --require-hashes -r .github/requirements/asc-requirements.lock
+
+      - name: Audit or update app availability
+        run: >-
+          python scripts/asc_app_availability.py
+          --action "${{ inputs.action }}"
+          --confirmation "${{ inputs.confirmation }}"

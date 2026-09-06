@@ -42,6 +42,14 @@ final class SupabaseClient {
     /// Hook for the Auth layer to persist refreshed tokens to UserDefaults.
     var onSessionRefreshed: ((SupabaseSession) -> Void)?
 
+    private struct RefreshFlight {
+        let id: UUID
+        let refreshToken: String
+        let sessionGeneration: UInt64
+        let task: Task<SupabaseSession, Error>
+    }
+    private var refreshFlight: RefreshFlight?
+
     init(
         session: URLSession = .shared,
         baseURL: URL = X5Config.supabaseBaseURL,
@@ -86,8 +94,8 @@ final class SupabaseClient {
         return try JSONDecoder().decode(SupabaseSession.self, from: data)
     }
 
-    func signInWithApple(identityToken: String) async throws -> SupabaseSession {
-        try await signInWithIdToken(provider: "apple", idToken: identityToken)
+    func signInWithApple(identityToken: String, nonce: String) async throws -> SupabaseSession {
+        try await signInWithIdToken(provider: "apple", idToken: identityToken, nonce: nonce)
     }
 
     /// Trades a Google idToken (from GIDSignIn iOS SDK) for a Supabase session.
@@ -96,7 +104,11 @@ final class SupabaseClient {
         try await signInWithIdToken(provider: "google", idToken: idToken)
     }
 
-    private func signInWithIdToken(provider: String, idToken: String) async throws -> SupabaseSession {
+    private func signInWithIdToken(
+        provider: String,
+        idToken: String,
+        nonce: String? = nil
+    ) async throws -> SupabaseSession {
         var components = URLComponents(
             url: baseURL.appendingPathComponent("auth/v1/token"),
             resolvingAgainstBaseURL: false
@@ -108,10 +120,11 @@ final class SupabaseClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
 
-        let body: [String: String] = [
+        var body: [String: String] = [
             "provider": provider,
             "id_token": idToken
         ]
+        if let nonce, !nonce.isEmpty { body["nonce"] = nonce }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await session.data(for: request)
@@ -136,6 +149,42 @@ final class SupabaseClient {
         }
         let expectedGeneration = sessionGeneration
 
+        if let flight = refreshFlight,
+           flight.refreshToken == refresh,
+           flight.sessionGeneration == expectedGeneration {
+            return try await flight.task.value
+        }
+
+        let flightID = UUID()
+        let task = Task<SupabaseSession, Error> { [weak self] in
+            guard let self else { throw SupabaseError.notAuthenticated }
+            return try await self.performRefresh(
+                refreshToken: refresh,
+                expectedGeneration: expectedGeneration
+            )
+        }
+        refreshFlight = RefreshFlight(
+            id: flightID,
+            refreshToken: refresh,
+            sessionGeneration: expectedGeneration,
+            task: task
+        )
+
+        do {
+            let refreshed = try await task.value
+            if refreshFlight?.id == flightID { refreshFlight = nil }
+            return refreshed
+        } catch {
+            if refreshFlight?.id == flightID { refreshFlight = nil }
+            throw error
+        }
+    }
+
+    private func performRefresh(
+        refreshToken refresh: String,
+        expectedGeneration: UInt64
+    ) async throws -> SupabaseSession {
+
         var components = URLComponents(
             url: baseURL.appendingPathComponent("auth/v1/token"),
             resolvingAgainstBaseURL: false
@@ -158,7 +207,7 @@ final class SupabaseClient {
         guard sessionGeneration == expectedGeneration,
               refreshToken == refresh
         else {
-            throw SupabaseError.notAuthenticated
+            throw SupabaseError.staleSession
         }
 
         accessToken = refreshedSession.accessToken
@@ -259,12 +308,12 @@ final class SupabaseClient {
             guard sessionGeneration == expectedGeneration,
                   accessToken == token
             else {
-                throw SupabaseError.notAuthenticated
+                throw SupabaseError.staleSession
             }
             let refreshedSession = try await refreshSession()
             try Task.checkCancellation()
             guard accessToken == refreshedSession.accessToken else {
-                throw SupabaseError.notAuthenticated
+                throw SupabaseError.staleSession
             }
             let newToken = refreshedSession.accessToken
             let retryRequest = build(newToken)
@@ -286,6 +335,9 @@ final class SupabaseClient {
         size: ImageGenerationSize,
         referenceImages: [ImageGenerationReference]
     ) throws -> Data {
+        guard ImageGenerationReferencePolicy.accepts(referenceImages) else {
+            throw SupabaseError.invalidMediaPayload
+        }
         var payload: [String: Any] = [
             "prompt": prompt,
             "provider": provider.provider,
@@ -298,7 +350,8 @@ final class SupabaseClient {
             payload["images"] = referenceImages.map { image in
                 [
                     "mimeType": image.mimeType,
-                    "data": image.base64
+                    "data": image.base64,
+                    "role": image.role.rawValue
                 ]
             }
         }
@@ -313,6 +366,7 @@ final class SupabaseClient {
         let url = baseURL.appendingPathComponent("functions/v1/generate-image")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = 240
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue(
@@ -337,9 +391,53 @@ final class SupabaseClient {
     }
 }
 
+enum ImageGenerationReferenceRole: String, CaseIterable {
+    case sourceImage = "source_image"
+    case mainProduct = "main_product"
+    case logo
+    case styleReference = "style_reference"
+    case heroFace = "hero_face"
+    case characterReference = "character_reference"
+}
+
 struct ImageGenerationReference {
     let mimeType: String
     let base64: String
+    let role: ImageGenerationReferenceRole
+
+    init(
+        mimeType: String,
+        base64: String,
+        role: ImageGenerationReferenceRole = .styleReference
+    ) {
+        self.mimeType = mimeType
+        self.base64 = base64
+        self.role = role
+    }
+}
+
+enum ImageGenerationReferencePolicy {
+    static let maximumCount = 6
+    static let maximumDecodedBytesPerImage = 8 * 1_024 * 1_024
+    static let maximumDecodedBytesTotal = 24 * 1_024 * 1_024
+
+    static func accepts(_ references: [ImageGenerationReference]) -> Bool {
+        guard references.count <= maximumCount else { return false }
+        var total = 0
+        for reference in references {
+            guard ["image/jpeg", "image/png", "image/webp"].contains(reference.mimeType.lowercased()) else {
+                return false
+            }
+            // Base64 decoded size is at most 3/4 of its encoded byte count.
+            let decodedBytes = reference.base64.utf8.count * 3 / 4
+            guard decodedBytes > 0,
+                  decodedBytes <= maximumDecodedBytesPerImage
+            else { return false }
+            total += decodedBytes
+            guard total <= maximumDecodedBytesTotal else { return false }
+        }
+        return true
+    }
 }
 
 struct GeneratedImage: Decodable {
@@ -353,19 +451,45 @@ struct GeneratedImage: Decodable {
     let quantity: Int?
     let costCredits: Int?
     let creditsRemaining: Int?
+    let assetIds: [String]?
 }
 
 enum SupabaseError: LocalizedError {
     case notAuthenticated
+    /// An operation started under an older account/session. It must be
+    /// discarded without clearing the newer session now stored by the app.
+    case staleSession
     case invalidResponse
     case serverError(status: Int, body: String)
+    case invalidMediaPayload
+
+    /// Only credential rejection invalidates the local session. Connectivity
+    /// failures and server outages must never sign the user out.
+    var invalidatesSession: Bool {
+        switch self {
+        case .notAuthenticated:
+            return true
+        case .staleSession:
+            return false
+        case .serverError(let status, _):
+            return status == 400 || status == 401
+        case .invalidResponse:
+            return false
+        case .invalidMediaPayload:
+            return false
+        }
+    }
 
     var errorDescription: String? {
         switch self {
         case .notAuthenticated:
             return "Not signed in."
+        case .staleSession:
+            return "The signed-in account changed while the request was running."
         case .invalidResponse:
             return "Invalid response from server."
+        case .invalidMediaPayload:
+            return "Too many reference images or the files are too large."
         case .serverError(let status, let body):
             if let message = Self.serverMessage(from: body) {
                 return message

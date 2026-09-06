@@ -2,393 +2,436 @@ import SwiftUI
 
 enum HomeRoute: Hashable, Identifiable {
     case imageGeneration(ImageGenerationCategory)
+    case aiStudio
     case startupChat
     case hub
     case videoGeneration
+    case aiInfluencer
     case voiceGeneration
     case liveFruits
-    case tool(String)
 
     var id: String {
         switch self {
-        case .imageGeneration(let category):
-            return "image_generation:\(category.id)"
-        case .startupChat:
-            return "startup_chat"
-        case .hub:
-            return "hub"
-        case .videoGeneration:
-            return "video_generation"
-        case .voiceGeneration:
-            return "voice_generation"
-        case .liveFruits:
-            return "live_fruits"
-        case .tool(let id):
-            return "tool:\(id)"
+        case .imageGeneration(let category): return "image_generation:\(category.id)"
+        case .aiStudio: return "ai_studio"
+        case .startupChat: return "startup_chat"
+        case .hub: return "hub"
+        case .videoGeneration: return "video_generation"
+        case .aiInfluencer: return "ai_influencer"
+        case .voiceGeneration: return "voice_generation"
+        case .liveFruits: return "live_fruits"
+        }
+    }
+
+    var isReleaseInDevelopment: Bool {
+        switch self {
+        case .imageGeneration, .aiStudio, .startupChat, .hub, .videoGeneration,
+             .aiInfluencer, .voiceGeneration, .liveFruits:
+            return false
         }
     }
 }
 
-/// Home uses an AI-studio layout: hero, tool grid, trend rail, and creator feed.
+private enum HomeLayout {
+    static let heroHeight: CGFloat = 198
+    static let promoHeight: CGFloat = 78
+    static let trendCardSize = CGSize(width: 112, height: 178)
+    static let trendMediaHeight: CGFloat = 146
+    static let businessFeatureHeight: CGFloat = 198
+    static let businessFeatureOverflow: CGFloat = 38
+    static let businessTileHeight: CGFloat = 112
+    static let businessWideHeight: CGFloat = 184
+    static let voicePromoHeight: CGFloat = 148
+    static let sectionSpacing: CGFloat = 14
+    static let cardSpacing: CGFloat = 8
+}
+
+/// One native type system for every card on Home. The hero title is the
+/// reference: other feature cards must not switch to the rounded display face.
+private enum HomeTypography {
+    static let sectionTitle = Font.system(size: 23, weight: .bold)
+    static let featureTitle = Font.system(size: 25, weight: .bold)
+    static let cardTitle = Font.system(size: 17, weight: .bold)
+    static let compactCardTitle = Font.system(size: 15, weight: .bold)
+    static let trendTitle = Font.system(size: 11, weight: .semibold)
+    static let featureSubtitle = Font.system(size: 11.5, weight: .semibold)
+}
+
+/// Native Home composition. Photography and video posters are content-only assets;
+/// labels, controls, card chrome, navigation and layout are SwiftUI views.
 struct HomeView: View {
     @EnvironmentObject private var loc: LocalizationService
+    @EnvironmentObject private var auth: Auth
 
     @State private var activeRoute: HomeRoute?
-    @State private var openImageCategory: ImageGenerationCategory?
     @State private var showingGeneratedGallery = false
-    @State private var selectedFeed = "Для тебя"
+    @State private var showingSearch = false
+    @State private var pendingSearchRoute: HomeRoute?
     @State private var activeHeroPage = 0
-    @State private var activeToolsPage = 0
+    @State private var aiCapabilities: AIStudioCapabilities?
 
-    private let feedTabs = ["Для тебя", "Shorts", "Реклама", "UGC", "4K"]
+    private let aiStudioService = AIStudioService()
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: HomeLayout.sectionSpacing) {
                     heroBanner
                     promoCards
-                    quickToolsGrid
+                    aiStudioLauncher
                     trendsSection
-                    feedSection
+                    businessSection
                 }
                 .padding(.horizontal, 14)
-                .padding(.top, 2)
-                .padding(.bottom, 34)
+                .padding(.top, 6)
+                .padding(.bottom, 18)
                 .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.hidden)
-            .background { X5Background() }
-            .navigationTitle("X five marketing")
+            .background { NativeHomeBackground() }
+            .navigationTitle("Xfive marketing")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
-                        activeRoute = .tool("search")
+                        showingSearch = true
                     } label: {
                         Image(systemName: "magnifyingglass")
                     }
-                    .accessibilityLabel("Поиск")
+                    .accessibilityIdentifier("x5.home.search")
+                    .accessibilityLabel("Поиск инструментов")
 
                     Button {
                         showingGeneratedGallery = true
                     } label: {
                         Image(systemName: "photo.stack")
                     }
+                    .accessibilityIdentifier("x5.home.gallery")
                     .accessibilityLabel(loc.t("gen_gallery"))
                 }
             }
             .sheet(item: $activeRoute) { route in
                 sheetDestination(for: route)
             }
-            .navigationDestination(isPresented: imageCategoryNavigationBinding) {
-                if let category = openImageCategory {
-                    ImageGeneratorView(category: category, provider: .gptImage2)
-                        .preferredColorScheme(.dark)
-                }
-            }
             .sheet(isPresented: $showingGeneratedGallery) {
                 GeneratedGalleryView()
             }
+            .sheet(isPresented: $showingSearch, onDismiss: completePendingSearchRoute) {
+                HomeSearchSheet(capabilities: aiCapabilities) { route in
+                    pendingSearchRoute = route
+                    showingSearch = false
+                }
+            }
+            .task { await loadAICapabilities() }
         }
     }
 
     private var heroBanner: some View {
         TabView(selection: $activeHeroPage) {
-            ForEach(Array(heroSlides.enumerated()), id: \.offset) { index, slide in
-                Button {
-                    handle(slide.action)
-                } label: {
-                    HeroSlideCard(
-                        slide: slide,
-                        pageIndex: index,
-                        activePage: activeHeroPage,
-                        pageCount: heroSlides.count
-                    )
-                }
-                .buttonStyle(.plain)
+            ForEach(Array(heroSlides.enumerated()), id: \.element.id) { index, slide in
+                NativeHomeHeroCard(
+                    slide: slide,
+                    pageIndex: index,
+                    pageCount: heroSlides.count,
+                    action: { handle(slide.action) }
+                )
+                .accessibilityIdentifier("x5.home.hero.\(slide.id)")
                 .tag(index)
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
-        .frame(height: 244)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .frame(height: HomeLayout.heroHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                .allowsHitTesting(false)
+        }
     }
 
-    private var heroSlides: [HeroSlide] {
-        [
-            HeroSlide(
-                id: "studio",
-                eyebrow: "X five marketing",
-                title: "Генерация изображений",
-                subtitle: "Создай рекламный креатив, фото товара или пост",
-                assetName: "HomeCoverTargetAds",
-                systemImage: "photo.badge.plus",
-                action: .imageGeneration(ImageGenerationCatalog.custom)
-            ),
-            HeroSlide(
-                id: "video_generation",
-                eyebrow: "AI Video",
-                title: "Генерация видео",
-                subtitle: "Преврати текст или фотографию в готовый ролик",
+    private var heroSlides: [NativeHomeHero] {
+        var slides: [NativeHomeHero] = []
+        slides.append(NativeHomeHero(
+            id: "image",
+            eyebrow: "X FIVE • AI STUDIO",
+            title: "Генерация\nизображений",
+            subtitle: "Креативы, товары и посты за минуту",
+            assetName: "HomeCoverTargetAds",
+            action: .imageGeneration(ImageGenerationCatalog.custom)
+        ))
+        if isToolAvailable("video") {
+            slides.append(NativeHomeHero(
+                id: "video",
+                eyebrow: "X FIVE • AI VIDEO",
+                title: "Генерация\nвидео",
+                subtitle: "Текст в готовый ролик со звуком",
                 assetName: "HomeUtilityVideo",
-                systemImage: "video.fill",
                 action: .videoGeneration
-            ),
-            HeroSlide(
-                id: "voice_generation",
-                eyebrow: "Voice Studio",
-                title: "Озвучка и голоса",
-                subtitle: "Озвучивай текст естественными AI-голосами",
-                assetName: "HomeMotionStudioPoster",
-                systemImage: "waveform",
-                action: .voiceGeneration
-            ),
-            HeroSlide(
-                id: "influencer",
-                eyebrow: "Trend Studio",
-                title: "AI-инфлюенсер для Reels",
-                subtitle: "Собери персонажа и запускай ролики без съемки",
-                assetName: "HomeTrendInfluencer",
-                systemImage: "person.crop.square",
-                action: .tool("ai_influencer")
-            ),
-            HeroSlide(
-                id: "commerce",
-                eyebrow: "Business Pack",
-                title: "Карточки и фото товара",
-                subtitle: "Маркетплейс, сайт и таргет в одном стиле",
-                assetName: "HomeCoverProductCards",
-                systemImage: "rectangle.grid.2x2",
-                action: imageAction("product_cards")
-            ),
-            HeroSlide(
-                id: "fruit",
-                eyebrow: "Video Trend",
-                title: "Живые продукты в видео",
-                subtitle: "Фрукты, напитки и товарные ролики для ленты",
-                assetName: "HomeTrendFruitVideo",
-                systemImage: "play.tv",
-                action: .liveFruits
-            )
-        ]
+            ))
+        }
+        if isToolAvailable("live_products", defaultValue: true) || slides.isEmpty {
+            slides.append(liveProductsHero)
+        }
+        return slides
     }
 
-    private var promos: [HomePromo] {
-        [
-            HomePromo(
-                id: "video_generation",
-                title: "Генерация видео",
-                subtitle: "Текст или фото в ролик",
-                systemImage: "video.fill",
-                accent: Color(red: 0.10, green: 0.72, blue: 0.98),
-                action: .videoGeneration
-            ),
-            HomePromo(
-                id: "voice_generation",
-                title: "Озвучка",
-                subtitle: "Естественные AI-голоса",
-                systemImage: "waveform",
-                accent: Color(red: 0.69, green: 0.28, blue: 0.94),
-                action: .voiceGeneration
-            ),
-            HomePromo(
-                id: "startup_chat",
-                title: "Стартап чат",
-                subtitle: "AI-наставник для бизнеса",
-                systemImage: "sparkles.rectangle.stack",
-                accent: Color(red: 0.11, green: 0.80, blue: 0.58),
-                action: .startupChat
-            ),
-            HomePromo(
-                id: "hub",
-                title: "Hub",
-                subtitle: "Специалисты и задачи",
-                systemImage: "briefcase",
-                accent: Color(red: 0.96, green: 0.29, blue: 0.56),
-                action: .hub
-            )
-        ]
+    private var liveProductsHero: NativeHomeHero {
+        NativeHomeHero(
+            id: "live_products",
+            eyebrow: "X FIVE • VIDEO TREND",
+            title: "Живые\nпродукты",
+            subtitle: "Видео для Reels и коротких форматов",
+            assetName: "HomeTrendFruitVideo",
+            action: .liveFruits
+        )
     }
 
     private var promoCards: some View {
-        LazyVGrid(
-            columns: Array(
-                repeating: GridItem(.flexible(), spacing: 12),
-                count: 2
-            ),
-            spacing: 12
-        ) {
-            ForEach(promos) { promo in
-                Button {
-                    handle(promo.action)
-                } label: {
-                    HomePromoCard(promo: promo)
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
-            }
+        HStack(spacing: HomeLayout.cardSpacing) {
+            NativeHomePromoCard(
+                title: "Стартап чат",
+                subtitle: "AI-наставник",
+                icon: "message.badge",
+                action: { handle(.startupChat) }
+            )
+            .accessibilityIdentifier("x5.home.promo.startup")
+
+            NativeHomePromoCard(
+                title: "Hub",
+                subtitle: "Специалисты и задания",
+                icon: "briefcase.fill",
+                action: { handle(.hub) }
+            )
+            .accessibilityIdentifier("x5.home.promo.hub")
         }
     }
 
-    private var quickToolsGrid: some View {
-        VStack(spacing: 8) {
-            TabView(selection: $activeToolsPage) {
-                ForEach(Array(quickToolPages.enumerated()), id: \.offset) { pageIndex, page in
-                    LazyVGrid(
-                        columns: Array(repeating: GridItem(.flexible(minimum: 52), spacing: 10), count: 4),
-                        spacing: 10
-                    ) {
-                        ForEach(page) { tool in
-                            Button {
-                                handle(tool.action)
-                            } label: {
-                                StudioToolButton(tool: tool)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .tag(pageIndex)
+    private var aiStudioLauncher: some View {
+        Button {
+            handle(.aiStudio)
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "sparkles.rectangle.stack.fill")
+                    .font(.system(size: 25, weight: .bold))
+                    .foregroundStyle(.black)
+                    .frame(width: 54, height: 54)
+                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 16))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Все AI-инструменты")
+                        .font(.system(size: 19, weight: .black))
+                        .foregroundStyle(.white)
+                    Text(aiStudioSubtitle)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.54))
                 }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.accentColor)
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 160)
-
-            PageDots(active: activeToolsPage, count: quickToolPages.count)
-            .frame(maxWidth: .infinity)
+            .padding(14)
+            .x5ClearGlass(cornerRadius: 20, highlight: 0.10)
         }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("x5.home.ai_studio")
     }
 
     private var trendsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionHeader(title: "Тренды", trailing: "Еще")
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Тренды")
+                    .font(.title2.weight(.bold))
+                    .foregroundColor(.white)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 12) {
-                    ForEach(trendCards) { item in
-                        Button {
-                            handle(item.action)
-                        } label: {
-                            TrendCard(item: item)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 1)
-            }
-        }
-    }
+                Spacer()
 
-    private var feedSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 22) {
-                    ForEach(feedTabs, id: \.self) { tab in
-                        Button {
-                            selectedFeed = tab
-                            X5Feedback.selection()
-                        } label: {
-                            Text(tab)
-                                .font(.system(size: 20, weight: selectedFeed == tab ? .heavy : .semibold))
-                                .foregroundColor(selectedFeed == tab ? .white : .white.opacity(0.38))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 1)
-            }
-
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: 12),
-                    GridItem(.flexible(), spacing: 12)
-                ],
-                spacing: 12
-            ) {
-                ForEach(feedCards) { item in
+                if isToolAvailable("video") {
                     Button {
-                        handle(item.action)
+                        handle(.videoGeneration)
                     } label: {
-                        FeedCard(item: item)
+                        Label("Еще", systemImage: "chevron.right")
+                            .labelStyle(.titleAndIcon)
                     }
-                    .buttonStyle(.plain)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(.white.opacity(0.68))
+                    .accessibilityIdentifier("x5.home.trends.more")
+                    .accessibilityHint("Открывает генератор видео")
+                }
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: HomeLayout.cardSpacing) {
+                    ForEach(trendItems) { item in
+                        NativeHomeTrendCard(
+                            item: item,
+                            onOpen: { handle(item.action) }
+                        )
+                        .accessibilityIdentifier("x5.home.trend.\(item.id)")
+                    }
+                }
+                .padding(.horizontal, 1)
+            }
+            .accessibilityLabel("Тренды")
+        }
+    }
+
+    @ViewBuilder
+    private var businessSection: some View {
+        if hasBusinessTools {
+            VStack(alignment: .leading, spacing: HomeLayout.cardSpacing) {
+                Text("Дизайн для бизнеса")
+                    .font(HomeTypography.sectionTitle)
+                    .foregroundColor(.white)
+                    .tracking(-0.35)
+
+                if isToolAvailable("ai_influencer") {
+                    NativeHomeAIInfluencerFeatureCard(
+                        action: { handle(.aiInfluencer) }
+                    )
+                    .accessibilityIdentifier("x5.home.business.ai_influencer")
+                }
+
+                NativeHomeSalesBannerCard(
+                    action: { handle(imageAction("target_ad")) }
+                )
+                .accessibilityIdentifier("x5.home.business.sales_banners")
+
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: HomeLayout.cardSpacing),
+                        GridItem(.flexible(), spacing: HomeLayout.cardSpacing)
+                    ],
+                    spacing: HomeLayout.cardSpacing
+                ) {
+                    ForEach(businessItems) { item in
+                        NativeHomeBusinessCard(
+                            title: item.title,
+                            subtitle: item.subtitle,
+                            assetName: item.assetName,
+                            accent: item.accent,
+                            actionTitle: nil,
+                            action: { handle(item.action) }
+                        )
+                        .accessibilityIdentifier("x5.home.business.\(item.id)")
+                    }
+                }
+
+                if isToolAvailable("voice") {
+                    NativeHomeVoiceCard(
+                        action: { handle(.voiceGeneration) }
+                    )
+                    .accessibilityIdentifier("x5.home.business.voice")
                 }
             }
         }
     }
 
-    private func sectionHeader(title: String, trailing: String) -> some View {
-        HStack {
-            Text(title)
-                .font(.system(size: 22, weight: .black))
-                .foregroundColor(.white)
-            Spacer()
-            Button {
-                activeRoute = .tool("more_\(title)")
-            } label: {
-                HStack(spacing: 5) {
-                    Text(trailing)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
-                }
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.white.opacity(0.48))
-            }
-            .buttonStyle(.plain)
+    private var trendItems: [NativeHomeTrend] {
+        var items: [NativeHomeTrend] = [
+            NativeHomeTrend(
+                id: "strawberry",
+                title: "Измена клубнички",
+                subtitle: "С бананом • мультсериал",
+                assetName: "HomeTrendLiveVideo",
+                motion: .video(.bundled(resourceName: "HomeTrendStrawberry")),
+                action: .liveFruits
+            )
+        ]
+        if isToolAvailable("video") {
+            items.append(NativeHomeTrend(
+                id: "tokayev",
+                title: "С Токаевым",
+                subtitle: "Видео с президентом",
+                assetName: "HomeTrendPost",
+                motion: .video(.bundled(resourceName: "HomeTrendTokayev")),
+                action: .videoGeneration
+            ))
         }
+        items.append(NativeHomeTrend(
+            id: "wildberries",
+            title: "Карточки WB",
+            subtitle: "Добавь свои товары",
+            assetName: "HomeTrendNanoBanana",
+            motion: .video(.bundled(resourceName: "HomeTrendAIStylist")),
+            action: imageAction("product_cards")
+        ))
+        if isToolAvailable("video") {
+            items.append(NativeHomeTrend(
+                id: "celebrity",
+                title: "Со знаменитостью",
+                subtitle: "Добавь себя в сцену",
+                assetName: "HomeTrendInfluencer",
+                motion: .video(.bundled(resourceName: "HomeTrendFaceSwap")),
+                action: .videoGeneration
+            ))
+        }
+        return items
     }
 
-    private var quickTools: [StudioTool] {
+    private var businessItems: [NativeHomeBusiness] {
         [
-            StudioTool(id: "image_to_video", title: "Image to Video", icon: "photo", badge: nil, action: .videoGeneration),
-            StudioTool(id: "text_to_video", title: "Text to Video", icon: "text.bubble", badge: nil, action: .videoGeneration),
-            StudioTool(id: "avatar", title: "Avatar 2.0", icon: "person.crop.circle", badge: nil, action: .tool("ai_influencer")),
-            StudioTool(id: "motion", title: "Motion Control", icon: "scope", badge: nil, action: .tool("video_creative")),
-            StudioTool(id: "text_to_image", title: "AI Image", icon: "photo.badge.plus", badge: nil, action: .imageGeneration(ImageGenerationCatalog.custom)),
-            StudioTool(id: "ai_video", title: "AI Video", icon: "video", badge: "Motion", action: .videoGeneration),
-            StudioTool(id: "elements", title: "Карточки", icon: "rectangle.grid.2x2", badge: nil, action: imageAction("product_cards")),
-            StudioTool(id: "restyle", title: "Restyle", icon: "paintpalette", badge: nil, action: imageAction("insta_pack")),
-            StudioTool(id: "effects", title: "Effects", icon: "wand.and.sparkles", badge: nil, action: imageAction("story")),
-            StudioTool(id: "sound", title: "Sound", icon: "waveform", badge: nil, action: .voiceGeneration),
-            StudioTool(id: "logo", title: "Лого", icon: "seal", badge: nil, action: imageAction("logo")),
-            StudioTool(id: "post", title: "Пост", icon: "square.grid.2x2", badge: nil, action: imageAction("post")),
-            StudioTool(id: "product", title: "Фото товара", icon: "shippingbox", badge: nil, action: imageAction("product")),
-            StudioTool(id: "packaging", title: "Упаковка", icon: "cube.box", badge: nil, action: imageAction("packaging")),
-            StudioTool(id: "startup", title: "Startup Chat", icon: "sparkles.rectangle.stack", badge: nil, action: .startupChat)
+            NativeHomeBusiness(
+                id: "youtube",
+                title: "Обложки YouTube",
+                subtitle: "Больше кликов",
+                assetName: "HomeCoverYoutube",
+                accent: .red,
+                action: imageAction("youtube_cover")
+            ),
+            NativeHomeBusiness(
+                id: "product_cards",
+                title: "Карточки товара",
+                subtitle: "Для маркетплейсов",
+                assetName: "HomeCoverProductCards",
+                accent: X5Style.blue,
+                action: imageAction("product_cards")
+            )
         ]
     }
 
-    private var quickToolPages: [[StudioTool]] {
-        quickTools.chunked(into: 8)
+    private var aiStudioSubtitle: String {
+        var names = ["Изображения"]
+        if isToolAvailable("voice") { names.append("MiniMax") }
+        if isToolAvailable("video") { names.append("Seedance") }
+        if isToolAvailable("lipsync") { names.append("Lipsync") }
+        if names.isEmpty { return "Только проверенные рабочие функции" }
+        return names.joined(separator: " · ")
     }
 
-    private var trendCards: [VisualCardItem] {
-        [
-            VisualCardItem(id: "ai_influencer", title: "AI-инфлюенсер", subtitle: "Персонаж для роликов", assetName: "HomeTrendInfluencer", systemImage: "person.crop.square", action: .tool("ai_influencer"), showsPlay: false),
-            VisualCardItem(id: "fruit_video", title: "Живые фрукты", subtitle: "Видео для Reels", assetName: "HomeTrendFruitVideo", systemImage: "play.tv", action: .liveFruits, showsPlay: true),
-            VisualCardItem(id: "trend_post", title: "Пост-тренд", subtitle: "Идея для ленты", assetName: "HomeTrendPost", systemImage: "sparkles", action: imageAction("post"), showsPlay: false),
-            VisualCardItem(id: "live_video", title: "Видео тренды", subtitle: "Shorts и TikTok", assetName: "HomeTrendLiveVideo", systemImage: "film.stack", action: .videoGeneration, showsPlay: true),
-            VisualCardItem(id: "target", title: "Таргет", subtitle: "Креативы теста", assetName: "HomeCoverTargetAds", systemImage: "scope", action: imageAction("target_ad"), showsPlay: false)
-        ]
+    private var hasBusinessTools: Bool {
+        true
     }
 
-    private var feedCards: [VisualCardItem] {
-        [
-            VisualCardItem(id: "youtube", title: "Обложка YouTube", subtitle: "Превью с высоким CTR", assetName: "HomeCoverYoutube", systemImage: "play.rectangle", action: imageAction("youtube_cover"), showsPlay: false),
-            VisualCardItem(id: "product_cards", title: "Карточки товара", subtitle: "Маркетплейс и сайт", assetName: "HomeCoverProductCards", systemImage: "rectangle.grid.2x2", action: imageAction("product_cards"), showsPlay: false),
-            VisualCardItem(id: "video", title: "AI Video", subtitle: "Фото или текст в ролик", assetName: "HomeUtilityVideo", systemImage: "video", action: .videoGeneration, showsPlay: true),
-            VisualCardItem(id: "insta", title: "Упаковка Instagram", subtitle: "Посты и сторис", assetName: "HomeUtilityInstaPack", systemImage: "square.stack.3d.up", action: imageAction("insta_pack"), showsPlay: false),
-            VisualCardItem(id: "product", title: "Фото товара", subtitle: "Кадр для рекламы", assetName: "HomeUtilityProduct", systemImage: "shippingbox", action: imageAction("product"), showsPlay: false),
-            VisualCardItem(id: "logo", title: "Лого", subtitle: "Знак для бренда", assetName: "HomeUtilityLogo", systemImage: "seal", action: imageAction("logo"), showsPlay: false)
-        ]
+    private func isToolAvailable(
+        _ capabilityID: String,
+        defaultValue: Bool = false
+    ) -> Bool {
+        aiCapabilities?.tool(capabilityID).available ?? defaultValue
     }
 
-    private func imageAction(_ categoryId: String) -> HomeRoute {
-        let categories = Dictionary(uniqueKeysWithValues: ImageGenerationCatalog.categories.map { ($0.id, $0) })
-        return categories[categoryId].map(HomeRoute.imageGeneration)
+    @MainActor
+    private func loadAICapabilities() async {
+        guard let token = await auth.freshAccessToken() else {
+            aiCapabilities = nil
+            activeHeroPage = 0
+            return
+        }
+        do {
+            aiCapabilities = try await aiStudioService.capabilities(accessToken: token)
+        } catch {
+            aiCapabilities = nil
+        }
+        activeHeroPage = 0
+    }
+
+    private func imageAction(_ categoryID: String) -> HomeRoute {
+        let categories = Dictionary(
+            uniqueKeysWithValues: ImageGenerationCatalog.categories.map { ($0.id, $0) }
+        )
+        return categories[categoryID].map(HomeRoute.imageGeneration)
             ?? .imageGeneration(ImageGenerationCatalog.custom)
     }
 
@@ -396,12 +439,18 @@ struct HomeView: View {
         switch route {
         case .imageGeneration(let category):
             DiagnosticLogger.log(event: "home_studio_\(category.id)_tap")
-            openImageCategory = category
+            activeRoute = route
+        case .aiStudio:
+            DiagnosticLogger.log(event: "home_ai_studio_tap")
+            activeRoute = route
         case .hub:
             DiagnosticLogger.log(event: "home_hub_promo_tap")
             NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "hub"])
         case .videoGeneration:
             DiagnosticLogger.log(event: "home_studio_video_tap")
+            activeRoute = route
+        case .aiInfluencer:
+            DiagnosticLogger.log(event: "home_ai_influencer_tap")
             activeRoute = route
         case .voiceGeneration:
             DiagnosticLogger.log(event: "home_studio_voice_tap")
@@ -412,431 +461,838 @@ struct HomeView: View {
         case .startupChat:
             DiagnosticLogger.log(event: "home_startup_chat_tap")
             activeRoute = route
-        case .tool(let id):
-            DiagnosticLogger.log(event: "home_studio_\(id)_tap")
-            activeRoute = route
         }
+    }
+
+    private func completePendingSearchRoute() {
+        guard let route = pendingSearchRoute else { return }
+        pendingSearchRoute = nil
+        handle(route)
     }
 
     @ViewBuilder
     private func sheetDestination(for route: HomeRoute) -> some View {
         switch route {
+        case .imageGeneration(let category):
+            NavigationStack { ImageGeneratorView(category: category) }
+        case .aiStudio:
+            AIStudioHubView()
         case .videoGeneration:
             VideoGeneratorView()
+        case .aiInfluencer:
+            NavigationStack { AIInfluencerView() }
         case .voiceGeneration:
             VoiceGeneratorView()
-        case .startupChat:
-            StartupChatView()
-        case .liveFruits:
-            LiveFruitsView()
-        case .tool:
-            ToolDetailView(tool: placeholderTool(for: route))
-        case .imageGeneration, .hub:
-            EmptyView()
+        case .startupChat: StartupChatView()
+        case .liveFruits: LiveFruitsView()
+        case .hub: EmptyView()
         }
-    }
-
-    private func placeholderTool(for route: HomeRoute) -> HomeTool {
-        switch route {
-        case .startupChat:
-            return developmentTool(id: "startup_assistant", title: "Стартап чат", icon: "sparkles.rectangle.stack")
-        case .videoGeneration:
-            return developmentTool(id: "video_generation", title: "Генерация видео", icon: "video")
-        case .voiceGeneration:
-            return developmentTool(id: "voice_generation", title: "Озвучка", icon: "waveform")
-        case .liveFruits:
-            return developmentTool(id: "live_fruits", title: "Живые фрукты", icon: "play.tv")
-        case .tool(let id):
-            return HomeContent.tools.first(where: { $0.id == id })
-                ?? developmentTool(id: id, title: developmentTitle(for: id))
-        case .imageGeneration:
-            return developmentTool(id: "image", title: "Генерация изображений", icon: "photo.badge.plus")
-        case .hub:
-            return developmentTool(id: "hub", title: "Hub", icon: "briefcase")
-        }
-    }
-
-    private func developmentTool(id: String, title: String, icon: String = "hammer.fill") -> HomeTool {
-        HomeTool(
-            id: id,
-            title: title,
-            subtitle: "Скоро добавим полный запуск внутри X five marketing.",
-            icon: icon,
-            videoFile: nil,
-            gradientStart: Color.accentColor.opacity(0.34),
-            gradientEnd: Color(red: 0.03, green: 0.04, blue: 0.08),
-            tag: "SOON",
-            tagColor: Color.accentColor
-        )
-    }
-
-    private func developmentTitle(for id: String) -> String {
-        switch id {
-        case "ai_influencer": return "AI-инфлюенсер"
-        case "video_creative": return "Видео-креатив"
-        case "voice_tts": return "Sound"
-        case "startup_chat": return "Startup Chat"
-        default:
-            return id
-                .replacingOccurrences(of: "_", with: " ")
-                .capitalized
-        }
-    }
-
-    private var imageCategoryNavigationBinding: Binding<Bool> {
-        Binding(
-            get: { openImageCategory != nil },
-            set: { isPresented in
-                if !isPresented { openImageCategory = nil }
-            }
-        )
     }
 }
 
-private struct HeroSlide: Identifiable {
+private struct NativeHomeHero: Identifiable {
     let id: String
     let eyebrow: String
     let title: String
     let subtitle: String
     let assetName: String
-    let systemImage: String
     let action: HomeRoute
 }
 
-private struct HomePromo: Identifiable {
-    let id: String
-    let title: String
-    let subtitle: String
-    let systemImage: String
-    let accent: Color
-    let action: HomeRoute
-}
-
-private struct StudioTool: Identifiable {
-    let id: String
-    let title: String
-    let icon: String
-    let badge: String?
-    let action: HomeRoute
-}
-
-private struct VisualCardItem: Identifiable {
+private struct NativeHomeTrend: Identifiable {
     let id: String
     let title: String
     let subtitle: String
     let assetName: String
-    let systemImage: String
+    let motion: NativeHomeTrendMotion
     let action: HomeRoute
-    let showsPlay: Bool
 }
 
-private struct HeroSlideCard: View {
-    let slide: HeroSlide
-    let pageIndex: Int
-    let activePage: Int
-    let pageCount: Int
+private enum NativeHomeTrendMotion {
+    case video(HomeMotionSource)
+}
 
+private struct NativeHomeBusiness: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let assetName: String
+    let accent: Color
+    let action: HomeRoute
+}
+
+private struct NativeHomeBackground: View {
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            CardMedia(assetName: slide.assetName, isMotionActive: activePage == pageIndex)
-
-            LinearGradient(
-                colors: [
-                    Color.black.opacity(0.05),
-                    Color.black.opacity(0.30),
-                    Color.black.opacity(0.84)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
+        ZStack {
+            Color(red: 0.016, green: 0.020, blue: 0.045)
+            RadialGradient(
+                colors: [Color(red: 0.40, green: 0.10, blue: 0.72).opacity(0.42), .clear],
+                center: .init(x: -0.10, y: 0.62),
+                startRadius: 8,
+                endRadius: 340
             )
-
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 8) {
-                    Image(systemName: slide.systemImage)
-                        .font(.system(size: 14, weight: .heavy))
-                    Text(slide.eyebrow)
-                        .font(.system(size: 13, weight: .heavy))
-                }
-                .foregroundColor(.white.opacity(0.82))
-
-                Text(slide.title)
-                    .font(.system(size: 20, weight: .black))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.78)
-
-                Text(slide.subtitle)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.74))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.84)
-            }
-            .padding(18)
-            .padding(.trailing, 52)
-
-            PageDots(active: activePage, count: pageCount)
-                .padding(18)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            RadialGradient(
+                colors: [Color(red: 0.04, green: 0.22, blue: 0.38).opacity(0.34), .clear],
+                center: .init(x: 0.62, y: 0.04),
+                startRadius: 8,
+                endRadius: 390
+            )
         }
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
+        .ignoresSafeArea()
     }
 }
 
-private struct HomePromoCard: View {
-    let promo: HomePromo
+private struct NativeHomeHeroCard: View {
+    let slide: NativeHomeHero
+    let pageIndex: Int
+    let pageCount: Int
+    let action: () -> Void
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            LinearGradient(
+        GeometryReader { proxy in
+            ZStack(alignment: .bottomLeading) {
+                Image(slide.assetName)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.04), Color.black.opacity(0.30), Color.black.opacity(0.88)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(slide.eyebrow)
+                        .font(.caption2.weight(.bold))
+                        .tracking(1.4)
+                        .foregroundColor(X5Style.blue)
+
+                    Text(slide.title)
+                        .font(HomeTypography.featureTitle)
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.78)
+
+                    Text(slide.subtitle)
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(.white.opacity(0.76))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.82)
+
+                    Button(action: action) {
+                        Text("Создать")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 18)
+                            .frame(minHeight: 38)
+                            .background(X5Style.blue, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("x5.home.hero.\(slide.id).create")
+                    .accessibilityLabel("\(slide.title.replacingOccurrences(of: "\n", with: " ")). Создать")
+                }
+                .padding(16)
+                .padding(.trailing, 48)
+
+                NativeHomePageDots(active: pageIndex, count: pageCount)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }
+        }
+        .background(.black)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct NativeHomePromoCard: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.black)
+                    .frame(width: 34, height: 34)
+                    .background(
+                        Color.black.opacity(0.07),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.black)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
+
+                    Text(subtitle)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.black.opacity(0.56))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.68)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(X5Style.blue)
+            }
+            .padding(.horizontal, 9)
+            .frame(maxWidth: .infinity)
+            .frame(height: HomeLayout.promoHeight)
+            .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title). \(subtitle)")
+    }
+}
+
+private struct NativeHomeTrendCard: View {
+    let item: NativeHomeTrend
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 7) {
+                trendMedia
+                .frame(
+                    width: HomeLayout.trendCardSize.width,
+                    height: HomeLayout.trendMediaHeight
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
+
+                Text(item.title)
+                    .font(HomeTypography.trendTitle)
+                    .foregroundColor(.white.opacity(0.88))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
+                    .allowsTightening(true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 2)
+            }
+            .frame(
+                width: HomeLayout.trendCardSize.width,
+                height: HomeLayout.trendCardSize.height,
+                alignment: .topLeading
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(item.title)
+        .accessibilityHint("Открывает соответствующий инструмент")
+    }
+
+    @ViewBuilder
+    private var trendMedia: some View {
+        switch item.motion {
+        case .video(let source):
+            LoopingVideo(
+                source: source,
+                posterAssetName: item.assetName,
+                isActive: true,
+                isUserInitiated: false
+            )
+        }
+    }
+
+}
+
+private struct NativeHomeAIInfluencerFeatureCard: View {
+    let action: () -> Void
+
+    private let cornerRadius: CGFloat = 20
+
+    var body: some View {
+        Button(action: action) {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Image("HomeAIInfluencerFeature")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.88), Color.black.opacity(0.42), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("AI-\nинфлюенсер")
+                            .font(HomeTypography.featureTitle)
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.8)
+                            .allowsTightening(true)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text("Виртуальный персонаж, который ведет соцсети, рекламирует товары и общается с аудиторией как реальный человек")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.78))
+                            .lineSpacing(2)
+                            .lineLimit(5)
+
+                        Text("X5")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 17)
+                            .frame(minHeight: 30)
+                            .background(X5Style.blue, in: Capsule())
+                            .padding(.top, 5)
+                    }
+                    .padding(18)
+                    .frame(
+                        width: min(236, proxy.size.width * 0.68),
+                        height: proxy.size.height,
+                        alignment: .leading
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: HomeLayout.businessFeatureHeight + HomeLayout.businessFeatureOverflow)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .overlay {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(Color.white.opacity(0.22), lineWidth: 1)
+        }
+        .shadow(color: Color(red: 0.49, green: 0.23, blue: 0.82).opacity(0.30), radius: 16, y: 8)
+        .accessibilityLabel("AI-инфлюенсер. Виртуальный персонаж для ведения соцсетей и рекламы")
+        .accessibilityHint("Открывает инструменты создания AI-персонажа")
+    }
+}
+
+private struct NativeHomeInstagramBackdrop: View {
+    private let lightPanelFraction: CGFloat = 0.42
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.29, green: 0.12, blue: 0.47),
+                        Color(red: 0.16, green: 0.06, blue: 0.29),
+                        Color(red: 0.07, green: 0.03, blue: 0.13)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color(red: 0.76, green: 0.54, blue: 1.00).opacity(0.72),
+                                .clear
+                            ],
+                            center: .center,
+                            startRadius: 2,
+                            endRadius: 104
+                        )
+                    )
+                    .frame(width: 208, height: 208)
+                    .offset(x: proxy.size.width * 0.49, y: -28)
+
+                ZStack(alignment: .bottomLeading) {
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.99, green: 0.98, blue: 1.00),
+                            Color(red: 0.91, green: 0.84, blue: 0.99)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+
+                    Capsule()
+                        .fill(Color(red: 0.57, green: 0.35, blue: 0.86).opacity(0.18))
+                        .frame(width: 210, height: 54)
+                        .rotationEffect(.degrees(-13))
+                        .offset(x: 16, y: 34)
+                }
+                .frame(width: proxy.size.width * lightPanelFraction)
+
+                NativeHomeInstagramPostStack()
+                    .frame(width: 150, height: 164)
+                    .offset(x: proxy.size.width * 0.52, y: 10)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct NativeHomeInstagramPostStack: View {
+    var body: some View {
+        ZStack {
+            postCard(
                 colors: [
-                    promo.accent.opacity(0.34),
-                    promo.accent.opacity(0.10),
-                    Color.white.opacity(0.04)
-                ],
+                    Color(red: 0.76, green: 0.55, blue: 1.00),
+                    Color(red: 0.37, green: 0.18, blue: 0.64)
+                ]
+            )
+            .frame(width: 78, height: 126)
+            .rotationEffect(.degrees(-8))
+            .offset(x: -31, y: 14)
+            .opacity(0.82)
+
+            postCard(
+                colors: [
+                    Color(red: 0.98, green: 0.66, blue: 0.85),
+                    Color(red: 0.48, green: 0.28, blue: 0.78)
+                ]
+            )
+            .frame(width: 86, height: 138)
+            .rotationEffect(.degrees(7))
+            .offset(x: 38, y: -4)
+        }
+    }
+
+    private func postCard(colors: [Color]) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Color.white.opacity(0.92))
+                    .frame(width: 11, height: 11)
+                Capsule()
+                    .fill(Color.white.opacity(0.72))
+                    .frame(width: 26, height: 4)
+                Spacer(minLength: 0)
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundColor(.white.opacity(0.80))
+            }
+
+            LinearGradient(
+                colors: colors,
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-
-            Circle()
-                .fill(promo.accent.opacity(0.30))
-                .frame(width: 92, height: 92)
-                .blur(radius: 30)
-                .offset(x: 78, y: -46)
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: promo.systemImage)
-                        .font(.system(size: 21, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 42, height: 42)
-                        .background(promo.accent.opacity(0.55))
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                    Spacer(minLength: 0)
-
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 13, weight: .black))
-                        .foregroundColor(.white.opacity(0.82))
-                }
-
-                Text(promo.title)
-                    .font(.system(size: 17, weight: .black))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.78)
-
-                Text(promo.subtitle)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.64))
-                    .lineLimit(2)
+            .overlay {
+                Circle()
+                    .fill(Color.white.opacity(0.18))
+                    .frame(width: 42, height: 42)
+                    .offset(x: 14, y: -10)
             }
-            .padding(14)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            HStack(spacing: 7) {
+                Image(systemName: "heart.fill")
+                Image(systemName: "bubble.right.fill")
+                Image(systemName: "paperplane.fill")
+            }
+            .font(.system(size: 8, weight: .semibold))
+            .foregroundColor(.white.opacity(0.92))
+
+            Capsule()
+                .fill(Color.white.opacity(0.58))
+                .frame(width: 42, height: 3)
         }
-        .frame(maxWidth: .infinity, minHeight: 132, alignment: .bottomLeading)
-        .background(Color.white.opacity(0.045))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
+        .padding(7)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(Color.white.opacity(0.34), lineWidth: 0.8)
+        }
+        .shadow(color: .black.opacity(0.28), radius: 8, y: 5)
     }
 }
 
-private struct PageDots: View {
+private struct NativeHomeBusinessCard: View {
+    let title: String
+    let subtitle: String
+    let assetName: String
+    let accent: Color
+    let actionTitle: String?
+    var compact = false
+    let action: () -> Void
+
+    private var cardHeight: CGFloat {
+        if compact { return HomeLayout.businessWideHeight }
+        if actionTitle != nil { return HomeLayout.businessFeatureHeight }
+        return HomeLayout.businessTileHeight
+    }
+
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: .bottomLeading) {
+                Image(assetName)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: cardHeight)
+                    .clipped()
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.03), Color.black.opacity(0.83)],
+                    startPoint: .center,
+                    endPoint: .bottom
+                )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(compact ? HomeTypography.compactCardTitle : HomeTypography.cardTitle)
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.78)
+                    Text(subtitle)
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(.white.opacity(0.76))
+                        .lineLimit(2)
+                    if let actionTitle {
+                        Text(actionTitle)
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 28)
+                            .background(accent, in: Capsule())
+                            .padding(.top, 4)
+                    }
+                }
+                .padding(11)
+
+                Image(systemName: "arrow.right")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.black)
+                    .frame(width: 30, height: 30)
+                    .background(accent, in: Circle())
+                    .padding(9)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: cardHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.16), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title). \(subtitle)")
+        .accessibilityHint("Открывает соответствующий инструмент")
+    }
+}
+
+private struct NativeHomeVoiceCard: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: .bottomLeading) {
+                Image("HomeMotionStudioPoster")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: HomeLayout.voicePromoHeight)
+                    .clipped()
+
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.88),
+                        Color.black.opacity(0.48),
+                        Color.black.opacity(0.12)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+
+                LinearGradient(
+                    colors: [.clear, Color.black.opacity(0.72)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("AI VOICE")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(1.2)
+                        .foregroundColor(X5Style.blue)
+
+                    Text("Озвучка")
+                        .font(HomeTypography.featureTitle)
+                        .foregroundColor(.white)
+
+                    Text("Живые голоса для видео, рекламы и подкастов")
+                        .font(HomeTypography.featureSubtitle)
+                        .foregroundColor(.white.opacity(0.74))
+                        .lineLimit(2)
+                        .frame(maxWidth: 220, alignment: .leading)
+
+                    HStack(spacing: 6) {
+                        Text("Озвучить текст")
+                            .font(.system(size: 10.5, weight: .bold))
+
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 12)
+                    .frame(height: 29)
+                    .background(X5Style.blue, in: Capsule())
+                }
+                .padding(16)
+
+                Image(systemName: "waveform")
+                    .font(.system(size: 36, weight: .bold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [X5Style.blue, .white.opacity(0.82)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .shadow(color: X5Style.blue.opacity(0.42), radius: 10)
+                    .padding(.trailing, 25)
+                    .padding(.bottom, 49)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: HomeLayout.voicePromoHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Озвучка. Естественные голоса, эмоции и языки")
+        .accessibilityHint("Открывает генератор озвучки")
+    }
+}
+
+private struct NativeHomeSalesBannerCard: View {
+    let action: () -> Void
+
+    private let cornerRadius: CGFloat = 16
+
+    var body: some View {
+        Button(action: action) {
+            GeometryReader { proxy in
+                ZStack(alignment: .trailing) {
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.03, green: 0.03, blue: 0.05),
+                            Color(red: 0.12, green: 0.04, blue: 0.20),
+                            Color(red: 0.02, green: 0.02, blue: 0.04)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+
+                    Circle()
+                        .fill(X5Style.blue.opacity(0.20))
+                        .frame(width: 150, height: 150)
+                        .blur(radius: 36)
+                        .offset(x: 76, y: 50)
+
+                    Circle()
+                        .fill(Color.purple.opacity(0.28))
+                        .frame(width: 118, height: 118)
+                        .blur(radius: 32)
+                        .offset(x: -40, y: -64)
+
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("X5 • AI STUDIO")
+                            .font(.system(size: 8.5, weight: .bold))
+                            .tracking(1.1)
+                            .foregroundColor(X5Style.blue)
+
+                        Text("Карточки\nтоваров")
+                            .font(HomeTypography.featureTitle)
+                            .foregroundColor(.white)
+
+                        Text("Готовая инфографика\nдля маркетплейсов")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundColor(.white.opacity(0.70))
+                            .lineSpacing(1)
+
+                        HStack(spacing: 7) {
+                            Text("Создать")
+                                .font(.system(size: 11, weight: .bold))
+
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 12)
+                        .frame(height: 29)
+                        .background(X5Style.blue, in: Capsule())
+                    }
+                    .padding(.leading, 17)
+                    .frame(
+                        width: min(166, proxy.size.width * 0.47),
+                        height: proxy.size.height,
+                        alignment: .leading
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    ZStack {
+                        clientProductArt("ClientProductStepper")
+                            .rotationEffect(.degrees(-8))
+                            .offset(x: -58, y: 7)
+                            .zIndex(1)
+
+                        clientProductArt("ClientProductHeadphones")
+                            .rotationEffect(.degrees(3))
+                            .offset(x: -10, y: -5)
+                            .zIndex(2)
+
+                        clientProductArt("ClientProductGamepad")
+                            .rotationEffect(.degrees(9))
+                            .offset(x: 43, y: 5)
+                            .zIndex(3)
+                    }
+                    .frame(width: min(196, proxy.size.width * 0.55), height: proxy.size.height)
+                    .padding(.trailing, 7)
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: HomeLayout.businessWideHeight)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color.white.opacity(0.16), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Рекламные баннеры с готовыми продающими офферами для таргета и карточки маркетплейсов")
+        .accessibilityHint("Открывает генератор рекламных креативов")
+    }
+
+    private func clientProductArt(_ assetName: String) -> some View {
+        Image(assetName)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 86, height: 126)
+            .background(Color.white.opacity(0.96))
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .stroke(Color.white.opacity(0.60), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.46), radius: 8, x: 0, y: 6)
+    }
+}
+
+private struct NativeHomePageDots: View {
     let active: Int
     let count: Int
 
     var body: some View {
         HStack(spacing: 6) {
-            ForEach(0..<max(count, 1), id: \.self) { index in
+            ForEach(0..<count, id: \.self) { index in
                 Capsule()
-                    .fill(index == active ? Color.white : Color.white.opacity(0.32))
-                    .frame(width: index == active ? 24 : 7, height: 7)
-                    .animation(.spring(response: 0.28, dampingFraction: 0.8), value: active)
+                    .fill(index == active ? .white : .white.opacity(0.42))
+                    .frame(width: index == active ? 22 : 7, height: 7)
             }
         }
         .accessibilityHidden(true)
     }
 }
 
-private struct StudioToolButton: View {
-    let tool: StudioTool
+private struct HomeSearchSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    let capabilities: AIStudioCapabilities?
+    let onSelect: (HomeRoute) -> Void
+
+    private var allItems: [HomeSearchItem] {
+        var items = [
+            HomeSearchItem(title: "Стартап чат", subtitle: "AI-наставник для бизнеса", icon: "sparkles.rectangle.stack", route: .startupChat),
+            HomeSearchItem(title: "Hub", subtitle: "Специалисты и задания", icon: "briefcase.fill", route: .hub)
+        ]
+
+        if isAvailable("video") {
+            items.append(HomeSearchItem(title: "Генерация видео", subtitle: "AI-ролики для соцсетей", icon: "video.fill", route: .videoGeneration))
+        }
+        if isAvailable("voice") {
+            items.append(HomeSearchItem(title: "Озвучка", subtitle: "Текст в естественный голос", icon: "waveform", route: .voiceGeneration))
+        }
+        if isAvailable("live_products", defaultValue: true) {
+            items.append(HomeSearchItem(title: "Живые фрукты", subtitle: "Сценарий и ролик для Reels", icon: "play.tv.fill", route: .liveFruits))
+        }
+        items.append(HomeSearchItem(title: "Генерация изображений", subtitle: "Креативы, товары и посты", icon: "photo.badge.plus", route: .imageGeneration(ImageGenerationCatalog.custom)))
+        items.append(contentsOf: ImageGenerationCatalog.categories.map { category in
+            HomeSearchItem(title: category.title, subtitle: category.subtitle, icon: category.icon, route: .imageGeneration(category))
+        })
+        return items
+    }
+
+    private func isAvailable(
+        _ capabilityID: String,
+        defaultValue: Bool = false
+    ) -> Bool {
+        capabilities?.tool(capabilityID).available ?? defaultValue
+    }
+
+    private var filteredItems: [HomeSearchItem] {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return allItems }
+        return allItems.filter {
+            $0.title.localizedCaseInsensitiveContains(needle)
+                || $0.subtitle.localizedCaseInsensitiveContains(needle)
+        }
+    }
 
     var body: some View {
-        VStack(spacing: 8) {
-            ZStack(alignment: .topTrailing) {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color.white.opacity(0.055))
-                    .frame(width: 48, height: 48)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                    )
-
-                Image(systemName: tool.icon)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.92))
-                    .frame(width: 48, height: 48)
-
-                if let badge = tool.badge {
-                    Text(badge)
-                        .font(.system(size: 8, weight: .black))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 3)
-                        .background(Color.white)
-                        .clipShape(Capsule())
-                        .offset(x: 9, y: -7)
+        NavigationStack {
+            List(filteredItems) { item in
+                Button { onSelect(item.route) } label: {
+                    HStack(spacing: 13) {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(X5Style.blue)
+                            .frame(width: 38, height: 38)
+                            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title).font(.body.weight(.semibold)).foregroundColor(.white)
+                            Text(item.subtitle).font(.caption).foregroundColor(.white.opacity(0.58))
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.white.opacity(0.28))
+                    }
+                    .frame(minHeight: 48)
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(Color.clear)
+            }
+            .scrollContentBackground(.hidden)
+            .background { X5Background() }
+            .searchable(text: $query, prompt: "Инструмент или формат")
+            .navigationTitle("Поиск")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Готово") { dismiss() }.foregroundColor(X5Style.blue)
                 }
             }
-
-            Text(tool.title)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.white.opacity(0.88))
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.76)
-                .frame(height: 24, alignment: .top)
         }
-        .frame(maxWidth: .infinity)
+        .preferredColorScheme(.dark)
     }
 }
 
-private struct TrendCard: View {
-    let item: VisualCardItem
+private struct HomeSearchItem: Identifiable {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let route: HomeRoute
 
-    var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            CardMedia(assetName: item.assetName, isMotionActive: item.showsPlay)
-
-            LinearGradient(
-                colors: [Color.black.opacity(0.05), Color.black.opacity(0.78)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            VStack(alignment: .leading, spacing: 4) {
-                Spacer()
-                Text(item.title)
-                    .font(.system(size: 17, weight: .heavy))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.78)
-                Text(item.subtitle)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.76))
-                    .lineLimit(1)
-            }
-            .padding(12)
-
-            if item.showsPlay {
-                PlayBadge()
-                    .padding(10)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            }
-        }
-        .frame(width: 148, height: 178)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
-    }
-}
-
-private struct FeedCard: View {
-    let item: VisualCardItem
-
-    var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            CardMedia(assetName: item.assetName, isMotionActive: item.showsPlay)
-
-            LinearGradient(
-                colors: [Color.black.opacity(0.0), Color.black.opacity(0.82)],
-                startPoint: .center,
-                endPoint: .bottom
-            )
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.title)
-                    .font(.system(size: 16, weight: .black))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.78)
-                Text(item.subtitle)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.72))
-                    .lineLimit(2)
-            }
-            .padding(12)
-
-            if item.showsPlay {
-                PlayBadge()
-                    .padding(10)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            }
-        }
-        .frame(height: 196)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.white.opacity(0.09), lineWidth: 1)
-        )
-    }
-}
-
-private struct CardImage: View {
-    let assetName: String
-
-    var body: some View {
-        GeometryReader { proxy in
-            Image(assetName)
-                .resizable()
-                .scaledToFill()
-                .frame(width: proxy.size.width, height: proxy.size.height)
-                .clipped()
-        }
-        .background(Color.white.opacity(0.06))
-    }
-}
-
-private struct CardMedia: View {
-    let assetName: String
-    let isMotionActive: Bool
-
-    @ViewBuilder
-    var body: some View {
-        if isMotionActive, let motion = HomeMotionCatalog.asset(for: assetName) {
-            LoopingVideo(
-                source: motion.source,
-                posterAssetName: motion.posterAssetName,
-                isActive: true
-            )
-        } else {
-            CardImage(assetName: assetName)
-        }
-    }
-}
-
-private struct PlayBadge: View {
-    var body: some View {
-        Image(systemName: "play.fill")
-            .font(.system(size: 12, weight: .bold))
-            .foregroundColor(.white)
-            .frame(width: 32, height: 32)
-            .background(.ultraThinMaterial)
-            .clipShape(Circle())
-    }
-}
-
-private extension Array {
-    func chunked(into size: Int) -> [[Element]] {
-        guard size > 0 else { return [self] }
-        return stride(from: 0, to: count, by: size).map {
-            Array(self[$0..<Swift.min($0 + size, count)])
-        }
-    }
+    var id: String { "\(route.id):\(title)" }
 }

@@ -14,6 +14,10 @@ struct PortfolioItem: Codable, Identifiable, Equatable {
     var moderationStatusRaw: String?
     var moderationReason: String?
     var moderationRevision: Int64?
+    /// Short-lived display URLs are deliberately never encoded back into the
+    /// database. `mediaUrl` and `thumbnailUrl` remain stable object IDs.
+    var signedMediaUrl: String? = nil
+    var signedThumbnailUrl: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, type, title, description, link
@@ -26,6 +30,9 @@ struct PortfolioItem: Codable, Identifiable, Equatable {
         case moderationReason = "moderation_reason"
         case moderationRevision = "moderation_revision"
     }
+
+    var displayMediaUrl: String? { signedMediaUrl }
+    var displayThumbnailUrl: String? { signedThumbnailUrl ?? signedMediaUrl }
 
     var moderationStatus: String {
         moderationStatusRaw ?? "approved"
@@ -45,9 +52,81 @@ struct PortfolioItem: Codable, Identifiable, Equatable {
     }
 }
 
+enum PortfolioMediaPolicy {
+    static let bucket = "portfolio"
+    static let canonicalPublicPathPrefix = "/storage/v1/object/public/\(bucket)/"
+    static let canonicalPrivatePathPrefix = "/storage/v1/object/\(bucket)/"
+
+    static func objectPath(
+        fromCanonicalURL rawValue: String,
+        expectedHost: String = "afwznqjpshybmqhlewmy.supabase.co"
+    ) -> String? {
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard value == rawValue,
+              let components = URLComponents(string: value),
+              components.scheme?.lowercased() == "https",
+              components.host?.lowercased() == expectedHost.lowercased(),
+              components.port == nil,
+              components.user == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil
+        else { return nil }
+
+        let encodedPath = components.percentEncodedPath
+        let prefix: String
+        if encodedPath.hasPrefix(canonicalPublicPathPrefix) {
+            prefix = canonicalPublicPathPrefix
+        } else if encodedPath.hasPrefix(canonicalPrivatePathPrefix) {
+            prefix = canonicalPrivatePathPrefix
+        } else {
+            return nil
+        }
+
+        let encodedObjectPath = String(encodedPath.dropFirst(prefix.count))
+        guard let objectPath = encodedObjectPath.removingPercentEncoding,
+              objectPath == encodedObjectPath,
+              objectPath.count <= 1_024
+        else { return nil }
+
+        let parts = objectPath.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 2 || parts.count == 3,
+              isSafeOwner(parts[0]),
+              parts.count != 3 || parts[1] == "thumbnails",
+              isSafeFilename(parts.last ?? "")
+        else { return nil }
+        return objectPath
+    }
+
+    private static func isSafeOwner(_ value: String) -> Bool {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        return !value.isEmpty && value.count <= 200 && value.unicodeScalars.allSatisfy(allowed.contains)
+    }
+
+    private static func isSafeFilename(_ value: String) -> Bool {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
+        return !value.isEmpty
+            && value.count <= 255
+            && value != "."
+            && value != ".."
+            && value.unicodeScalars.allSatisfy(allowed.contains)
+    }
+}
+
 struct PortfolioLikeState: Equatable {
     let isLiked: Bool
     let count: Int
+}
+
+struct PortfolioSaveState: Equatable {
+    let isSaved: Bool
+}
+
+struct PortfolioAuthor: Codable, Equatable {
+    let id: String
+    let name: String?
+    let avatar: String?
+    let nickname: String?
 }
 
 struct PortfolioComment: Codable, Identifiable, Equatable {
@@ -74,11 +153,35 @@ final class PortfolioService: ObservableObject {
     @Published private(set) var items: [PortfolioItem] = []
     @Published private(set) var isLoading: Bool = false
     @Published private(set) var error: String?
+    @Published private(set) var authors: [String: PortfolioAuthor] = [:]
 
-    private var baseURL: URL { X5Config.supabaseBaseURL }
-    private var anonKey: String { X5Config.supabaseAnonKey }
-    private var functionsBaseURL: URL {
-        URL(string: "https://afwznqjpshybmqhlewmy.functions.supabase.co") ?? baseURL
+    private let baseURL: URL
+    private let anonKey: String
+    private let functionsBaseURL: URL
+    private let session: URLSession
+    private let signedMediaCacheTTL: TimeInterval
+    private let signedMediaLifetimeSeconds = 600
+
+    private struct CachedSignedMedia {
+        let url: URL
+        let expiresAt: Date
+        var lastAccessAt: Date
+    }
+    private var signedMediaCache: [String: CachedSignedMedia] = [:]
+    private let signedMediaCacheLimit = 128
+
+    init(
+        session: URLSession = .shared,
+        baseURL: URL = X5Config.supabaseBaseURL,
+        anonKey: String = X5Config.supabaseAnonKey,
+        functionsBaseURL: URL = URL(string: "https://afwznqjpshybmqhlewmy.functions.supabase.co")!,
+        signedMediaCacheTTL: TimeInterval = 540
+    ) {
+        self.session = session
+        self.baseURL = baseURL
+        self.anonKey = anonKey
+        self.functionsBaseURL = functionsBaseURL
+        self.signedMediaCacheTTL = min(max(signedMediaCacheTTL, 0), 540)
     }
 
     func load(userId: String, accessToken: String, includeUnapproved: Bool = false) async {
@@ -98,8 +201,13 @@ final class PortfolioService: ObservableObject {
         var request = URLRequest(url: reqURL)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        guard let (data, _) = try? await URLSession.shared.data(for: request) else { return }
-        items = (try? JSONDecoder().decode([PortfolioItem].self, from: data)) ?? []
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode)
+        else { return }
+        let decoded = (try? JSONDecoder().decode([PortfolioItem].self, from: data)) ?? []
+        items = await resolveMediaURLs(in: decoded, accessToken: accessToken)
+        await loadAuthors(userIDs: Set(items.map(\.userId)), accessToken: accessToken)
         if includeUnapproved {
             let retryable = items.filter {
                 ["pending", "manual_review", "failed"].contains($0.moderationStatus)
@@ -113,18 +221,156 @@ final class PortfolioService: ObservableObject {
         }
     }
 
-    /// Uploads JPEG to Storage, then inserts a portfolio_items row pointing at the public URL.
+    func loadSaved(userId: String, accessToken: String) async {
+        isLoading = true
+        defer { isLoading = false }
+
+        guard var savesComponents = URLComponents(
+            url: baseURL.appendingPathComponent("rest/v1/portfolio_item_saves"),
+            resolvingAgainstBaseURL: false
+        ) else { return }
+        savesComponents.queryItems = [
+            URLQueryItem(name: "user_id", value: "eq.\(userId)"),
+            URLQueryItem(name: "select", value: "item_id"),
+            URLQueryItem(name: "order", value: "created_at.desc")
+        ]
+        guard let savesURL = savesComponents.url else { return }
+        var savesRequest = URLRequest(url: savesURL)
+        savesRequest.setValue(anonKey, forHTTPHeaderField: "apikey")
+        savesRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (savesData, savesResponse) = try? await session.data(for: savesRequest),
+              let savesHTTP = savesResponse as? HTTPURLResponse,
+              (200..<300).contains(savesHTTP.statusCode),
+              let saves = try? JSONDecoder().decode([PortfolioSaveRow].self, from: savesData)
+        else { return }
+
+        let orderedIDs = saves.map(\.itemId)
+        guard !orderedIDs.isEmpty else {
+            items = []
+            authors = [:]
+            return
+        }
+
+        guard var itemsComponents = URLComponents(
+            url: baseURL.appendingPathComponent("rest/v1/portfolio_items"),
+            resolvingAgainstBaseURL: false
+        ) else { return }
+        itemsComponents.queryItems = [
+            URLQueryItem(name: "id", value: "in.(\(orderedIDs.joined(separator: ",")))"),
+            URLQueryItem(name: "moderation_status", value: "eq.approved"),
+            URLQueryItem(name: "select", value: "*")
+        ]
+        guard let itemsURL = itemsComponents.url else { return }
+        var itemsRequest = URLRequest(url: itemsURL)
+        itemsRequest.setValue(anonKey, forHTTPHeaderField: "apikey")
+        itemsRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (itemsData, itemsResponse) = try? await session.data(for: itemsRequest),
+              let itemsHTTP = itemsResponse as? HTTPURLResponse,
+              (200..<300).contains(itemsHTTP.statusCode),
+              let decoded = try? JSONDecoder().decode([PortfolioItem].self, from: itemsData)
+        else { return }
+
+        let byID = Dictionary(uniqueKeysWithValues: decoded.map { ($0.id, $0) })
+        let orderedItems = orderedIDs.compactMap { byID[$0] }
+        items = await resolveMediaURLs(in: orderedItems, accessToken: accessToken)
+        await loadAuthors(userIDs: Set(items.map(\.userId)), accessToken: accessToken)
+    }
+
+    func saveState(itemId: String, userId: String, accessToken: String) async -> PortfolioSaveState {
+        guard var components = URLComponents(
+            url: baseURL.appendingPathComponent("rest/v1/portfolio_item_saves"),
+            resolvingAgainstBaseURL: false
+        ) else { return PortfolioSaveState(isSaved: false) }
+        components.queryItems = [
+            URLQueryItem(name: "item_id", value: "eq.\(itemId)"),
+            URLQueryItem(name: "user_id", value: "eq.\(userId)"),
+            URLQueryItem(name: "select", value: "item_id")
+        ]
+        guard let url = components.url else { return PortfolioSaveState(isSaved: false) }
+        var request = URLRequest(url: url)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let rows = try? JSONDecoder().decode([PortfolioSaveRow].self, from: data)
+        else { return PortfolioSaveState(isSaved: false) }
+        return PortfolioSaveState(isSaved: !rows.isEmpty)
+    }
+
+    func setSaved(itemId: String, saved: Bool, userId: String, accessToken: String) async -> Bool {
+        if saved {
+            var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/portfolio_item_saves"))
+            request.httpMethod = "POST"
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("resolution=ignore-duplicates", forHTTPHeaderField: "Prefer")
+            request.httpBody = try? JSONEncoder().encode([
+                "item_id": AnyEncodable(itemId),
+                "user_id": AnyEncodable(userId)
+            ])
+            guard let (_, response) = try? await session.data(for: request),
+                  let http = response as? HTTPURLResponse
+            else { return false }
+            return (200..<300).contains(http.statusCode)
+        }
+
+        guard var components = URLComponents(
+            url: baseURL.appendingPathComponent("rest/v1/portfolio_item_saves"),
+            resolvingAgainstBaseURL: false
+        ) else { return false }
+        components.queryItems = [
+            URLQueryItem(name: "item_id", value: "eq.\(itemId)"),
+            URLQueryItem(name: "user_id", value: "eq.\(userId)")
+        ]
+        guard let url = components.url else { return false }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (_, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse
+        else { return false }
+        return (200..<300).contains(http.statusCode)
+    }
+
+    private func loadAuthors(userIDs: Set<String>, accessToken: String) async {
+        guard !userIDs.isEmpty,
+              var components = URLComponents(
+                url: baseURL.appendingPathComponent("rest/v1/profiles"),
+                resolvingAgainstBaseURL: false
+              )
+        else { return }
+        components.queryItems = [
+            URLQueryItem(name: "id", value: "in.(\(userIDs.joined(separator: ",")))"),
+            URLQueryItem(name: "select", value: "id,name,avatar,nickname")
+        ]
+        guard let url = components.url else { return }
+        var request = URLRequest(url: url)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let rows = try? JSONDecoder().decode([PortfolioAuthor].self, from: data)
+        else { return }
+        authors = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+    }
+
+    /// Uploads JPEG to Storage, then stores a stable public-shaped object ID.
+    /// The private bucket can only be rendered through a signed URL.
     func addImage(jpegData: Data, userId: String, title: String?, description: String?, accessToken: String) async -> Bool {
         await addMedia(data: jpegData, type: "image", mime: "image/jpeg", ext: "jpg", userId: userId, title: title, description: description, accessToken: accessToken)
     }
 
-    /// Uploads image/video to Storage, then inserts a portfolio_items row pointing at the public URL.
+    /// Uploads image/video and stores stable object IDs, never expiring URLs.
     func addMedia(data: Data, type: String, mime: String, ext: String, thumbnailData: Data? = nil, userId: String, title: String?, description: String?, accessToken: String) async -> Bool {
         let cleanType = type == "video" ? "video" : "image"
         let safeExt = ext.isEmpty ? (cleanType == "video" ? "mov" : "jpg") : ext
         let identifier = "\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.lowercased())"
         let path = "\(userId)/\(identifier).\(safeExt)"
-        guard let publicURL = await uploadPortfolioMedia(
+        guard let canonicalURL = await uploadPortfolioMedia(
             data: data,
             path: path,
             mime: mime,
@@ -156,13 +402,15 @@ final class PortfolioService: ObservableObject {
             "type": AnyEncodable(cleanType),
             "title": AnyEncodable(title ?? ""),
             "description": AnyEncodable(description ?? ""),
-            "media_url": AnyEncodable(publicURL),
-            "thumbnail_url": AnyEncodable(cleanType == "image" ? publicURL : (thumbnailURL ?? "")),
+            "media_url": AnyEncodable(canonicalURL),
+            "thumbnail_url": AnyEncodable(cleanType == "image" ? canonicalURL : (thumbnailURL ?? "")),
             "moderation_status": AnyEncodable("pending")
         ]
         insert.httpBody = try? JSONEncoder().encode(body)
 
-        guard let (data, _) = try? await URLSession.shared.data(for: insert),
+        guard let (data, response) = try? await session.data(for: insert),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
               let rows = try? JSONDecoder().decode([PortfolioItem].self, from: data),
               let inserted = rows.first
         else {
@@ -174,7 +422,9 @@ final class PortfolioService: ObservableObject {
             moderationRevision: inserted.moderationRevision,
             accessToken: accessToken
         ) ?? inserted
-        items.insert(moderated, at: 0)
+        let resolved = await resolveMediaURLs(in: [moderated], accessToken: accessToken).first ?? moderated
+        items.removeAll { $0.id == resolved.id }
+        items.insert(resolved, at: 0)
         return true
     }
 
@@ -194,7 +444,7 @@ final class PortfolioService: ObservableObject {
         upload.setValue("false", forHTTPHeaderField: "x-upsert")
         upload.httpBody = data
 
-        guard let (_, response) = try? await URLSession.shared.data(for: upload),
+        guard let (_, response) = try? await session.data(for: upload),
               let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode)
         else {
@@ -203,6 +453,129 @@ final class PortfolioService: ObservableObject {
         return baseURL
             .appendingPathComponent("storage/v1/object/public/portfolio/\(path)")
             .absoluteString
+    }
+
+    /// Exchanges the stable object identifier stored in Postgres for a
+    /// short-lived private Storage URL. Validation is fail-closed: foreign
+    /// hosts, ambiguous encoding and unexpected object layouts are rejected.
+    func signedPortfolioMediaURL(
+        canonicalURL: String,
+        accessToken: String,
+        forceRefresh: Bool = false
+    ) async -> URL? {
+        guard let host = baseURL.host,
+              let objectPath = PortfolioMediaPolicy.objectPath(
+                fromCanonicalURL: canonicalURL,
+                expectedHost: host
+              )
+        else { return nil }
+
+        let now = Date()
+        if forceRefresh {
+            signedMediaCache.removeValue(forKey: objectPath)
+        } else if var cached = signedMediaCache[objectPath], cached.expiresAt > now {
+            cached.lastAccessAt = now
+            signedMediaCache[objectPath] = cached
+            return cached.url
+        } else {
+            signedMediaCache.removeValue(forKey: objectPath)
+        }
+
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        components.path = "/storage/v1/object/sign/portfolio/\(objectPath)"
+        components.query = nil
+        components.fragment = nil
+        guard let signURL = components.url else { return nil }
+
+        var request = URLRequest(url: signURL)
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(
+            withJSONObject: ["expiresIn": signedMediaLifetimeSeconds]
+        )
+
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rawSignedURL = (payload["signedURL"] as? String) ?? (payload["signedUrl"] as? String),
+              let signedURL = validatedSignedURL(rawSignedURL, objectPath: objectPath)
+        else { return nil }
+
+        signedMediaCache[objectPath] = CachedSignedMedia(
+            url: signedURL,
+            expiresAt: now.addingTimeInterval(signedMediaCacheTTL),
+            lastAccessAt: now
+        )
+        pruneSignedMediaCache()
+        return signedURL
+    }
+
+    private func resolveMediaURLs(
+        in sourceItems: [PortfolioItem],
+        accessToken: String
+    ) async -> [PortfolioItem] {
+        var resolvedItems: [PortfolioItem] = []
+        resolvedItems.reserveCapacity(sourceItems.count)
+        for var item in sourceItems {
+            if let canonical = item.mediaUrl, !canonical.isEmpty {
+                item.signedMediaUrl = await signedPortfolioMediaURL(
+                    canonicalURL: canonical,
+                    accessToken: accessToken
+                )?.absoluteString
+            }
+            if let canonical = item.thumbnailUrl, !canonical.isEmpty {
+                item.signedThumbnailUrl = await signedPortfolioMediaURL(
+                    canonicalURL: canonical,
+                    accessToken: accessToken
+                )?.absoluteString
+            }
+            resolvedItems.append(item)
+        }
+        return resolvedItems
+    }
+
+    private func validatedSignedURL(_ rawValue: String, objectPath: String) -> URL? {
+        let absoluteValue: String
+        if rawValue.hasPrefix("https://") {
+            absoluteValue = rawValue
+        } else if rawValue.hasPrefix("/storage/v1/") {
+            absoluteValue = baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + rawValue
+        } else if rawValue.hasPrefix("/object/sign/") {
+            absoluteValue = baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/storage/v1" + rawValue
+        } else {
+            return nil
+        }
+
+        guard let components = URLComponents(string: absoluteValue),
+              components.scheme?.lowercased() == "https",
+              components.host?.lowercased() == baseURL.host?.lowercased(),
+              components.port == baseURL.port,
+              components.user == nil,
+              components.password == nil,
+              components.fragment == nil,
+              components.percentEncodedPath == "/storage/v1/object/sign/portfolio/\(objectPath)",
+              components.queryItems?.contains(where: {
+                $0.name == "token" && $0.value?.isEmpty == false
+              }) == true
+        else { return nil }
+        return components.url
+    }
+
+    private func pruneSignedMediaCache() {
+        let now = Date()
+        signedMediaCache = signedMediaCache.filter { $0.value.expiresAt > now }
+        guard signedMediaCache.count > signedMediaCacheLimit else { return }
+        let overflow = signedMediaCache.count - signedMediaCacheLimit
+        let oldestKeys = signedMediaCache
+            .sorted { $0.value.lastAccessAt < $1.value.lastAccessAt }
+            .prefix(overflow)
+            .map(\.key)
+        for key in oldestKeys { signedMediaCache.removeValue(forKey: key) }
     }
 
     @discardableResult
@@ -225,7 +598,7 @@ final class PortfolioService: ObservableObject {
             )
         )
 
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await session.data(for: request),
               let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode),
               let result = try? JSONDecoder().decode(PortfolioModerationResponse.self, from: data)
@@ -239,10 +612,11 @@ final class PortfolioService: ObservableObject {
         }
 
         if let item = result.item {
-            if let index = items.firstIndex(where: { $0.id == item.id }) {
-                items[index] = item
+            let resolved = await resolveMediaURLs(in: [item], accessToken: accessToken).first ?? item
+            if let index = items.firstIndex(where: { $0.id == resolved.id }) {
+                items[index] = resolved
             }
-            return item
+            return resolved
         }
         return nil
     }
@@ -272,7 +646,7 @@ final class PortfolioService: ObservableObject {
         var request = URLRequest(url: reqURL)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await session.data(for: request),
               let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode)
         else { return [] }
@@ -294,7 +668,7 @@ final class PortfolioService: ObservableObject {
             "text": AnyEncodable(text)
         ]
         request.httpBody = try? JSONEncoder().encode(body)
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await session.data(for: request),
               let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode),
               let rows = try? JSONDecoder().decode([PortfolioComment].self, from: data)
@@ -310,7 +684,7 @@ final class PortfolioService: ObservableObject {
         request.httpMethod = "DELETE"
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        if let (_, response) = try? await URLSession.shared.data(for: request),
+        if let (_, response) = try? await session.data(for: request),
            let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
             items.removeAll { $0.id == itemId }
         }
@@ -332,7 +706,7 @@ final class PortfolioService: ObservableObject {
             "description": AnyEncodable(description ?? "")
         ])
 
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await session.data(for: request),
               let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode),
               let rows = try? JSONDecoder().decode([PortfolioItem].self, from: data),
@@ -340,19 +714,27 @@ final class PortfolioService: ObservableObject {
         else { return nil }
 
         if let index = items.firstIndex(where: { $0.id == itemId }) {
-            let moderated = await moderate(
+            let moderated: PortfolioItem
+            if let result = await moderate(
                 itemId: updated.id,
                 moderationRevision: updated.moderationRevision,
                 accessToken: accessToken
-            ) ?? updated
+            ) {
+                moderated = result
+            } else {
+                moderated = await resolveMediaURLs(in: [updated], accessToken: accessToken).first ?? updated
+            }
             items[index] = moderated
             return moderated
         }
-        return await moderate(
+        if let moderated = await moderate(
             itemId: updated.id,
             moderationRevision: updated.moderationRevision,
             accessToken: accessToken
-        ) ?? updated
+        ) {
+            return moderated
+        }
+        return await resolveMediaURLs(in: [updated], accessToken: accessToken).first ?? updated
     }
 
     func likeState(itemId: String, currentUserId: String, accessToken: String) async -> PortfolioLikeState {
@@ -370,7 +752,7 @@ final class PortfolioService: ObservableObject {
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await session.data(for: request),
               let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode),
               let rows = try? JSONDecoder().decode([PortfolioLikeRow].self, from: data)
@@ -396,7 +778,7 @@ final class PortfolioService: ObservableObject {
                 "user_id": AnyEncodable(currentUserId)
             ]
             request.httpBody = try? JSONEncoder().encode(body)
-            guard let (_, response) = try? await URLSession.shared.data(for: request),
+            guard let (_, response) = try? await session.data(for: request),
                   let http = response as? HTTPURLResponse
             else { return false }
             return (200..<300).contains(http.statusCode)
@@ -413,7 +795,7 @@ final class PortfolioService: ObservableObject {
             request.httpMethod = "DELETE"
             request.setValue(anonKey, forHTTPHeaderField: "apikey")
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-            guard let (_, response) = try? await URLSession.shared.data(for: request),
+            guard let (_, response) = try? await session.data(for: request),
                   let http = response as? HTTPURLResponse
             else { return false }
             return (200..<300).contains(http.statusCode)
@@ -426,6 +808,14 @@ private struct PortfolioLikeRow: Codable {
 
     enum CodingKeys: String, CodingKey {
         case userId = "user_id"
+    }
+}
+
+private struct PortfolioSaveRow: Codable {
+    let itemId: String
+
+    enum CodingKeys: String, CodingKey {
+        case itemId = "item_id"
     }
 }
 

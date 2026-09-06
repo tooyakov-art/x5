@@ -8,6 +8,7 @@ struct UserProfileView: View {
     @EnvironmentObject private var auth: Auth
     @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var chats = ChatsService()
 
     @State private var profile: UserProfile?
@@ -96,12 +97,19 @@ struct UserProfileView: View {
             Text(loc.t("hub_block_user_message"))
         }
         .task {
+            chats.configureAccessTokenProvider(auth: auth)
             if isMe {
                 NotificationCenter.default.post(name: .x5SwitchTab, object: nil, userInfo: ["tab": "profile"])
                 dismiss()
                 return
             }
             await load()
+        }
+        // Refresh server counts after returning from another app/device path.
+        // A task keyed to ScenePhase has view-bound cancellation semantics.
+        .task(id: scenePhase) {
+            guard scenePhase == .active, !isMe else { return }
+            await loadFollowState()
         }
         .onReceive(
             NotificationCenter.default.publisher(for: .x5FollowStateDidChange)
@@ -280,7 +288,9 @@ struct UserProfileView: View {
 
     @ViewBuilder
     private var publicSpecialistCard: some View {
-        let cats = profile?.specialistCategory ?? fallback?.specialistCategory ?? []
+        let cats = HubCategories.orderedIDs(
+            from: profile?.specialistCategory ?? fallback?.specialistCategory ?? []
+        )
         if !cats.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -330,11 +340,11 @@ struct UserProfileView: View {
     // MARK: - Helpers
 
     private var displayName: String {
-        profile?.displayName ?? fallback?.name ?? fallback?.nickname ?? "X five marketing"
+        profile?.displayName ?? fallback?.name ?? fallback?.nickname ?? "Xfive marketing"
     }
 
     private var isMe: Bool { auth.userId == userId }
-    private var profileShareText: String { "X five marketing: \(displayName)" }
+    private var profileShareText: String { "Xfive marketing: \(displayName)" }
 
     private func openChat() {
         guard let me = auth.userId else { return }
@@ -352,7 +362,7 @@ struct UserProfileView: View {
 
     private func reportUser() {
         let subject = "Report user \(userId)"
-        let body = "Hi X five marketing team,\n\nI'd like to report this user. Please review their content.\n\nUser ID: \(userId)\n"
+        let body = "Hi Xfive marketing team,\n\nI'd like to report this user. Please review their content.\n\nUser ID: \(userId)\n"
         let to = "appreview@x5studio.app"
         let s = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let b = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""

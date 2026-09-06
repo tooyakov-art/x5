@@ -228,6 +228,15 @@ test("ambiguous completion keeps durable artifacts until a retry can resolve sta
   assert.match(edge, /completeGenerationDurably/);
   assert.match(
     edge,
-    /catch \(error\) \{\s+if \(error instanceof GenerationCompletionUncertainError\)[\s\S]*generation_status_pending[\s\S]*425[\s\S]*\}\s+const refund/,
+    /catch \(error\) \{\s+if \(error instanceof GenerationCompletionUncertainError\)[\s\S]*generation_status_pending[\s\S]*425/,
   );
+  const uncertainBranch = edge.indexOf(
+    "if (error instanceof GenerationCompletionUncertainError)",
+  );
+  const refund = edge.indexOf(
+    'const refund = await callServiceRpc("fail_image_generation_request"',
+    uncertainBranch,
+  );
+  assert.ok(uncertainBranch >= 0);
+  assert.ok(refund > uncertainBranch);
 });

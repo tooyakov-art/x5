@@ -133,6 +133,18 @@ class IOSPurchaseLifecycleSourceTests(unittest.TestCase):
         self.assertIn("-> Bool", profile)
         self.assertEqual(localization.count('"credit_store_success_refresh_pending"'), 3)
 
+    def test_missing_store_products_are_recoverable_instead_of_silent(self):
+        service = IAP_SERVICE.read_text(encoding="utf-8")
+        paywall = PAYWALL.read_text(encoding="utf-8")
+
+        self.assertIn("@Published private(set) var isLoadingProducts", service)
+        self.assertIn("guard !isLoadingProducts else { return }", service)
+        self.assertIn("IAPProductAvailability.hasAnyCreditPack", service)
+        self.assertIn('lastError = LocalizationService.shared.t("iap_products_unavailable")', service)
+        self.assertIn("Task { await reloadProducts() }", paywall)
+        self.assertIn("hasMissingCreditPacks", paywall)
+        self.assertIn(".disabled(iap.isLoadingProducts || iap.isPurchasing)", paywall)
+
     def test_server_rejection_code_is_kept_in_safe_diagnostics(self):
         source = IAP_SERVICE.read_text(encoding="utf-8")
 

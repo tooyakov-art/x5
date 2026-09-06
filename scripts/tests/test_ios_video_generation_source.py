@@ -5,6 +5,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVICE = ROOT / "X5" / "Services" / "VideoGenerationService.swift"
+RESULT_FILE_SERVICE = (
+    ROOT / "X5" / "Services" / "VideoGenerationResultFileService.swift"
+)
 VIEW = ROOT / "X5" / "Views" / "Home" / "VideoGeneratorView.swift"
 SWIFT_TESTS = ROOT / "X5Tests" / "VideoGenerationServiceTests.swift"
 
@@ -23,7 +26,8 @@ class IOSVideoGenerationSourceTests(unittest.TestCase):
     def test_video_screen_exposes_real_job_states(self):
         view = VIEW.read_text(encoding="utf-8")
 
-        self.assertIn('navigationTitle("Генерация видео")', view)
+        self.assertIn(".navigationTitle(studioMode.navigationTitle)", view)
+        self.assertIn('case .standard: return "Генерация видео"', view)
         self.assertIn("VideoGenerationService", view)
         for state in ("queued", "rendering", "completed", "failed"):
             self.assertIn(f"case .{state}", view)
@@ -37,7 +41,8 @@ class IOSVideoGenerationSourceTests(unittest.TestCase):
         self.assertIn("durationSeconds", view)
         self.assertIn("aspectRatio", view)
         self.assertIn("VideoGenerationModel", view)
-        self.assertIn("Seedance 1.5 Pro", service)
+        self.assertIn("Seedance 2.0 Fast · официальный", service)
+        self.assertIn(".seedance20Fast", view)
         self.assertIn("VideoGenerationResolution", view)
         self.assertIn("generateAudio", view)
         self.assertIn("submitVideo()", view)
@@ -45,6 +50,44 @@ class IOSVideoGenerationSourceTests(unittest.TestCase):
         self.assertIn('"model"', service)
         self.assertIn('"resolution"', service)
         self.assertIn('"generate_audio"', service)
+
+    def test_release_ui_exposes_only_verified_seedance_2_fast(self):
+        view = VIEW.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "private let model: VideoGenerationModel = .seedance20Fast",
+            view,
+        )
+        self.assertNotIn("ForEach(VideoGenerationModel.allCases)", view)
+        self.assertIn("private var availableResolutions", view)
+        self.assertIn("[.standard, .hd]", view)
+
+    def test_completed_video_is_downloaded_privately_before_play_share_or_save(self):
+        view = VIEW.read_text(encoding="utf-8")
+        result_service = RESULT_FILE_SERVICE.read_text(encoding="utf-8")
+
+        self.assertIn("VideoGenerationResultFileService", view)
+        self.assertIn("ShareLink(item: localResultURL)", view)
+        self.assertIn("PHAssetChangeRequest.creationRequestForAssetFromVideo", view)
+        self.assertIn("resultFileService.cleanup(localResultURL)", view)
+        self.assertNotIn("AVPlayer(url: resultURL)", view)
+        self.assertIn("refreshSignedURL: true", view)
+        self.assertIn("let envelope = try await service.status(", view)
+        self.assertIn("/storage/v1/object/sign/video-generation-results/", result_service)
+        self.assertIn("maximumVideoBytes = 50 * 1024 * 1024", result_service)
+        self.assertIn('Array("ftyp".utf8)', result_service)
+        self.assertIn("isControlledResultFile", result_service)
+        self.assertIn('components(separatedBy: "--")', result_service)
+
+        swift_tests = SWIFT_TESTS.read_text(encoding="utf-8")
+        self.assertIn(
+            "testRepeatedResultPreparationUsesIndependentLocalFiles",
+            swift_tests,
+        )
+        self.assertIn(
+            "testResultCleanupRequiresJobAndPreparationUUIDs",
+            swift_tests,
+        )
 
     def test_service_accepts_fractional_supabase_timestamps(self):
         service = SERVICE.read_text(encoding="utf-8")

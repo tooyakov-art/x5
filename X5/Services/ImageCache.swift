@@ -2,6 +2,29 @@ import Foundation
 import UIKit
 import CryptoKit
 
+/// NSCache is documented as thread-safe but has not adopted Sendable. Keep
+/// that single audited escape hatch inside a tiny wrapper instead of exposing
+/// a non-Sendable Foundation object across the actor boundary.
+private final class ImageMemoryCache: @unchecked Sendable {
+    private let storage: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.totalCostLimit = 64 * 1024 * 1024
+        return cache
+    }()
+
+    func object(forKey key: NSString) -> UIImage? {
+        storage.object(forKey: key)
+    }
+
+    func setObject(_ image: UIImage, forKey key: NSString, cost: Int) {
+        storage.setObject(image, forKey: key, cost: cost)
+    }
+
+    func removeAllObjects() {
+        storage.removeAllObjects()
+    }
+}
+
 /// Persistent on-disk image cache split by category so the user can review
 /// what's stored and selectively wipe parts of it (Telegram-style).
 ///
@@ -46,11 +69,7 @@ actor ImageCache {
     /// "blank placeholder for one frame" flicker when leaving and returning
     /// to a chat. NSCache is documented thread-safe; only this property and
     /// the static `keyFor(_:)` are nonisolated.
-    nonisolated let memory: NSCache<NSString, UIImage> = {
-        let c = NSCache<NSString, UIImage>()
-        c.totalCostLimit = 64 * 1024 * 1024 // 64 MB raw pixels
-        return c
-    }()
+    nonisolated private let memory = ImageMemoryCache()
 
     /// Coalesces concurrent requests for the same URL into a single network task.
     private var inFlight: [URL: Task<UIImage?, Never>] = [:]
@@ -154,10 +173,13 @@ actor ImageCache {
         let category = Self.categorize(url: url)
         let path = filePath(category: category, key: key)
 
-        if let img = await Task.detached(priority: .utility) { () -> UIImage? in
-            guard let data = try? Data(contentsOf: path) else { return nil }
-            return UIImage(data: data)
-        }.value {
+        if let img = await Task.detached(
+            priority: .utility,
+            operation: { () -> UIImage? in
+                guard let data = try? Data(contentsOf: path) else { return nil }
+                return UIImage(data: data)
+            }
+        ).value {
             store(img, key: key)
             return img
         }
@@ -201,7 +223,16 @@ actor ImageCache {
     }
 
     private static func keyFor(url: URL) -> String {
-        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
+        // Signed chat-media tokens rotate. Hashing the full URL would create a
+        // duplicate disk entry after every refresh; the protected object path
+        // is stable and the chat-media cache is wiped on sign-out.
+        let cacheIdentity: String
+        if url.path.contains("/storage/v1/object/sign/chat-media/") {
+            cacheIdentity = "\(url.scheme ?? "https")://\(url.host ?? "")\(url.path)"
+        } else {
+            cacheIdentity = url.absoluteString
+        }
+        let digest = SHA256.hash(data: Data(cacheIdentity.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
@@ -209,7 +240,9 @@ actor ImageCache {
         let path = url.path
         for c in Category.allCases {
             if let bucket = c.bucketHint,
-               path.contains("/storage/v1/object/public/\(bucket)/") {
+               (path.contains("/storage/v1/object/public/\(bucket)/")
+                || path.contains("/storage/v1/object/authenticated/\(bucket)/")
+                || path.contains("/storage/v1/object/sign/\(bucket)/")) {
                 return c
             }
         }

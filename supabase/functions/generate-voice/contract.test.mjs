@@ -18,20 +18,20 @@ test("voice generation contract module exists", () => {
   );
 });
 
-test("normalizes a supported Eleven v3 request and computes bounded credits", {
+test("normalizes a supported MiniMax request and computes bounded credits", {
   skip: !contract,
 }, async () => {
   const normalized = contract.normalizeVoiceGenerationRequest({
     request_id: "22222222-2222-4222-8222-222222222222",
-    text: "  Привет из X five marketing  ",
-    voice: "Aria",
+    text: "  Привет из Xfive marketing  ",
+    voice: "Russian_BrightHeroine",
     stability: 0.5,
     speed: 1,
     language_code: "ru",
   });
 
-  assert.equal(normalized.text, "Привет из X five marketing");
-  assert.equal(normalized.voice, "Aria");
+  assert.equal(normalized.text, "Привет из Xfive marketing");
+  assert.equal(normalized.voice, "Russian_BrightHeroine");
   assert.equal(normalized.stability, 0.5);
   assert.equal(normalized.speed, 1);
   assert.equal(normalized.languageCode, "ru");

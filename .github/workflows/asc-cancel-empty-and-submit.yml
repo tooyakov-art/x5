@@ -8,11 +8,12 @@ on:
       - ".github/workflows/asc-cancel-empty-and-submit.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   submit-latest:
     runs-on: ubuntu-latest
+    environment: app-store-production
     timeout-minutes: 10
     env:
       ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
@@ -23,11 +24,13 @@ jobs:
       TARGET_BUILD: "180"
       RELEASE_NOTES: "Исправлены ошибки и улучшена стабильность приложения."
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
-      - run: pip install pyjwt[crypto] requests
+      - run: python -m pip install --require-hashes -r .github/requirements/asc-requirements.lock
       - name: Attach target version and submit latest
         run: |
           python <<'PY'

@@ -123,6 +123,37 @@ final class FruitStoryServiceTests: XCTestCase {
         }
     }
 
+    func testAmbiguousProviderOutcomeRetriesTheSameRequestAndRecovers() async throws {
+        let recorder = FruitStoryRequestRecorder()
+        var attempts = 0
+        let service = makeService(recorder: recorder) { request in
+            attempts += 1
+            if attempts == 1 {
+                return (
+                    Self.response(for: request, statusCode: 409),
+                    Data(#"{"error":{"code":"outcome_unknown"}}"#.utf8)
+                )
+            }
+            return (
+                Self.response(for: request, statusCode: 200),
+                Data(Self.validStoryJSON.utf8)
+            )
+        }
+
+        let requestID = UUID(
+            uuidString: "11111111-1111-4111-8111-111111111111"
+        )!
+        let result = try await service.generate(
+            questionnaire: .preview,
+            requestID: requestID,
+            accessToken: "access-token"
+        )
+
+        XCTAssertEqual(attempts, 2)
+        XCTAssertEqual(result.requestID, requestID)
+        XCTAssertEqual(result.story.scenes.count, 3)
+    }
+
     func testVideoPromptUsesCurrentStoryboardOrderAndEdits() {
         let story = FruitStoryEnvelope.preview.story
         let reordered = [
@@ -457,7 +488,9 @@ final class FruitStoryServiceTests: XCTestCase {
         return FruitStoryService(
             session: URLSession(configuration: configuration),
             baseURL: URL(string: "https://example.supabase.co")!,
-            anonKey: "anon-key"
+            anonKey: "anon-key",
+            recoveryDelayNanoseconds: 0,
+            maximumRecoveryAttempts: 2
         )
     }
 

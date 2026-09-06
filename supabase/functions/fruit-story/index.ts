@@ -121,7 +121,7 @@ Deno.serve(async (request) => {
     return safeError("in_progress", 425, retryAfter);
   }
   if (claim.status === "ambiguous") {
-    return safeError("outcome_unknown", 409);
+    return safeError("outcome_unknown", 409, 3);
   }
   if (claim.status === "replay") {
     const replay = safeReplayStory(
@@ -609,7 +609,7 @@ function safeError(
     : code === "in_progress"
     ? "История ещё создаётся. Повторите через несколько секунд."
     : code === "outcome_unknown"
-    ? "Статус запроса уточняется. Чтобы исключить двойную генерацию, этот запрос не будет запущен повторно."
+    ? "Запрос можно безопасно продолжить тем же идентификатором без повторного списания."
     : undefined;
   return json(
     {

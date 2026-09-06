@@ -1032,7 +1032,7 @@ struct CourseDetailView: View {
         guard auth.isAuthenticated else {
             purchaseNotice = CoursePurchaseNotice(
                 title: "Нужен вход",
-                message: "Войдите в X five marketing, чтобы купить курс.",
+                message: "Войдите в Xfive marketing, чтобы купить курс.",
                 offersTopUp: false
             )
             return
@@ -1465,7 +1465,7 @@ private struct CourseSubmissionView: View {
                 } header: {
                     Text("Заявка на курс")
                 } footer: {
-                    Text("Опиши идею курса и прикрепи первое видео. Команда X five marketing проверит заявку и свяжется с тобой.")
+                    Text("Опиши идею курса и прикрепи первое видео. Команда Xfive marketing проверит заявку и свяжется с тобой.")
                 }
 
                 Section("Видео") {

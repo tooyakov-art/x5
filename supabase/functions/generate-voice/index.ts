@@ -1,15 +1,19 @@
-// Authenticated client entrypoint for persistent Eleven v3 voice jobs.
-// Required env: FAL_KEY, SUPABASE_URL, SUPABASE_ANON_KEY,
+// Authenticated client entrypoint for official MiniMax voice jobs.
+// Required provider env: MINIMAX_API_KEY.
+// FAL_KEY is read only to let already-bound legacy queue jobs finish.
+// Required env: SUPABASE_URL, SUPABASE_ANON_KEY,
 // SUPABASE_SERVICE_ROLE_KEY.
 
 import { VoiceGenerationBackend } from "./backend.mjs";
 import { FalVoiceQueueProvider } from "./fal-provider.mjs";
+import { DirectVoiceProvider } from "./direct-provider.mjs";
 import { createGenerateVoiceHandler } from "./handler.mjs";
 
 const supabaseURL = requiredEnvironment("SUPABASE_URL");
 const anonKey = requiredEnvironment("SUPABASE_ANON_KEY");
 const serviceRoleKey = requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY");
 const falKey = Deno.env.get("FAL_KEY") || "";
+const minimaxKey = Deno.env.get("MINIMAX_API_KEY") || "";
 const backend = new VoiceGenerationBackend({
   supabaseURL,
   serviceRoleKey,
@@ -17,10 +21,16 @@ const backend = new VoiceGenerationBackend({
 const provider = falKey.trim()
   ? new FalVoiceQueueProvider({ apiKey: falKey })
   : null;
+const directProvider = minimaxKey.trim()
+  ? new DirectVoiceProvider({ minimaxKey })
+  : null;
 
 Deno.serve(createGenerateVoiceHandler({
   verifyUser,
-  providerConfigured: () => provider !== null,
+  providerConfigured: () => directProvider !== null,
+  directProviderConfigured: () => directProvider !== null,
+  generateDirect: (parameters: { input: Record<string, unknown> }) =>
+    directProvider!.generate(parameters),
   lookupGeneration: (parameters: Record<string, unknown>) =>
     backend.rpc("lookup_voice_generation_request", parameters),
   claimGeneration: (parameters: Record<string, unknown>) =>
@@ -70,6 +80,22 @@ Deno.serve(createGenerateVoiceHandler({
     backend.rpc("fail_voice_generation_request", parameters),
   deleteAudio: (path: string) => backend.deleteAudio(path),
   signAudio: (path: string) => backend.signAudio(path),
+  assetForObject: (_userID: string, path: string) =>
+    backend.rpc("generated_asset_by_object_service", {
+      p_bucket_id: "voice-generation-results",
+      p_object_path: path,
+    }),
+  recordProviderHealth: (
+    success: boolean,
+    errorCode: string | null = null,
+  ) =>
+    backend.rpc("record_ai_provider_health", {
+      p_provider: "minimax",
+      p_capability: "voice",
+      p_success: success,
+      p_model: "speech-2.8-turbo",
+      p_error_code: errorCode,
+    }),
 }));
 
 async function verifyUser(

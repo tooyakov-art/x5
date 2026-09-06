@@ -22,8 +22,8 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: F8LA8PC4U6
-    MARKETING_VERSION: "1.1.6"
-    CURRENT_PROJECT_VERSION: "192"
+    MARKETING_VERSION: "1.1.9"
+    CURRENT_PROJECT_VERSION: "239"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
 targets:
@@ -49,10 +49,11 @@ targets:
       - path: X5/PrivacyInfo.xcprivacy
       - path: X5/Resources/ThirdParty
       - path: X5/Resources/HomeMotion
+      - path: X5/Resources/cis-cities.json
     info:
       path: X5/Info.plist
       properties:
-        CFBundleDisplayName: X five marketing
+        CFBundleDisplayName: Xfive marketing
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDevelopmentRegion: en
@@ -78,7 +79,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UIUserInterfaceStyle: Dark
         ITSAppUsesNonExemptEncryption: false
-        NSFaceIDUsageDescription: "Used to lock X five marketing — only the device owner can open the app."
+        NSFaceIDUsageDescription: "Used to lock Xfive marketing — only the device owner can open the app."
         NSMicrophoneUsageDescription: "Microphone access is needed to record voice messages in chats."
         NSPhotoLibraryUsageDescription: "Select photos and videos for courses, chats, portfolio, and AI tools."
         NSPhotoLibraryAddUsageDescription: "Save generated images and videos to your photo library."
@@ -94,7 +95,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.x5studio.app
-        PRODUCT_NAME: X five marketing
+        PRODUCT_NAME: Xfive marketing
         PRODUCT_MODULE_NAME: X5
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -125,7 +126,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.x5studio.app.tests
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGNING_ALLOWED: NO
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/X five marketing.app/X five marketing"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Xfive marketing.app/Xfive marketing"
         BUNDLE_LOADER: "$(TEST_HOST)"
 
 schemes:

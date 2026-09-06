@@ -15,9 +15,9 @@ SPEC.loader.exec_module(MODULE)
 
 
 class CreditPackSubmissionTests(unittest.TestCase):
-    def test_release_is_locked_to_build_191(self):
-        self.assertEqual(MODULE.TARGET_VERSION, "1.1.6")
-        self.assertEqual(MODULE.TARGET_BUILD, "191")
+    def test_release_is_locked_to_build_238(self):
+        self.assertEqual(MODULE.TARGET_VERSION, "1.1.8")
+        self.assertEqual(MODULE.TARGET_BUILD, "238")
 
     def test_iap_version_payload_targets_parent_purchase(self):
         payload = MODULE.iap_version_payload("iap-1")
@@ -169,7 +169,7 @@ class CreditPackSubmissionTests(unittest.TestCase):
                             }
                         ]
                     }
-                if method == "GET" and "?include=items" in path:
+                if method == "GET" and "/items?limit=50&include=" in path:
                     included = []
                     for index, (resource_type, resource_id) in enumerate(
                         sorted(self.targets)
@@ -241,6 +241,331 @@ class CreditPackSubmissionTests(unittest.TestCase):
         self.assertTrue(api.submitted)
         api.assert_exact_targets()
 
+    def test_review_can_submit_app_without_already_reviewed_iaps(self):
+        class FakeAPI:
+            def __init__(self):
+                self.targets = set()
+                self.submitted = False
+
+            def request(self, method, path, expected=(200,), payload=None):
+                if method == "GET" and "?filter[app]=" in path:
+                    return {"data": []}
+                if method == "POST" and path == "/v1/reviewSubmissions":
+                    return {
+                        "data": {
+                            "id": "submission-app-only",
+                            "attributes": {"state": "READY_FOR_REVIEW"},
+                        }
+                    }
+                if method == "GET" and "/items?limit=50&include=" in path:
+                    included = []
+                    for index, (resource_type, resource_id) in enumerate(
+                        sorted(self.targets)
+                    ):
+                        included.append(
+                            {
+                                "id": f"item-{index}",
+                                "type": "reviewSubmissionItems",
+                                "relationships": {
+                                    "appStoreVersion": {
+                                        "data": {
+                                            "type": resource_type,
+                                            "id": resource_id,
+                                        }
+                                    }
+                                },
+                            }
+                        )
+                    return {"included": included}
+                if method == "GET" and path.endswith("/items?limit=50"):
+                    return {"data": []}
+                if method == "POST" and path == "/v1/reviewSubmissionItems":
+                    target = payload["data"]["relationships"][
+                        "appStoreVersion"
+                    ]["data"]
+                    self.targets.add((target["type"], target["id"]))
+                    return {"data": {"id": "item-app"}}
+                if method == "PATCH":
+                    self.submitted = True
+                    self.assert_app_only()
+                    return {
+                        "data": {
+                            "id": "submission-app-only",
+                            "attributes": {"state": "WAITING_FOR_REVIEW"},
+                        }
+                    }
+                raise AssertionError(f"Unexpected request {method} {path}")
+
+            def assert_app_only(self):
+                if self.targets != {("appStoreVersions", "version-1")}:
+                    raise AssertionError(
+                        f"submitted with wrong targets {self.targets}"
+                    )
+
+        api = FakeAPI()
+        submission_id = MODULE.create_combined_review(
+            api,
+            "app-1",
+            "version-1",
+            [],
+        )
+
+        self.assertEqual(submission_id, "submission-app-only")
+        self.assertTrue(api.submitted)
+        api.assert_app_only()
+
+    def test_existing_opaque_app_only_item_is_reused_without_duplicate(self):
+        class FakeAPI:
+            def __init__(self):
+                self.submitted = False
+
+            def request(self, method, path, expected=(200,), payload=None):
+                if method == "GET" and "?filter[app]=" in path:
+                    return {
+                        "data": [
+                            {
+                                "id": "submission-ready",
+                                "attributes": {
+                                    "state": "READY_FOR_REVIEW"
+                                },
+                            }
+                        ]
+                    }
+                if method == "GET" and "/items?limit=50&include=" in path:
+                    return {"included": []}
+                if method == "GET" and path.endswith("/items?limit=50"):
+                    return {
+                        "data": [
+                            {
+                                "type": "reviewSubmissionItems",
+                                "id": "opaque-item-ref",
+                                "attributes": {
+                                    "state": "READY_FOR_REVIEW"
+                                },
+                            }
+                        ]
+                    }
+                if method == "POST":
+                    raise AssertionError(
+                        "must not create a duplicate app review item"
+                    )
+                if method == "PATCH":
+                    self.submitted = True
+                    self.assert_submit_payload(payload)
+                    return {
+                        "data": {
+                            "id": "submission-ready",
+                            "attributes": {
+                                "state": "WAITING_FOR_REVIEW"
+                            },
+                        }
+                    }
+                raise AssertionError(f"Unexpected request {method} {path}")
+
+            def assert_submit_payload(self, payload):
+                if payload["data"]["attributes"] != {"submitted": True}:
+                    raise AssertionError(f"wrong submit payload {payload}")
+                if "relationships" in payload["data"]:
+                    raise AssertionError("review relationship is not allowed on PATCH")
+
+        api = FakeAPI()
+        submission_id = MODULE.create_combined_review(
+            api,
+            "app-1",
+            "version-1",
+            [],
+        )
+
+        self.assertEqual(submission_id, "submission-ready")
+        self.assertTrue(api.submitted)
+
+    def test_rejected_app_item_is_resolved_and_existing_review_is_resubmitted(self):
+        class FakeAPI:
+            def __init__(self):
+                self.item_state = "REJECTED"
+                self.verified_empty = False
+                self.submitted = False
+
+            def unresolved_items(self):
+                return {
+                    "data": [
+                        {
+                            "type": "reviewSubmissionItems",
+                            "id": "item-app-rejected",
+                            "attributes": {"state": self.item_state},
+                            "relationships": {
+                                "appStoreVersion": {
+                                    "data": {
+                                        "type": "appStoreVersions",
+                                        "id": "version-1",
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                }
+
+            def request(self, method, path, expected=(200,), payload=None):
+                if method == "GET" and "?filter[app]=" in path:
+                    return {
+                        "data": [
+                            {
+                                "id": "submission-empty",
+                                "attributes": {
+                                    "state": "READY_FOR_REVIEW"
+                                },
+                            },
+                            {
+                                "id": "submission-rejected",
+                                "attributes": {
+                                    "state": "UNRESOLVED_ISSUES"
+                                },
+                            },
+                        ]
+                    }
+                if (
+                    method == "GET"
+                    and "/submission-rejected/items?" in path
+                ):
+                    return self.unresolved_items()
+                if method == "GET" and "/submission-empty/items?" in path:
+                    self.verified_empty = True
+                    return {"data": []}
+                if method == "PATCH" and path.endswith(
+                    "/item-app-rejected"
+                ):
+                    self.item_state = "READY_FOR_REVIEW"
+                    self.assert_resolve_payload(payload)
+                    return {
+                        "data": {
+                            "id": "item-app-rejected",
+                            "attributes": {"state": self.item_state},
+                        }
+                    }
+                if method == "PATCH" and path.endswith(
+                    "/submission-rejected"
+                ):
+                    self.submitted = True
+                    self.assert_submit_payload(payload)
+                    return {
+                        "data": {
+                            "id": "submission-rejected",
+                            "attributes": {"state": "WAITING_FOR_REVIEW"},
+                        }
+                    }
+                if method == "POST":
+                    raise AssertionError(
+                        "must resolve the existing rejected review"
+                    )
+                raise AssertionError(f"Unexpected request {method} {path}")
+
+            def assert_resolve_payload(self, payload):
+                self.assert_attributes(payload, {"resolved": True})
+
+            def assert_submit_payload(self, payload):
+                self.assert_attributes(payload, {"submitted": True})
+
+            @staticmethod
+            def assert_attributes(payload, expected):
+                if payload["data"]["attributes"] != expected:
+                    raise AssertionError(f"wrong payload {payload}")
+
+        api = FakeAPI()
+        submission_id = MODULE.create_combined_review(
+            api,
+            "app-1",
+            "version-1",
+            [],
+        )
+
+        self.assertEqual(submission_id, "submission-rejected")
+        self.assertTrue(api.verified_empty)
+        self.assertEqual(api.item_state, "READY_FOR_REVIEW")
+        self.assertTrue(api.submitted)
+
+    def test_app_only_opaque_item_count_fails_closed(self):
+        class FakeAPI:
+            def request(self, method, path, **kwargs):
+                return {
+                    "data": [
+                        {
+                            "type": "reviewSubmissionItems",
+                            "id": "item-1",
+                            "attributes": {"state": "READY_FOR_REVIEW"},
+                        },
+                        {
+                            "type": "reviewSubmissionItems",
+                            "id": "item-2",
+                            "attributes": {"state": "READY_FOR_REVIEW"},
+                        },
+                    ]
+                }
+
+        with self.assertRaisesRegex(RuntimeError, "at most one item"):
+            MODULE.app_only_item_readback(
+                FakeAPI(),
+                "submission-ready",
+            )
+
+    def test_all_reviewed_iaps_still_submit_the_app_version(self):
+        class FakeAPI:
+            def request(self, method, path, **kwargs):
+                if path.startswith("/v1/apps?filter[bundleId]="):
+                    return {"data": [{"id": "app-1"}]}
+                raise AssertionError(f"Unexpected request {method} {path}")
+
+            def list_all(self, path):
+                if path == "/v1/apps/app-1/inAppPurchasesV2?limit=200":
+                    return [
+                        {
+                            "id": f"purchase-{index}",
+                            "attributes": {
+                                "productId": pack.product_id,
+                                "inAppPurchaseType": "CONSUMABLE",
+                                "state": "APPROVED",
+                            },
+                        }
+                        for index, pack in enumerate(MODULE.CREDIT_PACKS)
+                    ]
+                if path.startswith("/v2/inAppPurchases/"):
+                    return []
+                raise AssertionError(f"Unexpected list {path}")
+
+        target_version = {"id": "version-1"}
+        with (
+            mock.patch.object(MODULE, "AppStoreConnect", return_value=FakeAPI()),
+            mock.patch.object(
+                MODULE,
+                "app_version",
+                return_value=target_version,
+            ) as find_version,
+            mock.patch.object(MODULE, "verify_target_build") as verify_build,
+            mock.patch.object(
+                MODULE,
+                "cancel_waiting_app_review",
+            ) as cancel_review,
+            mock.patch.object(
+                MODULE,
+                "create_combined_review",
+                return_value="submission-app-only",
+            ) as create_review,
+        ):
+            MODULE.run("submit")
+
+        find_version.assert_called_once_with(mock.ANY, "app-1")
+        verify_build.assert_called_once_with(mock.ANY, "version-1")
+        cancel_review.assert_called_once_with(
+            mock.ANY,
+            "app-1",
+            "version-1",
+        )
+        create_review.assert_called_once_with(
+            mock.ANY,
+            "app-1",
+            "version-1",
+            [],
+        )
+
     def test_ready_submission_waits_for_eventual_exact_target_readback(self):
         expected_targets = {
             ("appStoreVersions", "version-1"),
@@ -268,7 +593,7 @@ class CreditPackSubmissionTests(unittest.TestCase):
                             }
                         ]
                     }
-                if method == "GET" and "?include=items" in path:
+                if method == "GET" and "/items?limit=50&include=" in path:
                     targets = self.target_readbacks.pop(0)
                     included = []
                     for index, (resource_type, resource_id) in enumerate(
@@ -330,13 +655,50 @@ class CreditPackSubmissionTests(unittest.TestCase):
             / "asc-release-replace-submit.yml"
         ).read_text(encoding="utf-8")
 
-        self.assertIn('EXPECTED_VERSION: "1.1.6"', workflow)
-        self.assertIn('EXPECTED_BUILD: "191"', workflow)
+        self.assertIn('EXPECTED_VERSION: "1.1.8"', workflow)
+        self.assertIn('EXPECTED_BUILD: "238"', workflow)
         self.assertIn(
             "python scripts/asc_submit_credit_packs.py --action submit",
             workflow,
         )
+        self.assertIn("python scripts/asc_set_after_approval.py", workflow)
+        guard = "python scripts/asc_set_after_approval.py"
+        guard_positions = [
+            index
+            for index in range(len(workflow))
+            if workflow.startswith(guard, index)
+        ]
+        submit_position = workflow.index(
+            "python scripts/asc_submit_credit_packs.py --action submit"
+        )
+        self.assertEqual(len(guard_positions), 2)
+        self.assertLess(
+            guard_positions[0],
+            submit_position,
+        )
+        self.assertLess(submit_position, guard_positions[1])
         self.assertNotIn("Attached app version item.", workflow)
+
+    def test_review_manager_delegates_submit_to_guarded_release_scripts(self):
+        workflow = (
+            pathlib.Path(__file__).parents[2]
+            / ".github"
+            / "workflows"
+            / "asc-review-submission.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "python scripts/asc_submit_credit_packs.py --action submit",
+            workflow,
+        )
+        self.assertIn("python scripts/asc_set_after_approval.py", workflow)
+        self.assertIn("if: ${{ inputs.action == 'submit' }}", workflow)
+        self.assertIn("if: ${{ inputs.action != 'submit' }}", workflow)
+        self.assertIn('"attributes": {"canceled": True}', workflow)
+        self.assertNotIn(
+            'requests.delete(f"{base}/reviewSubmissions/{tid}"',
+            workflow,
+        )
 
     def test_replace_workflow_requires_an_explicit_manual_dispatch(self):
         workflow = (

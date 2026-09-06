@@ -35,7 +35,7 @@ struct X5App: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            appRoot
                 .environmentObject(auth)
                 .environmentObject(history)
                 .environmentObject(brand)
@@ -73,12 +73,30 @@ struct X5App: App {
         }
     }
 
+    @ViewBuilder
+    private var appRoot: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["X5_HOME_QA_PREVIEW"] == "1" {
+            AppTabView()
+        } else {
+            ContentView()
+        }
+        #else
+        ContentView()
+        #endif
+    }
+
     private func syncPushRegistrationIfNeeded() {
         if auth.isAuthenticated {
             PushNotifications.shared.bootstrap()
             PushNotifications.shared.currentUserDidChange(
                 userId: auth.userId,
-                accessToken: auth.accessToken
+                accessToken: auth.accessToken,
+                freshAccessTokenProvider: { [weak auth] in
+                    await auth?.freshAccessToken(
+                        invalidateSessionOnCredentialFailure: false
+                    )
+                }
             )
         } else {
             PushNotifications.shared.cancelPromoLoop()

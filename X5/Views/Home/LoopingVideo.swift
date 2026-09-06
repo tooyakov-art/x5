@@ -11,71 +11,10 @@ struct HomeMotionAsset: Equatable {
     let posterAssetName: String
 }
 
-enum HomeDemoConfiguration {
-    static let imageGenerationVideoURL = URL(
-        string: "https://cdn.higgsfield.ai/card/83522493-66ba-44b9-92f6-ae18cd8ba22b.mp4"
-    )!
-    static let videoGenerationVideoURL = URL(
-        string: "https://static.higgsfield.ai/ai-video-v2/01-mini.mp4"
-    )!
-    static let voiceGenerationVideoURL = URL(
-        string: "https://static.higgsfield.ai/flow-medias/create-audio-22-07-2026.mp4"
-    )!
-
-    static var isEnabled: Bool {
-        #if DEBUG
-        return isEnabled(
-            isDebugBuild: true,
-            environment: ProcessInfo.processInfo.environment
-        )
-        #else
-        return isEnabled(
-            isDebugBuild: false,
-            environment: ProcessInfo.processInfo.environment
-        )
-        #endif
-    }
-
-    static func isEnabled(
-        isDebugBuild: Bool,
-        environment: [String: String]
-    ) -> Bool {
-        guard isDebugBuild else { return false }
-        return environment["X5_HOME_DEMO_MODE"] != "0"
-    }
-}
-
 enum HomeMotionCatalog {
-    static func asset(
-        for imageAssetName: String,
-        demoMode: Bool = HomeDemoConfiguration.isEnabled
-    ) -> HomeMotionAsset? {
-        if demoMode, imageAssetName == "HomeCoverTargetAds" {
-            return HomeMotionAsset(
-                source: .remote(url: HomeDemoConfiguration.imageGenerationVideoURL),
-                posterAssetName: "HomeCoverTargetAds"
-            )
-        }
-
-        if demoMode,
-           imageAssetName == "HomeTrendLiveVideo"
-            || imageAssetName == "HomeUtilityVideo" {
-            return HomeMotionAsset(
-                source: .remote(url: HomeDemoConfiguration.videoGenerationVideoURL),
-                posterAssetName: imageAssetName
-            )
-        }
-
-        if demoMode, imageAssetName == "HomeMotionStudioPoster" {
-            return HomeMotionAsset(
-                source: .remote(url: HomeDemoConfiguration.voiceGenerationVideoURL),
-                posterAssetName: "HomeMotionStudioPoster"
-            )
-        }
-
+    static func asset(for imageAssetName: String) -> HomeMotionAsset? {
         switch imageAssetName {
         case "HomeCoverTargetAds",
-             "HomeTrendLiveVideo",
              "HomeUtilityVideo",
              "HomeMotionStudioPoster":
             return HomeMotionAsset(
@@ -86,6 +25,16 @@ enum HomeMotionCatalog {
             return HomeMotionAsset(
                 source: .bundled(resourceName: "HomeMotionFruit"),
                 posterAssetName: "HomeMotionFruitPoster"
+            )
+        case "HomeTrendLiveVideo":
+            return HomeMotionAsset(
+                source: .bundled(resourceName: "HomeTrendStrawberry"),
+                posterAssetName: "HomeTrendLiveVideo"
+            )
+        case "HomeTrendPost":
+            return HomeMotionAsset(
+                source: .bundled(resourceName: "HomeTrendTokayev"),
+                posterAssetName: "HomeTrendPost"
             )
         default:
             return nil
@@ -98,9 +47,14 @@ enum HomeMotionPlaybackPolicy {
         isActive: Bool,
         isVisible: Bool,
         appIsActive: Bool,
-        reduceMotion: Bool
+        reduceMotion: Bool,
+        lowPowerMode: Bool,
+        isUserInitiated: Bool = false
     ) -> Bool {
-        isActive && isVisible && appIsActive && !reduceMotion
+        isActive
+            && isVisible
+            && appIsActive
+            && (isUserInitiated || (!reduceMotion && !lowPowerMode))
     }
 }
 
@@ -108,19 +62,27 @@ enum HomeMotionPlaybackPolicy {
 /// The poster always remains underneath, so a missing or failed video is harmless.
 struct LoopingVideo: View {
     let source: HomeMotionSource
-    let posterAssetName: String
+    let posterAssetName: String?
     let isActive: Bool
+    let isUserInitiated: Bool
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @StateObject private var controller: HomeLoopingVideoController
     @State private var isVisible = false
+    @State private var lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
 
-    init(source: HomeMotionSource, posterAssetName: String, isActive: Bool) {
+    init(
+        source: HomeMotionSource,
+        posterAssetName: String? = nil,
+        isActive: Bool,
+        isUserInitiated: Bool = false
+    ) {
         self.source = source
         self.posterAssetName = posterAssetName
         self.isActive = isActive
+        self.isUserInitiated = isUserInitiated
         _controller = StateObject(
             wrappedValue: HomeLoopingVideoController(source: source)
         )
@@ -129,11 +91,13 @@ struct LoopingVideo: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                Image(posterAssetName)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .clipped()
+                if let posterAssetName {
+                    Image(posterAssetName)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                }
 
                 if controller.isReady, let player = controller.player {
                     HomePlayerLayerView(player: player)
@@ -142,19 +106,16 @@ struct LoopingVideo: View {
                         .transition(.opacity)
                 }
             }
-            .background(
-                Color.clear.preference(
-                    key: HomeMotionFramePreferenceKey.self,
-                    value: proxy.frame(in: .global)
-                )
-            )
         }
         .background(Color.white.opacity(0.06))
-        .onPreferenceChange(HomeMotionFramePreferenceKey.self) { frame in
+        .onGeometryChange(for: Bool.self) { proxy in
+            let frame = proxy.frame(in: .global)
             let screen = UIScreen.main.bounds.insetBy(dx: 0, dy: -32)
-            isVisible = frame.width > 0
+            return frame.width > 0
                 && frame.height > 0
                 && frame.intersects(screen)
+        } action: { isVisible in
+            self.isVisible = isVisible
         }
         .onAppear {
             controller.setShouldPlay(playbackShouldRun)
@@ -166,6 +127,9 @@ struct LoopingVideo: View {
         .onChange(of: playbackShouldRun) { shouldPlay in
             controller.setShouldPlay(shouldPlay)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+            lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+        }
     }
 
     private var playbackShouldRun: Bool {
@@ -173,16 +137,10 @@ struct LoopingVideo: View {
             isActive: isActive,
             isVisible: isVisible,
             appIsActive: scenePhase == .active,
-            reduceMotion: reduceMotion
+            reduceMotion: reduceMotion,
+            lowPowerMode: lowPowerMode,
+            isUserInitiated: isUserInitiated
         )
-    }
-}
-
-private struct HomeMotionFramePreferenceKey: PreferenceKey {
-    static var defaultValue: CGRect = .null
-
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        value = nextValue()
     }
 }
 
@@ -265,6 +223,12 @@ private final class HomeLoopingVideoController: ObservableObject {
                 subdirectory: "HomeMotion"
             ) ?? bundle.url(forResource: resourceName, withExtension: "mp4")
         case .remote(let url):
+            guard url.scheme?.lowercased() == "https",
+                  url.host?.lowercased() == "afwznqjpshybmqhlewmy.supabase.co",
+                  url.path.hasPrefix("/storage/v1/object/public/videos/home/")
+            else {
+                return nil
+            }
             return url
         }
     }

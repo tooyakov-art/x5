@@ -70,6 +70,27 @@ struct PaywallView: View {
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
                     }
+
+                    if didLoadProducts && (hasMissingCreditPacks || iap.lastError != nil) {
+                        Button {
+                            Task { await reloadProducts() }
+                        } label: {
+                            Group {
+                                if iap.isLoadingProducts {
+                                    ProgressView().tint(.black)
+                                } else {
+                                    Text(loc.t("btn_retry"))
+                                        .font(.system(size: 15, weight: .bold))
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: 24)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.accentColor)
+                        .foregroundStyle(.black)
+                        .disabled(iap.isLoadingProducts || iap.isPurchasing)
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 28)
@@ -90,8 +111,7 @@ struct PaywallView: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .task {
-            await iap.loadProducts()
-            didLoadProducts = true
+            await reloadProducts()
         }
         .alert(loc.t("credit_store_success_title"), isPresented: $showSuccess) {
             Button(loc.t("btn_done")) { dismiss() }
@@ -151,7 +171,8 @@ struct PaywallView: View {
             }
 
             Button {
-                buy(pack)
+                X5Feedback.selection()
+                buyViaAppStore(pack)
             } label: {
                 Group {
                     if isCurrentPurchase {
@@ -167,7 +188,7 @@ struct PaywallView: View {
             .buttonStyle(.borderedProminent)
             .tint(.accentColor)
             .foregroundStyle(.black)
-            .disabled(product == nil || iap.isPurchasing)
+            .disabled(iap.isPurchasing)
 
             if didLoadProducts && product == nil {
                 Text(loc.t("credit_store_unavailable"))
@@ -186,6 +207,24 @@ struct PaywallView: View {
         }
     }
 
+    private func buyViaAppStore(_ pack: IAPCreditPack) {
+        DiagnosticLogger.log(event: "credit_payment_method_selected", extra: [
+            "method": "app_store_storekit",
+            "product": pack.productID
+        ])
+
+        Task {
+            if iap.product(id: pack.productID) == nil {
+                await reloadProducts()
+            }
+            guard iap.product(id: pack.productID) != nil else {
+                X5Feedback.error()
+                return
+            }
+            buy(pack)
+        }
+    }
+
     private func buy(_ pack: IAPCreditPack) {
         purchasingProductID = pack.productID
         Task {
@@ -201,6 +240,18 @@ struct PaywallView: View {
             X5Feedback.success()
             showSuccess = true
         }
+    }
+
+    private var hasMissingCreditPacks: Bool {
+        !IAPProductAvailability.missingCreditPackIDs(
+            loadedProductIDs: iap.products.keys
+        ).isEmpty
+    }
+
+    private func reloadProducts() async {
+        didLoadProducts = false
+        await iap.loadProducts()
+        didLoadProducts = true
     }
 
     private func refreshProfile() async -> Bool {

@@ -224,6 +224,13 @@ test("downloads only allowlisted HTTPS provider video within the private bucket 
     ),
     mp4Bytes,
   );
+  assert.deepEqual(
+    await storage.downloadProviderVideo(
+      "https://ark-content-generation-ap-southeast-1.tos-ap-southeast-1.volces.com/result.mp4",
+      { providerName: "byteplus" },
+    ),
+    mp4Bytes,
+  );
   await assert.rejects(
     () =>
       storage.downloadProviderVideo("http://v3.fal.media/result.mp4", {
@@ -242,6 +249,13 @@ test("downloads only allowlisted HTTPS provider video within the private bucket 
     () =>
       storage.downloadProviderVideo("https://attacker.example/result.mp4", {
         providerName: "google",
+      }),
+    /provider_result_invalid/,
+  );
+  await assert.rejects(
+    () =>
+      storage.downloadProviderVideo("https://volces.com.attacker.example/result.mp4", {
+        providerName: "byteplus",
       }),
     /provider_result_invalid/,
   );

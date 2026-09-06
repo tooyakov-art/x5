@@ -9,6 +9,12 @@ VIEW = ROOT / "X5" / "Views" / "Home" / "LiveFruitsView.swift"
 SUPABASE_CLIENT = ROOT / "X5" / "Services" / "SupabaseClient.swift"
 SWIFT_TESTS = ROOT / "X5Tests" / "FruitStoryServiceTests.swift"
 EDGE = ROOT / "supabase" / "functions" / "fruit-story" / "index.ts"
+AMBIGUOUS_RETRY_MIGRATION = (
+    ROOT
+    / "supabase"
+    / "migrations"
+    / "20260814003000_retry_ambiguous_fruit_story_requests.sql"
+)
 
 
 class LiveFruitsSourceTests(unittest.TestCase):
@@ -43,7 +49,7 @@ class LiveFruitsSourceTests(unittest.TestCase):
         self.assertIn("VideoGenerationService", view)
         self.assertIn("durationSeconds: 10", view)
         self.assertIn('aspectRatio: "9:16"', view)
-        self.assertIn("X five marketing", view)
+        self.assertIn("Xfive marketing", view)
         self.assertNotIn("Скоро добавим", view)
 
     def test_edge_function_keeps_openai_secret_server_side_and_moderates(self):
@@ -216,6 +222,22 @@ class LiveFruitsSourceTests(unittest.TestCase):
         self.assertIn("envelope.requestID == requestID", service)
         self.assertIn('payload.error.code == "outcome_unknown"', service)
         self.assertIn("case outcomeUnknown", service)
+
+    def test_ambiguous_story_request_is_reclaimed_with_the_same_idempotent_request(self):
+        service = SERVICE.read_text(encoding="utf-8")
+        edge = EDGE.read_text(encoding="utf-8")
+        migration = AMBIGUOUS_RETRY_MIGRATION.read_text(encoding="utf-8")
+
+        self.assertIn("maximumRecoveryAttempts", service)
+        self.assertIn('safeCode == "outcome_unknown"', service)
+        self.assertIn('return safeError("outcome_unknown", 409, 3)', edge)
+        self.assertRegex(
+            migration,
+            r"request\.status = 'ambiguous'[\s\S]{0,120}"
+            r"v_reclaim_existing := true",
+        )
+        self.assertIn("lease_generation = v_lease_generation", migration)
+        self.assertIn("fruit_story_request_attempts", migration)
 
     def test_final_video_reuses_per_account_pending_key_and_restores_accepted_jobs(self):
         view = VIEW.read_text(encoding="utf-8")

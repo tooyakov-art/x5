@@ -27,8 +27,8 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
 
         XCTAssertEqual(plan.width, 1_280)
         XCTAssertEqual(plan.height, 720)
-        XCTAssertEqual(plan.audioBitRate, 48_000)
-        XCTAssertGreaterThanOrEqual(plan.videoBitRate, 64_000)
+        XCTAssertEqual(plan.audioBitRate, 96_000)
+        XCTAssertGreaterThanOrEqual(plan.videoBitRate, 700_000)
 
         let estimatedBytes = Double(plan.videoBitRate + plan.audioBitRate)
             * 120
@@ -37,6 +37,42 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
             estimatedBytes,
             Double(CourseVideoUploadPolicy.transcodeTargetBytes)
         )
+    }
+
+    func testPublishedCourseUploadRequiresAtLeast720pSource() {
+        XCTAssertTrue(
+            CourseVideoUploadPolicy.acceptsSourceResolution(
+                width: 1_280,
+                height: 720
+            )
+        )
+        XCTAssertTrue(
+            CourseVideoUploadPolicy.acceptsSourceResolution(
+                width: 1_080,
+                height: 1_920
+            )
+        )
+        XCTAssertFalse(
+            CourseVideoUploadPolicy.acceptsSourceResolution(
+                width: 480,
+                height: 300
+            )
+        )
+    }
+
+    func testLongVideoIsRejectedInsteadOfBeingCompressedBelowHDQuality() {
+        XCTAssertThrowsError(
+            try CourseVideoUploadPolicy.makeEncodingPlan(
+                durationSeconds: 15 * 60,
+                presentationWidth: 1_920,
+                presentationHeight: 1_080
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? CourseVideoUploadPreparationError,
+                .videoTooLong
+            )
+        }
     }
 
     func testEncodingPlanKeepsPortraitOrientationAndDoesNotUpscaleSmallVideo() throws {
@@ -326,6 +362,152 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
         )
     }
 
+    func testSixMinuteVideoIsPreparedInFullBelowUploadLimit() async throws {
+        let fixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "x5-six-minute-course-video-\(UUID().uuidString).mp4"
+            )
+        try await makeVideoFixture(
+            at: fixture,
+            transform: .identity,
+            width: 640,
+            height: 360,
+            frameCount: 360,
+            timescale: 1
+        )
+        try appendSparseFreeAtom(
+            to: fixture,
+            finalSize: CourseVideoUploadPolicy.directUploadLimitBytes + 4_096
+        )
+        defer {
+            try? FileManager.default.removeItem(at: fixture)
+            try? FileManager.default.removeItem(
+                at: CourseVideoStaging.preparedUploadURL(for: fixture)
+            )
+        }
+
+        let sourceAsset = AVURLAsset(url: fixture)
+        let sourceDuration = try await sourceAsset.load(.duration).seconds
+        XCTAssertEqual(sourceDuration, 360, accuracy: 0.05)
+
+        let prepared = try await CourseVideoUploadPreparer().prepare(
+            fileURL: fixture
+        )
+
+        try await assertPreparedVideoIsH264AndUploadable(
+            prepared,
+            sourceURL: fixture
+        )
+        let preparedDuration = try await AVURLAsset(url: prepared)
+            .load(.duration)
+            .seconds
+        XCTAssertEqual(preparedDuration, 360, accuracy: 0.5)
+    }
+
+    func testRealClientCourseVideoUsesProductionUploadPreparationWithoutTruncation() async throws {
+        let fixtureName = "x5-client-course-lesson.mp4"
+        let fixture = try XCTUnwrap(
+            FileManager.default.urls(
+                for: .documentDirectory,
+                in: .userDomainMask
+            ).first
+        ).appendingPathComponent(fixtureName)
+        guard FileManager.default.fileExists(atPath: fixture.path) else {
+            throw XCTSkip(
+                "Install \(fixtureName) in the simulator app Documents directory "
+                    + "to run the real-client-video acceptance test"
+            )
+        }
+
+        let expectedSizeBytes = 17_656_264
+        let expectedDurationSeconds = 371.1667
+        let sourceSize = try XCTUnwrap(
+            fixture.resourceValues(forKeys: [.fileSizeKey]).fileSize
+        )
+        XCTAssertEqual(sourceSize, expectedSizeBytes)
+        XCTAssertLessThanOrEqual(
+            Int64(sourceSize),
+            CourseVideoUploadPolicy.directUploadLimitBytes
+        )
+        XCTAssertEqual(fixture.pathExtension.lowercased(), "mp4")
+        let majorBrand = try mp4MajorBrand(at: fixture)
+
+        let sourceAsset = AVURLAsset(url: fixture)
+        let sourceIsPlayable = try await sourceAsset.load(.isPlayable)
+        XCTAssertTrue(sourceIsPlayable)
+        let sourceDuration = try await sourceAsset.load(.duration).seconds
+        XCTAssertEqual(
+            sourceDuration,
+            expectedDurationSeconds,
+            accuracy: 0.05
+        )
+        let sourceVideoCodecs = try await codecTypes(
+            in: sourceAsset,
+            mediaType: .video
+        )
+        XCTAssertTrue(sourceVideoCodecs.contains(kCMVideoCodecType_H264))
+        let sourceAudioCodecs = try await codecTypes(
+            in: sourceAsset,
+            mediaType: .audio
+        )
+        XCTAssertTrue(sourceAudioCodecs.contains(kAudioFormatMPEG4AAC))
+
+        let prepared = try await CourseVideoUploadPreparer().prepare(
+            fileURL: fixture
+        )
+
+        // The production policy intentionally uploads this 17.6 MB file
+        // directly. Identity here proves preparation neither rewrote nor
+        // truncated the client's original media.
+        XCTAssertEqual(
+            prepared.standardizedFileURL,
+            fixture.standardizedFileURL
+        )
+        let preparedSize = try XCTUnwrap(
+            prepared.resourceValues(forKeys: [.fileSizeKey]).fileSize
+        )
+        XCTAssertEqual(preparedSize, sourceSize)
+
+        let preparedAsset = AVURLAsset(url: prepared)
+        let preparedIsPlayable = try await preparedAsset.load(.isPlayable)
+        XCTAssertTrue(preparedIsPlayable)
+        let preparedDuration = try await preparedAsset.load(.duration).seconds
+        XCTAssertEqual(preparedDuration, sourceDuration, accuracy: 0.001)
+        XCTAssertTrue(
+            CourseVideoUploadPolicy.isAcceptablePreparedOutput(
+                fileSizeBytes: Int64(preparedSize),
+                sourceDurationSeconds: sourceDuration,
+                outputDurationSeconds: preparedDuration
+            )
+        )
+        let preparedVideoCodecs = try await codecTypes(
+            in: preparedAsset,
+            mediaType: .video
+        )
+        let preparedAudioCodecs = try await codecTypes(
+            in: preparedAsset,
+            mediaType: .audio
+        )
+        XCTAssertEqual(preparedVideoCodecs, sourceVideoCodecs)
+        XCTAssertEqual(preparedAudioCodecs, sourceAudioCodecs)
+
+        let report = [
+            "source_bytes=\(sourceSize)",
+            "source_duration_seconds=\(sourceDuration)",
+            "prepared_bytes=\(preparedSize)",
+            "prepared_duration_seconds=\(preparedDuration)",
+            "container=mp4 (major_brand=\(majorBrand))",
+            "video_codecs=\(sourceVideoCodecs.map(fourCCString).joined(separator: ","))",
+            "audio_codecs=\(sourceAudioCodecs.map(fourCCString).joined(separator: ","))",
+            "production_path=direct_upload",
+            "prepared_url_is_source=true"
+        ].joined(separator: "\n")
+        let attachment = XCTAttachment(string: report)
+        attachment.name = "Real client course video verification"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     func testNativeFallbackNormalizesHEVCToH264WhenAvailable() async throws {
         let fixture = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -536,15 +718,25 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
     private func makeVideoFixture(
         at url: URL,
         transform: CGAffineTransform,
-        codec: AVVideoCodecType = .h264
+        codec: AVVideoCodecType = .h264,
+        width: Int = 1_920,
+        height: Int = 1_080,
+        frameCount: Int = 10,
+        timescale: Int32 = 30
     ) async throws {
+        guard width > 0,
+              height > 0,
+              frameCount > 0,
+              timescale > 0 else {
+            throw fixtureError("Invalid fixture dimensions or duration")
+        }
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let input = AVAssetWriterInput(
             mediaType: .video,
             outputSettings: [
                 AVVideoCodecKey: codec,
-                AVVideoWidthKey: 1_920,
-                AVVideoHeightKey: 1_080
+                AVVideoWidthKey: width,
+                AVVideoHeightKey: height
             ]
         )
         input.expectsMediaDataInRealTime = false
@@ -559,8 +751,8 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
             sourcePixelBufferAttributes: [
                 kCVPixelBufferPixelFormatTypeKey as String:
                     Int(kCVPixelFormatType_32BGRA),
-                kCVPixelBufferWidthKey as String: 1_920,
-                kCVPixelBufferHeightKey as String: 1_080
+                kCVPixelBufferWidthKey as String: width,
+                kCVPixelBufferHeightKey as String: height
             ]
         )
         guard writer.startWriting() else {
@@ -582,12 +774,12 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
         if let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) {
             let bytes = baseAddress.assumingMemoryBound(to: UInt8.self)
             let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
-            for y in 0..<1_080 {
+            for y in 0..<height {
                 let row = bytes.advanced(by: y * bytesPerRow)
-                for x in 0..<1_920 {
+                for x in 0..<width {
                     let pixel = row.advanced(by: x * 4)
                     let color: (blue: UInt8, green: UInt8, red: UInt8)
-                    switch (x < 960, y < 540) {
+                    switch (x < width / 2, y < height / 2) {
                     case (true, true):
                         color = (30, 30, 230)
                     case (false, true):
@@ -606,12 +798,12 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
         }
         CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
 
-        for frame in 0..<10 {
+        for frame in 0..<frameCount {
             var waitCount = 0
             while !input.isReadyForMoreMediaData {
                 try await Task.sleep(nanoseconds: 1_000_000)
                 waitCount += 1
-                guard waitCount < 5_000 else {
+                guard waitCount < 15_000 else {
                     throw fixtureError("Fixture writer timed out")
                 }
             }
@@ -619,7 +811,7 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
                 pixelBuffer,
                 withPresentationTime: CMTime(
                     value: Int64(frame),
-                    timescale: 30
+                    timescale: timescale
                 )
             ) else {
                 throw writer.error ?? fixtureError("Cannot append fixture frame")
@@ -801,6 +993,49 @@ final class CourseVideoUploadPreparationTests: XCTestCase {
                 outputDurationSeconds: preparedDuration.seconds
             )
         )
+    }
+
+    private func codecTypes(
+        in asset: AVAsset,
+        mediaType: AVMediaType
+    ) async throws -> [FourCharCode] {
+        let tracks = try await asset.loadTracks(withMediaType: mediaType)
+        var result: [FourCharCode] = []
+        for track in tracks {
+            let descriptions = try await track.load(.formatDescriptions)
+            result.append(
+                contentsOf: descriptions.map {
+                    CMFormatDescriptionGetMediaSubType($0)
+                }
+            )
+        }
+        return result
+    }
+
+    private func mp4MajorBrand(at url: URL) throws -> String {
+        let header = try Data(contentsOf: url, options: .mappedIfSafe)
+            .prefix(12)
+        guard header.count == 12,
+              String(data: Data(header[4..<8]), encoding: .ascii) == "ftyp",
+              let brand = String(
+                  data: Data(header[8..<12]),
+                  encoding: .ascii
+              )
+        else {
+            throw fixtureError("Client video is not an ISO BMFF/MP4 file")
+        }
+        return brand
+    }
+
+    private func fourCCString(_ value: FourCharCode) -> String {
+        let bytes: [UInt8] = [
+            UInt8((value >> 24) & 0xff),
+            UInt8((value >> 16) & 0xff),
+            UInt8((value >> 8) & 0xff),
+            UInt8(value & 0xff)
+        ]
+        return String(bytes: bytes, encoding: .ascii)
+            ?? String(format: "0x%08x", value)
     }
 
     private func fixtureError(_ message: String) -> NSError {

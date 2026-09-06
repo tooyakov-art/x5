@@ -6,6 +6,7 @@ struct GeneratedGalleryView: View {
     @EnvironmentObject private var loc: LocalizationService
     @StateObject private var store = GeneratedGalleryStore()
     @State private var preview: GeneratedGalleryPreview?
+    @State private var showingCloudGallery = false
 
     private let columns = [
         GridItem(.flexible(), spacing: 10),
@@ -41,9 +42,19 @@ struct GeneratedGalleryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showingCloudGallery = true
+                    } label: {
+                        Label("Облако", systemImage: "icloud.and.arrow.down")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(loc.t("btn_done")) { dismiss() }
                 }
+            }
+            .sheet(isPresented: $showingCloudGallery) {
+                AICloudGalleryView()
             }
             .fullScreenCover(item: $preview) { preview in
                 GeneratedGalleryPreviewView(preview: preview, onImageUpdated: { image in

@@ -26,6 +26,28 @@ export async function downloadFalAudio({
   return await readBoundedMP3Response(response, maximumBytes);
 }
 
+export async function validateMP3Bytes(
+  value,
+  maximumBytes = DEFAULT_MAXIMUM_AUDIO_BYTES,
+) {
+  const bytes = value instanceof Uint8Array
+    ? value
+    : new Uint8Array(value || 0);
+  if (bytes.byteLength <= 0 || bytes.byteLength > maximumBytes) {
+    throw new Error(
+      bytes.byteLength > maximumBytes ? "audio_too_large" : "audio_empty",
+    );
+  }
+  if (!hasMP3Signature(bytes)) {
+    throw new Error("audio_format_invalid");
+  }
+  return {
+    bytes,
+    mimeType: "audio/mpeg",
+    sha256: await sha256Bytes(bytes),
+  };
+}
+
 export async function readBoundedMP3Response(
   response,
   maximumBytes = DEFAULT_MAXIMUM_AUDIO_BYTES,
