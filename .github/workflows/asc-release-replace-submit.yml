@@ -15,6 +15,8 @@ jobs:
       ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
       ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
       ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      X5_APP_REVIEW_EMAIL: ${{ secrets.X5_APP_REVIEW_EMAIL }}
+      X5_APP_REVIEW_PASSWORD: ${{ secrets.X5_APP_REVIEW_PASSWORD }}
       BUNDLE_ID: com.x5studio.app
       EXPECTED_VERSION: "1.1.8"
       EXPECTED_BUILD: "238"
@@ -22,6 +24,9 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+
+      - name: Check protected review login before any Apple mutation
+        run: python3 scripts/review_test_credentials.py --check
 
       - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
         with:

@@ -1,5 +1,6 @@
 require "base64"
 require "json"
+require_relative "review_credentials"
 
 default_platform(:ios)
 
@@ -25,6 +26,7 @@ platform :ios do
       app_version: APP_VERSION,
       platform: "ios",
       skip_metadata: false,
+      app_review_information: required_review_credentials,
       skip_screenshots: false,
       skip_binary_upload: true,
       submit_for_review: false,

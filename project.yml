@@ -136,9 +136,11 @@ targets:
     sources:
       - path: X5AcceptanceUITests
       # Test runner only. Never include review credentials in the application.
-      - path: fastlane/metadata/review_information/demo_user.txt
+      - path: .secrets/review-test/demo_user.txt
+        optional: true
         buildPhase: resources
-      - path: fastlane/metadata/review_information/demo_password.txt
+      - path: .secrets/review-test/demo_password.txt
+        optional: true
         buildPhase: resources
     dependencies:
       - target: X5

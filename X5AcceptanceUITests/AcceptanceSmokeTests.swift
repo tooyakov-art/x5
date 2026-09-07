@@ -66,9 +66,21 @@ final class AcceptanceSmokeTests: XCTestCase {
         app.buttons["Sign in to Xfive marketing"].tap()
         let tabs = app.tabBars.firstMatch
         XCTAssertTrue(tabs.waitForExistence(timeout: 60), "Real review login must finish profile routing")
+        // The OS notification permission sheet can swallow the first tab tap.
+        // Deny notifications in this read-only run; never silently grant access.
+        let systemAlert = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.firstMatch
+        if systemAlert.waitForExistence(timeout: 10) {
+            let deny = systemAlert.buttons.matching(NSPredicate(format: "label IN %@", ["Don’t Allow", "Don't Allow"])).firstMatch
+            XCTAssertTrue(deny.exists, "Unexpected system permission sheet requires investigation")
+            deny.tap()
+        }
         capture("A02-authenticated-home")
 
-        tabs.buttons["Profile"].tap()
+        let profileTab = tabs.buttons["Profile"]
+        profileTab.tap()
+        let profileSelected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: profileTab)
+        XCTAssertEqual(XCTWaiter.wait(for: [profileSelected], timeout: 10), .completed,
+                       "Profile navigation must complete before looking for Store")
         let store = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Store")).firstMatch
         for _ in 0..<4 where !store.isHittable { app.swipeUp() }
         XCTAssertTrue(store.waitForExistence(timeout: 10))
