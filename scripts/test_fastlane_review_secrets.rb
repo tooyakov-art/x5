@@ -33,7 +33,12 @@ Dir.mktmpdir("x5-review-parser-") do |directory|
   Dir.chdir(directory) do
     unsafe = FastlaneCore::Configuration.create(Deliver::Options.available_options, {})
     emitted = capture_output { unsafe.load_configuration_file("Deliverfile") }
-    check(emitted.include?(password), "Unsafe DSL counterexample was not reproduced")
+    # Terminal::Table may wrap a value or split a word across column borders.
+    normalized = emitted.gsub(/\e\[[0-9;]*m/, "").gsub(/[\s|]/, "")
+    unless normalized.include?(password)
+      warn "Synthetic parser counterexample diagnostic: #{emitted.inspect}"
+      raise "Unsafe DSL counterexample was not reproduced"
+    end
   end
 end
 
@@ -46,7 +51,8 @@ Dir.chdir(repo) do
   end
   actual = configured[:app_review_information]
   check(actual[:demo_user] == email && actual[:demo_password] == password, "Required credential pair changed")
-  check(!emitted.include?(email) && !emitted.include?(password), "Fixed configuration leaked synthetic credentials")
+  normalized = emitted.gsub(/\e\[[0-9;]*m/, "").gsub(/[\s|]/, "")
+  check(!normalized.include?(email) && !normalized.include?(password), "Fixed configuration leaked synthetic credentials")
 
   ENV.delete("X5_APP_REVIEW_PASSWORD")
   rejected = false
