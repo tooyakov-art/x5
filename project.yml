@@ -129,7 +129,37 @@ targets:
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Xfive marketing.app/Xfive marketing"
         BUNDLE_LOADER: "$(TEST_HOST)"
 
+  X5AcceptanceUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: X5AcceptanceUITests
+    resources:
+      # Test runner only. Never include review credentials in the application.
+      - path: fastlane/metadata/review_information/demo_user.txt
+      - path: fastlane/metadata/review_information/demo_password.txt
+    dependencies:
+      - target: X5
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.x5studio.app.acceptance-tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+        TEST_TARGET_NAME: X5
+
 schemes:
+  X5-Acceptance-CI:
+    build:
+      targets:
+        X5: all
+        X5AcceptanceUITests: [test]
+    test:
+      config: Debug
+      targets:
+        - name: X5AcceptanceUITests
+          parallelizable: false
+
   X5-Course-CI:
     build:
       targets:
