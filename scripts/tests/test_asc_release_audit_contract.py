@@ -12,6 +12,11 @@ WORKFLOW = (
 
 
 class AppStoreReleaseAuditContractTests(unittest.TestCase):
+    def test_internal_candidate_does_not_retarget_pending_review(self):
+        self.assertIn('EXPECTED_BUILD: "239"', WORKFLOW)
+        self.assertIn('EXPECTED_RUNTIME_BUILD: "240"', WORKFLOW)
+        self.assertIn('build.group(1) != os.environ["EXPECTED_RUNTIME_BUILD"]', WORKFLOW)
+
     def test_live_app_store_version_is_a_success_state(self):
         match = re.search(
             r"READY_VERSION_STATES\s*=\s*\{(?P<body>.*?)\n\s*\}",

@@ -36,6 +36,7 @@ jobs:
       BUNDLE_ID: com.x5studio.app
       EXPECTED_VERSION: "1.1.9"
       EXPECTED_BUILD: "239"
+      EXPECTED_RUNTIME_BUILD: "240"
       AUDIT_SCOPE: "post-submit-app-version-build-screenshots-subscriptions"
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -190,8 +191,8 @@ jobs:
           print(f"fastlane APP_VERSION={fast_version.group(1) if fast_version else '?'}")
           if not marketing or marketing.group(1) != os.environ["EXPECTED_VERSION"]:
               issue("project.yml MARKETING_VERSION does not match EXPECTED_VERSION")
-          if not build or build.group(1) != os.environ["EXPECTED_BUILD"]:
-              issue("project.yml CURRENT_PROJECT_VERSION does not match EXPECTED_BUILD")
+          if not build or build.group(1) != os.environ["EXPECTED_RUNTIME_BUILD"]:
+              issue("project.yml CURRENT_PROJECT_VERSION does not match EXPECTED_RUNTIME_BUILD")
           if not fast_version or fast_version.group(1) != os.environ["EXPECTED_VERSION"]:
               issue("fastlane APP_VERSION does not match EXPECTED_VERSION")
           if os.environ["EXPECTED_BUILD"] not in review_notes or os.environ["EXPECTED_VERSION"] not in review_notes:

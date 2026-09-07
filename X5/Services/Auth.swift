@@ -38,8 +38,8 @@ final class Auth: ObservableObject {
 
     var accessToken: String? { supabase.accessToken }
 
-    /// Token keys live in the Keychain (encrypted at rest, excluded from iCloud backups).
-    /// User profile keys (id, email) stay in UserDefaults — non-sensitive identifiers.
+    /// Token keys live in the OS-protected Keychain, not plaintext preferences.
+    /// Account identifiers (id, email; still personal data) stay in UserDefaults.
     private let tokenKey = "x5.session.access_token"
     private let refreshKey = "x5.session.refresh_token"
     private let userIdKey = "x5.session.user_id"

@@ -51,7 +51,9 @@ class ReleaseVersionSourceTests(unittest.TestCase):
         ).group(1)
 
         self.assertEqual(marketing_version, "1.1.9")
-        self.assertEqual(runtime_build_number, "239")
+        # Internal acceptance candidate advances; pending Apple review stays
+        # explicitly pinned to 239 until device/payment acceptance is complete.
+        self.assertEqual(runtime_build_number, "240")
         self.assertEqual(fastlane_version, marketing_version)
         self.assertIn(
             f"Version {marketing_version} build 239",

@@ -3,8 +3,8 @@ import Security
 
 /// Thin wrapper around the iOS Keychain for storing OAuth/Supabase tokens.
 /// Uses kSecClassGenericPassword with kSecAttrAccessibleAfterFirstUnlock so
-/// tokens survive reboots but stay encrypted at rest and don't leak via
-/// iTunes/iCloud backups.
+/// tokens remain protected by the OS and are available after the first unlock.
+/// This accessibility class does not promise exclusion from encrypted backups.
 enum Keychain {
     private static let service = "app.x5studio.x5.session"
 

@@ -148,6 +148,16 @@ jobs:
             -exportOptionsPlist ExportOptions.plist \
             -allowProvisioningUpdates
 
+      - name: Verify exported application excludes test credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest scripts.tests.test_verify_release_bundle
+          IPA=$(find "$EXPORT_PATH" -maxdepth 1 -name '*.ipa' -print -quit)
+          VERSION=$(sed -n 's/.*MARKETING_VERSION: "\([^"]*\)"/\1/p' project.yml | head -n 1)
+          BUILD=$(sed -n 's/.*CURRENT_PROJECT_VERSION: "\([^"]*\)"/\1/p' project.yml | head -n 1)
+          python3 scripts/verify_release_bundle.py "$IPA" --version "$VERSION" --build "$BUILD"
+
       - name: Write App Store Connect API key
         env:
           ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
