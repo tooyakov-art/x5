@@ -137,6 +137,8 @@ struct ProfileView: View {
                                   name: displayName)
                     .frame(width: proxy.size.width, height: height)
                     .clipped()
+                    // Decorative scaled-to-fill media must not intercept cards below it.
+                    .allowsHitTesting(false)
 
                 LinearGradient(
                     colors: [

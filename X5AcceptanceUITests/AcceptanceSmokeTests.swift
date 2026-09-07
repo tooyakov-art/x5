@@ -82,8 +82,13 @@ final class AcceptanceSmokeTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [profileSelected], timeout: 10), .completed,
                        "Profile navigation must complete before looking for Store")
         let store = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Store")).firstMatch
-        for _ in 0..<4 where !store.isHittable { app.swipeUp() }
+        for attempt in 0..<4 where !store.isHittable {
+            // Geometry only: never log the account's balance or profile label.
+            print("Store before swipe \(attempt): exists=\(store.exists), frame=\(store.frame)")
+            app.swipeUp()
+        }
         XCTAssertTrue(store.waitForExistence(timeout: 10))
+        XCTAssertTrue(store.isHittable, "Visible Store must accept a native tap; frame=\(store.frame)")
         store.tap()
         XCTAssertTrue(app.navigationBars["Store"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["1000 credits"].waitForExistence(timeout: 10))
