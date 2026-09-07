@@ -19,6 +19,11 @@ final class AcceptanceSmokeTests: XCTestCase {
         add(attachment)
     }
 
+    override func tearDownWithError() throws {
+        if (testRun?.failureCount ?? 0) > 0 { capture("failure-last-screen") }
+        app.terminate()
+    }
+
     func test01GuestValidationAndBack() throws {
         let emailChoice = app.buttons["Continue with Email"]
         XCTAssertTrue(emailChoice.waitForExistence(timeout: 30))
@@ -81,10 +86,17 @@ final class AcceptanceSmokeTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Hub"].waitForExistence(timeout: 10))
         capture("H01-hub-read-only")
         tabs.buttons["CourseUP"].tap()
+        XCTAssertTrue(app.staticTexts["No published courses yet"].waitForExistence(timeout: 30),
+                      "The review account currently has zero published courses; never substitute invented lessons")
+        XCTAssertFalse(app.staticTexts["Вайбкодинг для маркетолога"].exists)
+        app.buttons["Refresh"].tap()
+        XCTAssertTrue(app.staticTexts["No published courses yet"].waitForExistence(timeout: 30))
         capture("C01-course-catalog-read-only")
         app.terminate()
         app.launch()
-        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 60))
+        let restored = app.tabBars.firstMatch.waitForExistence(timeout: 60)
+        capture("A02-cold-restart-result")
+        XCTAssertTrue(restored)
         XCTAssertFalse(app.buttons["Continue with Email"].exists)
         capture("A02-session-restored")
     }

@@ -113,6 +113,16 @@ jobs:
         run: |
           DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x.get("isAvailable") and x.get("name", "").startswith("iPhone")))')
           echo "id=$DEVICE_ID" >> "$GITHUB_OUTPUT"
+      - name: Diagnose unsigned simulator Keychain baseline
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild test -project X5.xcodeproj -scheme X5-Course-CI \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}' \
+            -only-testing:X5Tests/KeychainPersistenceTests \
+            CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO
       - name: Run real app read-only UI checks
         shell: bash
         run: |
@@ -121,7 +131,8 @@ jobs:
             -configuration Debug \
             -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}' \
             -resultBundlePath "$RUNNER_TEMP/acceptance.xcresult" \
-            CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=YES \
+            COMPILER_INDEX_STORE_ENABLE=NO
       - name: Export screenshot evidence only
         if: always()
         shell: bash
@@ -354,7 +365,7 @@ jobs:
             -scheme X5-Course-CI \
             -configuration Debug \
             -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}' \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=YES \
             COMPILER_INDEX_STORE_ENABLE=NO
 
       - name: Remove restored private Home artwork
@@ -370,7 +381,7 @@ jobs:
             -configuration Debug \
             -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}' \
             -only-testing:X5Tests/PortfolioMediaPrivacyTests \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=YES \
             COMPILER_INDEX_STORE_ENABLE=NO
 
   apple-sandbox-audit:

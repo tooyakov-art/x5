@@ -638,6 +638,9 @@ extension LocalizationService {
 
             // Courses extra
             "courses_create_btn": "Создать",
+            "courses_empty_title": "Пока нет опубликованных курсов",
+            "courses_empty_message": "Здесь появятся доступные курсы с уроками и видео.",
+            "courses_reload": "Обновить",
 
             // Common
             "common_anonymous": "Анонимно",
@@ -1197,6 +1200,9 @@ extension LocalizationService {
 
             // Courses extra
             "courses_create_btn": "Create",
+            "courses_empty_title": "No published courses yet",
+            "courses_empty_message": "Available courses with lessons and videos will appear here.",
+            "courses_reload": "Refresh",
 
             // Common
             "common_anonymous": "Anonymous",
@@ -1756,6 +1762,9 @@ extension LocalizationService {
 
             // Courses extra
             "courses_create_btn": "Жасау",
+            "courses_empty_title": "Әзірге жарияланған курстар жоқ",
+            "courses_empty_message": "Қолжетімді сабақтар мен бейнелері бар курстар осында көрсетіледі.",
+            "courses_reload": "Жаңарту",
 
             // Common
             "common_anonymous": "Анонимді",
