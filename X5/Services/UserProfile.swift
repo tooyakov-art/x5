@@ -163,12 +163,22 @@ final class CurrentUser: ObservableObject {
     private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
 
     private var observer: NSObjectProtocol?
+    private let session: URLSession
+    private let sessionUserID: @MainActor () -> String?
 
-    init() {
+    init(
+        session: URLSession = .shared,
+        sessionUserID: @escaping @MainActor () -> String? = {
+            UserDefaults.standard.string(forKey: "x5.session.user_id")
+        },
+        restoreCache: Bool = true
+    ) {
+        self.session = session
+        self.sessionUserID = sessionUserID
         // Restore the last cached profile synchronously so ProfileView renders
         // real values on cold launch instead of flashing "User"/empty defaults
         // for the seconds it takes the server fetch to come back.
-        restoreCachedProfile()
+        if restoreCache { restoreCachedProfile() }
 
         observer = NotificationCenter.default.addObserver(
             forName: .x5UserDidSignOut, object: nil, queue: .main
@@ -255,7 +265,7 @@ final class CurrentUser: ObservableObject {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
             request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                 let body = String(data: data, encoding: .utf8) ?? ""
                 throw NSError(domain: "CurrentUser", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: body])
@@ -290,7 +300,7 @@ final class CurrentUser: ObservableObject {
         ]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await session.data(for: request),
               let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode)
         else {
@@ -337,7 +347,7 @@ final class CurrentUser: ObservableObject {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await session.data(for: request),
               let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode),
               let rows = try? JSONDecoder().decode([UserProfile].self, from: data)
@@ -362,7 +372,7 @@ final class CurrentUser: ObservableObject {
         request.setValue("true", forHTTPHeaderField: "x-upsert")
         request.httpBody = jpegData
 
-        guard let (_, response) = try? await URLSession.shared.data(for: request),
+        guard let (_, response) = try? await session.data(for: request),
               let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode)
         else { return nil }
@@ -397,7 +407,7 @@ final class CurrentUser: ObservableObject {
             request.setValue("return=representation", forHTTPHeaderField: "Prefer")
             request.httpBody = try JSONEncoder().encode(fields)
 
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
                 if let rows = try? JSONDecoder().decode([UserProfile].self, from: data), let row = rows.first {
                     self.profile = row
