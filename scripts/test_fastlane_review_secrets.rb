@@ -27,18 +27,22 @@ ENV["X5_APP_REVIEW_EMAIL"] = email
 ENV["X5_APP_REVIEW_PASSWORD"] = password
 repo = File.expand_path("..", __dir__)
 
-# Reproduce the unsafe DSL with the actual dependency; don't emit its output.
+# Verify the baseline with the actual dependency, not just a source hypothesis.
+# Its raw DSL table renders a Hash cell empty; the Runner Summary exposes email
+# but masks the password. Capture both without emitting synthetic login values.
 Dir.mktmpdir("x5-review-parser-") do |directory|
   File.write(File.join(directory, "Deliverfile"), "app_review_information({demo_user: '#{email}', demo_password: '#{password}'})\n")
   Dir.chdir(directory) do
     unsafe = FastlaneCore::Configuration.create(Deliver::Options.available_options, {})
-    emitted = capture_output { unsafe.load_configuration_file("Deliverfile") }
+    emitted = capture_output do
+      unsafe.load_configuration_file("Deliverfile")
+      FastlaneCore::PrintTable.print_values(config: unsafe,
+        mask_keys: ["app_review_information.demo_password"], title: "Baseline Runner Summary")
+    end
     # Terminal::Table may wrap a value or split a word across column borders.
     normalized = emitted.gsub(/\e\[[0-9;]*m/, "").gsub(/[\s|]/, "")
-    unless normalized.include?(password)
-      warn "Synthetic parser counterexample diagnostic: #{emitted.inspect}"
-      raise "Unsafe DSL counterexample was not reproduced"
-    end
+    check(normalized.include?(email), "Baseline username disclosure was not reproduced")
+    check(!normalized.include?(password), "Pinned Fastlane baseline password masking regressed")
   end
 end
 
@@ -66,4 +70,4 @@ Dir.chdir(repo) do
   check(rejected, "Missing secret did not stop configuration")
   check(!emitted.include?(email) && !emitted.include?(password), "Failure path leaked synthetic credentials")
 end
-puts "PASS: unsafe DSL reproduced; protected config preserves both credentials without stdout; missing secret refused. No Apple request."
+puts "PASS: baseline username disclosure reproduced (password masked); protected config preserves both without stdout; missing secret refused. No Apple request."
