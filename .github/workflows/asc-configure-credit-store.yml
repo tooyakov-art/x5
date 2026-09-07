@@ -7,12 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       credit_review_action:
-        description: "Audit only, or submit READY_TO_SUBMIT credit packs"
+        description: "Read-only audit, configure metadata, or submit READY_TO_SUBMIT packs"
         required: true
         type: choice
         default: audit
         options:
           - audit
+          - configure
           - submit
   push:
     branches: [main, codex/x5-course-client-fixes-20260714]
@@ -37,6 +38,7 @@ jobs:
       - name: Verify configuration contract
         run: python -m unittest discover -s scripts/tests -p "test_asc_configure_credit_store.py"
       - name: Configure consumable credit packs
+        if: github.event_name != 'workflow_dispatch' || inputs.credit_review_action == 'configure'
         env:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
@@ -48,6 +50,7 @@ jobs:
           python -m unittest discover -s scripts/tests
           -p "test_asc_configure_server_notifications.py"
       - name: Configure App Store server notifications
+        if: github.event_name != 'workflow_dispatch' || inputs.credit_review_action == 'configure'
         env:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
@@ -61,7 +64,7 @@ jobs:
           python -m unittest discover -s scripts/tests
           -p "test_asc_submit_credit_packs.py"
       - name: Audit or submit credit packs for App Review
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+        if: github.event_name == 'workflow_dispatch' && inputs.credit_review_action != 'configure'
         env:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
@@ -69,3 +72,9 @@ jobs:
         run: >-
           python scripts/asc_submit_credit_packs.py
           --action "${{ inputs.credit_review_action }}"
+      - name: Read current Kazakhstan credit prices without mutations
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+        run: python -m scripts.asc_audit_credit_prices
