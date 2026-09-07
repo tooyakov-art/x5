@@ -2,30 +2,33 @@ import CryptoKit
 import Foundation
 
 enum VoiceGenerationVoice: String, CaseIterable, Hashable, Identifiable {
-    case aria = "Aria"
-    case roger = "Roger"
-    case sarah = "Sarah"
-    case laura = "Laura"
-    case charlie = "Charlie"
-    case george = "George"
-    case callum = "Callum"
-    case river = "River"
-    case liam = "Liam"
-    case charlotte = "Charlotte"
-    case alice = "Alice"
-    case matilda = "Matilda"
-    case will = "Will"
-    case jessica = "Jessica"
-    case eric = "Eric"
-    case chris = "Chris"
-    case brian = "Brian"
-    case daniel = "Daniel"
-    case lily = "Lily"
-    case bill = "Bill"
-    case rachel = "Rachel"
+    case brightHeroine = "Russian_BrightHeroine"
+    case ambitiousWoman = "Russian_AmbitiousWoman"
+    case energeticWoman = "Russian_CrazyQueen"
+    case calmGirl = "Russian_PessimisticGirl"
+    case reliableMan = "Russian_ReliableMan"
+    case youngMan = "Russian_AttractiveGuy"
+    case sharpYoungVoice = "Russian_Bad-temperedBoy"
+    case friendlyMan = "Russian_HandsomeChildhoodFriend"
 
     var id: String { rawValue }
-    var title: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .brightHeroine: return "Яркая героиня"
+        case .ambitiousWoman: return "Уверенная женщина"
+        case .energeticWoman: return "Энергичная женщина"
+        case .calmGirl: return "Спокойная девушка"
+        case .reliableMan: return "Надёжный мужчина"
+        case .youngMan: return "Молодой мужчина"
+        case .sharpYoungVoice: return "Резкий молодой голос"
+        case .friendlyMan: return "Дружелюбный мужчина"
+        }
+    }
+
+    /// Source compatibility for tests and pending requests created by an
+    /// earlier TestFlight build. It is not shown in the current picker.
+    static let aria = VoiceGenerationVoice.brightHeroine
 }
 
 enum VoiceGenerationStability: Double, CaseIterable, Hashable, Identifiable {
@@ -56,6 +59,7 @@ struct VoiceGenerationResult: Decodable, Equatable {
     let voice: String
     let model: String
     let replayed: Bool
+    let assetID: String?
 
     enum CodingKeys: String, CodingKey {
         case audioURL = "audio_url"
@@ -66,6 +70,7 @@ struct VoiceGenerationResult: Decodable, Equatable {
         case voice
         case model
         case replayed
+        case assetID = "asset_id"
     }
 
     init(from decoder: Decoder) throws {
@@ -84,6 +89,7 @@ struct VoiceGenerationResult: Decodable, Equatable {
         voice = try container.decode(String.self, forKey: .voice)
         model = try container.decode(String.self, forKey: .model)
         replayed = try container.decode(Bool.self, forKey: .replayed)
+        assetID = try container.decodeIfPresent(String.self, forKey: .assetID)
     }
 }
 
@@ -402,6 +408,56 @@ final class VoiceGenerationService {
             }
         }
         throw VoiceGenerationServiceError.invalidResponse
+    }
+
+    /// Retries exactly once when the Edge Function rejects an access token.
+    /// The request ID remains unchanged, so the server-side idempotency ledger
+    /// prevents a duplicate debit if the first response was interrupted.
+    func generateWithTokenRefresh(
+        text: String,
+        voice: VoiceGenerationVoice,
+        stability: VoiceGenerationStability,
+        speed: Double,
+        languageCode: String?,
+        requestID: String,
+        accessToken: String,
+        refreshAccessToken: @escaping (String) async -> String?
+    ) async throws -> VoiceGenerationResult {
+        do {
+            return try await generate(
+                text: text,
+                voice: voice,
+                stability: stability,
+                speed: speed,
+                languageCode: languageCode,
+                requestID: requestID,
+                accessToken: accessToken
+            )
+        } catch let error as VoiceGenerationServiceError {
+            guard case .server(let statusCode, _, _) = error,
+                  statusCode == 401
+            else {
+                throw error
+            }
+
+            guard let refreshedToken = await refreshAccessToken(accessToken),
+                  !refreshedToken.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                  ).isEmpty
+            else {
+                throw VoiceGenerationServiceError.missingAccessToken
+            }
+
+            return try await generate(
+                text: text,
+                voice: voice,
+                stability: stability,
+                speed: speed,
+                languageCode: languageCode,
+                requestID: requestID,
+                accessToken: refreshedToken
+            )
+        }
     }
 
     private static func isSupportedSpeed(_ speed: Double) -> Bool {

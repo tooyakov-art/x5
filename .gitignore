@@ -40,6 +40,12 @@ __pycache__/
 ## Local secrets
 .env
 secrets.local
+fastlane/asc_api_key.json
+fastlane/metadata/review_information/demo_user.txt
+fastlane/metadata/review_information/demo_password.txt
+
+## Client-approved artwork (restored only inside trusted builds)
+X5/Assets.xcassets/HomeApprovedReference.imageset/HomeApprovedReference.png
 
 .secrets/
 supabase/.temp/

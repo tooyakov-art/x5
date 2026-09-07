@@ -8,6 +8,7 @@ import hashlib
 import os
 import time
 from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -255,6 +256,72 @@ def exact_price_point(
     return exact[0]
 
 
+def _store_date(value: object) -> date | None:
+    if value in (None, ""):
+        return None
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError as error:
+        raise RuntimeError(f"Invalid App Store price date: {value}") from error
+
+
+def active_manual_price(
+    response: dict[str, Any], *, on_date: date
+) -> tuple[dict[str, Any], Decimal] | None:
+    """Return the single KAZ manual price effective on ``on_date``.
+
+    App Store Connect keeps past and future rows in the same schedule.  Merely
+    finding the desired price point anywhere in that history is not enough:
+    StoreKit displays the row whose date interval is active today.  Apple's
+    end date is the first date on which that row is no longer in effect.
+    """
+
+    price_points = {
+        item.get("id"): item
+        for item in response.get("included", [])
+        if item.get("type") == "inAppPurchasePricePoints"
+    }
+    active: list[tuple[dict[str, Any], Decimal]] = []
+    for row in response.get("data", []):
+        attributes = row.get("attributes", {})
+        start = _store_date(attributes.get("startDate"))
+        end = _store_date(attributes.get("endDate"))
+        if start is not None and start > on_date:
+            continue
+        if end is not None and end <= on_date:
+            continue
+
+        point_id = (
+            row.get("relationships", {})
+            .get("inAppPurchasePricePoint", {})
+            .get("data", {})
+            .get("id")
+        )
+        point = price_points.get(point_id)
+        if point is None:
+            raise RuntimeError(
+                f"Active App Store price row {row.get('id')} has no included price point"
+            )
+        try:
+            customer_price = Decimal(
+                str(point.get("attributes", {}).get("customerPrice"))
+            )
+        except Exception as error:
+            raise RuntimeError(
+                f"Active App Store price row {row.get('id')} has no customer price"
+            ) from error
+        active.append((row, customer_price))
+
+    if not active:
+        return None
+    if len(active) != 1:
+        rows = ", ".join(str(row.get("id")) for row, _ in active)
+        raise RuntimeError(
+            f"Expected exactly one active App Store price on {on_date}, found: {rows}"
+        )
+    return active[0]
+
+
 def ensure_localization(
     api: AppStoreConnect,
     iap_id: str,
@@ -268,17 +335,37 @@ def ensure_localization(
         None,
     )
     if current:
-        api.request(
-            "PATCH",
-            f"/v1/inAppPurchaseLocalizations/{current['id']}",
-            payload={
-                "data": {
-                    "type": "inAppPurchaseLocalizations",
-                    "id": current["id"],
-                    "attributes": {"name": name, "description": description},
-                }
-            },
-        )
+        attributes = current.get("attributes", {})
+        if attributes.get("state") == "ACTIVE":
+            # Apple freezes an approved localization. Re-sending an identical
+            # PATCH still returns 409, so keep the active metadata and continue
+            # auditing the immutable price schedule.
+            print(f"Keeping active {locale} localization for {iap_id}")
+            return
+        try:
+            api.request(
+                "PATCH",
+                f"/v1/inAppPurchaseLocalizations/{current['id']}",
+                payload={
+                    "data": {
+                        "type": "inAppPurchaseLocalizations",
+                        "id": current["id"],
+                        "attributes": {"name": name, "description": description},
+                    }
+                },
+            )
+        except RuntimeError as error:
+            # The list endpoint can omit `state` even though Apple already made
+            # the localization ACTIVE. Treat only Apple's exact immutable-state
+            # response as an audited no-op; every other API error still fails.
+            if (
+                "ENTITY_ERROR.ATTRIBUTE.INVALID.UNMODIFIABLE" in str(error)
+                and "Cannot edit InAppPurchaseLocalization when it is in ACTIVE state"
+                in str(error)
+            ):
+                print(f"Keeping active {locale} localization for {iap_id}")
+                return
+            raise
         print(f"Updated {locale} localization for {iap_id}")
         return
     api.request(
@@ -414,30 +501,46 @@ def ensure_initial_price(
     desired_point = exact_price_point(api, iap_id, target)
     desired_id = desired_point["id"]
     try:
-        current_prices = api.request(
+        schedule = api.request(
             "GET",
             f"/v1/inAppPurchasePriceSchedules/{iap_id}/manualPrices"
             f"?filter[territory]={BASE_TERRITORY}"
+            "&fields[inAppPurchasePricePoints]=customerPrice"
+            "&fields[inAppPurchasePrices]=startDate,endDate,inAppPurchasePricePoint"
             "&include=inAppPurchasePricePoint&limit=50",
-        ).get("data", [])
+        )
     except RuntimeError as error:
         if "HTTP 404" not in str(error):
             raise
-        current_prices = []
+        schedule = {"data": [], "included": []}
 
-    current_point_ids = {
-        item.get("relationships", {})
-        .get("inAppPurchasePricePoint", {})
-        .get("data", {})
-        .get("id")
-        for item in current_prices
-    }
-    if desired_id in current_point_ids:
-        print(f"Keeping existing {target} KZT price for {iap_id}")
+    current_prices = schedule.get("data", [])
+    active = active_manual_price(
+        schedule,
+        on_date=datetime.now(timezone.utc).date(),
+    )
+    if active is not None:
+        row, customer_price = active
+        current_point_id = (
+            row.get("relationships", {})
+            .get("inAppPurchasePricePoint", {})
+            .get("data", {})
+            .get("id")
+        )
+        if current_point_id != desired_id or customer_price != target:
+            raise RuntimeError(
+                f"{iap_id} active {BASE_TERRITORY} price is {customer_price} KZT, "
+                f"expected {target} KZT"
+            )
+        print(
+            f"Verified active {target} KZT price for {iap_id} "
+            f"(start={row.get('attributes', {}).get('startDate') or 'initial'}, "
+            f"end={row.get('attributes', {}).get('endDate') or 'open'})"
+        )
         return
     if current_prices:
         raise RuntimeError(
-            f"{iap_id} already has a different {BASE_TERRITORY} price schedule; "
+            f"{iap_id} has a {BASE_TERRITORY} price schedule but no active price; "
             "refusing to replace it implicitly"
         )
     api.request(

@@ -1,9 +1,10 @@
 import Foundation
+import Combine
 
 extension Notification.Name {
     static let x5UserDidSignOut = Notification.Name("x5.user.did_sign_out")
     /// Fired when CurrentUser.profile is loaded, created, or patched.
-    /// `object` carries the new UserProfile? (nil after sign-out).
+    /// `userInfo` carries only the evaluated `is_pro` flag, never the profile.
     static let x5ProfileDidUpdate = Notification.Name("x5.profile.did_update")
 }
 
@@ -13,11 +14,7 @@ final class Subscription: ObservableObject {
 
     private let key = "x5.subscription.is_pro"
     private let migrationKey = "x5.subscription.migrated_v14"
-    private var observer: NSObjectProtocol?
-
-    private var proObserver: NSObjectProtocol?
-
-    private var profileObserver: NSObjectProtocol?
+    private var observers = Set<AnyCancellable>()
 
     init() {
         // Migration: build 12 had a paywall that locally activated Pro on tap.
@@ -29,22 +26,12 @@ final class Subscription: ObservableObject {
         }
         isPro = UserDefaults.standard.bool(forKey: key)
 
-        observer = NotificationCenter.default.addObserver(
-            forName: .x5UserDidSignOut,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.reset() }
-        }
+        NotificationCenter.default.publisher(for: .x5UserDidSignOut)
+            .sink { [weak self] _ in self?.reset() }
+            .store(in: &observers)
 
-        // IAPService posts this after a successful Pro purchase so isPro flips immediately.
-        proObserver = NotificationCenter.default.addObserver(
-            forName: .x5DidActivatePro,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.setPro(true) }
-        }
+        // Only the refreshed, account-fenced profile may activate cached Pro.
+        // A delayed legacy purchase notification is not a profile snapshot.
 
         // CurrentUser posts this whenever profile loads / refreshes / patches.
         // Server `profiles.plan` is the single source of truth — the local
@@ -52,20 +39,11 @@ final class Subscription: ObservableObject {
         // and ProfileView (server `isPro`) never disagree.
         // Payload is only the already-evaluated paid-access flag (narrowed for
         // PII safety and inclusive of the subscription expiration date).
-        profileObserver = NotificationCenter.default.addObserver(
-            forName: .x5ProfileDidUpdate,
-            object: nil,
-            queue: .main
-        ) { [weak self] note in
-            let isPro = note.userInfo?["is_pro"] as? Bool ?? false
-            Task { @MainActor in self?.syncIsPro(isPro) }
-        }
-    }
-
-    deinit {
-        if let observer { NotificationCenter.default.removeObserver(observer) }
-        if let proObserver { NotificationCenter.default.removeObserver(proObserver) }
-        if let profileObserver { NotificationCenter.default.removeObserver(profileObserver) }
+        NotificationCenter.default.publisher(for: .x5ProfileDidUpdate)
+            .sink { [weak self] note in
+                self?.syncIsPro(note.userInfo?["is_pro"] as? Bool ?? false)
+            }
+            .store(in: &observers)
     }
 
     /// Reactively syncs from a fresh profile load (e.g. on app launch / refresh).
@@ -87,8 +65,7 @@ final class Subscription: ObservableObject {
         UserDefaults.standard.removeObject(forKey: key)
     }
 
-    /// Stub: real StoreKit purchase wiring will set this via transaction listener.
-    /// Currently never called — paywall shows "Coming soon" until IAP is wired.
+    /// Cache the already evaluated server profile entitlement.
     func setPro(_ value: Bool) {
         isPro = value
         UserDefaults.standard.set(value, forKey: key)

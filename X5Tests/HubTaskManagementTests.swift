@@ -80,6 +80,8 @@ final class HubTaskManagementTests: XCTestCase {
             description: "New details",
             budget: "75000",
             category: "design",
+            countryCode: "KZ",
+            city: "Алматы",
             deadline: nil,
             accessToken: "owner-token"
         )
@@ -94,6 +96,8 @@ final class HubTaskManagementTests: XCTestCase {
         XCTAssertEqual(body["description"] as? String, "New details")
         XCTAssertEqual(body["budget"] as? String, "75000")
         XCTAssertEqual(body["category"] as? String, "design")
+        XCTAssertEqual(body["country_code"] as? String, "KZ")
+        XCTAssertEqual(body["city"] as? String, "Алматы")
         XCTAssertTrue(body["deadline"] is NSNull)
         XCTAssertNil(body["author_id"])
         XCTAssertNil(body["status"])
@@ -192,6 +196,80 @@ final class HubTaskManagementTests: XCTestCase {
             accessToken: "owner-token"
         )
         XCTAssertFalse(denied)
+    }
+
+    @MainActor
+    func testAcceptResponseUsesSingleAtomicRPCWithoutClientSpecialistIdentity() async throws {
+        var capturedRequests: [URLRequest] = []
+        HubTaskURLProtocol.handler = { request in
+            capturedRequests.append(request)
+            return Self.response(
+                for: request,
+                body: """
+                {"id":"11111111-1111-4111-8111-111111111111","author_id":"f3eea23f-0aeb-405b-ab35-2c53173b7a8f","title":"Task","status":"in_progress","accepted_specialist_id":"33333333-3333-4333-8333-333333333333"}
+                """
+            )
+        }
+        let service = makeService()
+
+        let accepted = await service.acceptResponse(
+            taskId: taskID,
+            responseId: "22222222-2222-4222-8222-222222222222",
+            accessToken: "owner-token"
+        )
+
+        XCTAssertEqual(capturedRequests.count, 1)
+        let request = try XCTUnwrap(capturedRequests.first)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.path, "/rest/v1/rpc/x5_accept_task_response")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer owner-token")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "apikey"), "anon-key")
+        let body = try requestJSON(request)
+        XCTAssertEqual(body.count, 2)
+        XCTAssertEqual(body["p_task_id"] as? String, taskID)
+        XCTAssertEqual(body["p_response_id"] as? String, "22222222-2222-4222-8222-222222222222")
+        XCTAssertNil(body["specialist_id"])
+        XCTAssertNil(body["specialist_name"])
+        XCTAssertEqual(accepted?.status, "in_progress")
+    }
+
+    @MainActor
+    func testLoadTasksSurfacesHTTPFailureWithoutErasingLastSuccessfulFeed() async throws {
+        var requestCount = 0
+        HubTaskURLProtocol.handler = { request in
+            requestCount += 1
+            if requestCount == 1 {
+                return Self.response(
+                    for: request,
+                    body: """
+                    [{"id":"11111111-1111-4111-8111-111111111111","author_id":"f3eea23f-0aeb-405b-ab35-2c53173b7a8f","title":"Visible","category":"marketing","status":"open"}]
+                    """
+                )
+            }
+            return Self.response(for: request, statusCode: 503, body: #"{"message":"offline"}"#)
+        }
+        let service = makeService()
+
+        await service.loadTasks(accessToken: "specialist-token")
+        XCTAssertEqual(service.tasks.map(\.title), ["Visible"])
+        XCTAssertNil(service.error)
+
+        await service.loadTasks(accessToken: "specialist-token")
+        XCTAssertEqual(service.tasks.map(\.title), ["Visible"])
+        XCTAssertEqual(service.error, "The task server returned HTTP 503.")
+    }
+
+    @MainActor
+    func testLoadTasksSurfacesDecodeFailureInsteadOfSilentlyReturningEmptyFeed() async {
+        HubTaskURLProtocol.handler = { request in
+            Self.response(for: request, body: #"{"unexpected":true}"#)
+        }
+        let service = makeService()
+
+        await service.loadTasks(accessToken: "specialist-token")
+
+        XCTAssertTrue(service.tasks.isEmpty)
+        XCTAssertNotNil(service.error)
     }
 
     @MainActor

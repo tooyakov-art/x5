@@ -106,13 +106,13 @@ struct BunnyStreamUploadTicket: Decodable, Equatable {
               endpoint.fragment == nil,
               UUID(uuidString: normalizedVideoID) != nil,
               !rawLibraryID.isEmpty,
-              rawLibraryID.unicodeScalars.allSatisfy {
+              rawLibraryID.unicodeScalars.allSatisfy({
                   decimal.contains($0)
-              },
+              }),
               signature.count == 64,
-              signature.unicodeScalars.allSatisfy {
+              signature.unicodeScalars.allSatisfy({
                   hexadecimal.contains($0)
-              },
+              }),
               expire > 0,
               playback.scheme?.lowercased() == "https",
               playback.host?.lowercased().hasSuffix(".b-cdn.net") == true,

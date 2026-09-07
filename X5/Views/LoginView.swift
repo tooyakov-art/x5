@@ -11,6 +11,7 @@ struct LoginView: View {
     @State private var isSignUp = false
     @State private var loading = false
     @State private var errorMessage: String?
+    @State private var appleNonce: String?
     @FocusState private var focused: Field?
 
     enum Mode { case select, email }
@@ -69,13 +70,21 @@ struct LoginView: View {
     private var selectButtons: some View {
         VStack(spacing: 12) {
             SignInWithAppleButton(.signIn) { request in
+                let rawNonce = Nonce.random()
+                appleNonce = rawNonce
                 request.requestedScopes = [.fullName, .email]
+                request.nonce = Nonce.sha256(rawNonce)
             } onCompletion: { result in
-                Task { await handleApple(result) }
+                guard let rawNonce = appleNonce else {
+                    errorMessage = loc.t("login_apple_failed")
+                    return
+                }
+                Task { await handleApple(result, rawNonce: rawNonce) }
             }
             .signInWithAppleButtonStyle(.white)
             .frame(height: 52)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .disabled(loading)
 
             Button {
                 Task { await handleGoogle() }
@@ -265,12 +274,23 @@ struct LoginView: View {
         }
     }
 
-    private func handleApple(_ result: Result<ASAuthorization, Error>) async {
+    private func handleApple(
+        _ result: Result<ASAuthorization, Error>,
+        rawNonce: String
+    ) async {
         errorMessage = nil
+        loading = true
+        defer {
+            loading = false
+            appleNonce = nil
+        }
         switch result {
         case .success(let authorization):
             do {
-                try await auth.signInWithApple(authorization: authorization)
+                try await auth.signInWithApple(
+                    authorization: authorization,
+                    rawNonce: rawNonce
+                )
             } catch {
                 errorMessage = loc.t("login_apple_failed")
             }

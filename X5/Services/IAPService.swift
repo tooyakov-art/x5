@@ -38,7 +38,8 @@ final class IAPTransactionLifecycleCoordinator {
         authenticatedUserID: String?,
         revocationDate: Date? = nil,
         verifyDelivery: @escaping @MainActor () async -> IAPEntitlementDisposition,
-        finish: @escaping @MainActor () async -> Void
+        finish: @escaping @MainActor () async -> Void,
+        didApply: @escaping @MainActor () -> Void = {}
     ) async -> IAPEntitlementDisposition {
         let deliveryKey = IAPTransactionDeliveryKey(
             transactionID: transactionID,
@@ -76,11 +77,16 @@ final class IAPTransactionLifecycleCoordinator {
             completed[deliveryKey] = disposition
         }
         await finish()
+        if disposition == .applied { didApply() }
         return disposition
     }
 }
 
 enum IAPCreditPurchaseConfirmation {
+    static func matchesSelectedProduct(selected: String, returned: String) -> Bool {
+        selected == returned
+    }
+
     static func messageKey(profileReloadSucceeded: Bool) -> String {
         profileReloadSucceeded
             ? "credit_store_success_message"
@@ -225,6 +231,24 @@ enum IAPProductCatalog {
     }
 }
 
+enum IAPProductAvailability {
+    static func missingCreditPackIDs<S: Sequence>(
+        loadedProductIDs: S
+    ) -> [String] where S.Element == String {
+        let loaded = Set(loadedProductIDs)
+        return IAPProductCatalog.visibleCreditPacks
+            .map(\.productID)
+            .filter { !loaded.contains($0) }
+    }
+
+    static func hasAnyCreditPack<S: Sequence>(
+        loadedProductIDs: S
+    ) -> Bool where S.Element == String {
+        missingCreditPackIDs(loadedProductIDs: loadedProductIDs).count
+            < IAPProductCatalog.visibleCreditPacks.count
+    }
+}
+
 enum IAPSettingsPurchaseVisibilityPolicy {
     static let shouldShowRestorePurchases = true
 
@@ -280,6 +304,7 @@ final class IAPService: ObservableObject {
     @Published private(set) var activeSubscriptionSnapshot = IAPActiveSubscriptionSnapshot(
         productIDs: [String]()
     )
+    @Published private(set) var isLoadingProducts: Bool = false
     @Published private(set) var isPurchasing: Bool = false
     @Published var lastError: String?
 
@@ -296,6 +321,7 @@ final class IAPService: ObservableObject {
         case applied
         case alreadyApplied
         case ownedByOther
+        case sandboxTestNotBillable
         case failed
     }
 
@@ -322,10 +348,18 @@ final class IAPService: ObservableObject {
     }
 
     func loadProducts() async {
+        guard !isLoadingProducts else { return }
+        isLoadingProducts = true
         lastError = nil
+        defer { isLoadingProducts = false }
         do {
             let loaded = try await Product.products(for: Self.allProductIDs)
             products = Dictionary(uniqueKeysWithValues: loaded.map { ($0.id, $0) })
+            if !IAPProductAvailability.hasAnyCreditPack(
+                loadedProductIDs: products.keys
+            ) {
+                lastError = LocalizationService.shared.t("iap_products_unavailable")
+            }
             await syncCurrentEntitlements(source: "load")
         } catch {
             lastError = error.localizedDescription
@@ -349,7 +383,10 @@ final class IAPService: ObservableObject {
 
     func purchase(productID: String) async -> Bool {
         lastError = nil
-        guard let product = products[productID] else { return false }
+        guard let product = products[productID] else {
+            lastError = LocalizationService.shared.t("iap_products_unavailable")
+            return false
+        }
         guard let appUserToken = currentUserToken() else {
             lastError = LocalizationService.shared.t("iap_signin_first")
             return false
@@ -379,6 +416,17 @@ final class IAPService: ObservableObject {
             switch result {
             case .success(let verification):
                 if case .verified(let transaction) = verification {
+                    guard IAPCreditPurchaseConfirmation.matchesSelectedProduct(
+                        selected: productID, returned: transaction.productID
+                    ) else {
+                        // Leave delivery to the transaction listener; never report
+                        // the selected pack as purchased for a different product.
+                        lastError = LocalizationService.shared.t("iap_purchase_unverified")
+                        DiagnosticLogger.log(event: "iap_product_mismatch", extra: [
+                            "selected": productID, "returned": transaction.productID
+                        ])
+                        return false
+                    }
                     let applyResult = await deliverVerifiedTransaction(
                         transaction: transaction,
                         signedTransaction: verification.jwsRepresentation,
@@ -564,9 +612,10 @@ final class IAPService: ObservableObject {
         signedTransaction: String,
         source: String
     ) async -> IAPEntitlementDisposition {
-        await transactionLifecycle.deliver(
+        let deliveryUserID = auth.userId
+        return await transactionLifecycle.deliver(
             transactionID: transaction.id,
-            authenticatedUserID: auth.userId,
+            authenticatedUserID: deliveryUserID,
             revocationDate: transaction.revocationDate,
             verifyDelivery: { [self] in
                 await processVerifiedTransaction(
@@ -577,6 +626,15 @@ final class IAPService: ObservableObject {
             },
             finish: {
                 await transaction.finish()
+            },
+            didApply: { [weak self] in
+                guard let self, let deliveryUserID,
+                      self.auth.userId == deliveryUserID else { return }
+                self.lastError = nil
+                NotificationCenter.default.post(
+                    name: .x5DidUpdateStoreEntitlements,
+                    object: deliveryUserID
+                )
             }
         )
     }
@@ -661,6 +719,12 @@ final class IAPService: ObservableObject {
             // A consumable cannot be restored from current entitlements. Leave it
             // unfinished so its owning X5 account can retry delivery after sign-in.
             return .failed
+        case .sandboxTestNotBillable:
+            // TestFlight uses Apple's Sandbox and never charges real money.
+            // The server deliberately grants no spendable credits outside the
+            // dedicated App Review account. Finish this test transaction so it
+            // cannot block a later production purchase for the same product.
+            return .skipped
         case .failed:
             return .failed
         }
@@ -707,7 +771,7 @@ final class IAPService: ObservableObject {
         switch verificationResult {
         case .applied, .alreadyApplied:
             break
-        case .ownedByOther:
+        case .ownedByOther, .sandboxTestNotBillable:
             return .skipped
         case .failed:
             return .failed
@@ -755,7 +819,7 @@ final class IAPService: ObservableObject {
         switch verificationResult {
         case .applied, .alreadyApplied:
             break
-        case .ownedByOther:
+        case .ownedByOther, .sandboxTestNotBillable:
             return .skipped
         case .failed:
             return .failed
@@ -824,13 +888,22 @@ final class IAPService: ObservableObject {
                     continue
                 }
 
-                if status == "owned_by_other" {
+                if status == "owned_by_other" || serverError == "account_token_mismatch" {
                     DiagnosticLogger.log(event: "iap_verification_owned_by_other", extra: [
                         "source": source,
                         "product": productID
                     ])
                     lastError = accountMismatchError
                     return .ownedByOther
+                }
+
+                if status == "sandbox_test_not_billable" {
+                    DiagnosticLogger.log(event: "iap_sandbox_test_not_billable", extra: [
+                        "source": source,
+                        "product": productID
+                    ])
+                    lastError = LocalizationService.shared.t("iap_sandbox_test_not_billable")
+                    return .sandboxTestNotBillable
                 }
 
                 guard (200..<300).contains(httpStatus) else {
@@ -884,6 +957,7 @@ final class IAPService: ObservableObject {
 }
 
 extension Notification.Name {
+    static let x5DidUpdateStoreEntitlements = Notification.Name("x5.iap.did_update_entitlements")
     static let x5DidActivatePro = Notification.Name("x5.iap.did_activate_pro")
     static let x5DidReconcileStoreRefund = Notification.Name(
         "x5.iap.did_reconcile_store_refund"

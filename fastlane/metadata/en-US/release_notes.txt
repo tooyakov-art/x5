@@ -1,15 +1,1 @@
-This build refreshes the AI home, purchases and portfolio safety in X five
-marketing.
-
-- One-time 1,000/2,000/5,000 credit packs stay consumable and can be purchased
-  again. Interrupted delivery retries safely after relaunch.
-- Portfolio photos and video previews are checked automatically before
-  publication. There is no manual-review queue.
-- The Verified Badge action keeps readable black text on its bright button.
-- Muted Home card previews pause offscreen, while the app is inactive or when
-  Reduce Motion is enabled; static posters remain as a safe fallback.
-- AI Video adds Seedance 1.5 Pro for text/image video, 480p/720p/1080p choices
-  and optional native audio.
-- AI Voice generates speech with ElevenLabs Eleven v3 through a protected
-  server-side route.
-- Course, Hub and author-profile fixes from version 1.1.6 remain included.
+Clearer credit purchase confirmations and an additional check that the confirmed App Store product matches the selected pack.

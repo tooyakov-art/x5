@@ -1,5 +1,10 @@
 app_identifier "com.x5studio.app"
 team_id "F8LA8PC4U6"
+require File.expand_path("review_credentials", File.dirname(configfile_path))
+# Also guard direct `bundle exec fastlane deliver`, which bypasses the lane.
+# Keep credentials out of printable DSL metadata; use the configuration API.
+# The real pinned parser and summary are covered by a synthetic-only CI test.
+config.set(:app_review_information, required_review_credentials)
 
 # Push the rewritten metadata in fastlane/metadata/* up to ASC.
 skip_metadata false

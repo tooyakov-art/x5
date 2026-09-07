@@ -16,6 +16,7 @@ struct VideoGenerationJob: Decodable, Equatable {
     let refunded: Bool
     let resultURL: URL?
     let resultURLExpiresAt: Date?
+    let assetID: String?
     let errorCode: String?
     let createdAt: Date
     let updatedAt: Date
@@ -28,6 +29,7 @@ struct VideoGenerationJob: Decodable, Equatable {
         case refunded
         case resultURL = "result_url"
         case resultURLExpiresAt = "result_url_expires_at"
+        case assetID = "asset_id"
         case errorCode = "error_code"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -66,6 +68,7 @@ struct VideoGenerationStartImage: Equatable {
 }
 
 enum VideoGenerationModel: String, CaseIterable, Identifiable {
+    case seedance20Fast = "seedance-2.0-fast"
     case seedance15Pro = "seedance-1.5-pro"
     case automatic = "auto"
 
@@ -73,6 +76,8 @@ enum VideoGenerationModel: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .seedance20Fast:
+            return "Seedance 2.0 Fast · официальный"
         case .seedance15Pro:
             return "Seedance 1.5 Pro"
         case .automatic:

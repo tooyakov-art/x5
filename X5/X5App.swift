@@ -35,7 +35,7 @@ struct X5App: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            appRoot
                 .environmentObject(auth)
                 .environmentObject(history)
                 .environmentObject(brand)
@@ -64,6 +64,12 @@ struct X5App: App {
                     Task { await syncStoreKitAndProfile(source: "active") }
                 }
                 .onReceive(
+                    NotificationCenter.default.publisher(for: .x5DidUpdateStoreEntitlements)
+                ) { note in
+                    guard let userID = note.object as? String else { return }
+                    Task { await refreshProfileAfterStoreDelivery(userID: userID) }
+                }
+                .onReceive(
                     NotificationCenter.default.publisher(
                         for: .x5DidReconcileStoreRefund
                     )
@@ -73,16 +79,45 @@ struct X5App: App {
         }
     }
 
+    @ViewBuilder
+    private var appRoot: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["X5_HOME_QA_PREVIEW"] == "1" {
+            AppTabView()
+        } else {
+            ContentView()
+        }
+        #else
+        ContentView()
+        #endif
+    }
+
     private func syncPushRegistrationIfNeeded() {
         if auth.isAuthenticated {
             PushNotifications.shared.bootstrap()
             PushNotifications.shared.currentUserDidChange(
                 userId: auth.userId,
-                accessToken: auth.accessToken
+                accessToken: auth.accessToken,
+                freshAccessTokenProvider: { [weak auth] in
+                    await auth?.freshAccessToken(
+                        invalidateSessionOnCredentialFailure: false
+                    )
+                }
             )
         } else {
             PushNotifications.shared.cancelPromoLoop()
         }
+    }
+
+    private func refreshProfileAfterStoreDelivery(userID: String) async {
+        // A delivery event must not trigger another StoreKit replay. That would
+        // create a feedback loop with current entitlements and duplicate events.
+        guard auth.isAuthenticated, auth.userId == userID,
+              let accessToken = await auth.freshAccessToken(),
+              auth.userId == userID else { return }
+        await currentUser.load(userId: userID, accessToken: accessToken)
+        guard auth.userId == userID else { return }
+        subscription.sync(from: currentUser.profile)
     }
 
     private func syncStoreKitAndProfile(source: String) async {

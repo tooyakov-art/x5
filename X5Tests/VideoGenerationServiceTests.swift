@@ -34,8 +34,8 @@ final class VideoGenerationServiceTests: XCTestCase {
             prompt: "A cinematic coffee advertisement",
             aspectRatio: "9:16",
             durationSeconds: 5,
-            model: .seedance15Pro,
-            resolution: .fullHD,
+            model: .seedance20Fast,
+            resolution: .hd,
             generateAudio: true,
             idempotencyKey: "22222222-2222-4222-8222-222222222222",
             accessToken: "access-token"
@@ -60,8 +60,8 @@ final class VideoGenerationServiceTests: XCTestCase {
         )
         XCTAssertEqual(payload["duration_seconds"] as? Int, 5)
         XCTAssertEqual(payload["aspect_ratio"] as? String, "9:16")
-        XCTAssertEqual(payload["model"] as? String, "seedance-1.5-pro")
-        XCTAssertEqual(payload["resolution"] as? String, "1080p")
+        XCTAssertEqual(payload["model"] as? String, "seedance-2.0-fast")
+        XCTAssertEqual(payload["resolution"] as? String, "720p")
         XCTAssertEqual(payload["generate_audio"] as? Bool, true)
         XCTAssertNil(payload["start_image"])
     }
@@ -410,6 +410,7 @@ final class VideoGenerationServiceTests: XCTestCase {
             refunded: true,
             resultURL: nil,
             resultURLExpiresAt: nil,
+            assetID: nil,
             errorCode: "provider_failed",
             createdAt: Date(timeIntervalSince1970: 0),
             updatedAt: Date(timeIntervalSince1970: 1)
@@ -595,6 +596,174 @@ final class VideoGenerationServiceTests: XCTestCase {
         XCTAssertEqual(result.job.status, .queued)
     }
 
+    func testCompletedMP4IsDownloadedToControlledLocalFile() async throws {
+        let mp4 = Data([0, 0, 0, 12]) + Data("ftypisom".utf8)
+        let setup = makeResultFileService { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: [
+                    "Content-Type": "video/mp4",
+                    "Content-Length": "\(mp4.count)"
+                ]
+            )!
+            return (response, mp4)
+        }
+        let jobID = "11111111-1111-4111-8111-111111111111"
+        let resultURL = URL(
+            string: "https://\(setup.host)/storage/v1/object/sign/video-generation-results/user/\(jobID).mp4?token=temporary"
+        )!
+
+        let localURL = try await setup.service.prepare(
+            resultURL: resultURL,
+            jobID: jobID
+        )
+
+        XCTAssertEqual(localURL.deletingLastPathComponent(), setup.directory)
+        let localName = localURL.deletingPathExtension().lastPathComponent
+        let identifiers = String(localName.dropFirst("x5-video-".count))
+            .components(separatedBy: "--")
+        XCTAssertEqual(identifiers.count, 2)
+        XCTAssertTrue(identifiers.allSatisfy { UUID(uuidString: $0) != nil })
+        XCTAssertEqual(try Data(contentsOf: localURL), mp4)
+        setup.service.cleanup(localURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: localURL.path))
+    }
+
+    func testRepeatedResultPreparationUsesIndependentLocalFiles() async throws {
+        let mp4 = Data([0, 0, 0, 12]) + Data("ftypisom".utf8)
+        let setup = makeResultFileService { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: [
+                    "Content-Type": "video/mp4",
+                    "Content-Length": "\(mp4.count)"
+                ]
+            )!
+            return (response, mp4)
+        }
+        let jobID = "11111111-1111-4111-8111-111111111111"
+        let resultURL = URL(
+            string: "https://\(setup.host)/storage/v1/object/sign/video-generation-results/user/\(jobID).mp4?token=temporary"
+        )!
+
+        let firstURL = try await setup.service.prepare(
+            resultURL: resultURL,
+            jobID: jobID
+        )
+        let secondURL = try await setup.service.prepare(
+            resultURL: resultURL,
+            jobID: jobID
+        )
+
+        XCTAssertNotEqual(firstURL, secondURL)
+        XCTAssertEqual(try Data(contentsOf: firstURL), mp4)
+        XCTAssertEqual(try Data(contentsOf: secondURL), mp4)
+        setup.service.cleanup(firstURL)
+        setup.service.cleanup(secondURL)
+    }
+
+    func testResultDownloadRejectsUntrustedHostAndObjectPathBeforeNetwork() async {
+        let setup = makeResultFileService { _ in
+            XCTFail("Untrusted URL must not reach the network")
+            throw URLError(.badURL)
+        }
+        let jobID = "11111111-1111-4111-8111-111111111111"
+        for url in [
+            URL(string: "https://attacker.example/video.mp4")!,
+            URL(string: "https://\(setup.host)/storage/v1/object/public/video-generation-results/video.mp4")!
+        ] {
+            do {
+                _ = try await setup.service.prepare(resultURL: url, jobID: jobID)
+                XCTFail("Expected invalid signed URL")
+            } catch {
+                XCTAssertEqual(
+                    error as? VideoGenerationResultFileError,
+                    .invalidSignedURL
+                )
+            }
+        }
+    }
+
+    func testResultDownloadRejectsWrongMIMEAndDeclaredOversize() async {
+        let mp4 = Data([0, 0, 0, 12]) + Data("ftypisom".utf8)
+        for (contentType, length, expectedError) in [
+            ("text/html", "\(mp4.count)", VideoGenerationResultFileError.invalidVideo),
+            (
+                "video/mp4",
+                "\(VideoGenerationResultFileService.maximumVideoBytes + 1)",
+                VideoGenerationResultFileError.fileTooLarge
+            )
+        ] {
+            let setup = makeResultFileService { request in
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: [
+                        "Content-Type": contentType,
+                        "Content-Length": length
+                    ]
+                )!
+                return (response, mp4)
+            }
+            let url = URL(
+                string: "https://\(setup.host)/storage/v1/object/sign/video-generation-results/user/result.mp4?token=temporary"
+            )!
+            do {
+                _ = try await setup.service.prepare(
+                    resultURL: url,
+                    jobID: "11111111-1111-4111-8111-111111111111"
+                )
+                XCTFail("Expected result validation failure")
+            } catch {
+                XCTAssertEqual(error as? VideoGenerationResultFileError, expectedError)
+            }
+        }
+    }
+
+    func testResultCleanupCannotDeleteOutsideControlledDirectory() throws {
+        let setup = makeResultFileService { _ in
+            throw URLError(.badURL)
+        }
+        let outside = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "x5-video-11111111-1111-4111-8111-111111111111.mp4"
+        )
+        try Data("keep".utf8).write(to: outside, options: .atomic)
+        addTeardownBlock { try? FileManager.default.removeItem(at: outside) }
+
+        setup.service.cleanup(outside)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: outside.path))
+    }
+
+    func testResultCleanupRequiresJobAndPreparationUUIDs() throws {
+        let setup = makeResultFileService { _ in
+            throw URLError(.badURL)
+        }
+        try FileManager.default.createDirectory(
+            at: setup.directory,
+            withIntermediateDirectories: true
+        )
+        let invalid = setup.directory.appendingPathComponent(
+            "x5-video-11111111-1111-4111-8111-111111111111.mp4"
+        )
+        let valid = setup.directory.appendingPathComponent(
+            "x5-video-11111111-1111-4111-8111-111111111111--22222222-2222-4222-8222-222222222222.mp4"
+        )
+        try Data("keep".utf8).write(to: invalid, options: .atomic)
+        try Data("remove".utf8).write(to: valid, options: .atomic)
+
+        setup.service.cleanup(invalid)
+        setup.service.cleanup(valid)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: invalid.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: valid.path))
+    }
+
     private func makeService(
         recorder: VideoGenerationRequestRecorder,
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
@@ -613,6 +782,36 @@ final class VideoGenerationServiceTests: XCTestCase {
             session: URLSession(configuration: configuration),
             baseURL: URL(string: "https://\(host)")!,
             anonKey: "anon-key"
+        )
+    }
+
+    private func makeResultFileService(
+        handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
+    ) -> (
+        service: VideoGenerationResultFileService,
+        host: String,
+        directory: URL
+    ) {
+        let host = "video-result-\(UUID().uuidString.lowercased()).example.supabase.co"
+        VideoGenerationURLProtocol.register(handler: handler, forHost: host)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "VideoGenerationResultFileServiceTests-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        addTeardownBlock {
+            VideoGenerationURLProtocol.unregister(host: host)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [VideoGenerationURLProtocol.self]
+        return (
+            VideoGenerationResultFileService(
+                session: URLSession(configuration: configuration),
+                baseURL: URL(string: "https://\(host)")!,
+                directoryURL: directory
+            ),
+            host,
+            directory
         )
     }
 

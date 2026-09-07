@@ -1,9 +1,9 @@
-# X five marketing AI Home and Video Creation Design
+# Xfive marketing AI Home and Video Creation Design
 
 ## Goal
 
 Turn the existing iOS Home tab into the working creative entry point for the
-product. The product name shown to users is always **X five marketing**. “AI”
+product. The product name shown to users is always **Xfive marketing**. “AI”
 describes a section or a tool; it is not the application name.
 
 The implementation must reuse the existing SwiftUI home shell, image generator,
@@ -14,7 +14,7 @@ provider SDK/API foundations already selected for this repository.
 
 The first visible area contains:
 
-1. A compact brand header with `X five marketing`.
+1. A compact brand header with `Xfive marketing`.
 2. A primary “Генерация изображений” hero that opens the existing working
    `ImageGeneratorView`.
 3. Two real promo cards:

@@ -19,6 +19,12 @@ The release is intentionally closed in three independent places:
    `authenticated`. Applying it accidentally therefore does not expose either
    upload-slot RPC to an authenticated client.
 
+The current Supabase migrations set the `videos` and `course-media` bucket
+metadata limit to 5 GiB and mark those buckets public. That is neither
+entitlement-protected playback nor proof that the app, gateway, project quota,
+timeouts, and resumable recovery support a 5 GiB end-to-end upload. Do not cite
+that database limit as a shipped secure long-video feature.
+
 Bunny project secrets are intentionally not configured. Do not add
 `BUNNY_STREAM_LIBRARY_ID`, `BUNNY_STREAM_API_KEY`, or
 `BUNNY_STREAM_CDN_HOSTNAME` to production while this quarantine is in place.
@@ -32,6 +38,8 @@ new security and lifecycle review covering all of the following:
 
 - entitlement-checked, short-lived playback instead of a permanent public HLS
   URL that can bypass course purchase access;
+- a coordinated migration away from current public Supabase course-video URLs,
+  including every native/web/Android reader and rollback behavior;
 - provider processing/readiness state, including failure and timeout handling,
   before a URL can be saved or shown;
 - video moderation before publication;

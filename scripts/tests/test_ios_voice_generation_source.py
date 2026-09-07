@@ -23,14 +23,30 @@ class IOSVoiceGenerationSourceTests(unittest.TestCase):
         self.assertIn("VoiceGenerationLocalStore", source)
         self.assertIn("pendingRequestID", source)
 
-    def test_home_routes_sound_to_real_voice_generator(self):
+    def test_voice_route_is_visible_and_opens_the_live_generator(self):
         self.assertTrue(VIEW.is_file())
         home = HOME.read_text(encoding="utf-8")
 
         self.assertIn("case voiceGeneration", home)
         self.assertIn('return "voice_generation"', home)
-        self.assertIn('action: .voiceGeneration', home)
-        self.assertIn("VoiceGeneratorView()", home)
+        self.assertRegex(
+            home,
+            r'case \.voiceGeneration:\s+VoiceGeneratorView\(\)',
+        )
+        self.assertRegex(
+            home,
+            r'case \.imageGeneration, \.aiStudio, \.startupChat, \.hub, \.videoGeneration,[\s\S]{0,100}'
+            r'\.aiInfluencer, \.voiceGeneration, \.liveFruits:\s+return false',
+        )
+
+        visible_collections = home[
+            home.index("private var businessSection") : home.index("private var trendItems")
+        ]
+        self.assertIn("NativeHomeVoiceCard", visible_collections)
+        self.assertIn("action: { handle(.voiceGeneration) }", visible_collections)
+        self.assertIn('accessibilityIdentifier("x5.home.business.voice")', home)
+        self.assertIn('Image("HomeMotionStudioPoster")', home)
+        self.assertIn('Text("AI VOICE")', home)
 
     def test_voice_ui_has_native_input_playback_and_sharing(self):
         self.assertTrue(VIEW.is_file())
@@ -49,11 +65,8 @@ class IOSVoiceGenerationSourceTests(unittest.TestCase):
 
         self.assertIn("supabase/functions/generate-voice", workflow)
         self.assertIn("voice_generation_backend_contract_test.mjs", workflow)
-        self.assertIn(
-            "https://fal.ai/models/fal-ai/elevenlabs/tts/eleven-v3",
-            sources,
-        )
-        self.assertIn("Retrieved: 2026-07-26", sources)
+        self.assertIn("https://api.minimax.io/v1/t2a_v2", sources)
+        self.assertIn("speech-2.8-turbo", sources)
 
 
 if __name__ == "__main__":

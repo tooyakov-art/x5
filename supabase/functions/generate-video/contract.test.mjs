@@ -50,6 +50,35 @@ test("normalizes an explicit Seedance 1.5 Pro request", () => {
   assert.equal(normalized.costCredits, 1200);
 });
 
+test("normalizes Seedance 2.0 Fast and rejects unsupported 1080p", () => {
+  const normalized = normalizeVideoGenerationRequest({
+    idempotency_key: "video-seedance-fast-0001",
+    prompt: "A cinematic product reveal",
+    aspect_ratio: "9:16",
+    duration_seconds: 5,
+    model: "seedance-2.0-fast",
+    resolution: "720p",
+  });
+
+  assert.equal(normalized.model, "seedance-2.0-fast");
+  assert.equal(normalized.generateAudio, true);
+  assert.equal(normalized.costCredits, 650);
+  assert.throws(
+    () =>
+      normalizeVideoGenerationRequest({
+        idempotency_key: "video-seedance-fast-0002",
+        prompt: "A cinematic product reveal",
+        aspect_ratio: "9:16",
+        duration_seconds: 5,
+        model: "seedance-2.0-fast",
+        resolution: "1080p",
+      }),
+    (error) =>
+      error instanceof VideoRequestError &&
+      error.code === "unsupported_resolution",
+  );
+});
+
 test("accepts a private-safe base64 start image up to eight MiB", () => {
   const normalized = normalizeVideoGenerationRequest({
     idempotency_key: "video-request-0002",
@@ -177,6 +206,7 @@ test("returns only the public job contract and a temporary signed result", () =>
     refunded: false,
     result_url: "https://project.supabase.co/storage/v1/object/sign/result",
     result_url_expires_at: "2026-07-25T10:20:00.000Z",
+    asset_id: null,
     error_code: null,
     created_at: "2026-07-25T10:00:00.000Z",
     updated_at: "2026-07-25T10:05:00.000Z",

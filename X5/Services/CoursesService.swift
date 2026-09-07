@@ -727,6 +727,14 @@ final class CoursesService: ObservableObject {
         }
 
         videoUploadProgress = 0
+        do {
+            try await CourseVideoUploadPolicy.validateSourceQuality(
+                fileURL: fileURL
+            )
+        } catch {
+            self.error = "Видео заявки не загружено: \(error.localizedDescription)"
+            return nil
+        }
         #if X5_ENABLE_BUNNY_COURSE_VIDEO_UPLOAD
         let sourceSize: Int64
         do {
@@ -866,6 +874,14 @@ final class CoursesService: ObservableObject {
         }
 
         videoUploadProgress = 0
+        do {
+            try await CourseVideoUploadPolicy.validateSourceQuality(
+                fileURL: fileURL
+            )
+        } catch {
+            self.error = "Видео не загружено: \(error.localizedDescription)"
+            return nil
+        }
         #if X5_ENABLE_BUNNY_COURSE_VIDEO_UPLOAD
         let sourceSize: Int64
         do {

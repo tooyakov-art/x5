@@ -108,6 +108,8 @@ final class UserProfileEntitlementTests: XCTestCase {
             plan: plan,
             services: nil,
             socialLinks: nil,
+            countryCode: nil,
+            city: nil,
             isVerified: isVerified,
             verifiedUntil: verifiedUntil
         )

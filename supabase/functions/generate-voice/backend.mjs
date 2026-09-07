@@ -1,6 +1,7 @@
 import {
   downloadFalAudio,
   readBoundedMP3Response,
+  validateMP3Bytes,
   voiceAudioObjectPath,
 } from "./storage.mjs";
 
@@ -37,11 +38,33 @@ export class VoiceGenerationBackend {
     return payload;
   }
 
-  async storeAudio({ audioURL, userID, requestKey, attempt }) {
-    const audio = await downloadFalAudio({
-      audioURL,
-      fetchImpl: this.fetchImpl,
-    });
+  /**
+   * @param {{
+   *   audioURL?: string,
+   *   audioBytes?: Uint8Array | ArrayBuffer,
+   *   audioMimeType?: string,
+   *   userID: string,
+   *   requestKey: string,
+   *   attempt: number
+   * }} input
+   */
+  async storeAudio({
+    audioURL,
+    audioBytes,
+    audioMimeType,
+    userID,
+    requestKey,
+    attempt,
+  }) {
+    const audio = audioBytes
+      ? await validateMP3Bytes(audioBytes)
+      : await downloadFalAudio({
+        audioURL,
+        fetchImpl: this.fetchImpl,
+      });
+    if (audioMimeType && audioMimeType !== "audio/mpeg") {
+      throw new Error("audio_format_invalid");
+    }
     const path = voiceAudioObjectPath({
       userID,
       requestKey,

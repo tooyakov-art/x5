@@ -3,6 +3,59 @@ import XCTest
 @testable import X5
 
 final class IAPLifecycleDecisionTests: XCTestCase {
+    @MainActor
+    func testSuccessfulBackgroundDeliveryRefreshesProfileExactlyOnce() async {
+        let lifecycle = IAPTransactionLifecycleCoordinator()
+        var events: [String] = []
+        for _ in 0..<3 {
+            _ = await lifecycle.deliver(
+                transactionID: 901,
+                authenticatedUserID: "owner",
+                verifyDelivery: { events.append("server"); return .applied },
+                finish: { events.append("finish") },
+                didApply: { events.append("refresh") }
+            )
+        }
+        XCTAssertEqual(events, ["server", "finish", "refresh"])
+    }
+
+    @MainActor
+    func testFailedAndSkippedDeliveryDoNotPublishSuccessButRetryDoes() async {
+        let lifecycle = IAPTransactionLifecycleCoordinator()
+        var refreshes = 0
+        for result in [IAPEntitlementDisposition.failed, .skipped, .applied] {
+            _ = await lifecycle.deliver(
+                transactionID: 902,
+                authenticatedUserID: "owner",
+                verifyDelivery: { result },
+                finish: {},
+                didApply: { refreshes += 1 }
+            )
+            XCTAssertEqual(refreshes, result == .applied ? 1 : 0)
+        }
+    }
+
+    @MainActor
+    func testConcurrentDeliveryPublishesOneProfileRefresh() async {
+        let lifecycle = IAPTransactionLifecycleCoordinator()
+        var refreshes = 0
+        var finishes = 0
+        let delivery: () async -> IAPEntitlementDisposition = {
+            await lifecycle.deliver(
+                transactionID: 903,
+                authenticatedUserID: "owner",
+                verifyDelivery: { await Task.yield(); return .applied },
+                finish: { finishes += 1 },
+                didApply: { refreshes += 1 }
+            )
+        }
+        async let first = delivery()
+        async let second = delivery()
+        _ = await (first, second)
+        XCTAssertEqual(finishes, 1)
+        XCTAssertEqual(refreshes, 1)
+    }
+
     func testPrePurchaseRecoveryRequiresOnlyConsumablesBoundToCurrentX5Account() {
         let currentAccount = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
         let otherAccount = UUID(uuidString: "22222222-2222-4222-8222-222222222222")!

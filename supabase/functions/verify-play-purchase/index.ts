@@ -1,11 +1,5 @@
-import {
-  createClient,
-  type SupabaseClient,
-} from "https://esm.sh/@supabase/supabase-js@2";
-import {
-  create as jwtCreate,
-  getNumericDate,
-} from "https://deno.land/x/djwt@v3.0.2/mod.ts";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { create as jwtCreate, getNumericDate } from "djwt";
 import {
   ANDROID_PACKAGE_NAME,
   buildGooglePlayClaimKey,
@@ -176,6 +170,8 @@ Deno.serve(async (req) => {
         return json({
           ok: true,
           store_finalized: true,
+          finalization_pending: false,
+          entitlement_applied: true,
           product_id: productId,
           entitlement,
           already_claimed: true,
@@ -314,6 +310,8 @@ Deno.serve(async (req) => {
         return json({
           ok: true,
           store_finalized: true,
+          finalization_pending: false,
+          entitlement_applied: true,
           product_id: productId,
           entitlement,
           already_claimed: applyResult?.already_claimed === true,
@@ -326,19 +324,23 @@ Deno.serve(async (req) => {
         error instanceof Error ? error.message : "unknown_error",
       );
       return json({
-        ok: false,
-        error: "play_finalization_pending",
+        ok: true,
+        warning: "play_finalization_pending",
         retryable: true,
+        store_finalized: false,
+        finalization_pending: true,
         entitlement_applied: true,
         already_claimed: applyResult?.already_claimed === true,
         credits_granted: applyResult?.credits_granted || 0,
         profile: responseProfile,
-      }, 503);
+      });
     }
 
     return json({
       ok: true,
       store_finalized: true,
+      finalization_pending: false,
+      entitlement_applied: true,
       product_id: productId,
       entitlement,
       already_claimed: applyResult?.already_claimed === true,

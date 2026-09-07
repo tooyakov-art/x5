@@ -1,0 +1,442 @@
+{
+  "startedAt": "2026-09-07T09:54:50.163Z",
+  "sourceRev": "512f5463c97daa282ea66ea83050a7a489d1fc18",
+  "image": "postgres:17",
+  "container": "x5-audit-payment-sql-1b712106",
+  "mode": "baseline_plus_working_tree_fix",
+  "scope": "SQL-only; synthetic users and decoded-transaction RPC inputs; no Apple signature, StoreKit, bank or live backend validation",
+  "sourceManifest": [
+    {
+      "path": "supabase/migrations/20260601153500_task_priority_and_credit_expiry.sql",
+      "sha256": "bd6f824369634dc6b58ea8a176c5a71054fd18fbb1145a32d5452c203ef0aef0",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260714154000_entitlement_hardening.sql",
+      "sha256": "301fd25eba6111d28be75d2dc09372d49f0bf0fa1134703242b6775fd373baec",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260714160000_verified_app_store_transaction_ledger.sql",
+      "sha256": "14155cb14fd2081a8118550fbaf9f66a8464d7d4a9cbbffbcf60fd91d17390d5",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260714193941_reject_sandbox_app_store_transactions.sql",
+      "sha256": "aa4938808e87d72f508bf63c13d8d9590b68775408ca9b50b6359fb65313fe4d",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260714194747_grandfather_exact_legacy_app_store_bindings.sql",
+      "sha256": "47fecac3f7cea0fb72b06703a65478d8e0cc09b2d3906958c6ed4089d71d0ab0",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260715215436_apple_consumable_credit_topups.sql",
+      "sha256": "85f2ded1223c7e25783ef07917a53ff8830dcd4df3b78a9f8f405e78757dbb05",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260715223938_app_store_sandbox_review_allowlist.sql",
+      "sha256": "dd2843bf3df1a9e4badc13152cc99890a0277fc1ff0877f51352bc8cb80640d6",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260715232004_accept_resigned_app_store_subscription_replays.sql",
+      "sha256": "8b571cf669e19397a0c614f2a47f0fef426e4793b906d4320f6a86d2e88e1a0c",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260715232633_app_store_verified_revocations.sql",
+      "sha256": "f151721897dd4cc116c60dcb5cd06273869eb620c37da7fb22311fe9da097140",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260716050000_app_store_consumable_refunds.sql",
+      "sha256": "de73467c445fc663315d3d7274fb96d50ab6dbc4be6b3a943fd754bcc24dd535",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260716060000_app_store_server_notifications.sql",
+      "sha256": "9a59da12f3d7ee66882176501eca0ec5934f89f7098ffa16bdec8ad1d434e4ce",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260716070000_app_store_server_notification_indexes.sql",
+      "sha256": "19d626fd03ba24d048da8aa68ee3810fc89ea9e06a00ecc95c7a7d9d707838cd",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260716181937_x5_store_backend_remediation.sql",
+      "sha256": "521b7b62c1871a1518acd8c707134a8277334e7a25b59b2930d6587f57dd479e",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260720211606_legacy_subscription_server_notifications.sql",
+      "sha256": "51437f26d57229e97e5acbfd0d97c40e2e99a441a8c5b27207be87134c2d07c7",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260721010000_legacy_subscription_refunds.sql",
+      "sha256": "6f3be7cec7c279f6cc591a629de31ff958ea2fb1999e4697c7c5ad91ba0805e9",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260726213000_repeatable_sandbox_consumables.sql",
+      "sha256": "290ddf7b7f1552bc0aa7878a3372e63da879930fd55df46ddd8a2d56b9cbf87c",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260817190000_credit_retention_enforcement.sql",
+      "sha256": "b627b1153eb80b235d0882c8d20dda1384d80ea1e47f75126011f9c3e50975bc",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    },
+    {
+      "path": "supabase/migrations/20260831132000_lock_testflight_sandbox_purchases.sql",
+      "sha256": "0bdec19f80aca6382ed2056714f0191ceae81bbf39fba89040eef54f13b7eee4",
+      "hashNormalization": "leading/trailing whitespace trimmed; SQL statements unchanged"
+    }
+  ],
+  "checks": [
+    {
+      "id": "badge_sequential_control",
+      "result": "PASS",
+      "grant": {
+        "status": "applied",
+        "is_verified": true,
+        "credits_granted": 0,
+        "subscription_end_date": "2026-10-07T09:55:07.522457+00:00"
+      },
+      "exactLedgerInputs": {
+        "user_id": "22222222-2222-4222-8222-222222222222",
+        "created_at": "2026-09-07T09:55:07.521498+00:00",
+        "product_id": "com.x5studio.app.verified.monthly",
+        "environment": "Production",
+        "signed_date": "2026-09-07T09:55:07.52246+00:00",
+        "expires_date": "2026-10-07T09:55:07.522457+00:00",
+        "purchase_date": "2026-09-07T09:54:57.522452+00:00",
+        "transaction_id": "x5-audit-control-renewal",
+        "credits_granted": 0,
+        "revocation_date": null,
+        "app_account_token": "22222222-2222-4222-8222-222222222222",
+        "is_verified_product": true,
+        "original_transaction_id": "x5-audit-control-chain"
+      },
+      "profile": {
+        "userId": "22222222-2222-4222-8222-222222222222",
+        "credits": 0,
+        "isVerified": true,
+        "verifiedUntil": "2026-10-07T09:55:07.522457+00:00",
+        "activeLedgerRows": 1,
+        "permanentCredits": 0
+      }
+    },
+    {
+      "id": "badge_reconcile_vs_uncommitted_renewal",
+      "result": "RACE_PREVENTED",
+      "lockEvidence": {
+        "pid": 349,
+        "blockers": [
+          329
+        ],
+        "waitEvent": "transactionid",
+        "waitEventType": "Lock",
+        "applicationName": "x5-audit-reconcile-b",
+        "expectedBlockingSession": {
+          "applicationName": "x5-audit-renewal-a",
+          "pid": 329
+        }
+      },
+      "beforeCommit": {
+        "userId": "11111111-1111-4111-8111-111111111111",
+        "credits": 0,
+        "isVerified": true,
+        "verifiedUntil": "2026-09-07T09:54:06.331234+00:00",
+        "activeLedgerRows": 0,
+        "permanentCredits": 0
+      },
+      "afterRace": {
+        "userId": "11111111-1111-4111-8111-111111111111",
+        "credits": 0,
+        "isVerified": true,
+        "verifiedUntil": "2026-10-07T09:55:08.904204+00:00",
+        "activeLedgerRows": 1,
+        "permanentCredits": 0
+      },
+      "exactLedgerInputs": {
+        "user_id": "11111111-1111-4111-8111-111111111111",
+        "created_at": "2026-09-07T09:55:08.903183+00:00",
+        "product_id": "com.x5studio.app.verified.monthly",
+        "environment": "Production",
+        "signed_date": "2026-09-07T09:55:08.904206+00:00",
+        "expires_date": "2026-10-07T09:55:08.904204+00:00",
+        "purchase_date": "2026-09-07T09:54:58.904199+00:00",
+        "transaction_id": "x5-audit-race-renewal",
+        "credits_granted": 0,
+        "revocation_date": null,
+        "app_account_token": "11111111-1111-4111-8111-111111111111",
+        "is_verified_product": true,
+        "original_transaction_id": "x5-audit-race-chain"
+      }
+    },
+    {
+      "id": "badge_subsequent_rebuild_control",
+      "result": "PASS",
+      "profile": {
+        "userId": "11111111-1111-4111-8111-111111111111",
+        "credits": 0,
+        "isVerified": true,
+        "verifiedUntil": "2026-10-07T09:55:08.904204+00:00",
+        "activeLedgerRows": 1,
+        "permanentCredits": 0
+      }
+    },
+    {
+      "id": "P01_SQL_server_catalog_1000_2000_5000",
+      "result": "PASS",
+      "profile": {
+        "userId": "33333333-3333-4333-8333-333333333333",
+        "credits": 8000,
+        "isVerified": false,
+        "verifiedUntil": null,
+        "activeLedgerRows": 0,
+        "permanentCredits": 8000
+      },
+      "exactLedgerInputs": [
+        {
+          "user_id": "33333333-3333-4333-8333-333333333333",
+          "quantity": 1,
+          "created_at": "2026-09-07T09:55:12.997993+00:00",
+          "product_id": "com.x5studio.app.credits.1000",
+          "environment": "Production",
+          "signed_date": "2026-09-01T00:00:01+00:00",
+          "purchase_date": "2026-09-01T00:00:00+00:00",
+          "transaction_id": "x5-audit-pack-1000",
+          "credits_granted": 1000,
+          "revocation_date": null,
+          "app_account_token": "33333333-3333-4333-8333-333333333333",
+          "original_transaction_id": "x5-audit-pack-1000"
+        },
+        {
+          "user_id": "33333333-3333-4333-8333-333333333333",
+          "quantity": 1,
+          "created_at": "2026-09-07T09:55:13.395384+00:00",
+          "product_id": "com.x5studio.app.credits.2000",
+          "environment": "Production",
+          "signed_date": "2026-09-01T00:00:01+00:00",
+          "purchase_date": "2026-09-01T00:00:00+00:00",
+          "transaction_id": "x5-audit-pack-2000",
+          "credits_granted": 2000,
+          "revocation_date": null,
+          "app_account_token": "33333333-3333-4333-8333-333333333333",
+          "original_transaction_id": "x5-audit-pack-2000"
+        },
+        {
+          "user_id": "33333333-3333-4333-8333-333333333333",
+          "quantity": 1,
+          "created_at": "2026-09-07T09:55:13.770447+00:00",
+          "product_id": "com.x5studio.app.credits.5000",
+          "environment": "Production",
+          "signed_date": "2026-09-01T00:00:01+00:00",
+          "purchase_date": "2026-09-01T00:00:00+00:00",
+          "transaction_id": "x5-audit-pack-5000",
+          "credits_granted": 5000,
+          "revocation_date": null,
+          "app_account_token": "33333333-3333-4333-8333-333333333333",
+          "original_transaction_id": "x5-audit-pack-5000"
+        }
+      ]
+    },
+    {
+      "id": "P03_SQL_concurrent_delivery_replay_and_cross_account",
+      "result": "PASS",
+      "lockEvidence": {
+        "pid": 462,
+        "blockers": [
+          449
+        ],
+        "waitEvent": "transactionid",
+        "waitEventType": "Lock",
+        "applicationName": "x5-audit-consumable-b"
+      },
+      "rejections": [
+        "account_token_mismatch",
+        "owned_by_other"
+      ],
+      "buyer": {
+        "userId": "33333333-3333-4333-8333-333333333333",
+        "credits": 9000,
+        "isVerified": false,
+        "verifiedUntil": null,
+        "activeLedgerRows": 0,
+        "permanentCredits": 9000
+      },
+      "other": {
+        "userId": "44444444-4444-4444-8444-444444444444",
+        "credits": 0,
+        "isVerified": false,
+        "verifiedUntil": null,
+        "activeLedgerRows": 0,
+        "permanentCredits": 0
+      },
+      "ledgerRows": 1
+    },
+    {
+      "id": "P03_SQL_refund_and_reversal_webhook_replay",
+      "result": "PASS",
+      "firstRefund": {
+        "status": "applied",
+        "is_verified": false,
+        "credits_delta": -1000,
+        "credits_affected": 1000,
+        "subscription_end_date": null
+      },
+      "refundReplay": {
+        "status": "already_applied",
+        "credits_delta": 0,
+        "credits_affected": 1000
+      },
+      "reversed": {
+        "status": "applied",
+        "is_verified": false,
+        "credits_delta": 1000,
+        "credits_affected": 1000,
+        "subscription_end_date": null
+      },
+      "reversalReplay": {
+        "status": "already_applied",
+        "credits_delta": 0,
+        "credits_affected": 1000
+      },
+      "profile": {
+        "userId": "33333333-3333-4333-8333-333333333333",
+        "credits": 9000,
+        "isVerified": false,
+        "verifiedUntil": null,
+        "activeLedgerRows": 0,
+        "permanentCredits": 9000
+      },
+      "exactEvents": [
+        {
+          "applied": true,
+          "user_id": "33333333-3333-4333-8333-333333333333",
+          "event_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "quantity": 1,
+          "created_at": "2026-09-07T09:55:20.138197+00:00",
+          "product_id": "com.x5studio.app.credits.1000",
+          "environment": "Production",
+          "expires_date": null,
+          "credits_delta": -1000,
+          "purchase_date": "2026-09-01T00:00:00+00:00",
+          "transaction_id": "x5-audit-pack-concurrent",
+          "revocation_date": "2026-09-02T00:00:00+00:00",
+          "credits_affected": 1000,
+          "app_account_token": "33333333-3333-4333-8333-333333333333",
+          "notification_type": "REFUND",
+          "legacy_binding_used": false,
+          "revocation_percentage": 100000,
+          "legacy_binding_user_id": null,
+          "original_transaction_id": "x5-audit-pack-concurrent",
+          "transaction_signed_date": "2026-09-02T00:00:01+00:00",
+          "notification_signed_date": "2026-09-02T00:00:02+00:00",
+          "pending_credits_affected": 0,
+          "legacy_binding_product_id": null,
+          "resulting_revocation_percentage": 100000,
+          "legacy_binding_app_account_token": null,
+          "legacy_binding_original_transaction_id": null
+        },
+        {
+          "applied": true,
+          "user_id": "33333333-3333-4333-8333-333333333333",
+          "event_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "quantity": 1,
+          "created_at": "2026-09-07T09:55:21.317841+00:00",
+          "product_id": "com.x5studio.app.credits.1000",
+          "environment": "Production",
+          "expires_date": null,
+          "credits_delta": 1000,
+          "purchase_date": "2026-09-01T00:00:00+00:00",
+          "transaction_id": "x5-audit-pack-concurrent",
+          "revocation_date": null,
+          "credits_affected": 1000,
+          "app_account_token": "33333333-3333-4333-8333-333333333333",
+          "notification_type": "REFUND_REVERSED",
+          "legacy_binding_used": false,
+          "revocation_percentage": null,
+          "legacy_binding_user_id": null,
+          "original_transaction_id": "x5-audit-pack-concurrent",
+          "transaction_signed_date": "2026-09-03T00:00:01+00:00",
+          "notification_signed_date": "2026-09-03T00:00:02+00:00",
+          "pending_credits_affected": 0,
+          "legacy_binding_product_id": null,
+          "resulting_revocation_percentage": 0,
+          "legacy_binding_app_account_token": null,
+          "legacy_binding_original_transaction_id": null
+        }
+      ]
+    },
+    {
+      "id": "D06_SQL_function_rollback_and_forward_reapply",
+      "result": "PASS",
+      "oldBodyHash": "f8bb9d553246003b47aa2fd5b4e030dc",
+      "newBodyHash": "44ccbde3b58a8f601bdba37eb680887b",
+      "dataFingerprintUnchanged": true,
+      "scope": "synthetic database only; not disaster recovery or production rollback"
+    }
+  ],
+  "sessions": [
+    {
+      "name": "x5-audit-renewal-a",
+      "stdout": "{\"status\": \"applied\", \"is_verified\": true, \"credits_granted\": 0, \"subscription_end_date\": \"2026-10-07T09:55:08.904204+00:00\"}\nX5_AUDIT_A_GRANTED\n",
+      "stderr": "NOTICE:  identifier \"x5_apply_verified_app_store_transaction_signed_date_strict_internal\" will be truncated to \"x5_apply_verified_app_store_transaction_signed_date_strict_inte\"\nNOTICE:  identifier \"x5_apply_verified_app_store_transaction_signed_date_strict_internal\" will be truncated to \"x5_apply_verified_app_store_transaction_signed_date_strict_inte\"\n",
+      "exitCode": 0
+    },
+    {
+      "name": "x5-audit-reconcile-b",
+      "stdout": "2\n",
+      "stderr": "",
+      "exitCode": 0
+    },
+    {
+      "name": "x5-audit-consumable-a",
+      "stdout": "{\"status\": \"applied\", \"is_verified\": false, \"credits_granted\": 1000, \"subscription_end_date\": null}\nX5_AUDIT_CREDIT_GRANTED\n",
+      "stderr": "",
+      "exitCode": 0
+    },
+    {
+      "name": "x5-audit-consumable-b",
+      "stdout": "{\"status\": \"already_applied\", \"is_verified\": false, \"credits_granted\": 0, \"subscription_end_date\": null}\n",
+      "stderr": "",
+      "exitCode": 0
+    }
+  ],
+  "cleanup": {
+    "removed": true,
+    "container": "x5-audit-payment-sql-1b712106",
+    "scope": "only this audit-owned disposable container and its tmpfs data"
+  },
+  "imageId": "sha256:0b657ff48d7f76a1e907f381b1693eb4f2bf54c1d2df4feb6743d7dc601768dd",
+  "isolation": {
+    "networkMode": "none",
+    "portBindings": {},
+    "binds": null,
+    "tmpfs": {
+      "/var/lib/postgresql/data": "rw,size=256m"
+    },
+    "memory": 536870912
+  },
+  "fixMigration": {
+    "path": "supabase/migrations/20260907070000_serialize_verified_profile_projection.sql",
+    "source": "working_tree",
+    "sha256": "eebfc7a59fca87275f255ff98d0e71409c07afa549589efa97aa641f1967c581"
+  },
+  "databaseVersion": "PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+  "transactionIsolation": "read committed",
+  "rollbackSource": {
+    "path": "supabase/rollback/20260907_verified_projection.sql",
+    "source": "working_tree",
+    "sha256": "2b6617ab91b1dd0487f7e84daed1882cecfe8c6859146bf8d90b12011ac0ab13"
+  },
+  "outcome": "completed",
+  "finishedAt": "2026-09-07T09:55:27.524Z"
+}

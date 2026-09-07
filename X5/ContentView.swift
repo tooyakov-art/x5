@@ -13,20 +13,24 @@ struct ContentView: View {
     private let relockAfter: TimeInterval = 300 // 5 min
     /// True after first successful Face ID unlock in this app session.
     @State private var hasUnlockedThisSession = false
+    @State private var routedUserId: String?
+    @State private var profileRoutingError: String?
 
     var body: some View {
         ZStack {
             Group {
                 if !auth.isAuthenticated {
                     LoginView()
+                } else if routedUserId != auth.userId {
+                    profileLoadingView
                 } else if needsOnboarding {
                     OnboardingView()
                 } else {
                     AppTabView()
-                        .task(id: auth.userId) { await loadProfileIfNeeded() }
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: auth.isAuthenticated)
+            .animation(.easeInOut(duration: 0.2), value: routedUserId)
             .animation(.easeInOut(duration: 0.2), value: needsOnboarding)
 
             // Face ID gate — covers everything when locked
@@ -35,6 +39,7 @@ struct ContentView: View {
                     .transition(.opacity)
             }
         }
+        .task(id: auth.userId) { await refreshProfileBeforeRouting() }
         .onChange(of: isLocked) { locked in
             // Mark unlocked once so we don't re-prompt on every onAppear within this session.
             if !locked { hasUnlockedThisSession = true }
@@ -62,10 +67,45 @@ struct ContentView: View {
         }
     }
 
-    /// Onboarding required when we have a profile loaded but no real identity or role yet.
-    /// While loading, fall through to AppTabView (avoids flicker).
+    private var profileLoadingView: some View {
+        ZStack {
+            X5Background()
+            if let profileRoutingError {
+                VStack(spacing: 16) {
+                    Image(systemName: "person.crop.circle.badge.exclamationmark")
+                        .font(.system(size: 42, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.86))
+                    Text("Не удалось загрузить профиль")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Text(profileRoutingError)
+                        .font(.footnote)
+                        .foregroundColor(.white.opacity(0.68))
+                        .multilineTextAlignment(.center)
+                    Button("Повторить") {
+                        Task { await refreshProfileBeforeRouting() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button("Выйти") {
+                        Task { await auth.signOut() }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.white)
+                }
+                .padding(24)
+                .frame(maxWidth: 420)
+            } else {
+                ProgressView().controlSize(.large).tint(.white)
+            }
+        }
+    }
+
+    /// Onboarding is evaluated only against the freshly loaded signed-in user.
     private var needsOnboarding: Bool {
-        guard let profile = currentUser.profile else { return false }
+        guard let profile = currentUser.profile,
+              let userId = auth.userId,
+              profile.id.caseInsensitiveCompare(userId) == .orderedSame
+        else { return false }
         let cleanName = (profile.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let lowerName = cleanName.lowercased()
         let cleanNickname = (profile.nickname ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -74,10 +114,27 @@ struct ContentView: View {
         return !hasRealName || !hasValidNickname || (profile.userRole ?? "").isEmpty
     }
 
-    private func loadProfileIfNeeded() async {
-        guard let uid = auth.userId, let token = await auth.freshAccessToken() else { return }
+    private func refreshProfileBeforeRouting() async {
+        routedUserId = nil
+        profileRoutingError = nil
+        guard auth.isAuthenticated, let uid = auth.userId else { return }
+        guard let token = await auth.freshAccessToken() else {
+            if auth.isAuthenticated, auth.userId == uid {
+                profileRoutingError = "Не удалось обновить сессию. Проверьте интернет и повторите."
+            }
+            return
+        }
         // Always reload — fixes "paid Pro but stayed Free" if the profile was cached before purchase.
-        await currentUser.load(userId: uid, accessToken: token)
-        subscription.sync(from: currentUser.profile)
+        let loaded = await currentUser.load(userId: uid, accessToken: token)
+        guard auth.isAuthenticated, auth.userId == uid else { return }
+        guard loaded,
+              let profile = currentUser.profile,
+              profile.id.caseInsensitiveCompare(uid) == .orderedSame
+        else {
+            profileRoutingError = currentUser.error ?? "Сервер не вернул профиль текущего пользователя."
+            return
+        }
+        subscription.sync(from: profile)
+        routedUserId = uid
     }
 }

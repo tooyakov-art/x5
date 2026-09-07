@@ -50,8 +50,8 @@ final class SupabaseClientSessionTests: XCTestCase {
         do {
             _ = try await refresh.value
             XCTFail("Expected stale refresh to be rejected")
-        } catch SupabaseError.notAuthenticated {
-            // Expected.
+        } catch SupabaseError.staleSession {
+            XCTAssertFalse(SupabaseError.staleSession.invalidatesSession)
         } catch {
             XCTFail("Unexpected error: \(error)")
         }

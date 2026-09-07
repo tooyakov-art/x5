@@ -12,7 +12,7 @@ struct CoursesView: View {
 
     private var isDev: Bool { Roles.isDeveloper(email: auth.userEmail, userId: auth.userId) }
     private var featuredCourse: Course? { service.courses.first }
-    private var academyCourses: [Course] { Array(service.courses.dropFirst()) + Self.upcomingCourses }
+    private var academyCourses: [Course] { Array(service.courses.dropFirst()) }
 
     /// Sheet payload — `.create` for new course, `.edit(course)` for existing.
     private enum EditorTarget: Identifiable {
@@ -49,12 +49,33 @@ struct CoursesView: View {
                             }
                             .padding(.top, 4)
 
+                            if service.courses.isEmpty {
+                                VStack(spacing: 14) {
+                                    Image(systemName: "graduationcap")
+                                        .font(.system(size: 40, weight: .medium))
+                                        .foregroundColor(.accentColor)
+                                    Text(loc.t("courses_empty_title"))
+                                        .font(.title3.bold())
+                                    Text(loc.t("courses_empty_message"))
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                    Button(loc.t("courses_reload")) {
+                                        Task { await reloadCourses() }
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                                .padding(.vertical, 48)
+                                .frame(maxWidth: .infinity)
+                                .accessibilityIdentifier("Course.catalog.empty")
+                            }
+
                             if let course = featuredCourse {
                                 ZStack(alignment: .topLeading) {
                                     NavigationLink {
                                         CourseDetailView(course: course, openPaywall: { showingPaywall = true })
                                     } label: {
                                         CourseCard(course: course, showHiddenBadge: isDev && course.isPublic == false)
+                                            .accessibilityIdentifier("Course.catalog.item.\(course.id)")
                                     }
                                     .buttonStyle(.plain)
                                     .contextMenu {
@@ -96,21 +117,16 @@ struct CoursesView: View {
                             }
 
                             ForEach(Array(academyCourses.enumerated()), id: \.element.id) { index, course in
-                                let isEditableCourse = service.courses.contains(where: { $0.id == course.id })
-
                                 ZStack(alignment: .topLeading) {
                                     NavigationLink {
-                                        if isEditableCourse {
-                                            CourseDetailView(course: course, openPaywall: { showingPaywall = true })
-                                        } else {
-                                            CourseInDevelopmentView(course: course)
-                                        }
+                                        CourseDetailView(course: course, openPaywall: { showingPaywall = true })
                                     } label: {
                                         AcademyCourseCard(course: course, paletteIndex: index)
+                                            .accessibilityIdentifier("Course.catalog.item.\(course.id)")
                                     }
                                     .buttonStyle(.plain)
 
-                                    if isDev && isEditableCourse {
+                                    if isDev {
                                         Button {
                                             editorTarget = .edit(course)
                                         } label: {
@@ -128,7 +144,7 @@ struct CoursesView: View {
                                     }
                                 }
                                 .contextMenu {
-                                    if isDev && isEditableCourse {
+                                    if isDev {
                                         Button {
                                             editorTarget = .edit(course)
                                         } label: {
@@ -226,91 +242,6 @@ struct CoursesView: View {
         await service.loadCourses(includeHidden: isDev, accessToken: accessToken)
     }
 
-    private static let upcomingCourses: [Course] = [
-        makeUpcomingCourse(
-            id: "upcoming-vibecoding",
-            title: "Вайбкодинг для маркетолога",
-            description: "Собери лендинг, квиз и Telegram-бота без команды разработки",
-            lessons: ["Как ставить задачу ИИ", "Лендинг за вечер", "Форма заявки и аналитика", "Публикация и проверка"]
-        ),
-        makeUpcomingCourse(
-            id: "upcoming-ai-reels",
-            title: "AI Reels и TikTok",
-            description: "Сценарии, аватары, липсинк и монтаж коротких роликов",
-            lessons: ["Хук в первые 2 секунды", "ИИ-аватар", "Озвучка и липсинк", "Пакет роликов на неделю"]
-        ),
-        makeUpcomingCourse(
-            id: "upcoming-marketplace",
-            title: "Карточки товара",
-            description: "Фото, инфографика и тексты для Kaspi, Wildberries и сайта",
-            lessons: ["Главное фото", "Инфографика выгод", "A/B варианты", "Подготовка к загрузке"]
-        ),
-        makeUpcomingCourse(
-            id: "upcoming-smm-system",
-            title: "SMM-система на месяц",
-            description: "Контент-план, рубрики, сторис и прогрев без хаоса",
-            lessons: ["Рубрикатор", "30 идей постов", "Сторис-воронки", "Еженедельный отчет"]
-        ),
-        makeUpcomingCourse(
-            id: "upcoming-youtube",
-            title: "Обложки YouTube",
-            description: "Превью, заголовки и визуальная упаковка роликов",
-            lessons: ["Кликабельная идея", "Композиция лица", "Текст на обложке", "Серия в одном стиле"]
-        ),
-        makeUpcomingCourse(
-            id: "upcoming-target-analytics",
-            title: "Таргет и аналитика",
-            description: "Связки, гипотезы, бюджет и понятный отчет по рекламе",
-            lessons: ["Оффер и аудитория", "Креативы для теста", "Запуск кампании", "Что отключать первым"]
-        )
-    ]
-
-    private static func makeUpcomingCourse(id: String, title: String, description: String, lessons: [String]) -> Course {
-        Course(
-            id: id,
-            title: title,
-            description: description,
-            marketingHook: nil,
-            coverUrl: nil,
-            authorName: "X Five CourseUP",
-            price: 0,
-            isFree: true,
-            isPublic: true,
-            courseLanguage: "ru",
-            averageRating: nil,
-            studentsCount: nil,
-            sortOrder: nil,
-            categoriesRaw: [
-                CourseCategory(
-                    id: "\(id)-cat",
-                    title: "Программа",
-                    order: 1,
-                    icon: "graduationcap",
-                    days: [
-                        CourseDay(
-                            id: "\(id)-day",
-                            title: "Модули",
-                            order: 1,
-                            lessons: lessons.enumerated().map { index, title in
-                                CourseLesson(
-                                    id: "\(id)-lesson-\(index + 1)",
-                                    title: title,
-                                    duration: nil,
-                                    order: index + 1,
-                                    price: nil,
-                                    videoUrl: nil,
-                                    youtubeUrl: nil,
-                                    thumbnailUrl: nil,
-                                    isFreePreview: index == 0,
-                                    sellSeparately: false
-                                )
-                            }
-                        )
-                    ]
-                )
-            ]
-        )
-    }
 }
 
 private struct CourseAuthorLine: View {
@@ -707,7 +638,9 @@ private struct AcademyCourseCard: View {
 
                 HStack(spacing: 16) {
                     Label("\(course.totalLessons) уроков", systemImage: "book")
-                    Label("\(course.studentsCount ?? fallbackStudents)", systemImage: "person.2")
+                    if let students = course.studentsCount, students >= 0 {
+                        Label("\(students)", systemImage: "person.2")
+                    }
                     Spacer()
                     Image(systemName: "arrow.right")
                         .font(.system(size: 18, weight: .black))
@@ -737,10 +670,6 @@ private struct AcademyCourseCard: View {
         .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 12)
     }
 
-    private var fallbackStudents: Int {
-        let values = [156, 201, 98, 143, 89, 124]
-        return values[paletteIndex % values.count]
-    }
 }
 
 struct CourseInDevelopmentView: View {
@@ -1032,7 +961,7 @@ struct CourseDetailView: View {
         guard auth.isAuthenticated else {
             purchaseNotice = CoursePurchaseNotice(
                 title: "Нужен вход",
-                message: "Войдите в X five marketing, чтобы купить курс.",
+                message: "Войдите в Xfive marketing, чтобы купить курс.",
                 offersTopUp: false
             )
             return
@@ -1043,7 +972,10 @@ struct CourseDetailView: View {
 
     @MainActor
     private func completePurchase() async {
-        guard let token = await auth.freshAccessToken() else {
+        guard let profileOperation = currentUser.operationContext() else { return }
+        guard let token = await currentUser.accessTokenForOperation(profileOperation, refresh: {
+            await auth.freshAccessToken()
+        }) else {
             purchaseNotice = CoursePurchaseNotice(
                 title: "Сессия истекла",
                 message: "Войдите снова и повторите покупку.",
@@ -1052,14 +984,23 @@ struct CourseDetailView: View {
             return
         }
 
+        guard currentUser.isCurrent(profileOperation) else { return }
         do {
             let response = try await purchaseService.purchase(
                 courseId: course.id,
                 expectedPrice: coursePrice,
                 accessToken: token,
-                refreshAccessToken: { await auth.freshAccessToken() }
+                refreshAccessToken: {
+                    await currentUser.accessTokenForOperation(profileOperation, refresh: {
+                        await auth.accessTokenAfterUnauthorized(
+                            rejectedAccessToken: token,
+                            expectedUserId: profileOperation.userID
+                        )
+                    })
+                }
             )
-            currentUser.applyCoursePurchase(response)
+            guard currentUser.isCurrent(profileOperation) else { return }
+            currentUser.applyCoursePurchase(response, for: profileOperation)
 
             switch response.status {
             case .purchased:
@@ -1465,7 +1406,7 @@ private struct CourseSubmissionView: View {
                 } header: {
                     Text("Заявка на курс")
                 } footer: {
-                    Text("Опиши идею курса и прикрепи первое видео. Команда X five marketing проверит заявку и свяжется с тобой.")
+                    Text("Опиши идею курса и прикрепи первое видео. Команда Xfive marketing проверит заявку и свяжется с тобой.")
                 }
 
                 Section("Видео") {

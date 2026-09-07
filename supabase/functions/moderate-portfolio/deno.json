@@ -1,0 +1,13 @@
+{
+  "lock": {
+    "path": "./deno.lock",
+    "frozen": true
+  },
+  "minimumDependencyAge": "P1D",
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.110.3"
+  },
+  "compilerOptions": {
+    "strict": true
+  }
+}

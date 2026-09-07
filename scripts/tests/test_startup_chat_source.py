@@ -46,7 +46,7 @@ class StartupChatSourceTests(unittest.TestCase):
         self.assertIn("StartupChatService", source)
         self.assertIn("messages.append", source)
         self.assertIn("auth.freshAccessToken()", source)
-        self.assertIn("X five marketing", source)
+        self.assertIn("Xfive marketing", source)
         self.assertIn("Отправить", source)
         self.assertIn("errorCanRetry", source)
         self.assertIn("serviceError != .invalidConversation", source)

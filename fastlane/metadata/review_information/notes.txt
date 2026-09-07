@@ -1,67 +1,18 @@
-X five marketing is a creator workspace and marketplace. Version 1.1.6 build 192
-adds safer Home motion, Seedance video, AI Voice, repeatable credit packs,
-and automatic portfolio moderation.
+Xfive marketing. Version 1.1.9 build 239.
+This update validates the selected StoreKit product before reporting purchase
+success and clarifies credit confirmation messages. It retains the reviewed
+1.1.8 feature set; no Kaspi, external checkout, or paid-lesson feature is added.
 
-Demo account:
-Use the Apple Demo Account credentials for appreview@x5studio.app.
+Profile -> Store offers repeatable consumable packs of 1000, 2000 and 5000
+credits. Verified badge is a separate auto-renewable monthly subscription.
+Prices are loaded from StoreKit. Cancelled, pending or unverified purchases
+do not show success. Server verification and exact-once delivery remain in place.
 
-Quick test:
-1. Sign in.
-2. Home -> AI Image: enter a prompt, optionally add references, choose
-   size/quantity and generate.
-3. Home -> AI Video: select Seedance 1.5 Pro, enter a prompt, optionally select
-   a photo, choose 480p/720p/1080p and optional native audio, then generate.
-4. Home -> AI Voice: enter text, choose voice/language/speed, generate, preview
-   and share the audio.
-5. Home -> Startup Chat: ask a business question.
-6. Home -> Live Fruits: complete the fields, create/edit the three-scene
-   storyboard, then generate its reference and video.
-7. Hub -> Tasks: tap "Tasks for my categories" next to All. Categories saved in
-   the signed-in profile are applied immediately.
-8. CourseUP: open a course, tap the author to open that exact public profile,
-   preview a lesson and buy a paid course. The two authorized developer
-   accounts can select authors and manage lessons.
-9. Portfolio/Profile: add a photo or video. Photos and video previews are
-   checked automatically; pending or rejected items never become public.
-10. Chats: send text/photo/voice; report or block another user.
-11. Profile -> Store: buy one-time 1,000/2,000/5,000-credit packs. Each is an
-    Apple consumable and remains repurchasable. Get verified opens a separate
-    monthly subscription; its bright action button now uses black text.
-12. Settings: change language or delete the account.
+Use the supplied appreview@x5studio.app demo credentials. The review account
+has a capped isolated Sandbox allowance to exercise the purchase flow.
+Ordinary TestFlight accounts cannot receive spendable credits from Sandbox.
+Production purchases require Apple's signed transaction verification.
 
-Home motion:
-Muted card previews pause offscreen, in the background or with Reduce Motion.
-A static poster remains if motion cannot play.
-
-AI processing and automatic moderation:
-- AI Image uses the authenticated generate-image Supabase Edge Function.
-- AI Video first sends prompt/reference input to OpenAI Moderations. Accepted
-  Seedance 1.5 Pro requests run through the server-side fal route; credentials
-  are never included in the app.
-- AI Voice sends entered text through the authenticated generate-voice Edge
-  Function to the ElevenLabs Eleven v3 model via fal. Result audio is stored
-  privately and returned through a short-lived signed URL.
-- Startup Chat uses OpenAI Responses with storage disabled. Live Fruits uses
-  OpenAI Moderations and Responses.
-- Portfolio moderation is automatic-only through OpenAI Moderations. There is
-  no developer/manual review queue. Provider failures stay private and retry.
-- The app does not use third-party advertising trackers.
-
-In-app purchases:
-- com.x5studio.app.credits.1000 / .2000 / .5000 are consumables.
-- com.x5studio.app.verified.monthly is an auto-renewable subscription.
-Credit packs are delivered exactly once from Apple's signed transaction.
-Unfinished delivery survives relaunch and retries without double crediting.
-The verified badge is separate and does not include credits.
-
-UGC safety:
-Chat users, Hub users and task authors can be reported; chat users can be
-blocked. Account deletion is available in Settings.
-
-Permissions:
-Photos: course media, avatars, portfolio, chats, AI references and saving
-generated media. Microphone: chat voice messages. APNs: notifications.
-
-Privacy: https://tooyakov-art.github.io/x5site/privacy.html
-Terms: https://tooyakov-art.github.io/x5site/terms.html
-Support: support@x5studio.app
+Mainland China remains excluded from availability. Existing privacy disclosures,
+AI capabilities, account deletion and portfolio moderation are unchanged.
+Portfolio moderation uses OpenAI as disclosed in the privacy policy.

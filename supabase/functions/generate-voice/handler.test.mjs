@@ -22,6 +22,17 @@ function dependencies(overrides = {}) {
     deps: {
       verifyUser: async () => ({ id: userID }),
       providerConfigured: () => true,
+      directProviderConfigured: () => false,
+      generateDirect: async (parameters) => {
+        calls.push(["generate-direct", parameters]);
+        return {
+          provider: "minimax",
+          model: "speech-2.8-turbo",
+          requestID: "minimax_trace-12345678",
+          audioBytes: Uint8Array.from([0x49, 0x44, 0x33, 1]),
+          audioMimeType: "audio/mpeg",
+        };
+      },
       lookupGeneration: async () => ({ status: "not_found" }),
       claimGeneration: async (parameters) => {
         calls.push(["claim", parameters]);
@@ -129,6 +140,28 @@ test("new request debits once, submits queue once, binds request ID, and returns
     calls.find(([name]) => name === "bind")[1].p_provider_request_id,
     providerRequestID,
   );
+});
+
+test("new direct request generates, stores, completes and signs in one call", async () => {
+  const { deps, calls } = dependencies({
+    directProviderConfigured: () => true,
+  });
+  const response = await createGenerateVoiceHandler(deps)(request());
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.model, "speech-2.8-turbo");
+  assert.deepEqual(calls.map(([name]) => name), [
+    "claim",
+    "generate-direct",
+    "bind",
+    "store",
+    "complete-provider",
+    "sign",
+  ]);
+  const manifest = calls.find(([name]) => name === "complete-provider")[1]
+    .p_result_manifest;
+  assert.equal(manifest.provider, "minimax");
+  assert.equal(manifest.model, "speech-2.8-turbo");
 });
 
 test("requires authentication before credit claim or provider submission", async () => {

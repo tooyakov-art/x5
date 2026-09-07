@@ -107,6 +107,7 @@ struct VerifiedBadgeView: View {
         }
         .preferredColorScheme(.dark)
         .task { await iap.loadProducts() }
+        .onChange(of: iap.lastError) { errorText = $0 }
         .alert(loc.t("verified_success_title"), isPresented: $showSuccess) {
             Button(loc.t("btn_done")) { dismiss() }
         } message: {
@@ -205,8 +206,10 @@ struct VerifiedBadgeView: View {
         Task {
             let delivered = await iap.purchase(productID: IAPService.verifiedMonthlyProductID)
             guard delivered else {
-                errorText = iap.lastError ?? loc.t("verified_purchase_failed")
-                X5Feedback.error()
+                // StoreKit cancellation is an ordinary choice, not a failure.
+                // Pending and server errors already provide a specific message.
+                errorText = iap.lastError
+                if errorText != nil { X5Feedback.error() }
                 return
             }
             await refreshProfile()

@@ -70,12 +70,16 @@ export class AppleVerificationError extends Error {
 
 export class EntitlementApplyError extends Error {
   constructor(
-    readonly statusValue: "owned_by_other" | "rejected",
+    readonly statusValue:
+      | "owned_by_other"
+      | "rejected"
+      | "sandbox_test_not_billable",
     readonly httpStatus: number,
     readonly diagnosticCode:
       | "owned_by_other"
       | "rejected"
-      | "account_token_mismatch" = statusValue,
+      | "account_token_mismatch"
+      | "sandbox_test_not_billable" = statusValue,
   ) {
     super(statusValue);
   }
@@ -614,7 +618,7 @@ async function applyVerifiedRpc(
       safeToken.includes("sandbox_review_account_not_allowed") ||
       safeToken.includes("sandbox_review_credit_cap_exceeded")
     ) {
-      throw new EntitlementApplyError("rejected", 403);
+      throw new EntitlementApplyError("sandbox_test_not_billable", 403);
     }
     if (safeToken.includes("account_token_mismatch")) {
       throw new EntitlementApplyError(

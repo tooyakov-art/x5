@@ -1,5 +1,6 @@
 require "base64"
 require "json"
+require_relative "review_credentials"
 
 default_platform(:ios)
 
@@ -15,7 +16,7 @@ platform :ios do
   # AppStoreVersion exists in ASC yet — otherwise it loops on
   # "Cannot find edit app store version" and times out (build 43 ASC
   # upload run hit this).
-  APP_VERSION = "1.1.6"
+  APP_VERSION = "1.1.9"
 
   desc "Push metadata + screenshots, do NOT submit"
   lane :upload do
@@ -25,6 +26,7 @@ platform :ios do
       app_version: APP_VERSION,
       platform: "ios",
       skip_metadata: false,
+      app_review_information: required_review_credentials,
       skip_screenshots: false,
       skip_binary_upload: true,
       submit_for_review: false,

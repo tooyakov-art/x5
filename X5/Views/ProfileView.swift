@@ -7,6 +7,7 @@ struct ProfileView: View {
     @EnvironmentObject private var currentUser: CurrentUser
     @EnvironmentObject private var loc: LocalizationService
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     var showsDoneButton: Bool = true
 
@@ -106,6 +107,13 @@ struct ProfileView: View {
             }
             .onAppear { showInHubToggle = currentUser.profile?.showInHub ?? false }
             .task(id: currentUser.profile?.id) {
+                await refreshFollowCounts()
+            }
+            // Cross-device follow changes do not emit this process's local
+            // notification. Refresh whenever the app returns to the foreground;
+            // SwiftUI cancels this task automatically when the view disappears.
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
                 await refreshFollowCounts()
             }
             .onReceive(
@@ -240,6 +248,8 @@ struct ProfileView: View {
             overviewSection
         case .works:
             worksSection
+        case .saved:
+            savedWorksSection
         }
     }
 
@@ -254,7 +264,7 @@ struct ProfileView: View {
                 becomeSpecialistCard
             }
             if let cats = currentUser.profile?.specialistCategory, !cats.isEmpty {
-                specialistCard(cats: cats)
+                specialistCard(cats: HubCategories.orderedIDs(from: cats))
             }
             if !(currentUser.profile?.hasActiveVerifiedBadge ?? false) {
                 verifiedCard
@@ -269,7 +279,15 @@ struct ProfileView: View {
         }
     }
 
+    @ViewBuilder
+    private var savedWorksSection: some View {
+        if let uid = currentUser.profile?.id {
+            PortfolioGrid(userId: uid, canEdit: false, mode: .saved)
+        }
+    }
+
     private func uploadAvatar(_ item: PhotosPickerItem) async {
+        guard let profileOperation = currentUser.operationContext() else { return }
         guard let token = await auth.freshAccessToken() else {
             avatarError = "Сессия устарела. Войди заново и попробуй еще раз."
             avatarPickerItem = nil
@@ -280,7 +298,7 @@ struct ProfileView: View {
         if let data = try? await item.loadTransferable(type: Data.self),
            let image = UIImage(data: data),
            let jpeg = image.jpegData(compressionQuality: 0.85) {
-            let url = await currentUser.uploadAvatar(jpeg, accessToken: token)
+            let url = await currentUser.uploadAvatar(jpeg, accessToken: token, operation: profileOperation)
             if url == nil {
                 X5Feedback.error()
                 avatarError = "Сервер не принял фото. Проверь доступ к аккаунту и попробуй еще раз."
@@ -400,6 +418,7 @@ struct ProfileView: View {
     }
 
     private func updateHubVisibility(_ value: Bool) async {
+        guard let profileOperation = currentUser.operationContext() else { return }
         guard let token = await auth.freshAccessToken() else {
             X5Feedback.error()
             showInHubToggle = currentUser.profile?.showInHub ?? false
@@ -409,7 +428,7 @@ struct ProfileView: View {
         defer { savingShowInHub = false }
 
         guard hasSpecialistCategories else {
-            await currentUser.patchMany(["show_in_hub": AnyEncodable(false)], accessToken: token)
+            await currentUser.patchMany(["show_in_hub": AnyEncodable(false)], accessToken: token, operation: profileOperation)
             showInHubToggle = false
             X5Feedback.selection()
             return
@@ -422,7 +441,11 @@ struct ProfileView: View {
             fields["user_role"] = AnyEncodable("specialist")
             fields["is_public"] = AnyEncodable(true)
         }
-        await currentUser.patchMany(fields, accessToken: token)
+        guard await currentUser.patchMany(fields, accessToken: token, operation: profileOperation) else {
+            showInHubToggle = currentUser.profile?.showInHub ?? false
+            X5Feedback.error()
+            return
+        }
         showInHubToggle = currentUser.profile?.showInHub ?? value
         X5Feedback.success()
     }
@@ -432,12 +455,11 @@ struct ProfileView: View {
         if let raw,
            !raw.isEmpty,
            raw != "User",
-           raw != "Xfive marketing",
-           raw != "X five marketing" {
+           raw.replacingOccurrences(of: " ", with: "").lowercased() != "xfivemarketing" {
             return raw
         }
         if let emailName = emailPrefix { return emailName }
-        return "X five marketing"
+        return "Xfive marketing"
     }
 
     private var handleText: String {
@@ -683,6 +705,7 @@ struct ProfileSocialLinksStrip: View {
 private enum ProfileSection: String, CaseIterable, Identifiable {
     case overview
     case works
+    case saved
 
     var id: String { rawValue }
 
@@ -691,6 +714,7 @@ private enum ProfileSection: String, CaseIterable, Identifiable {
         switch self {
         case .overview: return loc.t("profile_tab_overview")
         case .works: return loc.t("profile_tab_works")
+        case .saved: return "Сохранённые"
         }
     }
 }

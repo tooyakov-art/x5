@@ -4,7 +4,12 @@ import {
   finalizeVideoGenerationResult,
   handleFalTerminalWebhook,
 } from "./lifecycle.mjs";
-import { createOpenAIVideoModerator } from "./moderation.mjs";
+import {
+  createBytePlusVideoModerator,
+  createFailoverVideoModerator,
+  createGoogleVideoModerator,
+  createOpenAIVideoModerator,
+} from "./moderation.mjs";
 import { decodeBoundedProviderVideoBase64, VideoStorage } from "./storage.mjs";
 import {
   selectVideoProvider,
@@ -49,7 +54,7 @@ type VideoJobRow = {
   status: "queued" | "rendering" | "completed" | "failed";
   progress: number;
   cost_credits: number;
-  provider_name: "fal" | "google" | "openai";
+  provider_name: "byteplus" | "fal" | "google" | "openai";
   provider_kind: "text" | "image";
   provider_request_id?: string;
   input_object_path?: string;
@@ -66,15 +71,18 @@ const serviceRoleKey = requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY");
 const videoReconcileCronSecret = requiredEnvironment(
   "VIDEO_RECONCILE_CRON_SECRET",
 );
+const bytePlusKey = Deno.env.get("ARK_API_KEY") || "";
 const falKey = Deno.env.get("FAL_KEY") || "";
 const googleKey = Deno.env.get("GOOGLE_API_KEY") ||
   Deno.env.get("GEMINI_API_KEY") || "";
 const openAIKey = Deno.env.get("OPENAI_API_KEY") || "";
-const moderateRequest = openAIKey
-  ? createOpenAIVideoModerator({ apiKey: openAIKey })
-  : () => {
-    throw new Error("video_moderation_not_configured");
-  };
+const moderateRequest = createFailoverVideoModerator([
+  ...(openAIKey ? [createOpenAIVideoModerator({ apiKey: openAIKey })] : []),
+  ...(googleKey ? [createGoogleVideoModerator({ apiKey: googleKey })] : []),
+  ...(bytePlusKey
+    ? [createBytePlusVideoModerator({ apiKey: bytePlusKey })]
+    : []),
+]);
 
 const storage = new VideoStorage({
   supabaseUrl,
@@ -164,6 +172,7 @@ async function reconcileJob(
   try {
     provider = selectVideoProviderByName(row.provider_name, {
       falKey,
+      bytePlusKey,
       googleKey,
       openAIKey,
     });
@@ -190,6 +199,10 @@ async function reconcileJob(
       p_error_code: providerStatus.errorCode || "provider_failed",
     });
     const updated = await getJob({ jobId: row.id, userId: row.user_id }) || row;
+    await recordVideoHealth(
+      false,
+      providerStatus.errorCode || "provider_failed",
+    );
     if (["completed", "failed"].includes(updated.status)) {
       await cleanupStartImage(updated);
     }
@@ -218,6 +231,7 @@ async function reconcileJob(
           kind: row.provider_kind,
         }),
     });
+    await recordVideoHealth(true, null);
   } catch (error) {
     // Transient provider, storage, or ledger failures remain retryable.
     if (strict) throw error;
@@ -238,7 +252,7 @@ async function finalizeResultForJob({
   loadResult,
 }: {
   row: VideoJobRow;
-  providerName: "fal" | "google" | "openai";
+  providerName: "byteplus" | "fal" | "google" | "openai";
   loadResult: () => Promise<ProviderVideoResult> | ProviderVideoResult;
 }) {
   return await finalizeVideoGenerationResult({
@@ -273,12 +287,33 @@ async function createSignedVideoUrl(path: string) {
   return await storage.signResult(path);
 }
 
+async function assetForVideoResult(path: string, userId: string) {
+  const asset = await callServiceRpc("generated_asset_by_object_service", {
+    p_bucket_id: "video-generation-results",
+    p_object_path: path,
+  });
+  return asset.status === "found" && String(asset.user_id || "") === userId
+    ? asset
+    : null;
+}
+
+async function recordVideoHealth(success: boolean, errorCode: string | null) {
+  await callServiceRpc("record_ai_provider_health", {
+    p_provider: "byteplus",
+    p_capability: "video",
+    p_success: success,
+    p_model: "seedance-2.0-fast",
+    p_error_code: errorCode,
+  }).catch(() => null);
+}
+
 const userHandler = createGenerateVideoHandler({
   verifyUser,
   moderateRequest,
   selectProvider: (normalized: JsonRecord) =>
     selectVideoProvider({
       model: String(normalized.model || "auto"),
+      bytePlusKey,
       falKey,
       googleKey,
       openAIKey,
@@ -291,6 +326,7 @@ const userHandler = createGenerateVideoHandler({
       : null;
     return fallbackName
       ? selectVideoProviderByName(fallbackName, {
+        bytePlusKey,
         falKey,
         googleKey,
         openAIKey,
@@ -328,6 +364,7 @@ const userHandler = createGenerateVideoHandler({
   deleteStartImage: (path: string) => storage.deleteStartImage(path),
   signStartImage: (object: JsonRecord) => storage.signStartImage(object),
   signResult: createSignedVideoUrl,
+  assetForResult: assetForVideoResult,
   reconcileJob,
   webhookUrl,
   googleWebhookUrl,

@@ -63,12 +63,16 @@ class PortfolioModerationSourceTests(unittest.TestCase):
 
     def test_video_uses_generated_thumbnail_and_text_in_existing_moderation(self):
         source = EDGE_FUNCTION.read_text(encoding="utf-8")
-        image_lookup = source.index("const imageUrl = imageURLFor(item)")
+        image_lookup = source.index(
+            "const imageUrl = await signedImageURLFor(admin, item)"
+        )
         video_guard = source.index('if (item.type === "video" && !imageUrl)')
         provider_call = source.index("fetch(OPENAI_MODERATION_URL")
 
         self.assertLess(image_lookup, video_guard)
         self.assertLess(video_guard, provider_call)
+        self.assertIn('.from("portfolio")', source)
+        self.assertIn(".createSignedUrl(path, 300)", source)
         self.assertIn(
             'result: { reason: "video_preview_missing" }', source
         )
@@ -85,15 +89,20 @@ class PortfolioModerationSourceTests(unittest.TestCase):
 
         self.assertIn("moderation_revision?: number;", source)
         self.assertIn("moderation_revision: number;", source)
-        self.assertIn(
-            "requestedRevision !== item.moderation_revision", source
+        self.assertIn("if (!Number.isSafeInteger(revision)", source)
+        claim = source.index('"x5_claim_portfolio_moderation_job"')
+        complete = source.index('"x5_complete_portfolio_moderation_job"')
+        readback = source.index(
+            '.eq("moderation_revision", claim.item.moderation_revision)'
         )
-        self.assertIn("if (requestedRevision == null)", source)
-        self.assertIn('.eq("moderation_revision", item.moderation_revision)', source)
-        self.assertIn('.eq("moderation_status", item.moderation_status)', source)
-        self.assertIn('item.moderation_status !== "pending"', source)
-        self.assertIn('error: "stale_item"', source)
-        self.assertIn("}, 409)", source)
+        self.assertLess(claim, complete)
+        self.assertLess(complete, readback)
+        self.assertIn("p_moderation_revision: revision", source)
+        self.assertIn("p_owner_id: userData.user.id", source)
+        self.assertIn("p_job_id: claim.job_id", source)
+        self.assertGreaterEqual(source.count("p_lease_token: leaseToken"), 3)
+        self.assertIn('["stale_item", "completed", "already_completed", "exhausted", "superseded"]', source)
+        self.assertIn("return json({ error: status }, 409)", source)
         self.assertIn(
             "new.moderation_revision := old.moderation_revision + 1", hardening
         )
@@ -103,7 +112,7 @@ class PortfolioModerationSourceTests(unittest.TestCase):
 
         self.assertIn('decision.status === "rejected"', source)
         self.assertIn('.storage.from("portfolio")', source)
-        self.assertIn(".remove(objectPaths)", source)
+        self.assertIn(".remove(paths)", source)
         self.assertIn("item.media_url", source)
         self.assertIn("item.thumbnail_url", source)
         self.assertIn("portfolioObjectPath(value, item.user_id)", source)
@@ -111,7 +120,9 @@ class PortfolioModerationSourceTests(unittest.TestCase):
         self.assertIn("resolvedPaths.some((value) => value == null)", source)
         self.assertIn("parsed.username || parsed.password", source)
         self.assertIn("parsed.search || parsed.hash", source)
-        self.assertIn('!parsed.pathname.startsWith(marker)', source)
+        self.assertIn("const marker = markers.find", source)
+        self.assertIn("parsed.pathname.startsWith(candidate)", source)
+        self.assertIn("if (!marker) return null", source)
         self.assertIn('segment === "." || segment === ".."', source)
 
     def test_unapproved_queue_never_loads_untrusted_media_urls(self):
@@ -162,7 +173,9 @@ class PortfolioModerationSourceTests(unittest.TestCase):
         self.assertIn("var frames: [UIImage] = []", view)
         self.assertIn("frames.append(UIImage(cgImage: cgImage))", view)
         self.assertIn("makeVideoContactSheet(from: frames)", view)
-        self.assertIn("private func makeVideoContactSheet", view)
+        self.assertIn(
+            "nonisolated private static func makeVideoContactSheet", view
+        )
         self.assertIn("UIGraphicsImageRenderer", view)
 
     def test_approved_storage_objects_are_immutable_and_moderation_is_revision_bound(self):
@@ -175,8 +188,13 @@ class PortfolioModerationSourceTests(unittest.TestCase):
         self.assertIn("moderation_revision bigint not null default 1", migration)
         self.assertIn("new.moderation_revision := old.moderation_revision + 1", migration)
         self.assertIn("moderation_revision: number", edge)
-        self.assertIn(".eq(\"moderation_revision\", item.moderation_revision)", edge)
-        self.assertIn('return json({ error: "stale_item" }, 409)', edge)
+        self.assertIn('"x5_claim_portfolio_moderation_job"', edge)
+        self.assertIn("p_moderation_revision: revision", edge)
+        self.assertIn('"x5_complete_portfolio_moderation_job"', edge)
+        self.assertIn(
+            '.eq("moderation_revision", claim.item.moderation_revision)', edge
+        )
+        self.assertIn("return json({ error: status }, 409)", edge)
 
     def test_developer_manual_queue_is_not_reachable(self):
         settings = SETTINGS_VIEW.read_text(encoding="utf-8")

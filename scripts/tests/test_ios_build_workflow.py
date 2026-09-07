@@ -27,6 +27,16 @@ class IOSBuildWorkflowTests(unittest.TestCase):
             f"Archive scheme {scheme!r} is not generated as a shared scheme in project.yml",
         )
 
+    def test_signed_ipa_is_not_published_as_a_github_artifact(self):
+        workflow = (ROOT / ".github" / "workflows" / "ios-build.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertNotIn("actions/upload-artifact", workflow)
+        self.assertNotIn("Upload IPA artifact", workflow)
+        self.assertNotRegex(workflow, r"path:\s*.*\.ipa")
+        self.assertIn("xcrun altool --upload-app", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

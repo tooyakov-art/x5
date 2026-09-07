@@ -1,4 +1,4 @@
-# X five marketing AI Home Implementation Plan
+# Xfive marketing AI Home Implementation Plan
 
 ## Task 1: Lock the brand and Home routes
 
@@ -12,7 +12,7 @@ Files:
 Steps:
 
 1. Add a failing source test requiring the exact visible brand
-   `X five marketing` and forbidding `X5 AI` as the app title.
+   `Xfive marketing` and forbidding `X5 AI` as the app title.
 2. Add testable Home route values for image generation, Startup Chat, Hub,
    video generation, and Live Fruits.
 3. Update the compact Home header and primary image hero.

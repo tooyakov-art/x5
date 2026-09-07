@@ -1,11 +1,5 @@
-import {
-  createClient,
-  type SupabaseClient,
-} from "https://esm.sh/@supabase/supabase-js@2";
-import {
-  create as jwtCreate,
-  getNumericDate,
-} from "https://deno.land/x/djwt@v3.0.2/mod.ts";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { create as jwtCreate, getNumericDate } from "djwt";
 import {
   buildGooglePlayReversalRpcArgs,
   canonicalVoidedEventMaterial,

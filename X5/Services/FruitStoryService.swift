@@ -134,7 +134,7 @@ enum FruitStoryServiceError: LocalizedError, Equatable {
         case .contentRejected:
             return "Запрос не прошёл проверку безопасности. Измените описание."
         case .outcomeUnknown:
-            return "Статус запроса уточняется. Чтобы не списать ресурсы дважды, повторный запуск заблокирован."
+            return "Запрос не завершился. Нажмите «Создать раскадровку» ещё раз: продолжится тот же запрос без повторного списания."
         case .transport:
             return "Нет связи с сервисом историй. Проверьте интернет и повторите попытку."
         case .serverUnavailable:
@@ -149,15 +149,21 @@ final class FruitStoryService {
     private let session: URLSession
     private let baseURL: URL
     private let anonKey: String
+    private let recoveryDelayNanoseconds: UInt64
+    private let maximumRecoveryAttempts: Int
 
     init(
         session: URLSession = .shared,
         baseURL: URL = X5Config.supabaseBaseURL,
-        anonKey: String = X5Config.supabaseAnonKey
+        anonKey: String = X5Config.supabaseAnonKey,
+        recoveryDelayNanoseconds: UInt64 = 3_000_000_000,
+        maximumRecoveryAttempts: Int = 2
     ) {
         self.session = session
         self.baseURL = baseURL
         self.anonKey = anonKey
+        self.recoveryDelayNanoseconds = recoveryDelayNanoseconds
+        self.maximumRecoveryAttempts = max(0, maximumRecoveryAttempts)
     }
 
     func generate(
@@ -186,27 +192,53 @@ final class FruitStoryService {
             )
         )
 
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            throw FruitStoryServiceError.transport
-        }
+        for attempt in 0...maximumRecoveryAttempts {
+            let data: Data
+            let response: URLResponse
+            do {
+                (data, response) = try await session.data(for: request)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                guard attempt < maximumRecoveryAttempts else {
+                    throw FruitStoryServiceError.transport
+                }
+                try await Task.sleep(nanoseconds: recoveryDelayNanoseconds)
+                continue
+            }
 
-        guard let http = response as? HTTPURLResponse else {
-            throw FruitStoryServiceError.transport
+            guard let http = response as? HTTPURLResponse else {
+                throw FruitStoryServiceError.transport
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                let serviceError = Self.safeError(
+                    statusCode: http.statusCode,
+                    data: data
+                )
+                let safeCode = (try? JSONDecoder().decode(
+                    SafeErrorEnvelope.self,
+                    from: data
+                ))?.error.code
+                let recoverable = http.statusCode == 425
+                    || http.statusCode == 429
+                    || safeCode == "outcome_unknown"
+                    || safeCode == "in_progress"
+                    || safeCode == "rate_limited"
+                guard recoverable, attempt < maximumRecoveryAttempts else {
+                    throw serviceError
+                }
+                try await Task.sleep(nanoseconds: recoveryDelayNanoseconds)
+                continue
+            }
+            guard let envelope = try? JSONDecoder().decode(FruitStoryEnvelope.self, from: data),
+                  envelope.requestID == requestID,
+                  Self.isValid(envelope.story)
+            else {
+                throw FruitStoryServiceError.invalidStory
+            }
+            return envelope
         }
-        guard (200..<300).contains(http.statusCode) else {
-            throw Self.safeError(statusCode: http.statusCode, data: data)
-        }
-        guard let envelope = try? JSONDecoder().decode(FruitStoryEnvelope.self, from: data),
-              envelope.requestID == requestID,
-              Self.isValid(envelope.story)
-        else {
-            throw FruitStoryServiceError.invalidStory
-        }
-        return envelope
+        throw FruitStoryServiceError.serverUnavailable
     }
 
     private static func isValid(_ questionnaire: FruitStoryQuestionnaire) -> Bool {
@@ -657,7 +689,7 @@ enum FruitStoryVideoPromptBuilder {
         }.joined(separator: "\n\n")
 
         return """
-        Вертикальный ролик 9:16 продолжительностью 10 секунд для X five marketing.
+        Вертикальный ролик 9:16 продолжительностью 10 секунд для Xfive marketing.
         Один главный фрукт остаётся визуально идентичным во всех кадрах.
         Паспорт персонажа: \(clipped(story.characterBible, to: 240))
         Сюжет: \(clipped(story.summary, to: 140))

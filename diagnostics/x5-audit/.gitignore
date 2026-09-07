@@ -1,0 +1,5 @@
+# Screenshots from the authenticated simulator may contain test-account data.
+# This repository is PUBLIC. Keep authenticated screenshots local, not in Git/artifacts.
+screens-*/
+production-readonly-summary.json
+private-*/

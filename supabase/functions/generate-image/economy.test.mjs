@@ -12,7 +12,20 @@ import {
   normalizeGenerationRequest,
   normalizeImages,
   normalizeQuantity,
+  sanitizeProviderDiagnostic,
 } from "./economy.mjs";
+
+test("redacts provider credentials from server diagnostics", () => {
+  const message = sanitizeProviderDiagnostic(
+    "Consumer api_key:AIzaSyExampleSecretValue123456789 was suspended; " +
+      "Bearer sensitive-token-value-123456789",
+  );
+
+  assert.equal(message.includes("AIzaSyExampleSecretValue"), false);
+  assert.equal(message.includes("sensitive-token-value"), false);
+  assert.match(message, /REDACTED_GOOGLE_API_KEY/);
+  assert.match(message, /Bearer \[REDACTED\]/);
+});
 
 test("normalizes provider, category, prompt, and fixed credit cost", () => {
   const request = normalizeGenerationRequest({
@@ -21,8 +34,8 @@ test("normalizes provider, category, prompt, and fixed credit cost", () => {
     prompt: "  premium bakery mark  ",
   });
 
-  assert.equal(request.provider, "google");
-  assert.equal(request.model, "gemini-3.1-flash-image");
+  assert.equal(request.provider, "gpt");
+  assert.equal(request.model, "gpt-image-2");
   assert.equal(request.category.id, "logo");
   assert.equal(request.prompt, "premium bakery mark");
   assert.equal(request.costCredits, IMAGE_CREDIT_COST);
@@ -74,15 +87,16 @@ test("rejects removed image models before credits are spent", () => {
   );
 });
 
-test("falls back to GPT and custom category for unknown values", () => {
-  const request = normalizeGenerationRequest({
-    provider: "unknown",
-    category: "unknown",
-    prompt: "launch creative",
-  });
-
-  assert.equal(request.provider, "gpt");
-  assert.equal(request.category.id, "custom");
+test("rejects an unknown explicit category instead of silently changing it", () => {
+  assert.throws(
+    () =>
+      normalizeGenerationRequest({
+        provider: "unknown",
+        category: "unknown",
+        prompt: "launch creative",
+      }),
+    /unsupported_category/,
+  );
 });
 
 test("normalizes quantity, size, and multiplied credit cost", () => {
@@ -215,7 +229,7 @@ test("normalizes image references for edit requests", () => {
   ]);
 
   assert.deepEqual(images, [
-    { mimeType: "image/jpeg", data: "abc123" },
+    { mimeType: "image/jpeg", data: "abc123", role: "style_reference" },
   ]);
 });
 
@@ -485,7 +499,7 @@ test("never exposes provider API keys in user-facing errors", () => {
 
   assert.equal(
     safeMessage,
-    "Google image generation is temporarily unavailable. Please try again.",
+    "Генерация временно недоступна. Кредиты возвращены. Повторите позже.",
   );
   assert.doesNotMatch(safeMessage || "", /AIza|api_key|consumer/i);
 });

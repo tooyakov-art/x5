@@ -12,6 +12,8 @@ struct HubSpecialist: Codable, Identifiable, Hashable {
     let plan: String?
     let services: [String]?
     let socialLinks: SocialLinks?
+    let countryCode: String?
+    let city: String?
     let isVerified: Bool?
     let verifiedUntil: String?
     var subscriptionEndDate: String? = nil
@@ -36,6 +38,8 @@ struct HubSpecialist: Codable, Identifiable, Hashable {
         case id, name, nickname, avatar, bio, plan, services
         case specialistCategory = "specialist_category"
         case socialLinks = "social_links"
+        case countryCode = "country_code"
+        case city
         case isVerified = "is_verified"
         case verifiedUntil = "verified_until"
         case subscriptionEndDate = "subscription_end_date"
@@ -52,6 +56,8 @@ struct HubTask: Codable, Identifiable, Hashable {
     let description: String?
     let budget: String?
     let category: String?
+    let countryCode: String?
+    let city: String?
     let deadline: String?
     let status: String
     let createdAt: String?
@@ -61,6 +67,8 @@ struct HubTask: Codable, Identifiable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case id, title, description, budget, category, deadline, status
+        case countryCode = "country_code"
+        case city
         case authorId = "author_id"
         case authorName = "author_name"
         case authorAvatar = "author_avatar"
@@ -103,44 +111,67 @@ struct HubCategory: Identifiable, Hashable {
 }
 
 enum HubCategories {
+    /// Единый порядок профессий для Hub, регистрации, профиля и заданий.
+    /// Сначала идут маркетинг и продвижение, затем контент/дизайн,
+    /// разработка и только после них общие бизнес-услуги.
     static let all: [HubCategory] = [
         .init(id: "marketing", emoji: "📣", labelEn: "Marketing", labelRu: "Маркетинг", labelKk: "Маркетинг"),
-        .init(id: "smm", emoji: "📱", labelEn: "SMM", labelRu: "SMM", labelKk: "SMM"),
-        .init(id: "targeting", emoji: "🎯", labelEn: "Ads", labelRu: "Таргет", labelKk: "Таргет"),
-        .init(id: "seo", emoji: "🔍", labelEn: "SEO", labelRu: "SEO", labelKk: "SEO"),
+        .init(
+            id: "smm",
+            emoji: "📱",
+            labelEn: "SMM / Mobile content",
+            labelRu: "SMM Мобилография",
+            labelKk: "SMM Мобилография"
+        ),
+        .init(id: "targeting", emoji: "🎯", labelEn: "Ads / TikTok / Telegram", labelRu: "Таргет Ads / TikTok / Telegram", labelKk: "Таргет Ads / TikTok / Telegram"),
+        .init(id: "context_ads", emoji: "📈", labelEn: "Google / Yandex Ads", labelRu: "Контекст Google / Яндекс", labelKk: "Google / Яндекс контекстік жарнамасы"),
+        .init(id: "ugc", emoji: "📹", labelEn: "UGC", labelRu: "UGC", labelKk: "UGC"),
         .init(id: "sales", emoji: "💰", labelEn: "Sales", labelRu: "Продажи", labelKk: "Сату"),
-        .init(id: "design", emoji: "🎨", labelEn: "Design", labelRu: "Дизайн", labelKk: "Дизайн"),
+        .init(id: "copy", emoji: "✍️", labelEn: "Copywriting", labelRu: "Копирайтинг", labelKk: "Копирайтинг"),
+        .init(id: "seo", emoji: "🔍", labelEn: "SEO", labelRu: "SEO", labelKk: "SEO"),
+        .init(id: "design", emoji: "🎨", labelEn: "Designer", labelRu: "Дизайнер", labelKk: "Дизайнер"),
         .init(id: "ui_ux", emoji: "📐", labelEn: "UI/UX", labelRu: "UI/UX", labelKk: "UI/UX"),
         .init(id: "motion", emoji: "✨", labelEn: "Motion", labelRu: "Моушн", labelKk: "Моушн"),
         .init(id: "3d", emoji: "🧊", labelEn: "3D / CGI", labelRu: "3D / CGI", labelKk: "3D / CGI"),
+        .init(id: "videographer", emoji: "📽️", labelEn: "Videographer", labelRu: "Видеограф", labelKk: "Видеограф"),
+        .init(id: "camera_operator", emoji: "🎥", labelEn: "Camera operator", labelRu: "Видеооператор", labelKk: "Бейнеоператор"),
+        .init(id: "video", emoji: "🎬", labelEn: "Video / Editing", labelRu: "Видео / монтаж", labelKk: "Видео / монтаж"),
+        .init(id: "photo", emoji: "📸", labelEn: "Photographer", labelRu: "Фотограф", labelKk: "Фотограф"),
+        .init(id: "animation", emoji: "🎞️", labelEn: "Animation", labelRu: "Анимация", labelKk: "Анимация"),
+        .init(id: "audio", emoji: "🎙️", labelEn: "Audio", labelRu: "Аудио", labelKk: "Аудио"),
+        .init(id: "journalist", emoji: "📰", labelEn: "Journalist", labelRu: "Журналист", labelKk: "Журналист"),
+        .init(id: "correspondent", emoji: "🎤", labelEn: "Correspondent", labelRu: "Корреспондент", labelKk: "Тілші"),
+        .init(id: "operator", emoji: "🎛️", labelEn: "Operator", labelRu: "Оператор", labelKk: "Оператор"),
+        .init(id: "producer", emoji: "🎞️", labelEn: "Producer", labelRu: "Продюсер", labelKk: "Продюсер"),
+        .init(id: "director", emoji: "🎬", labelEn: "Director", labelRu: "Режиссёр", labelKk: "Режиссер"),
+        .init(id: "actor_film", emoji: "🎭", labelEn: "Film actor", labelRu: "Актёр кино", labelKk: "Кино актері"),
+        .init(id: "actor_ads", emoji: "📺", labelEn: "Commercial actor", labelRu: "Актёр рекламы", labelKk: "Жарнама актері"),
+        .init(id: "actor_music_video", emoji: "🎵", labelEn: "Music video actor", labelRu: "Актёр клипов", labelKk: "Клип актері"),
         .init(id: "web_dev", emoji: "🌐", labelEn: "Web Dev", labelRu: "Веб-разработка", labelKk: "Веб-әзірлеу"),
-        .init(id: "mobile_dev", emoji: "📲", labelEn: "Mobile Dev", labelRu: "Мобильные", labelKk: "Мобильді"),
+        .init(id: "mobile_dev", emoji: "📲", labelEn: "Mobile development", labelRu: "Мобильная разработка", labelKk: "Мобильді әзірлеу"),
         .init(id: "bot_dev", emoji: "🤖", labelEn: "Chatbots", labelRu: "Чат-боты", labelKk: "Чат-боттар"),
         .init(id: "ai_ml", emoji: "🧠", labelEn: "AI / ML", labelRu: "AI / ML", labelKk: "AI / ML"),
         .init(id: "gamedev", emoji: "🎮", labelEn: "Game Dev", labelRu: "Геймдев", labelKk: "Геймдев"),
-        .init(id: "ugc", emoji: "📹", labelEn: "UGC", labelRu: "UGC", labelKk: "UGC"),
-        .init(id: "copy", emoji: "✍️", labelEn: "Copywriting", labelRu: "Копирайтинг", labelKk: "Копирайтинг"),
-        .init(id: "video", emoji: "🎬", labelEn: "Video / Editing", labelRu: "Видео / монтаж", labelKk: "Видео / монтаж"),
-        .init(id: "photo", emoji: "📸", labelEn: "Photo", labelRu: "Фото", labelKk: "Фото"),
-        .init(id: "audio", emoji: "🎙️", labelEn: "Audio", labelRu: "Аудио", labelKk: "Аудио"),
-        .init(id: "animation", emoji: "🎞️", labelEn: "Animation", labelRu: "Анимация", labelKk: "Анимация"),
-        .init(id: "translation", emoji: "🌍", labelEn: "Translation", labelRu: "Перевод", labelKk: "Аударма"),
         .init(id: "consulting", emoji: "💼", labelEn: "Consulting", labelRu: "Консалтинг", labelKk: "Кеңес беру"),
-        .init(id: "finance", emoji: "📊", labelEn: "Finance", labelRu: "Финансы", labelKk: "Қаржы"),
-        .init(id: "legal", emoji: "⚖️", labelEn: "Legal", labelRu: "Юристы", labelKk: "Заңгерлер"),
+        .init(id: "accountant", emoji: "🧾", labelEn: "Accountant", labelRu: "Бухгалтер", labelKk: "Бухгалтер"),
+        .init(id: "finance", emoji: "📊", labelEn: "Financier", labelRu: "Финансист", labelKk: "Қаржыгер"),
+        .init(id: "legal", emoji: "⚖️", labelEn: "Lawyer", labelRu: "Юрист", labelKk: "Заңгер"),
         .init(id: "hr", emoji: "👥", labelEn: "HR", labelRu: "HR", labelKk: "HR"),
         .init(id: "education", emoji: "🎓", labelEn: "Education", labelRu: "Обучение", labelKk: "Оқыту"),
         .init(id: "assistant", emoji: "📋", labelEn: "Assistant", labelRu: "Ассистент", labelKk: "Ассистент"),
+        .init(id: "translation", emoji: "🌍", labelEn: "Translation", labelRu: "Перевод", labelKk: "Аударма"),
         .init(id: "other", emoji: "🔧", labelEn: "Other", labelRu: "Другое", labelKk: "Басқа")
     ]
 
     static var hubDisplayOrder: [HubCategory] {
-        var categories = all
-        guard let seoIndex = categories.firstIndex(where: { $0.id == "seo" }),
-              let ugcIndex = categories.firstIndex(where: { $0.id == "ugc" })
-        else { return categories }
-        categories.swapAt(seoIndex, ugcIndex)
-        return categories
+        all
+    }
+
+    static func orderedIDs(from values: [String]?) -> [String] {
+        let requested = Set(values ?? [])
+        let known = all.map(\.id).filter(requested.contains)
+        let unknown = (values ?? []).filter { !validCategoryIds.contains($0) }
+        return known + unknown
     }
 
     private static let validCategoryIds = Set(all.map(\.id))
@@ -233,31 +264,44 @@ enum HubCategories {
         case "marketing": return "megaphone.fill"
         case "smm": return "iphone"
         case "targeting": return "scope"
+        case "context_ads": return "rectangle.and.pencil.and.ellipsis"
         case "seo": return "magnifyingglass"
         case "sales": return "dollarsign.circle.fill"
+        case "copy": return "pencil.and.outline"
+        case "ugc": return "video.fill"
         case "design": return "paintpalette.fill"
         case "ui_ux": return "ruler"
         case "motion": return "sparkles"
         case "3d": return "cube.transparent.fill"
+        case "videographer": return "video.square.fill"
+        case "camera_operator": return "video.circle.fill"
+        case "video": return "movieclapper.fill"
+        case "photo": return "camera.fill"
+        case "animation": return "film.stack"
+        case "audio": return "waveform"
+        case "journalist": return "newspaper.fill"
+        case "correspondent": return "mic.fill"
+        case "operator": return "slider.horizontal.3"
+        case "producer": return "person.3.fill"
+        case "director": return "eye.fill"
+        case "actor_film": return "theatermasks.fill"
+        case "actor_ads": return "tv.fill"
+        case "actor_music_video": return "music.mic"
         case "web_dev": return "globe"
         case "mobile_dev": return "apps.iphone"
         case "bot_dev": return "cpu.fill"
         case "ai_ml": return "brain.head.profile"
         case "gamedev": return "gamecontroller.fill"
-        case "ugc": return "video.fill"
-        case "copy": return "pencil.and.outline"
-        case "video": return "movieclapper.fill"
-        case "photo": return "camera.fill"
-        case "audio": return "waveform"
-        case "animation": return "film.stack"
-        case "translation": return "character.book.closed.fill"
         case "consulting": return "briefcase.fill"
+        case "accountant": return "calculator.fill"
         case "finance": return "chart.line.uptrend.xyaxis"
         case "legal": return "scalemass.fill"
         case "hr": return "person.2.fill"
         case "education": return "graduationcap.fill"
         case "assistant": return "checklist"
-        default: return "wrench.and.screwdriver.fill"
+        case "translation": return "character.book.closed.fill"
+        case "other": return "wrench.and.screwdriver.fill"
+        default: return "questionmark.circle.fill"
         }
     }
 }
@@ -291,7 +335,7 @@ final class HubService: ObservableObject {
         defer { isLoading = false }
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
-            URLQueryItem(name: "select", value: "id,name,nickname,avatar,bio,specialist_category,plan,services,social_links,is_verified,verified_until,subscription_end_date"),
+            URLQueryItem(name: "select", value: "id,name,nickname,avatar,bio,specialist_category,plan,services,social_links,country_code,city,is_verified,verified_until,subscription_end_date"),
             URLQueryItem(name: "show_in_hub", value: "eq.true"),
             URLQueryItem(name: "is_public", value: "eq.true"),
             URLQueryItem(name: "order", value: "created_at.desc")
@@ -307,6 +351,9 @@ final class HubService: ObservableObject {
     }
 
     func loadTasks(accessToken: String? = nil) async {
+        isLoading = true
+        error = nil
+        defer { isLoading = false }
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/tasks"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "select", value: "*"),
@@ -319,10 +366,40 @@ final class HubService: ObservableObject {
             if let accessToken {
                 request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
             }
-            let (data, _) = try await URLSession.shared.data(for: request)
-            tasks = (try? JSONDecoder().decode([HubTask].self, from: data)) ?? []
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw HubTaskServiceError.invalidResponse
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                throw HubTaskServiceError.httpStatus(http.statusCode)
+            }
+            tasks = try JSONDecoder().decode([HubTask].self, from: data)
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    /// Resolves a notification/deep-link target independently of the open-task
+    /// list, so completed or in-progress tasks still open when RLS permits it.
+    func loadTask(id: String, accessToken: String) async -> HubTask? {
+        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/tasks"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "id", value: "eq.\(id)"),
+            URLQueryItem(name: "select", value: "*"),
+            URLQueryItem(name: "limit", value: "1")
+        ]
+        do {
+            var request = URLRequest(url: components.url!)
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode)
+            else { return nil }
+            return try JSONDecoder().decode([HubTask].self, from: data).first
+        } catch {
+            self.error = error.localizedDescription
+            return nil
         }
     }
 
@@ -365,6 +442,8 @@ final class HubService: ObservableObject {
         description: String,
         budget: String,
         category: String,
+        countryCode: String,
+        city: String,
         deadline: Date?,
         accessToken: String
     ) async -> HubTask? {
@@ -373,6 +452,8 @@ final class HubService: ObservableObject {
             "description": description,
             "budget": budget,
             "category": category,
+            "country_code": countryCode,
+            "city": city,
             "deadline": NSNull()
         ]
         if let deadline {
@@ -440,7 +521,7 @@ final class HubService: ObservableObject {
 
     /// Inserts a new task. Returns the new task on success.
     @discardableResult
-    func createTask(authorId: String, authorName: String?, authorAvatar: String?, companyName: String?, title: String, description: String, budget: String, category: String, deadline: Date?, accessToken: String) async -> HubTask? {
+    func createTask(authorId: String, authorName: String?, authorAvatar: String?, companyName: String?, title: String, description: String, budget: String, category: String, countryCode: String, city: String, deadline: Date?, accessToken: String) async -> HubTask? {
         var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/tasks"))
         request.httpMethod = "POST"
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -454,6 +535,8 @@ final class HubService: ObservableObject {
             "description": description,
             "budget": budget,
             "category": category,
+            "country_code": countryCode,
+            "city": city,
             "status": "open",
             "public_visible_at": Self.iso8601String(from: Date())
         ]
@@ -502,36 +585,54 @@ final class HubService: ObservableObject {
         return rows.first
     }
 
-    /// Marks a response accepted and the task in_progress.
-    func acceptResponse(taskId: String, responseId: String, specialistId: String, specialistName: String?, accessToken: String) async {
-        // 1. Patch response status
-        var rURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/task_responses"), resolvingAgainstBaseURL: false)!
-        rURL.queryItems = [URLQueryItem(name: "id", value: "eq.\(responseId)")]
-        var rReq = URLRequest(url: rURL.url!)
-        rReq.httpMethod = "PATCH"
-        rReq.setValue(anonKey, forHTTPHeaderField: "apikey")
-        rReq.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        rReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        rReq.httpBody = try? JSONSerialization.data(withJSONObject: ["status": "accepted"])
-        _ = try? await URLSession.shared.data(for: rReq)
+    /// Atomically accepts the response through the authenticated database RPC.
+    /// The server derives the specialist identity from the locked response row;
+    /// client-supplied names or user IDs are intentionally not accepted.
+    @discardableResult
+    func acceptResponse(
+        taskId: String,
+        responseId: String,
+        accessToken: String
+    ) async -> HubTask? {
+        error = nil
+        var request = URLRequest(
+            url: baseURL.appendingPathComponent("rest/v1/rpc/x5_accept_task_response")
+        )
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // 2. Patch task
-        var tURL = URLComponents(url: baseURL.appendingPathComponent("rest/v1/tasks"), resolvingAgainstBaseURL: false)!
-        tURL.queryItems = [URLQueryItem(name: "id", value: "eq.\(taskId)")]
-        var tReq = URLRequest(url: tURL.url!)
-        tReq.httpMethod = "PATCH"
-        tReq.setValue(anonKey, forHTTPHeaderField: "apikey")
-        tReq.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        tReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        var body: [String: Any] = [
-            "status": "in_progress",
-            "accepted_response_id": responseId,
-            "accepted_specialist_id": specialistId
-        ]
-        if let n = specialistName { body["accepted_specialist_name"] = n }
-        tReq.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        _ = try? await URLSession.shared.data(for: tReq)
-        await loadTasks(accessToken: accessToken)
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "p_task_id": taskId,
+                "p_response_id": responseId
+            ])
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw HubTaskServiceError.invalidResponse
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                throw HubTaskServiceError.httpStatus(http.statusCode)
+            }
+
+            let acceptedTask: HubTask
+            if let row = try? JSONDecoder().decode(HubTask.self, from: data) {
+                acceptedTask = row
+            } else if let rows = try? JSONDecoder().decode([HubTask].self, from: data),
+                      let row = rows.first {
+                acceptedTask = row
+            } else {
+                throw HubTaskServiceError.invalidResponse
+            }
+
+            tasks.removeAll(where: { $0.id == acceptedTask.id })
+            replaceManagedTask(acceptedTask)
+            return acceptedTask
+        } catch {
+            self.error = error.localizedDescription
+            return nil
+        }
     }
 
     func loadResponses(taskId: String) async -> [TaskResponse] {

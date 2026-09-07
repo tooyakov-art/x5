@@ -2,11 +2,13 @@ import XCTest
 @testable import X5
 
 final class HubTaskBrowseStateTests: XCTestCase {
-    func testInitialStateShowsCategoryTiles() {
+    func testInitialStateShowsEveryTaskWithoutAFilter() {
         let state = HubTaskBrowseState()
 
-        XCTAssertFalse(state.isShowingResults)
+        XCTAssertTrue(state.isShowingResults)
         XCTAssertEqual(state.selectedCategoryIds, [])
+        XCTAssertTrue(state.includes(categoryId: "marketing"))
+        XCTAssertTrue(state.includes(categoryId: "legal"))
     }
 
     func testAllResultsCanReturnToCategoryTiles() {
@@ -69,12 +71,12 @@ final class HubTaskBrowseStateTests: XCTestCase {
         XCTAssertFalse(state.includes(categoryId: "seo"))
     }
 
-    func testCategoryFilterWithoutASelectionStaysOnGrid() {
+    func testCategoryFilterWithoutASelectionKeepsDefaultFeed() {
         var state = HubTaskBrowseState()
 
         state.applyCategoryFilter([])
 
-        XCTAssertFalse(state.isShowingResults)
+        XCTAssertTrue(state.isShowingResults)
         XCTAssertEqual(state.selectedCategoryIds, [])
     }
 
@@ -108,6 +110,44 @@ final class HubTaskBrowseStateTests: XCTestCase {
         }
     }
 
+    func testProfileCategoriesApplyAutomaticallyOnFirstHubEntry() {
+        var state = HubTaskBrowseState()
+
+        XCTAssertTrue(state.applyProfileCategoriesOnEntry(["Marketing", "UI/UX"]))
+        XCTAssertEqual(state.selectedCategoryIds, [])
+        XCTAssertEqual(state.preferredCategoryIds, ["marketing", "ui_ux"])
+        XCTAssertTrue(state.includes(categoryId: "seo"))
+        XCTAssertFalse(state.hasManualOverride)
+    }
+
+    func testDelayedProfileCanApplyAfterInitialEmptyValue() {
+        var state = HubTaskBrowseState()
+
+        XCTAssertFalse(state.applyProfileCategoriesOnEntry(nil))
+        XCTAssertTrue(state.applyProfileCategoriesOnEntry(["SEO"]))
+        XCTAssertEqual(state.selectedCategoryIds, [])
+        XCTAssertEqual(state.preferredCategoryIds, ["seo"])
+    }
+
+    func testManualChoiceBeforeProfileLoadIsPreserved() {
+        var state = HubTaskBrowseState()
+
+        state.showResults(for: "ugc")
+        XCTAssertFalse(state.applyProfileCategoriesOnEntry(["marketing"]))
+        XCTAssertEqual(state.selectedCategoryIds, ["ugc"])
+    }
+
+    func testManualChoiceAfterAutomaticFilterIsPreservedOnProfileRefresh() {
+        var state = HubTaskBrowseState()
+
+        XCTAssertTrue(state.applyProfileCategoriesOnEntry(["marketing"]))
+        state.showAllResults()
+        XCTAssertFalse(state.applyProfileCategoriesOnEntry(["seo"]))
+        XCTAssertEqual(state.selectedCategoryIds, [])
+        XCTAssertEqual(state.preferredCategoryIds, ["marketing"])
+        XCTAssertTrue(state.hasManualOverride)
+    }
+
     func testProfileCategoryNormalizationReturnsOnlyKnownHubCategoryIds() {
         XCTAssertEqual(
             HubCategories.normalizedIDs(from: ["SMM specialist", "web development", "Game Dev"]),
@@ -116,9 +156,58 @@ final class HubTaskBrowseStateTests: XCTestCase {
         XCTAssertEqual(HubCategories.normalizedIDs(from: ["unknown", "  "]), [])
     }
 
-    func testUGCAndSEOUseRequestedGridPositions() {
-        XCTAssertEqual(HubCategories.hubDisplayOrder.first?.id, "marketing")
-        XCTAssertEqual(HubCategories.hubDisplayOrder[3].id, "ugc")
-        XCTAssertEqual(HubCategories.hubDisplayOrder[14].id, "seo")
+    func testProfessionOrderStartsWithMarketingAndIsSharedByHub() {
+        let expectedStart = ["marketing", "smm", "targeting", "context_ads", "ugc", "sales", "copy", "seo"]
+
+        XCTAssertEqual(Array(HubCategories.all.prefix(expectedStart.count)).map(\.id), expectedStart)
+        XCTAssertEqual(HubCategories.hubDisplayOrder, HubCategories.all)
+    }
+
+    func testSMMAndMobileContentShareOneProfession() {
+        XCTAssertEqual(
+            HubCategories.label(for: "smm", language: .ru),
+            "SMM Мобилография"
+        )
+        XCTAssertEqual(HubCategories.all.filter { $0.id == "smm" }.count, 1)
+    }
+
+    func testMobileDevelopmentUsesTheFullProfessionName() {
+        XCTAssertEqual(
+            HubCategories.label(for: "mobile_dev", language: .ru),
+            "Мобильная разработка"
+        )
+    }
+
+    func testRequestedProfessionsAreAvailableAndCrossedOutOnesAreAbsent() {
+        let available = Set(HubCategories.all.map(\.id))
+        let requested = Set([
+            "context_ads", "videographer", "camera_operator", "journalist", "correspondent",
+            "operator", "producer", "director", "actor_film", "actor_ads",
+            "actor_music_video", "accountant"
+        ])
+        let crossedOut = Set(["administrator", "artist", "manager", "editor", "screenwriter"])
+
+        XCTAssertTrue(requested.isSubset(of: available))
+        XCTAssertTrue(crossedOut.isDisjoint(with: available))
+    }
+
+    func testEveryHubProfessionHasItsOwnIcon() {
+        let symbols = HubCategories.all.map { HubCategories.symbol(for: $0.id) }
+
+        XCTAssertEqual(symbols.count, Set(symbols).count)
+        XCTAssertFalse(symbols.contains("questionmark.circle.fill"))
+        XCTAssertEqual(HubCategories.symbol(for: "operator"), "slider.horizontal.3")
+        XCTAssertEqual(HubCategories.symbol(for: "producer"), "person.3.fill")
+        XCTAssertNotEqual(
+            HubCategories.symbol(for: "operator"),
+            HubCategories.symbol(for: "producer")
+        )
+    }
+
+    func testSavedProfileCategoriesFollowCanonicalProfessionOrder() {
+        XCTAssertEqual(
+            HubCategories.orderedIDs(from: ["design", "ugc", "marketing", "seo"]),
+            ["marketing", "ugc", "seo", "design"]
+        )
     }
 }

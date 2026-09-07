@@ -77,6 +77,7 @@ export function createGenerateVoiceHandler(deps) {
     }).catch(() => null);
     if (existing?.status === "succeeded") {
       return await signedResponse({
+        userID: user.id,
         normalized,
         creditsRemaining: Number(existing.credits_remaining || 0),
         manifest: existing.result_manifest,
@@ -141,6 +142,7 @@ export function createGenerateVoiceHandler(deps) {
     }
     if (claim.status === "replay") {
       return await signedResponse({
+        userID: user.id,
         normalized,
         creditsRemaining: Number(claim.credits_remaining || 0),
         manifest: claim.result_manifest,
@@ -152,6 +154,19 @@ export function createGenerateVoiceHandler(deps) {
       const providerRequestID = String(claim.provider_request_id || "");
       if (!PROVIDER_REQUEST_ID_PATTERN.test(providerRequestID)) {
         return pendingResponse();
+      }
+      if (isDirectProviderRequest(providerRequestID)) {
+        if (!deps.directProviderConfigured?.()) return pendingResponse();
+        return await runDirectGeneration({
+          normalized,
+          ledger: {
+            ...ledgerIdentity,
+            attempt: Number(claim.attempt || 0),
+            providerRequestID,
+            creditsRemaining: Number(claim.credits_remaining || 0),
+          },
+          deps,
+        });
       }
       return await pollProvider({
         normalized,
@@ -172,6 +187,19 @@ export function createGenerateVoiceHandler(deps) {
       attempt <= 0
     ) {
       return creditUnavailable();
+    }
+
+    if (deps.directProviderConfigured?.()) {
+      return await runDirectGeneration({
+        normalized,
+        ledger: {
+          ...ledgerIdentity,
+          attempt,
+          claimToken,
+          creditsRemaining: Number(claim.credits_remaining || 0),
+        },
+        deps,
+      });
     }
 
     const webhookURL = deps.buildWebhookURL({ claimToken, attempt });
@@ -301,6 +329,7 @@ async function pollProvider({ normalized, ledger, deps }) {
   });
   if (finalized.status !== "completed") return pendingResponse();
   return await signedResponse({
+    userID: ledger.userID,
     normalized,
     creditsRemaining: Number(
       finalized.creditsRemaining ?? ledger.creditsRemaining ?? 0,
@@ -311,11 +340,19 @@ async function pollProvider({ normalized, ledger, deps }) {
   }).catch(() => resultUnavailable());
 }
 
-export async function finalizeProviderResult({ audioURL, ledger, deps }) {
+export async function finalizeProviderResult({
+  audioURL,
+  audioBytes,
+  audioMimeType,
+  ledger,
+  deps,
+}) {
   let storedObject;
   try {
     storedObject = await deps.storeAudio({
       audioURL,
+      audioBytes,
+      audioMimeType,
       userID: ledger.userID,
       requestKey: ledger.requestKey,
       attempt: ledger.attempt,
@@ -332,7 +369,10 @@ export async function finalizeProviderResult({ audioURL, ledger, deps }) {
     return { status: "pending" };
   }
 
-  const manifest = buildVoiceResultManifest(storedObject);
+  const manifest = buildVoiceResultManifest(storedObject, {
+    provider: ledger.provider || "fal",
+    model: ledger.model,
+  });
   let completion = null;
   try {
     completion = await deps.completeByProvider({
@@ -373,6 +413,105 @@ export async function finalizeProviderResult({ audioURL, ledger, deps }) {
   // Keep the idempotently named object while the completion RPC is ambiguous.
   // A signed webhook retry or client poll will verify/reuse the same bytes.
   return { status: "pending" };
+}
+
+async function runDirectGeneration({ normalized, ledger, deps }) {
+  let generated;
+  try {
+    generated = await deps.generateDirect({ input: normalized });
+  } catch (error) {
+    if (error?.submissionAmbiguous === true) {
+      if (!ledger.providerRequestID && ledger.claimToken) {
+        await deps.markSubmissionAmbiguous({
+          p_user_id: ledger.userID,
+          p_request_key: ledger.requestKey,
+          p_request_fingerprint: ledger.requestFingerprint,
+          p_attempt: ledger.attempt,
+          p_claim_token: ledger.claimToken,
+        }).catch(() => null);
+      }
+      return pendingResponse();
+    }
+    const failure = ledger.providerRequestID
+      ? await settleProviderFailure({ ledger, deps })
+      : await rejectDirectClaim({ ledger, deps });
+    await deps.recordProviderHealth?.(false, "provider_failure").catch(() =>
+      null
+    );
+    return failedResponse(failure);
+  }
+
+  const generatedRequestID = String(generated?.requestID || "");
+  const providerRequestID = ledger.providerRequestID || generatedRequestID;
+  if (!PROVIDER_REQUEST_ID_PATTERN.test(providerRequestID)) {
+    const failure = ledger.providerRequestID
+      ? await settleProviderFailure({ ledger, deps })
+      : await rejectDirectClaim({ ledger, deps });
+    return failedResponse(failure);
+  }
+
+  if (!ledger.providerRequestID) {
+    try {
+      const binding = await deps.bindProvider({
+        p_user_id: ledger.userID,
+        p_request_key: ledger.requestKey,
+        p_request_fingerprint: ledger.requestFingerprint,
+        p_attempt: ledger.attempt,
+        p_claim_token: ledger.claimToken,
+        p_provider_request_id: providerRequestID,
+      });
+      if (binding?.status === "account_deleting") {
+        return json(
+          safeVoiceError(
+            "account_deleting",
+            "Account deletion is already in progress.",
+          ),
+          409,
+        );
+      }
+    } catch {
+      return pendingResponse();
+    }
+  }
+
+  const finalized = await finalizeProviderResult({
+    audioBytes: generated.audioBytes,
+    audioMimeType: generated.audioMimeType,
+    ledger: {
+      ...ledger,
+      providerRequestID,
+      provider: generated.provider,
+      model: generated.model,
+    },
+    deps,
+  });
+  if (finalized.status !== "completed") return pendingResponse();
+  await deps.recordProviderHealth?.(true, null).catch(() => null);
+  return await signedResponse({
+    userID: ledger.userID,
+    normalized,
+    creditsRemaining: Number(
+      finalized.creditsRemaining ?? ledger.creditsRemaining ?? 0,
+    ),
+    manifest: finalized.manifest,
+    replayed: false,
+    deps,
+  }).catch(() => resultUnavailable());
+}
+
+async function rejectDirectClaim({ ledger, deps }) {
+  const identity = {
+    p_user_id: ledger.userID,
+    p_request_key: ledger.requestKey,
+    p_request_fingerprint: ledger.requestFingerprint,
+    p_attempt: ledger.attempt,
+    p_claim_token: ledger.claimToken,
+  };
+  await deps.markSubmissionRejected(identity).catch(() => null);
+  return await settleFailure({
+    parameters: { ...identity, p_error_code: "provider_submit_rejected" },
+    deps,
+  });
 }
 
 export async function settleProviderFailure({ ledger, deps }) {
@@ -416,6 +555,7 @@ async function recoverByProvider({ ledger, deps }) {
 }
 
 async function signedResponse({
+  userID,
   normalized,
   creditsRemaining,
   manifest,
@@ -427,6 +567,10 @@ async function signedResponse({
   if (!signed?.signedURL || !signed?.expiresAt) {
     throw new Error("voice_result_signing_failed");
   }
+  const asset = await deps.assetForObject?.(
+    userID,
+    object.path,
+  ).catch(() => null);
   return json({
     audio_url: signed.signedURL,
     audio_url_expires_at: signed.expiresAt,
@@ -434,9 +578,16 @@ async function signedResponse({
     cost_credits: normalized.costCredits,
     character_count: normalized.characterCount,
     voice: normalized.voice,
-    model: "eleven-v3",
+    model: String(manifest?.model || "unknown"),
     replayed,
+    ...(asset?.id && String(asset.user_id || "") === String(userID)
+      ? { asset_id: String(asset.id) }
+      : {}),
   });
+}
+
+function isDirectProviderRequest(value) {
+  return /^(minimax|eleven)_/.test(String(value || ""));
 }
 
 async function settleFailure({ parameters, deps }) {

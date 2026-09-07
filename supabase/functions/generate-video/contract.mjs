@@ -2,13 +2,23 @@ export const VIDEO_RESULT_SIGNED_URL_TTL_SECONDS = 15 * 60;
 export const VIDEO_START_IMAGE_SIGNED_URL_TTL_SECONDS = 15 * 60;
 export const MAX_START_IMAGE_BYTES = 8 * 1024 * 1024;
 export const MAX_VIDEO_RESULT_BYTES = 50 * 1024 * 1024;
-export const VIDEO_CREDIT_COSTS = Object.freeze({
-  5: 650,
-  10: 1200,
+export const CUSTOMER_PRICE_MULTIPLIER = 2;
+export const VIDEO_PROVIDER_COST_CREDITS = Object.freeze({
+  5: 325,
+  10: 600,
 });
+export const VIDEO_CREDIT_COSTS = Object.freeze(
+  Object.fromEntries(
+    Object.entries(VIDEO_PROVIDER_COST_CREDITS).map(([duration, cost]) => [
+      duration,
+      cost * CUSTOMER_PRICE_MULTIPLIER,
+    ]),
+  ),
+);
 export const VIDEO_GENERATION_MODELS = Object.freeze([
   "auto",
   "seedance-1.5-pro",
+  "seedance-2.0-fast",
 ]);
 export const VIDEO_GENERATION_RESOLUTIONS = Object.freeze([
   "480p",
@@ -83,9 +93,12 @@ export function normalizeVideoGenerationRequest(body) {
   if (!SUPPORTED_RESOLUTIONS.has(resolution)) {
     throw new VideoRequestError("unsupported_resolution");
   }
+  if (model === "seedance-2.0-fast" && resolution === "1080p") {
+    throw new VideoRequestError("unsupported_resolution");
+  }
 
   const generateAudio = body.generate_audio == null
-    ? model === "seedance-1.5-pro"
+    ? model.startsWith("seedance-")
     : body.generate_audio;
   if (typeof generateAudio !== "boolean") {
     throw new VideoRequestError("invalid_generate_audio");
@@ -159,7 +172,7 @@ export async function buildVideoGenerationIdentity(normalized) {
   return { requestKey, fingerprint, startImageSha256 };
 }
 
-export function buildPublicVideoJob(row, signedResult = null) {
+export function buildPublicVideoJob(row, signedResult = null, assetID = null) {
   const status = VIDEO_JOB_STATUSES.includes(row?.status)
     ? row.status
     : "failed";
@@ -178,6 +191,7 @@ export function buildPublicVideoJob(row, signedResult = null) {
     refunded: Boolean(row?.refunded_at),
     result_url: completedResult?.signedUrl || null,
     result_url_expires_at: completedResult?.expiresAt || null,
+    asset_id: assetID ? String(assetID) : null,
     error_code: row?.error_code ? String(row.error_code) : null,
     created_at: String(row?.created_at || ""),
     updated_at: String(row?.updated_at || ""),

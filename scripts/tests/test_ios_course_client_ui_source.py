@@ -33,9 +33,18 @@ class IOSCourseClientUISourceTests(unittest.TestCase):
 
         self.assertIn('Text("CourseUP")', courses)
         self.assertNotIn('Text("Академия")', courses)
-        self.assertIn("let isEditableCourse = service.courses.contains", courses)
-        self.assertIn("if isDev && isEditableCourse", courses)
-        self.assertIn("editorTarget = .edit(course)", courses)
+        # The catalog now contains only server courses. The former membership
+        # guard separated synthetic upcoming cards; retain developer-only edit
+        # buttons/context menus on both real card paths without requiring fakes.
+        self.assertIn("Array(service.courses.dropFirst()) }", courses)
+        self.assertNotIn("Self.upcomingCourses", courses)
+        featured = courses.split("if let course = featuredCourse {")[1].split("ForEach(Array(academyCourses")[0]
+        academy = courses.split("ForEach(Array(academyCourses")[1].split(".padding(.horizontal, 16)")[0]
+        for cards in (featured, academy):
+            self.assertIn("if isDev {", cards)
+            self.assertEqual(cards.count("editorTarget = .edit(course)"), 2)
+            self.assertIn("CourseDetailView(course: course", cards)
+            self.assertNotIn("CourseInDevelopmentView", cards)
         self.assertEqual(roles.count('"f3eea23f-0aeb-405b-ab35-2c53173b7a8f"'), 1)
         self.assertEqual(roles.count('"eee55a08-18d1-46e3-a303-1411d1bb9333"'), 1)
 

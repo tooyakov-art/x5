@@ -45,7 +45,7 @@ final class GeneratedGalleryStore: ObservableObject {
         do {
             try ensureDirectory()
             let id = UUID().uuidString
-            let fileName = "\(id).jpg"
+            let fileName = "\(id).png"
             let item = GeneratedGalleryItem(
                 id: id,
                 prompt: prompt,
@@ -55,7 +55,7 @@ final class GeneratedGalleryStore: ObservableObject {
                 createdAt: Date(),
                 fileName: fileName
             )
-            guard let data = image.jpegData(compressionQuality: 0.92) else { return nil }
+            guard let data = image.pngData() else { return nil }
             try data.write(to: imageURL(for: item), options: .atomic)
             items.insert(item, at: 0)
             try persist()
@@ -79,7 +79,7 @@ final class GeneratedGalleryStore: ObservableObject {
     @discardableResult
     func replaceImage(for item: GeneratedGalleryItem, image: UIImage) -> Bool {
         do {
-            guard let data = image.jpegData(compressionQuality: 0.92) else { return false }
+            guard let data = image.pngData() else { return false }
             try data.write(to: imageURL(for: item), options: .atomic)
             return true
         } catch {

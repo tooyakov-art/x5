@@ -33,7 +33,7 @@ struct VoiceGeneratorView: View {
     @EnvironmentObject private var currentUser: CurrentUser
 
     @State private var text = ""
-    @State private var selectedVoice = VoiceGenerationVoice.aria
+    @State private var selectedVoice = VoiceGenerationVoice.brightHeroine
     @State private var selectedStability = VoiceGenerationStability.balanced
     @State private var selectedLanguage = VoiceGenerationLanguage.automatic
     @State private var speed = 1.0
@@ -181,7 +181,7 @@ struct VoiceGeneratorView: View {
                     .padding(10)
 
                 if text.isEmpty {
-                    Text("Например: Добро пожаловать в X five marketing…")
+                    Text("Например: Добро пожаловать в Xfive marketing…")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(.white.opacity(0.34))
                         .padding(.horizontal, 15)
@@ -515,6 +515,7 @@ struct VoiceGeneratorView: View {
 
     private func generate() {
         guard canGenerate, let userID = auth.userId else { return }
+        guard let profileOperation = currentUser.operationContext(for: userID) else { return }
         textFocused = false
         player?.pause()
         player = nil
@@ -554,7 +555,9 @@ struct VoiceGeneratorView: View {
                 generationTask = nil
             }
 
-            guard let token = await auth.freshAccessToken() else {
+            guard let token = await currentUser.accessTokenForOperation(profileOperation, refresh: {
+                await auth.freshAccessToken(minimumValidity: 5 * 60)
+            }) else {
                 errorMessage = VoiceGenerationServiceError
                     .missingAccessToken
                     .localizedDescription
@@ -562,17 +565,26 @@ struct VoiceGeneratorView: View {
             }
 
             do {
-                let response = try await service.generate(
+                let response = try await service.generateWithTokenRefresh(
                     text: requestedText,
                     voice: requestedVoice,
                     stability: requestedStability,
                     speed: requestedSpeed,
                     languageCode: requestedLanguage,
                     requestID: requestID,
-                    accessToken: token
+                    accessToken: token,
+                    refreshAccessToken: { rejectedToken in
+                        await currentUser.accessTokenForOperation(profileOperation, refresh: {
+                            await auth.accessTokenAfterUnauthorized(
+                                rejectedAccessToken: rejectedToken,
+                                expectedUserId: userID
+                            )
+                        })
+                    }
                 )
                 try Task.checkCancellation()
-                currentUser.applyCreditsRemaining(response.creditsRemaining)
+                guard currentUser.isCurrent(profileOperation) else { return }
+                currentUser.applyCreditsRemaining(response.creditsRemaining, for: profileOperation)
                 result = response
                 resultRequestID = requestID
                 player = AVPlayer(url: response.audioURL)

@@ -25,7 +25,10 @@ class IOSPurchaseLifecycleSourceTests(unittest.TestCase):
 
         self.assertIn("struct IAPTransactionDeliveryKey: Hashable", source)
         self.assertIn("authenticatedUserID: String?", source)
-        self.assertIn("authenticatedUserID: auth.userId", source)
+        # Ownership is captured once before suspension and reused for UI delivery.
+        self.assertIn("let deliveryUserID = auth.userId", source)
+        self.assertIn("authenticatedUserID: deliveryUserID", source)
+        self.assertIn("self.auth.userId == deliveryUserID", source)
 
     def test_transaction_completion_cache_distinguishes_later_revocation(self):
         source = IAP_SERVICE.read_text(encoding="utf-8")
@@ -132,6 +135,18 @@ class IOSPurchaseLifecycleSourceTests(unittest.TestCase):
         self.assertIn("profileReloadSucceeded", paywall)
         self.assertIn("-> Bool", profile)
         self.assertEqual(localization.count('"credit_store_success_refresh_pending"'), 3)
+
+    def test_missing_store_products_are_recoverable_instead_of_silent(self):
+        service = IAP_SERVICE.read_text(encoding="utf-8")
+        paywall = PAYWALL.read_text(encoding="utf-8")
+
+        self.assertIn("@Published private(set) var isLoadingProducts", service)
+        self.assertIn("guard !isLoadingProducts else { return }", service)
+        self.assertIn("IAPProductAvailability.hasAnyCreditPack", service)
+        self.assertIn('lastError = LocalizationService.shared.t("iap_products_unavailable")', service)
+        self.assertIn("Task { await reloadProducts() }", paywall)
+        self.assertIn("hasMissingCreditPacks", paywall)
+        self.assertIn(".disabled(iap.isLoadingProducts || iap.isPurchasing)", paywall)
 
     def test_server_rejection_code_is_kept_in_safe_diagnostics(self):
         source = IAP_SERVICE.read_text(encoding="utf-8")
