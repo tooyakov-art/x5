@@ -75,6 +75,71 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  acceptance-simulator:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Mask review login in runner output
+        shell: bash
+        run: |
+          set +x
+          for file in fastlane/metadata/review_information/demo_{user,password}.txt; do
+            echo "::add-mask::$(tr -d '\r\n' < "$file")"
+          done
+      - name: Restore approved Home artwork
+        env:
+          X5_HOME_ART_KEY: ${{ secrets.X5_HOME_ART_KEY }}
+        run: scripts/decrypt_client_home_art.sh
+      - name: Select Xcode and install pinned XcodeGen
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_26.app || sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+          curl --proto '=https' --tlsv1.2 -fsSL 'https://github.com/yonaskolb/XcodeGen/releases/download/2.45.4/xcodegen.zip' --output "$RUNNER_TEMP/xcodegen.zip"
+          echo '090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef  '"$RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          mkdir -p "$RUNNER_TEMP/xcodegen"
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/xcodegen"
+          echo "$RUNNER_TEMP/xcodegen/xcodegen/bin" >> "$GITHUB_PATH"
+      - name: Generate project
+        run: xcodegen generate
+      - name: Select fresh iPhone simulator
+        id: simulator
+        shell: bash
+        run: |
+          DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x.get("isAvailable") and x.get("name", "").startswith("iPhone")))')
+          echo "id=$DEVICE_ID" >> "$GITHUB_OUTPUT"
+      - name: Run real app read-only UI checks
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild test -project X5.xcodeproj -scheme X5-Acceptance-CI \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}' \
+            -resultBundlePath "$RUNNER_TEMP/acceptance.xcresult" \
+            CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO
+      - name: Export screenshot evidence only
+        if: always()
+        shell: bash
+        run: |
+          if [ -d "$RUNNER_TEMP/acceptance.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/acceptance.xcresult" --output-path "$RUNNER_TEMP/acceptance-screens"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: x5-read-only-acceptance-screens
+          path: ${{ runner.temp }}/acceptance-screens/**/*.png
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Remove restored private artwork
+        if: always()
+        run: rm -f X5/Assets.xcassets/HomeApprovedReference.imageset/HomeApprovedReference.png
+
   test:
     runs-on: macos-26
     timeout-minutes: 30
