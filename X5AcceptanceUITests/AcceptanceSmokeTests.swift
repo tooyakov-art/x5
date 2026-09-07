@@ -24,6 +24,26 @@ final class AcceptanceSmokeTests: XCTestCase {
         app.terminate()
     }
 
+    private func scrollContentUp(_ scroll: XCUIElement, above tabBar: XCUIElement) {
+        // Both the app and ScrollView frames can extend underneath the floating
+        // system tab bar. Drive a real drag inside the observed content viewport;
+        // never replace a non-hittable Store button with a coordinate tap.
+        let window = app.frame
+        let frame = scroll.frame.intersection(window)
+        let contentBottom = min(frame.maxY, tabBar.frame.minY)
+        let contentHeight = contentBottom - frame.minY
+        XCTAssertGreaterThan(contentHeight, 200, "A visible scroll viewport is required")
+        XCTAssertEqual(app.keyboards.count, 0, "Login keyboard must not cover Profile")
+        XCTAssertEqual(app.alerts.count, 0, "Unexpected modal blocks Profile")
+        print("Scroll viewport=\(frame), tab bar=\(tabBar.frame)")
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let start = origin.withOffset(CGVector(dx: frame.midX - window.minX,
+                                               dy: frame.minY + contentHeight * 0.75 - window.minY))
+        let end = origin.withOffset(CGVector(dx: frame.midX - window.minX,
+                                             dy: frame.minY + contentHeight * 0.30 - window.minY))
+        start.press(forDuration: 0.1, thenDragTo: end)
+    }
+
     func test01GuestValidationAndBack() throws {
         let emailChoice = app.buttons["Continue with Email"]
         XCTAssertTrue(emailChoice.waitForExistence(timeout: 30))
@@ -89,7 +109,7 @@ final class AcceptanceSmokeTests: XCTestCase {
         for attempt in 0..<4 where !store.isHittable {
             // Geometry only: never log the account's balance or profile label.
             print("Store before swipe \(attempt): exists=\(store.exists), frame=\(store.frame)")
-            profileScroll.swipeUp(velocity: .slow)
+            scrollContentUp(profileScroll, above: tabs)
         }
         XCTAssertTrue(store.waitForExistence(timeout: 10))
         XCTAssertTrue(store.isHittable, "Visible Store must accept a native tap; frame=\(store.frame)")
