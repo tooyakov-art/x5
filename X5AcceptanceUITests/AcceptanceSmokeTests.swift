@@ -29,7 +29,7 @@ final class AcceptanceSmokeTests: XCTestCase {
 
     private func recordBlockingSurfaces() {
         // Never publish arbitrary alert bodies, credentials or account fields.
-        let knownKinds = ["notification", "local network", "paste", "track",
+        let knownKinds = ["notification", "local network", "paste", "track", "save password",
                           "apple account", "apple id", "itunes", "sign in", "photos",
                           "microphone", "face id", "keychain"]
         let knownButtons: Set<String> = ["Don’t Allow", "Don't Allow", "Allow", "OK", "Cancel",
@@ -51,6 +51,20 @@ final class AcceptanceSmokeTests: XCTestCase {
                     print("Modal scroll frame=\(scroll.frame), hittable=\(scroll.isHittable)")
                 }
             }
+        }
+    }
+
+    private func dismissPasswordSaveOffer() {
+        // Observed OS AutoFill sheet in run 34108314479, not an app Store error.
+        // Never save review credentials on the runner or dismiss unknown sheets.
+        let saveOffer = app.sheets["Save Password?"]
+        if saveOffer.waitForExistence(timeout: 5) {
+            let notNow = saveOffer.buttons["Not Now"]
+            XCTAssertTrue(notNow.isHittable, "The identified AutoFill offer must be dismissible")
+            notNow.tap()
+            let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: saveOffer)
+            XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 5), .completed)
+            print("Identified AutoFill Save Password offer declined")
         }
     }
 
@@ -126,6 +140,7 @@ final class AcceptanceSmokeTests: XCTestCase {
             XCTAssertTrue(deny.exists, "Unexpected system permission sheet requires investigation")
             deny.tap()
         }
+        dismissPasswordSaveOffer()
         capture("A02-authenticated-home")
 
         let profileTab = tabs.buttons["Profile"]
@@ -133,7 +148,9 @@ final class AcceptanceSmokeTests: XCTestCase {
         let profileSelected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: profileTab)
         XCTAssertEqual(XCTWaiter.wait(for: [profileSelected], timeout: 10), .completed,
                        "Profile navigation must complete before looking for Store")
+        dismissPasswordSaveOffer()
         recordBlockingSurfaces()
+        XCTAssertEqual(app.sheets.count, 0, "Unknown application sheet requires investigation before scrolling")
         let storePredicate = NSPredicate(format: "label BEGINSWITH %@", "Store")
         let scrolls = app.scrollViews.allElementsBoundByIndex
         for (index, scroll) in scrolls.enumerated() {
