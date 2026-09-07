@@ -81,11 +81,15 @@ final class AcceptanceSmokeTests: XCTestCase {
         let profileSelected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: profileTab)
         XCTAssertEqual(XCTWaiter.wait(for: [profileSelected], timeout: 10), .completed,
                        "Profile navigation must complete before looking for Store")
+        // Swipe the actual scroll container, not the whole app/tab-bar surface.
+        let profileScroll = app.scrollViews.firstMatch
+        XCTAssertTrue(profileScroll.waitForExistence(timeout: 10))
+        print("Profile scroll geometry: frame=\(profileScroll.frame), hittable=\(profileScroll.isHittable)")
         let store = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Store")).firstMatch
         for attempt in 0..<4 where !store.isHittable {
             // Geometry only: never log the account's balance or profile label.
             print("Store before swipe \(attempt): exists=\(store.exists), frame=\(store.frame)")
-            app.swipeUp()
+            profileScroll.swipeUp(velocity: .slow)
         }
         XCTAssertTrue(store.waitForExistence(timeout: 10))
         XCTAssertTrue(store.isHittable, "Visible Store must accept a native tap; frame=\(store.frame)")
