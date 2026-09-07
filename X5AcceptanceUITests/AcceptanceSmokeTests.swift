@@ -20,8 +20,38 @@ final class AcceptanceSmokeTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
-        if (testRun?.failureCount ?? 0) > 0 { capture("failure-last-screen") }
+        if (testRun?.failureCount ?? 0) > 0 {
+            recordBlockingSurfaces()
+            capture("failure-last-screen")
+        }
         app.terminate()
+    }
+
+    private func recordBlockingSurfaces() {
+        // Never publish arbitrary alert bodies, credentials or account fields.
+        let knownKinds = ["notification", "local network", "paste", "track",
+                          "apple account", "apple id", "itunes", "sign in", "photos",
+                          "microphone", "face id", "keychain"]
+        let knownButtons: Set<String> = ["Don’t Allow", "Don't Allow", "Allow", "OK", "Cancel",
+                                         "Sign In", "Continue", "Settings", "Not Now"]
+        for (name, surface) in [("app", app!),
+                                ("system", XCUIApplication(bundleIdentifier: "com.apple.springboard"))] {
+            let alerts = surface.alerts.allElementsBoundByIndex
+            let sheets = surface.sheets.allElementsBoundByIndex
+            print("Blocking surfaces \(name): state=\(surface.state.rawValue), alerts=\(alerts.count), sheets=\(sheets.count), keyboards=\(surface.keyboards.count)")
+            for alert in (alerts + sheets).prefix(6) {
+                let text = ([alert.label] + alert.staticTexts.allElementsBoundByIndex.map(\.label))
+                    .joined(separator: " ").lowercased()
+                let kinds = knownKinds.filter { text.contains($0) }
+                let buttons = alert.buttons.allElementsBoundByIndex.map { button in
+                    knownButtons.contains(button.label) ? button.label : "other"
+                }
+                print("Alert category=\(kinds), buttons=\(buttons), frame=\(alert.frame)")
+                for scroll in alert.scrollViews.allElementsBoundByIndex {
+                    print("Modal scroll frame=\(scroll.frame), hittable=\(scroll.isHittable)")
+                }
+            }
+        }
     }
 
     private func scrollContentUp(_ scroll: XCUIElement, above tabBar: XCUIElement) {
@@ -32,9 +62,11 @@ final class AcceptanceSmokeTests: XCTestCase {
         let frame = scroll.frame.intersection(window)
         let contentBottom = min(frame.maxY, tabBar.frame.minY)
         let contentHeight = contentBottom - frame.minY
-        XCTAssertGreaterThan(contentHeight, 200, "A visible scroll viewport is required")
         XCTAssertEqual(app.keyboards.count, 0, "Login keyboard must not cover Profile")
         XCTAssertEqual(app.alerts.count, 0, "Unexpected modal blocks Profile")
+        XCTAssertEqual(XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count, 0,
+                       "Unexpected system modal blocks Profile")
+        XCTAssertGreaterThan(contentHeight, 200, "A visible scroll viewport is required")
         print("Scroll viewport=\(frame), tab bar=\(tabBar.frame)")
         let origin = app.coordinate(withNormalizedOffset: .zero)
         let start = origin.withOffset(CGVector(dx: frame.midX - window.minX,
@@ -101,11 +133,22 @@ final class AcceptanceSmokeTests: XCTestCase {
         let profileSelected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: profileTab)
         XCTAssertEqual(XCTWaiter.wait(for: [profileSelected], timeout: 10), .completed,
                        "Profile navigation must complete before looking for Store")
-        // Swipe the actual scroll container, not the whole app/tab-bar surface.
-        let profileScroll = app.scrollViews.firstMatch
-        XCTAssertTrue(profileScroll.waitForExistence(timeout: 10))
+        recordBlockingSurfaces()
+        let storePredicate = NSPredicate(format: "label BEGINSWITH %@", "Store")
+        let scrolls = app.scrollViews.allElementsBoundByIndex
+        for (index, scroll) in scrolls.enumerated() {
+            print("Scroll owner \(index): frame=\(scroll.frame), hittable=\(scroll.isHittable), storeDescendants=\(scroll.buttons.matching(storePredicate).count)")
+        }
+        XCTAssertEqual(app.alerts.count, 0, "Unexpected application modal blocks Profile")
+        XCTAssertEqual(XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count, 0,
+                       "Unexpected system modal blocks Profile")
+        // An arbitrary first ScrollView can belong to an alert or social strip.
+        // Locate the owner by the actual Store descendant, not by screen position.
+        let storeOwners = scrolls.filter { $0.buttons.matching(storePredicate).count > 0 }
+        XCTAssertEqual(storeOwners.count, 1, "Store must have one unambiguous scroll owner")
+        let profileScroll = try XCTUnwrap(storeOwners.first)
         print("Profile scroll geometry: frame=\(profileScroll.frame), hittable=\(profileScroll.isHittable)")
-        let store = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Store")).firstMatch
+        let store = profileScroll.buttons.matching(storePredicate).firstMatch
         for attempt in 0..<4 where !store.isHittable {
             // Geometry only: never log the account's balance or profile label.
             print("Store before swipe \(attempt): exists=\(store.exists), frame=\(store.frame)")
