@@ -135,7 +135,6 @@ struct UserProfileView: View {
                            name: profile?.name ?? fallback?.name)
                     .frame(width: proxy.size.width, height: height)
                     .clipped()
-                    .allowsHitTesting(false)
 
                 LinearGradient(colors: [
                     Color.black.opacity(0.10),
