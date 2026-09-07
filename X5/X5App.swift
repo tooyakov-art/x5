@@ -64,6 +64,12 @@ struct X5App: App {
                     Task { await syncStoreKitAndProfile(source: "active") }
                 }
                 .onReceive(
+                    NotificationCenter.default.publisher(for: .x5DidUpdateStoreEntitlements)
+                ) { note in
+                    guard let userID = note.object as? String else { return }
+                    Task { await refreshProfileAfterStoreDelivery(userID: userID) }
+                }
+                .onReceive(
                     NotificationCenter.default.publisher(
                         for: .x5DidReconcileStoreRefund
                     )
@@ -101,6 +107,17 @@ struct X5App: App {
         } else {
             PushNotifications.shared.cancelPromoLoop()
         }
+    }
+
+    private func refreshProfileAfterStoreDelivery(userID: String) async {
+        // A delivery event must not trigger another StoreKit replay. That would
+        // create a feedback loop with current entitlements and duplicate events.
+        guard auth.isAuthenticated, auth.userId == userID,
+              let accessToken = await auth.freshAccessToken(),
+              auth.userId == userID else { return }
+        await currentUser.load(userId: userID, accessToken: accessToken)
+        guard auth.userId == userID else { return }
+        subscription.sync(from: currentUser.profile)
     }
 
     private func syncStoreKitAndProfile(source: String) async {

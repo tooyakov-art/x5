@@ -38,7 +38,8 @@ final class IAPTransactionLifecycleCoordinator {
         authenticatedUserID: String?,
         revocationDate: Date? = nil,
         verifyDelivery: @escaping @MainActor () async -> IAPEntitlementDisposition,
-        finish: @escaping @MainActor () async -> Void
+        finish: @escaping @MainActor () async -> Void,
+        didApply: @escaping @MainActor () -> Void = {}
     ) async -> IAPEntitlementDisposition {
         let deliveryKey = IAPTransactionDeliveryKey(
             transactionID: transactionID,
@@ -76,6 +77,7 @@ final class IAPTransactionLifecycleCoordinator {
             completed[deliveryKey] = disposition
         }
         await finish()
+        if disposition == .applied { didApply() }
         return disposition
     }
 }
@@ -610,9 +612,10 @@ final class IAPService: ObservableObject {
         signedTransaction: String,
         source: String
     ) async -> IAPEntitlementDisposition {
-        await transactionLifecycle.deliver(
+        let deliveryUserID = auth.userId
+        return await transactionLifecycle.deliver(
             transactionID: transaction.id,
-            authenticatedUserID: auth.userId,
+            authenticatedUserID: deliveryUserID,
             revocationDate: transaction.revocationDate,
             verifyDelivery: { [self] in
                 await processVerifiedTransaction(
@@ -623,6 +626,15 @@ final class IAPService: ObservableObject {
             },
             finish: {
                 await transaction.finish()
+            },
+            didApply: { [weak self] in
+                guard let self, let deliveryUserID,
+                      self.auth.userId == deliveryUserID else { return }
+                self.lastError = nil
+                NotificationCenter.default.post(
+                    name: .x5DidUpdateStoreEntitlements,
+                    object: deliveryUserID
+                )
             }
         )
     }
@@ -876,7 +888,7 @@ final class IAPService: ObservableObject {
                     continue
                 }
 
-                if status == "owned_by_other" {
+                if status == "owned_by_other" || serverError == "account_token_mismatch" {
                     DiagnosticLogger.log(event: "iap_verification_owned_by_other", extra: [
                         "source": source,
                         "product": productID
@@ -945,6 +957,7 @@ final class IAPService: ObservableObject {
 }
 
 extension Notification.Name {
+    static let x5DidUpdateStoreEntitlements = Notification.Name("x5.iap.did_update_entitlements")
     static let x5DidActivatePro = Notification.Name("x5.iap.did_activate_pro")
     static let x5DidReconcileStoreRefund = Notification.Name(
         "x5.iap.did_reconcile_store_refund"

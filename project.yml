@@ -135,10 +135,11 @@ targets:
     deploymentTarget: "16.0"
     sources:
       - path: X5AcceptanceUITests
-    resources:
       # Test runner only. Never include review credentials in the application.
       - path: fastlane/metadata/review_information/demo_user.txt
+        buildPhase: resources
       - path: fastlane/metadata/review_information/demo_password.txt
+        buildPhase: resources
     dependencies:
       - target: X5
     settings:

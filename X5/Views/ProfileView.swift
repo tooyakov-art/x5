@@ -287,6 +287,7 @@ struct ProfileView: View {
     }
 
     private func uploadAvatar(_ item: PhotosPickerItem) async {
+        guard let profileOperation = currentUser.operationContext() else { return }
         guard let token = await auth.freshAccessToken() else {
             avatarError = "Сессия устарела. Войди заново и попробуй еще раз."
             avatarPickerItem = nil
@@ -297,7 +298,7 @@ struct ProfileView: View {
         if let data = try? await item.loadTransferable(type: Data.self),
            let image = UIImage(data: data),
            let jpeg = image.jpegData(compressionQuality: 0.85) {
-            let url = await currentUser.uploadAvatar(jpeg, accessToken: token)
+            let url = await currentUser.uploadAvatar(jpeg, accessToken: token, operation: profileOperation)
             if url == nil {
                 X5Feedback.error()
                 avatarError = "Сервер не принял фото. Проверь доступ к аккаунту и попробуй еще раз."
@@ -417,6 +418,7 @@ struct ProfileView: View {
     }
 
     private func updateHubVisibility(_ value: Bool) async {
+        guard let profileOperation = currentUser.operationContext() else { return }
         guard let token = await auth.freshAccessToken() else {
             X5Feedback.error()
             showInHubToggle = currentUser.profile?.showInHub ?? false
@@ -426,7 +428,7 @@ struct ProfileView: View {
         defer { savingShowInHub = false }
 
         guard hasSpecialistCategories else {
-            await currentUser.patchMany(["show_in_hub": AnyEncodable(false)], accessToken: token)
+            await currentUser.patchMany(["show_in_hub": AnyEncodable(false)], accessToken: token, operation: profileOperation)
             showInHubToggle = false
             X5Feedback.selection()
             return
@@ -439,7 +441,11 @@ struct ProfileView: View {
             fields["user_role"] = AnyEncodable("specialist")
             fields["is_public"] = AnyEncodable(true)
         }
-        await currentUser.patchMany(fields, accessToken: token)
+        guard await currentUser.patchMany(fields, accessToken: token, operation: profileOperation) else {
+            showInHubToggle = currentUser.profile?.showInHub ?? false
+            X5Feedback.error()
+            return
+        }
         showInHubToggle = currentUser.profile?.showInHub ?? value
         X5Feedback.success()
     }

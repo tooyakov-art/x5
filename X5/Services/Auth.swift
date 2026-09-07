@@ -130,6 +130,8 @@ final class Auth: ObservableObject {
         isAuthenticated = false
         userEmail = nil
         userId = nil
+        // Invalidate account-owned UI/cache operations before cleanup can yield.
+        NotificationCenter.default.post(name: .x5UserDidSignOut, object: nil)
         // Drop private chat media + in-memory layer so a different user signing
         // in on this device can't see leftovers from the previous session.
         await ImageCache.shared.clearForSignOut()
@@ -141,7 +143,6 @@ final class Auth: ObservableObject {
         // message history (and signed media URLs) from `Caches/x5-chats/`.
         ChatsService.clearMemoryCache()
         ChatsService.clearDiskCache()
-        NotificationCenter.default.post(name: .x5UserDidSignOut, object: nil)
     }
 
     func freshAccessToken(

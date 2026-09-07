@@ -1043,7 +1043,10 @@ struct CourseDetailView: View {
 
     @MainActor
     private func completePurchase() async {
-        guard let token = await auth.freshAccessToken() else {
+        guard let profileOperation = currentUser.operationContext() else { return }
+        guard let token = await currentUser.accessTokenForOperation(profileOperation, refresh: {
+            await auth.freshAccessToken()
+        }) else {
             purchaseNotice = CoursePurchaseNotice(
                 title: "Сессия истекла",
                 message: "Войдите снова и повторите покупку.",
@@ -1052,14 +1055,23 @@ struct CourseDetailView: View {
             return
         }
 
+        guard currentUser.isCurrent(profileOperation) else { return }
         do {
             let response = try await purchaseService.purchase(
                 courseId: course.id,
                 expectedPrice: coursePrice,
                 accessToken: token,
-                refreshAccessToken: { await auth.freshAccessToken() }
+                refreshAccessToken: {
+                    await currentUser.accessTokenForOperation(profileOperation, refresh: {
+                        await auth.accessTokenAfterUnauthorized(
+                            rejectedAccessToken: token,
+                            expectedUserId: profileOperation.userID
+                        )
+                    })
+                }
             )
-            currentUser.applyCoursePurchase(response)
+            guard currentUser.isCurrent(profileOperation) else { return }
+            currentUser.applyCoursePurchase(response, for: profileOperation)
 
             switch response.status {
             case .purchased:

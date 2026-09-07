@@ -353,6 +353,7 @@ struct LipsyncView: View {
 
     private func start() {
         guard canStart, let video = selectedVideo, auth.userId != nil else { return }
+        guard let profileOperation = currentUser.operationContext() else { return }
         isWorking = true
         errorMessage = nil
         job = nil
@@ -361,7 +362,9 @@ struct LipsyncView: View {
 
         Task { @MainActor in
             defer { isWorking = false }
-            guard let token = await auth.freshAccessToken(minimumValidity: 10 * 60) else {
+            guard let token = await currentUser.accessTokenForOperation(profileOperation, refresh: {
+                await auth.freshAccessToken(minimumValidity: 10 * 60)
+            }) else {
                 errorMessage = AIStudioServiceError.notAuthenticated.localizedDescription
                 return
             }
@@ -381,7 +384,8 @@ struct LipsyncView: View {
                     )
                     guard let id = voiceResult.assetID else { throw AIStudioServiceError.invalidResponse }
                     audioAssetID = id
-                    currentUser.applyCreditsRemaining(voiceResult.creditsRemaining)
+                    guard currentUser.isCurrent(profileOperation) else { return }
+                    currentUser.applyCreditsRemaining(voiceResult.creditsRemaining, for: profileOperation)
                 }
                 var current = try await service.startLipsync(
                     videoAssetID: video.id,
@@ -390,12 +394,15 @@ struct LipsyncView: View {
                     requestID: UUID().uuidString.lowercased(),
                     accessToken: token
                 )
+                guard currentUser.isCurrent(profileOperation) else { return }
                 job = current
-                if let remaining = current.creditsRemaining { currentUser.applyCreditsRemaining(remaining) }
+                if let remaining = current.creditsRemaining { currentUser.applyCreditsRemaining(remaining, for: profileOperation) }
                 for _ in 0..<150 {
                     if current.isTerminal { break }
                     try await Task.sleep(nanoseconds: 4_000_000_000)
+                    guard currentUser.isCurrent(profileOperation) else { return }
                     current = try await service.lipsyncJob(id: current.id, accessToken: token)
+                    guard currentUser.isCurrent(profileOperation) else { return }
                     job = current
                 }
                 if current.status == "completed", let url = current.resultURL {

@@ -231,7 +231,7 @@ struct PaywallView: View {
             defer { purchasingProductID = nil }
             let delivered = await iap.purchase(productID: pack.productID)
             guard delivered else {
-                X5Feedback.error()
+                if iap.lastError != nil { X5Feedback.error() }
                 return
             }
 

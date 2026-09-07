@@ -1,4 +1,10 @@
 import Foundation
+import Combine
+
+struct ProfileOperationContext: Equatable {
+    let userID: String
+    let epoch: UUID
+}
 
 struct SocialLinks: Codable, Equatable, Hashable {
     var instagram: String?
@@ -162,9 +168,11 @@ final class CurrentUser: ObservableObject {
     private let baseURL = URL(string: "https://afwznqjpshybmqhlewmy.supabase.co")!
     private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmd3pucWpwc2h5Ym1xaGxld215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTUxMTcsImV4cCI6MjA4NTkzMTExN30.p51iPiMEUSETS9Ot_qkmtA3IcqA23kadgoBLLQDXuL0"
 
-    private var observer: NSObjectProtocol?
+    private var observer: AnyCancellable?
     private let session: URLSession
     private let sessionUserID: @MainActor () -> String?
+    private var sessionEpoch = UUID()
+    private var observedAccountID: String?
 
     init(
         session: URLSession = .shared,
@@ -175,16 +183,58 @@ final class CurrentUser: ObservableObject {
     ) {
         self.session = session
         self.sessionUserID = sessionUserID
+        self.observedAccountID = sessionUserID()?.lowercased()
         // Restore the last cached profile synchronously so ProfileView renders
         // real values on cold launch instead of flashing "User"/empty defaults
         // for the seconds it takes the server fetch to come back.
         if restoreCache { restoreCachedProfile() }
 
-        observer = NotificationCenter.default.addObserver(
-            forName: .x5UserDidSignOut, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.profile = nil }
+        // Auth emits synchronously on MainActor before asynchronous cleanup.
+        // Queuing another Task here can clear the NEXT signed-in user's profile.
+        observer = NotificationCenter.default.publisher(for: .x5UserDidSignOut).sink { [weak self] _ in
+            self?.invalidateProfileSession()
         }
+    }
+
+    private func invalidateProfileSession() {
+        sessionEpoch = UUID()
+        observedAccountID = nil
+        profile = nil
+        isLoading = false
+        error = nil
+    }
+
+    func operationContext(for userID: String? = nil) -> ProfileOperationContext? {
+        let activeID = sessionUserID()?.lowercased()
+        if activeID != observedAccountID {
+            invalidateProfileSession()
+            observedAccountID = activeID
+        }
+        guard let activeID, userID == nil || userID?.lowercased() == activeID else { return nil }
+        return ProfileOperationContext(userID: activeID, epoch: sessionEpoch)
+    }
+
+    func isCurrent(_ context: ProfileOperationContext?) -> Bool {
+        guard let context else { return false }
+        return context.epoch == sessionEpoch && sessionUserID()?.lowercased() == context.userID
+    }
+
+    /// A delayed paid operation must never borrow the next account's token,
+    /// including when a 401 callback refreshes credentials after an await.
+    func accessTokenForOperation(
+        _ context: ProfileOperationContext,
+        refresh: () async -> String?
+    ) async -> String? {
+        guard isCurrent(context) else { return nil }
+        let token = await refresh()
+        guard isCurrent(context) else { return nil }
+        return token
+    }
+
+    private func commit(_ row: UserProfile, for context: ProfileOperationContext) -> Bool {
+        guard isCurrent(context), row.id.lowercased() == context.userID else { return false }
+        profile = row
+        return true
     }
 
     private func restoreCachedProfile() {
@@ -218,8 +268,8 @@ final class CurrentUser: ObservableObject {
         }
     }
 
-    func applyCreditsRemaining(_ credits: Int) {
-        guard var profile else { return }
+    func applyCreditsRemaining(_ credits: Int, for context: ProfileOperationContext?) {
+        guard isCurrent(context), var profile, profile.id.lowercased() == context?.userID else { return }
         profile.credits = credits
         self.profile = profile
     }
@@ -227,8 +277,8 @@ final class CurrentUser: ObservableObject {
     /// Applies the server-authoritative result of the atomic course-purchase
     /// RPC so the course unlocks immediately while a full profile refresh is
     /// in flight. Failed business outcomes only reconcile the known balance.
-    func applyCoursePurchase(_ response: CoursePurchaseResponse) {
-        guard var profile else { return }
+    func applyCoursePurchase(_ response: CoursePurchaseResponse, for context: ProfileOperationContext?) {
+        guard isCurrent(context), var profile, profile.id.lowercased() == context?.userID else { return }
 
         if let credits = response.creditsRemaining {
             profile.credits = credits
@@ -243,16 +293,13 @@ final class CurrentUser: ObservableObject {
         self.profile = profile
     }
 
-    deinit {
-        if let observer { NotificationCenter.default.removeObserver(observer) }
-    }
-
     /// Loads (or refreshes) the current user's profile row using the access token.
     /// If the row does not exist yet, creates it with default values.
     @discardableResult
     func load(userId: String, accessToken: String) async -> Bool {
+        guard let context = operationContext(for: userId) else { return false }
         isLoading = true
-        defer { isLoading = false }
+        defer { if isCurrent(context) { isLoading = false } }
         error = nil
         do {
             var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
@@ -266,26 +313,27 @@ final class CurrentUser: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Accept")
 
             let (data, response) = try await session.data(for: request)
+            guard isCurrent(context) else { return false }
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                 let body = String(data: data, encoding: .utf8) ?? ""
                 throw NSError(domain: "CurrentUser", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: body])
             }
             let rows = try JSONDecoder().decode([UserProfile].self, from: data)
             if let row = rows.first {
-                self.profile = row
-                return true
+                return commit(row, for: context)
             } else {
                 // Profile row missing — create one (covers users registered before the
                 // auth.users -> profiles Postgres trigger existed).
-                return await ensureProfile(userId: userId, accessToken: accessToken)
+                return await ensureProfile(userId: userId, accessToken: accessToken, context: context)
             }
         } catch {
-            self.error = error.localizedDescription
+            if isCurrent(context) { self.error = error.localizedDescription }
             return false
         }
     }
 
-    private func ensureProfile(userId: String, accessToken: String) async -> Bool {
+    private func ensureProfile(userId: String, accessToken: String, context: ProfileOperationContext) async -> Bool {
+        guard isCurrent(context) else { return false }
         var request = URLRequest(url: baseURL.appendingPathComponent("rest/v1/profiles"))
         request.httpMethod = "POST"
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -304,14 +352,14 @@ final class CurrentUser: ObservableObject {
               let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode)
         else {
-            error = "Profile creation failed"
+            if isCurrent(context) { error = "Profile creation failed" }
             return false
         }
+        guard isCurrent(context) else { return false }
 
         if let rows = try? JSONDecoder().decode([UserProfile].self, from: data),
            let row = rows.first {
-            self.profile = row
-            return true
+            return commit(row, for: context)
         }
 
         // With `resolution=ignore-duplicates`, a concurrent trigger or another
@@ -322,10 +370,9 @@ final class CurrentUser: ObservableObject {
             userId: userId,
             accessToken: accessToken
         ) {
-            self.profile = row
-            return true
+            return commit(row, for: context)
         }
-        error = "Profile refresh returned no data"
+        if isCurrent(context) { error = "Profile refresh returned no data" }
         return false
     }
 
@@ -358,8 +405,9 @@ final class CurrentUser: ObservableObject {
     /// Uploads an avatar JPEG to Supabase Storage and patches profiles.avatar to the public URL.
     /// Returns the new URL on success.
     @discardableResult
-    func uploadAvatar(_ jpegData: Data, accessToken: String) async -> String? {
-        guard let userId = profile?.id else { return nil }
+    func uploadAvatar(_ jpegData: Data, accessToken: String, operation: ProfileOperationContext? = nil) async -> String? {
+        guard let context = operation ?? operationContext(), isCurrent(context),
+              let userId = profile?.id, userId.lowercased() == context.userID else { return nil }
         let path = "\(userId)/\(Int(Date().timeIntervalSince1970)).jpg"
         let uploadURL = baseURL.appendingPathComponent("storage/v1/object/avatars/\(path)")
 
@@ -376,25 +424,28 @@ final class CurrentUser: ObservableObject {
               let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode)
         else { return nil }
+        guard isCurrent(context) else { return nil }
 
         let publicURL = baseURL.appendingPathComponent("storage/v1/object/public/avatars/\(path)").absoluteString
-        await patch("avatar", value: publicURL, accessToken: accessToken)
+        guard await patchMany(["avatar": AnyEncodable(publicURL)], accessToken: accessToken, operation: context) else { return nil }
         return publicURL
     }
 
     /// Patches a single field on the profile row.
     @discardableResult
-    func patch<T: Encodable>(_ field: String, value: T, accessToken: String) async -> Bool {
-        await patchMany([field: AnyEncodable(value)], accessToken: accessToken)
+    func patch<T: Encodable>(_ field: String, value: T, accessToken: String, operation: ProfileOperationContext? = nil) async -> Bool {
+        await patchMany([field: AnyEncodable(value)], accessToken: accessToken, operation: operation)
     }
 
     /// Patches several fields atomically.
     @discardableResult
-    func patchMany(_ fields: [String: AnyEncodable], accessToken: String) async -> Bool {
+    func patchMany(_ fields: [String: AnyEncodable], accessToken: String, operation: ProfileOperationContext? = nil) async -> Bool {
+        guard let context = operation ?? operationContext(), isCurrent(context) else { return false }
         guard let id = profile?.id else {
             error = "Profile is not loaded"
             return false
         }
+        guard id.lowercased() == context.userID else { return false }
         error = nil
         do {
             var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)!
@@ -408,10 +459,10 @@ final class CurrentUser: ObservableObject {
             request.httpBody = try JSONEncoder().encode(fields)
 
             let (data, response) = try await session.data(for: request)
+            guard isCurrent(context) else { return false }
             if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
                 if let rows = try? JSONDecoder().decode([UserProfile].self, from: data), let row = rows.first {
-                    self.profile = row
-                    return true
+                    return commit(row, for: context)
                 }
                 error = "Profile save returned an empty response"
                 return false
@@ -424,7 +475,7 @@ final class CurrentUser: ObservableObject {
             }
             return false
         } catch {
-            self.error = error.localizedDescription
+            if isCurrent(context) { self.error = error.localizedDescription }
             return false
         }
     }

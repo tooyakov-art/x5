@@ -990,6 +990,7 @@ struct ImageGeneratorView: View {
         promptOverride: String? = nil,
         referencesOverride: [ImageGenerationReference]? = nil
     ) async {
+        guard let profileOperation = currentUser.operationContext() else { return }
         let currentReferences = referencesOverride ?? roleAwareReferences
         let rawPrompt = promptOverride ?? prompt
         let cleanPrompt: String
@@ -1042,6 +1043,9 @@ struct ImageGeneratorView: View {
         }
 
         await refreshProfileIfPossible()
+        guard let operationToken = await currentUser.accessTokenForOperation(profileOperation, refresh: {
+            await auth.freshAccessToken(minimumValidity: 15 * 60)
+        }) else { return }
 
         guard currentCredits != nil else {
             errorMessage = loc.t("gen_loading_balance")
@@ -1066,8 +1070,11 @@ struct ImageGeneratorView: View {
                 let series = try await generateFrameSeries(
                     basePrompt: cleanPrompt,
                     references: currentReferences,
-                    creditsBefore: creditsBefore
+                    creditsBefore: creditsBefore,
+                    operation: profileOperation,
+                    accessToken: operationToken
                 )
+                guard currentUser.isCurrent(profileOperation) else { return }
                 guard let firstAsset = series.assets.first else {
                     throw ImageGeneratorError.invalidImage
                 }
@@ -1085,7 +1092,7 @@ struct ImageGeneratorView: View {
                         showGenerationComplete = false
                     }
                 }
-                currentUser.applyCreditsRemaining(series.creditsRemaining)
+                currentUser.applyCreditsRemaining(series.creditsRemaining, for: profileOperation)
                 if let partialFailure = series.partialFailure {
                     errorMessage = partialFailure
                 }
@@ -1096,14 +1103,16 @@ struct ImageGeneratorView: View {
                 ])
                 return
             }
-            let response = try await auth.supabase.generateImage(
+            let response = try await auth.supabase.generateImageWithAccessToken(
                 prompt: cleanPrompt,
                 provider: selectedProvider,
                 category: category,
                 quantity: requestQuantity,
                 size: selectedSize,
-                referenceImages: currentReferences
+                referenceImages: currentReferences,
+                accessToken: operationToken
             )
+            guard currentUser.isCurrent(profileOperation) else { return }
             let encodedImages = response.imageBase64s?.isEmpty == false ? response.imageBase64s! : [response.imageBase64]
             let images = encodedImages.compactMap { encoded -> UIImage? in
                 guard let data = Data(base64Encoded: encoded) else { return nil }
@@ -1144,7 +1153,7 @@ struct ImageGeneratorView: View {
                 }
             }
             let remainingCredits = response.creditsRemaining ?? max(creditsBefore - requestCreditCost, 0)
-            currentUser.applyCreditsRemaining(remainingCredits)
+            currentUser.applyCreditsRemaining(remainingCredits, for: profileOperation)
             DiagnosticLogger.log(event: "image_generated", extra: [
                 "provider": selectedProvider.rawValue,
                 "category": category.id,
@@ -1152,6 +1161,7 @@ struct ImageGeneratorView: View {
                 "size": selectedSize.rawValue
             ])
         } catch {
+            guard currentUser.isCurrent(profileOperation) else { return }
             DiagnosticLogger.log(event: "image_generation_failed", extra: [
                 "summary": error.localizedDescription,
                 "provider": selectedProvider.rawValue,
@@ -1174,7 +1184,9 @@ struct ImageGeneratorView: View {
     private func generateFrameSeries(
         basePrompt: String,
         references: [ImageGenerationReference],
-        creditsBefore: Int
+        creditsBefore: Int,
+        operation: ProfileOperationContext,
+        accessToken: String
     ) async throws -> ImageFrameSeriesResult {
         let specs: [ImageFrameSpec]
         if isProductCardsCategory {
@@ -1218,16 +1230,19 @@ struct ImageGeneratorView: View {
         var lastError: Error?
 
         for spec in specs {
+            guard currentUser.isCurrent(operation) else { throw CancellationError() }
             do {
-                let response = try await auth.supabase.generateImage(
+                let response = try await auth.supabase.generateImageWithAccessToken(
                     prompt: spec.prompt,
                     provider: selectedProvider,
                     category: category,
                     quantity: 1,
                     size: spec.size,
                     referenceImages: activeReferences,
-                    idempotencyKey: UUID().uuidString.lowercased()
+                    idempotencyKey: UUID().uuidString.lowercased(),
+                    accessToken: accessToken
                 )
+                guard currentUser.isCurrent(operation) else { throw CancellationError() }
                 let encoded = response.imageBase64s?.first ?? response.imageBase64
                 guard let data = Data(base64Encoded: encoded),
                       let image = UIImage(data: data)

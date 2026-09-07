@@ -25,7 +25,10 @@ class IOSPurchaseLifecycleSourceTests(unittest.TestCase):
 
         self.assertIn("struct IAPTransactionDeliveryKey: Hashable", source)
         self.assertIn("authenticatedUserID: String?", source)
-        self.assertIn("authenticatedUserID: auth.userId", source)
+        # Ownership is captured once before suspension and reused for UI delivery.
+        self.assertIn("let deliveryUserID = auth.userId", source)
+        self.assertIn("authenticatedUserID: deliveryUserID", source)
+        self.assertIn("self.auth.userId == deliveryUserID", source)
 
     def test_transaction_completion_cache_distinguishes_later_revocation(self):
         source = IAP_SERVICE.read_text(encoding="utf-8")

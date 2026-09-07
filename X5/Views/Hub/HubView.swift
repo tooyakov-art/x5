@@ -777,11 +777,12 @@ struct HubView: View {
     }
 
     private func repairCurrentHubProfileIfNeeded() async {
+        guard let profileOperation = currentUser.operationContext() else { return }
         guard currentUser.profile?.showInHub == true,
               currentUser.profile?.isPublic != true,
               let token = await auth.freshAccessToken()
         else { return }
-        await currentUser.patchMany(["is_public": AnyEncodable(true)], accessToken: token)
+        await currentUser.patchMany(["is_public": AnyEncodable(true)], accessToken: token, operation: profileOperation)
     }
 
     private func applyProfileCategoriesOnEntry() {

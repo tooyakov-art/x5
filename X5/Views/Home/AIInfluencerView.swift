@@ -679,10 +679,14 @@ struct AIInfluencerView: View {
 
     private func generateCharacterImages() {
         guard canGenerateCharacterImage else { return }
+        guard let profileOperation = currentUser.operationContext() else { return }
         isWorking = true
         errorMessage = nil
         Task { @MainActor in
             defer { isWorking = false }
+            guard let token = await currentUser.accessTokenForOperation(profileOperation, refresh: {
+                await auth.freshAccessToken(minimumValidity: 5 * 60)
+            }) else { return }
             do {
                 var references: [ImageGenerationReference] = []
                 if let referenceData, confirmsImageRights {
@@ -694,15 +698,17 @@ struct AIInfluencerView: View {
                 }
                 let category = ImageGenerationCatalog.categories.first { $0.id == "ai_character" }
                     ?? ImageGenerationCatalog.custom
-                let response = try await auth.supabase.generateImage(
+                let response = try await auth.supabase.generateImageWithAccessToken(
                     prompt: characterPrompt,
                     provider: imageProvider,
                     category: category,
                     quantity: 2,
                     size: characterImageSize,
                     referenceImages: references,
-                    idempotencyKey: UUID().uuidString.lowercased()
+                    idempotencyKey: UUID().uuidString.lowercased(),
+                    accessToken: token
                 )
+                guard currentUser.isCurrent(profileOperation) else { return }
                 let encoded = response.imageBase64s ?? [response.imageBase64]
                 let ids = response.assetIds ?? []
                 imageCandidates = encoded.enumerated().compactMap { index, value in
@@ -714,7 +720,7 @@ struct AIInfluencerView: View {
                 }
                 guard !imageCandidates.isEmpty else { throw AIStudioServiceError.invalidResponse }
                 selectedImageID = imageCandidates.first?.id
-                if let remaining = response.creditsRemaining { currentUser.applyCreditsRemaining(remaining) }
+                if let remaining = response.creditsRemaining { currentUser.applyCreditsRemaining(remaining, for: profileOperation) }
             } catch { errorMessage = error.localizedDescription }
         }
     }
@@ -765,13 +771,16 @@ struct AIInfluencerView: View {
 
     private func generateVoiceTest() {
         guard !testPhrase.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard let profileOperation = currentUser.operationContext() else { return }
         isWorking = true
         errorMessage = nil
         voicePlayer?.pause()
         voicePlayer = nil
         Task { @MainActor in
             defer { isWorking = false }
-            guard let token = await auth.freshAccessToken(minimumValidity: 5 * 60) else { return }
+            guard let token = await currentUser.accessTokenForOperation(profileOperation, refresh: {
+                await auth.freshAccessToken(minimumValidity: 5 * 60)
+            }) else { return }
             do {
                 let result = try await voiceService.generate(
                     text: testPhrase,
@@ -782,10 +791,11 @@ struct AIInfluencerView: View {
                     requestID: UUID().uuidString.lowercased(),
                     accessToken: token
                 )
+                guard currentUser.isCurrent(profileOperation) else { return }
                 guard result.assetID != nil else { throw AIStudioServiceError.invalidResponse }
                 voiceResult = result
                 voicePlayer = AVPlayer(url: result.audioURL)
-                currentUser.applyCreditsRemaining(result.creditsRemaining)
+                currentUser.applyCreditsRemaining(result.creditsRemaining, for: profileOperation)
                 X5Feedback.success()
             } catch { errorMessage = error.localizedDescription }
         }

@@ -175,6 +175,7 @@ struct EditProfileView: View {
     }
 
     private func save() async {
+        guard let profileOperation = currentUser.operationContext() else { return }
         saving = true
         errorMessage = nil
         defer { saving = false }
@@ -210,7 +211,7 @@ struct EditProfileView: View {
             fields["user_role"] = AnyEncodable("specialist")
             fields["is_public"] = AnyEncodable(true)
         }
-        guard await currentUser.patchMany(fields, accessToken: token) else {
+        guard await currentUser.patchMany(fields, accessToken: token, operation: profileOperation) else {
             errorMessage = currentUser.error ?? loc.t("onb_save_failed")
             return
         }

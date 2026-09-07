@@ -515,6 +515,7 @@ struct VoiceGeneratorView: View {
 
     private func generate() {
         guard canGenerate, let userID = auth.userId else { return }
+        guard let profileOperation = currentUser.operationContext(for: userID) else { return }
         textFocused = false
         player?.pause()
         player = nil
@@ -554,9 +555,9 @@ struct VoiceGeneratorView: View {
                 generationTask = nil
             }
 
-            guard let token = await auth.freshAccessToken(
-                minimumValidity: 5 * 60
-            ) else {
+            guard let token = await currentUser.accessTokenForOperation(profileOperation, refresh: {
+                await auth.freshAccessToken(minimumValidity: 5 * 60)
+            }) else {
                 errorMessage = VoiceGenerationServiceError
                     .missingAccessToken
                     .localizedDescription
@@ -573,14 +574,17 @@ struct VoiceGeneratorView: View {
                     requestID: requestID,
                     accessToken: token,
                     refreshAccessToken: { rejectedToken in
-                        await auth.accessTokenAfterUnauthorized(
-                            rejectedAccessToken: rejectedToken,
-                            expectedUserId: userID
-                        )
+                        await currentUser.accessTokenForOperation(profileOperation, refresh: {
+                            await auth.accessTokenAfterUnauthorized(
+                                rejectedAccessToken: rejectedToken,
+                                expectedUserId: userID
+                            )
+                        })
                     }
                 )
                 try Task.checkCancellation()
-                currentUser.applyCreditsRemaining(response.creditsRemaining)
+                guard currentUser.isCurrent(profileOperation) else { return }
+                currentUser.applyCreditsRemaining(response.creditsRemaining, for: profileOperation)
                 result = response
                 resultRequestID = requestID
                 player = AVPlayer(url: response.audioURL)
