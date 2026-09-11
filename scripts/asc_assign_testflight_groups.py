@@ -1,4 +1,4 @@
-"""Guarded App Store Connect assignment of build 240 to internal beta groups."""
+"""Guarded App Store Connect assignment of build 241 to internal beta groups."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import time
 from typing import Iterable, Protocol
 
 
-EXPECTED_BUILD = "240"
+EXPECTED_BUILD = "241"
 EXPECTED_GROUP_NAMES = frozenset({"123", "321"})
 
 
@@ -32,7 +32,7 @@ def assign_internal_groups(
     build_number: str,
     group_names: Iterable[str],
 ) -> dict[str, str]:
-    """Assign exactly X5 build 240 to the two existing approved internal groups."""
+    """Assign exactly X5 build 241 to the two existing approved internal groups."""
 
     requested_names = tuple(group_names)
     if bundle_id != "com.x5studio.app":

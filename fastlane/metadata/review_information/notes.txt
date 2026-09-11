@@ -1,12 +1,16 @@
-Xfive marketing. Version 1.1.9 build 239.
-This update validates the selected StoreKit product before reporting purchase
-success and clarifies credit confirmation messages. It retains the reviewed
-1.1.8 feature set; no Kaspi, external checkout, or paid-lesson feature is added.
+Xfive marketing. Version 1.1.10 build 241.
+This update keeps the reviewed 1.1.9 payment safeguards: the selected StoreKit
+product is validated before any purchase success is reported and credit
+confirmation messages stay explicit. New in this build: a course author may
+sell a single lesson for in-app credits, and the Hub specialist counters and
+reload error banners are corrected. No Kaspi or external checkout is added;
+all paid content is unlocked only with credits bought through In-App Purchase.
 
 Profile -> Store offers repeatable consumable packs of 1000, 2000 and 5000
 credits. Verified badge is a separate auto-renewable monthly subscription.
 Prices are loaded from StoreKit. Cancelled, pending or unverified purchases
 do not show success. Server verification and exact-once delivery remain in place.
+A single lesson is priced by the server in credits and purchased atomically.
 
 Use the supplied appreview@x5studio.app demo credentials. The review account
 has a capped isolated Sandbox allowance to exercise the purchase flow.

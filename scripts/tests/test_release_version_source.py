@@ -50,13 +50,13 @@ class ReleaseVersionSourceTests(unittest.TestCase):
             r'APP_VERSION\s*=\s*"([^"]+)"', fastfile
         ).group(1)
 
-        self.assertEqual(marketing_version, "1.1.9")
-        # Internal acceptance candidate advances; pending Apple review stays
-        # explicitly pinned to 239 until device/payment acceptance is complete.
-        self.assertEqual(runtime_build_number, "240")
+        self.assertEqual(marketing_version, "1.1.10")
+        # 1.1.9 (239) is live in the App Store; 1.1.10 ships as build 241 from
+        # release/ios, so runtime and review targets are the same number again.
+        self.assertEqual(runtime_build_number, "241")
         self.assertEqual(fastlane_version, marketing_version)
         self.assertIn(
-            f"Version {marketing_version} build 239",
+            f"Version {marketing_version} build 241",
             review_notes,
         )
         self.assertIn(
@@ -64,7 +64,7 @@ class ReleaseVersionSourceTests(unittest.TestCase):
             submit_workflow,
         )
         self.assertIn(
-            'EXPECTED_BUILD: "239"',
+            'EXPECTED_BUILD: "241"',
             submit_workflow,
         )
         self.assertIn(
@@ -72,7 +72,7 @@ class ReleaseVersionSourceTests(unittest.TestCase):
             prepare_workflow,
         )
         self.assertIn(
-            'BUILD_NUMBER: "239"',
+            'BUILD_NUMBER: "241"',
             prepare_workflow,
         )
 
