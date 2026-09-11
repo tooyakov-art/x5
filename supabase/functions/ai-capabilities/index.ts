@@ -51,12 +51,23 @@ Deno.serve(async (req) => {
   }).catch(() => []);
   const rows =
     (Array.isArray(healthRows) ? healthRows : []) as ProviderHealthRow[];
+  // A provider failure (quota, balance, outage) must not switch a tool off
+  // forever: nothing re-probes a provider except a real generation, and the
+  // clients hide the tool while it is marked unavailable. After the retry
+  // window the failure is treated as stale so the next attempt is allowed;
+  // a genuine failure simply records itself again.
+  const PROVIDER_RETRY_AFTER_MS = 10 * 60 * 1000;
+  const failureIsStale = (row: ProviderHealthRow) => {
+    const stamp = Date.parse(row.updated_at ?? row.last_failure_at ?? "");
+    return Number.isFinite(stamp) && Date.now() - stamp >= PROVIDER_RETRY_AFTER_MS;
+  };
   const health: Record<string, ProviderHealth> = Object.fromEntries(
     rows.map((row) => [
       `${row.provider}:${row.capability}`,
       {
         configured: Boolean(configured[row.provider]),
-        available: Boolean(configured[row.provider]) && row.available !== false,
+        available: Boolean(configured[row.provider]) &&
+          (row.available !== false || failureIsStale(row)),
         model: row.model,
         last_success_at: row.last_success_at,
         last_failure_at: row.last_failure_at,
