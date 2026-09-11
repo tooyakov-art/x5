@@ -36,8 +36,28 @@ class LessonPurchaseSourceTests(unittest.TestCase):
         # Ownership requires the key the server said it stored.
         self.assertIn("guard status == .purchased || status == .alreadyOwned else { return false }", service)
         self.assertIn("return !lessonKey.isEmpty", service)
-        self.assertIn("func applyLessonPurchase(_ response: LessonPurchaseResponse)", profile)
+        self.assertIn(
+            "func applyLessonPurchase(_ response: LessonPurchaseResponse, for context: ProfileOperationContext?)",
+            profile,
+        )
+        # Same account/epoch fence as course purchases: a late response never
+        # lands on another signed-in user's profile.
+        self.assertIn(
+            "guard isCurrent(context), var profile, profile.id.lowercased() == context?.userID else { return }",
+            profile,
+        )
         self.assertIn("purchased.append(response.lessonKey)", profile)
+
+    def test_lesson_purchase_is_fenced_by_the_profile_operation(self):
+        view = COURSES_VIEW.read_text(encoding="utf-8")
+        lesson_flow = view.split("private func completeLessonPurchase(_ lesson: CourseLesson) async {", 1)[1]
+        lesson_flow = lesson_flow.split("private var sortedCategories", 1)[0]
+
+        self.assertIn("guard let profileOperation = currentUser.operationContext() else { return }", lesson_flow)
+        self.assertIn("await currentUser.accessTokenForOperation(profileOperation, refresh: {", lesson_flow)
+        self.assertIn("guard currentUser.isCurrent(profileOperation) else { return }", lesson_flow)
+        self.assertIn("currentUser.applyLessonPurchase(response, for: profileOperation)", lesson_flow)
+        self.assertNotIn("currentUser.applyLessonPurchase(response)\n", lesson_flow)
 
     def test_locked_sellable_lesson_offers_itself_before_the_whole_course(self):
         view = COURSES_VIEW.read_text(encoding="utf-8")
