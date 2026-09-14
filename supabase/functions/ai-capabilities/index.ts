@@ -59,7 +59,8 @@ Deno.serve(async (req) => {
   const PROVIDER_RETRY_AFTER_MS = 10 * 60 * 1000;
   const failureIsStale = (row: ProviderHealthRow) => {
     const stamp = Date.parse(row.updated_at ?? row.last_failure_at ?? "");
-    return Number.isFinite(stamp) && Date.now() - stamp >= PROVIDER_RETRY_AFTER_MS;
+    return Number.isFinite(stamp) &&
+      Date.now() - stamp >= PROVIDER_RETRY_AFTER_MS;
   };
   const health: Record<string, ProviderHealth> = Object.fromEntries(
     rows.map((row) => [
