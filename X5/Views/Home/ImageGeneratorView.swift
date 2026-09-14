@@ -28,6 +28,9 @@ struct ImageGeneratorView: View {
     @State private var referenceImages: [ImageReferenceAsset] = []
     @State private var isLoadingReferences = false
     @State private var selectedSalesAngle: SalesAngle
+    /// Layout recipe used by the previous sales creative, so the next one is
+    /// never the same composition twice in a row.
+    @State private var lastSalesVariationID: String?
     @State private var selectedYouTubeMode: YouTubeThumbnailMode
     @State private var selectedProductCardTypes: Set<String> = [ProductCardType.main.id]
     @State private var productName = ""
@@ -1016,12 +1019,15 @@ struct ImageGeneratorView: View {
                 errorMessage = "Опишите товар или услугу"
                 return
             }
+            let variation = SalesCreativeVariation.pick(excluding: lastSalesVariationID)
+            lastSalesVariationID = variation.id
             cleanPrompt = SalesCreativeBriefBuilder.compose(
                 description: rawPrompt,
                 angle: selectedSalesAngle,
                 hasMainPhoto: mainPhoto != nil,
                 hasLogo: logoImage != nil,
-                referenceCount: referenceImages.count
+                referenceCount: referenceImages.count,
+                variation: variation
             )
         } else {
             cleanPrompt = effectivePrompt(rawPrompt, hasReferences: !currentReferences.isEmpty)
@@ -1263,7 +1269,7 @@ struct ImageGeneratorView: View {
 
                 if assets.count == 1,
                    activeReferences.count < ImageGenerationReferencePolicy.maximumCount,
-                   let anchorData = image.jpegData(compressionQuality: 0.86) {
+                   let anchorData = Self.uploadPayload(for: image) {
                     activeReferences.append(ImageGenerationReference(
                         mimeType: "image/jpeg",
                         base64: anchorData.base64EncodedString(),
@@ -1330,19 +1336,8 @@ struct ImageGeneratorView: View {
 
         var loaded: [ImageReferenceAsset] = []
         for item in items.prefix(6) {
-            guard let data = try? await item.loadTransferable(type: Data.self),
-                  let uiImage = UIImage(data: data),
-                  let jpegData = uiImage.jpegData(compressionQuality: 0.88)
-            else { continue }
-            loaded.append(
-                ImageReferenceAsset(
-                    image: uiImage,
-                    reference: ImageGenerationReference(
-                        mimeType: "image/jpeg",
-                        base64: jpegData.base64EncodedString()
-                    )
-                )
-            )
+            guard let asset = await loadReferenceImage(item) else { continue }
+            loaded.append(asset)
         }
         referenceImages = loaded
     }
@@ -1351,15 +1346,39 @@ struct ImageGeneratorView: View {
         guard let item,
               let data = try? await item.loadTransferable(type: Data.self),
               let uiImage = UIImage(data: data),
-              let jpegData = uiImage.jpegData(compressionQuality: 0.88)
+              let encoded = Self.uploadPayload(for: uiImage)
         else { return nil }
         return ImageReferenceAsset(
             image: uiImage,
             reference: ImageGenerationReference(
                 mimeType: "image/jpeg",
-                base64: jpegData.base64EncodedString()
+                base64: encoded.base64EncodedString()
             )
         )
+    }
+
+    /// A photo straight out of the camera roll is 4000 px wide and several
+    /// megabytes; base64 inflates it by another third. A brief with a product
+    /// photo, a logo and a few references then became a multi-megabyte upload
+    /// that stalled or dropped on mobile data. Providers do not use more than
+    /// ~1536 px of a reference anyway, so downscale before encoding.
+    static func uploadPayload(for image: UIImage, maxDimension: CGFloat = 1536) -> Data? {
+        let longestSide = max(image.size.width, image.size.height)
+        guard longestSide > maxDimension, longestSide > 0 else {
+            return image.jpegData(compressionQuality: 0.88)
+        }
+        let scale = maxDimension / longestSide
+        let targetSize = CGSize(
+            width: (image.size.width * scale).rounded(),
+            height: (image.size.height * scale).rounded()
+        )
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        format.opaque = true
+        let resized = UIGraphicsImageRenderer(size: targetSize, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+        return resized.jpegData(compressionQuality: 0.88)
     }
 
     private func effectivePrompt(_ rawPrompt: String, hasReferences: Bool) -> String {
@@ -1369,7 +1388,7 @@ struct ImageGeneratorView: View {
     }
 
     private func makeReference(from image: UIImage) -> ImageGenerationReference? {
-        guard let jpegData = image.jpegData(compressionQuality: 0.88) else { return nil }
+        guard let jpegData = Self.uploadPayload(for: image) else { return nil }
         return ImageGenerationReference(
             mimeType: "image/jpeg",
             base64: jpegData.base64EncodedString(),

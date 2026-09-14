@@ -480,22 +480,79 @@ struct SalesAngle: Identifiable, Hashable {
     ]
 }
 
+/// One layout recipe. Two generations of the same product must not come back
+/// as the same picture, so every request picks a different recipe: without
+/// this the model keeps re-drawing its favourite composition and the creative
+/// looks unchanged even after the seller switches the angle.
+struct SalesCreativeVariation: Hashable {
+    let id: String
+    let directive: String
+
+    static let all: [SalesCreativeVariation] = [
+        .init(
+            id: "hero_bottom_text",
+            directive: "Композиция: крупный герой-визуал сверху, заголовок и оффер плотным блоком внизу."
+        ),
+        .init(
+            id: "left_text_right_product",
+            directive: "Композиция: текстовый блок слева, товар справа, между ними воздух и чёткая вертикальная сетка."
+        ),
+        .init(
+            id: "diagonal_accent",
+            directive: "Композиция: диагональная динамика, акцентная плашка под заголовком, товар смещён от центра."
+        ),
+        .init(
+            id: "top_headline_frame",
+            directive: "Композиция: заголовок крупно сверху во всю ширину, товар в рамке по центру, условия мелко снизу."
+        ),
+        .init(
+            id: "split_contrast",
+            directive: "Композиция: кадр поделён на два контрастных поля, в одном визуал, в другом текст."
+        ),
+        .init(
+            id: "closeup_overlay",
+            directive: "Композиция: макро-кадр товара на весь фон, текст поверх на затемнении, минимум элементов."
+        )
+    ]
+
+    static func pick(excluding previousID: String?) -> SalesCreativeVariation {
+        let pool = all.filter { $0.id != previousID }
+        return pool.randomElement() ?? all[0]
+    }
+}
+
 enum SalesCreativeBriefBuilder {
     static func compose(
         description: String,
         angle: SalesAngle,
         hasMainPhoto: Bool,
         hasLogo: Bool,
-        referenceCount: Int
+        referenceCount: Int,
+        variation: SalesCreativeVariation? = nil
     ) -> String {
-        let cleanDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The backend caps the whole prompt, so a very long description must
+        // never be able to push the angle, the composition rules or the roles
+        // of the uploaded images out of the brief.
+        let trimmedDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanDescription = trimmedDescription.count > 900
+            ? String(trimmedDescription.prefix(900))
+            : trimmedDescription
+        let toneExamples = angle.examples.prefix(3).joined(separator: " | ")
         var parts = [
             "Создай профессиональный рекламный баннер или карточку товара на русском языке.",
+            // The angle leads the brief: when it was one line in the middle the
+            // model ignored it and every angle produced the same headline.
+            "Главное требование — угол продаж: \(angle.title). \(angle.summary)",
+            "Заголовок обязан быть написан именно в этой логике. Интонация примерно такая: \(toneExamples)",
+            "Не пиши универсальный заголовок, который подошёл бы к любому другому углу продаж. Смени угол — меняется и заголовок, и акцент композиции.",
             "Товар или услуга: \(cleanDescription)",
-            "Угол продаж: \(angle.title). \(angle.summary)",
             "Самостоятельно напиши короткий продающий заголовок, понятный оффер и только нужный текст. Не копируй примеры дословно, если они не подходят к описанию.",
             "Сделай цельную профессиональную композицию. Текст должен быть частью дизайна, а не случайной надписью поверх изображения."
         ]
+
+        if let variation {
+            parts.append(variation.directive)
+        }
 
         var imageRoles: [String] = []
         var imageIndex = 1

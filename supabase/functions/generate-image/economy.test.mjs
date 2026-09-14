@@ -511,3 +511,32 @@ test("keeps deployed Google batch error parsing when syncing the function source
 
   assert.equal(message, "Batch request was rejected");
 });
+
+test("a structured brief is not truncated mid-instruction", () => {
+  // A sales creative sends the angle, the composition rules and the roles of
+  // the uploaded photo, logo and references. The old 900-character cap cut the
+  // tail off as soon as the seller typed a long description, so the uploaded
+  // pictures lost their meaning and every angle produced the same creative.
+  const brief = [
+    "Создай профессиональный рекламный баннер или карточку товара на русском языке.",
+    "Главное требование — угол продаж: Через боль клиента.",
+    "Товар или услуга: " + "детали предложения, цена и город. ".repeat(30),
+    "Роли загруженных материалов: изображение 1 является основной фотографией; " +
+    "изображение 2 является логотипом.",
+  ].join("\n");
+
+  assert.ok(brief.length > 900, "the regression case must exceed the old cap");
+  const request = normalizeGenerationRequest({
+    prompt: brief,
+    category: "target_ad",
+  });
+
+  assert.ok(request.prompt.includes("угол продаж"));
+  assert.ok(request.prompt.includes("изображение 2 является логотипом"));
+  assert.equal(request.prompt.length, brief.length);
+});
+
+test("an absurd prompt is still capped", () => {
+  const request = normalizeGenerationRequest({ prompt: "а".repeat(9000) });
+  assert.equal(request.prompt.length, economyModule.MAX_PROMPT_CHARACTERS);
+});

@@ -4,6 +4,7 @@ export const IMAGE_CREDIT_COST = IMAGE_PROVIDER_COST_CREDITS *
   CUSTOMER_PRICE_MULTIPLIER;
 export const MIN_IMAGE_QUANTITY = 1;
 export const MAX_IMAGE_QUANTITY = 4;
+export const MAX_PROMPT_CHARACTERS = 4000;
 
 export const IMAGE_REFERENCE_ROLES = Object.freeze([
   "source_image",
@@ -218,8 +219,14 @@ export function normalizeGenerationRequest(body) {
   if (prompt.length < 3) {
     throw new GenerationRequestError("prompt_required", 400);
   }
-  if (prompt.length > 900) {
-    prompt = prompt.slice(0, 900);
+  // 900 characters silently cut the tail off every structured brief: the sales
+  // creative sends the angle, the composition rules and the roles of the
+  // uploaded photo/logo/references, and a seller who types price, city and
+  // promo into the description pushed all of that past the limit. The result
+  // looked like "the angle does nothing" and "uploaded pictures are ignored".
+  // Both providers accept far longer prompts; keep a cap only as a safety net.
+  if (prompt.length > MAX_PROMPT_CHARACTERS) {
+    prompt = prompt.slice(0, MAX_PROMPT_CHARACTERS);
   }
 
   const requestedCategory = body?.category == null
