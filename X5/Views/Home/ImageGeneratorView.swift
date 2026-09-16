@@ -681,8 +681,13 @@ struct ImageGeneratorView: View {
                                     )
 
                                 Button {
+                                    // Drop it from the picker selection too:
+                                    // otherwise the photo is still selected and
+                                    // comes back on the next pick.
                                     referenceImages.removeAll { $0.id == item.id }
-                                    if referenceImages.isEmpty { referenceItems = [] }
+                                    referenceItems.removeAll {
+                                        Self.referenceIdentity($0) == item.id
+                                    }
                                 } label: {
                                     Image(systemName: "xmark.circle.fill")
                                         .font(.system(size: 20, weight: .bold))
@@ -1330,12 +1335,34 @@ struct ImageGeneratorView: View {
         .x5ClearGlass(cornerRadius: 18, highlight: 0.15)
     }
 
+    /// A picked photo keeps the same identity across reloads so the thumbnail
+    /// strip is never rebuilt from scratch.
+    private static func referenceIdentity(_ item: PhotosPickerItem) -> String {
+        item.itemIdentifier ?? String(describing: item)
+    }
+
     private func loadReferenceImages(_ items: [PhotosPickerItem]) async {
-        isLoadingReferences = true
+        let requested = Array(items.prefix(ImageReferenceSelection.maximumCount))
+        let requestedIDs = requested.map(Self.referenceIdentity)
+        let cached = Dictionary(
+            referenceImages.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let plan = ImageReferenceSelection.plan(
+            requested: requestedIDs,
+            alreadyLoaded: referenceImages.map(\.id)
+        )
+        guard plan.needsWork else { return }
+
+        if !plan.needsDecoding.isEmpty { isLoadingReferences = true }
         defer { isLoadingReferences = false }
 
         var loaded: [ImageReferenceAsset] = []
-        for item in items.prefix(6) {
+        for (item, id) in zip(requested, requestedIDs) {
+            if let existing = cached[id] {
+                loaded.append(existing)
+                continue
+            }
             guard let asset = await loadReferenceImage(item) else { continue }
             loaded.append(asset)
         }
@@ -1349,6 +1376,7 @@ struct ImageGeneratorView: View {
               let encoded = Self.uploadPayload(for: uiImage)
         else { return nil }
         return ImageReferenceAsset(
+            id: Self.referenceIdentity(item),
             image: uiImage,
             reference: ImageGenerationReference(
                 mimeType: "image/jpeg",
@@ -1438,8 +1466,38 @@ private struct GeneratedImageAsset: Identifiable {
     }
 }
 
+/// Reconciles the photos the picker reports against the ones already decoded.
+///
+/// Every pick used to rebuild the whole list: all previously chosen photos were
+/// decoded and re-encoded again, so the spinner kept running, and each
+/// thumbnail arrived with a brand new identity, which made SwiftUI rebuild the
+/// strip and scroll it back to the start.
+enum ImageReferenceSelection {
+    static let maximumCount = 6
+
+    struct Plan: Equatable {
+        /// Photos that are genuinely new and have to be decoded.
+        let needsDecoding: [String]
+        /// False when the picker reports exactly what is already on screen, so
+        /// nothing is reloaded and nothing is re-rendered.
+        let needsWork: Bool
+    }
+
+    static func plan(requested: [String], alreadyLoaded: [String]) -> Plan {
+        let loaded = Set(alreadyLoaded)
+        let needsDecoding = requested.filter { !loaded.contains($0) }
+        return Plan(
+            needsDecoding: needsDecoding,
+            needsWork: !needsDecoding.isEmpty || requested != alreadyLoaded
+        )
+    }
+}
+
 private struct ImageReferenceAsset: Identifiable {
-    let id = UUID()
+    /// Identity comes from the picked photo, not from a fresh UUID. A new
+    /// identity on every reload made SwiftUI tear the thumbnail strip down and
+    /// scroll it back to the start each time another photo was added.
+    let id: String
     let image: UIImage
     let reference: ImageGenerationReference
 
