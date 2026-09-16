@@ -50,13 +50,13 @@ class ReleaseVersionSourceTests(unittest.TestCase):
             r'APP_VERSION\s*=\s*"([^"]+)"', fastfile
         ).group(1)
 
-        self.assertEqual(marketing_version, "1.1.11")
-        # 1.1.9 (239) is live in the App Store; 1.1.10 ships as build 242 from
+        self.assertEqual(marketing_version, "1.1.12")
+        # 1.1.9 (239) is live in the App Store; 1.1.10 ships as build 243 from
         # release/ios, so runtime and review targets are the same number again.
-        self.assertEqual(runtime_build_number, "242")
+        self.assertEqual(runtime_build_number, "243")
         self.assertEqual(fastlane_version, marketing_version)
         self.assertIn(
-            f"Version {marketing_version} build 242",
+            f"Version {marketing_version} build 243",
             review_notes,
         )
         self.assertIn(
@@ -64,7 +64,7 @@ class ReleaseVersionSourceTests(unittest.TestCase):
             submit_workflow,
         )
         self.assertIn(
-            'EXPECTED_BUILD: "242"',
+            'EXPECTED_BUILD: "243"',
             submit_workflow,
         )
         self.assertIn(
@@ -72,7 +72,7 @@ class ReleaseVersionSourceTests(unittest.TestCase):
             prepare_workflow,
         )
         self.assertIn(
-            'BUILD_NUMBER: "242"',
+            'BUILD_NUMBER: "243"',
             prepare_workflow,
         )
 

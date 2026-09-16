@@ -1,11 +1,12 @@
-Xfive marketing. Version 1.1.11 build 242.
+Xfive marketing. Version 1.1.12 build 243.
 This update keeps the reviewed 1.1.10 payment safeguards: the selected StoreKit
 product is validated before any purchase success is reported and credit
 confirmation messages stay explicit. This build fixes the advertising creative
 generator: the sales angle chosen by the seller now reaches the model intact,
-uploaded product photos and logos keep their described roles, and reference
-images are downscaled before upload so a creative with photos completes on a
-mobile connection. No Kaspi or external checkout is added; all paid content is
+uploaded product photos and logos keep their described roles, picking a photo
+no longer reloads the photos already chosen, and reference images are
+downscaled before upload so a creative with photos completes on a mobile
+connection. No Kaspi or external checkout is added; all paid content is
 unlocked only with credits bought through In-App Purchase.
 
 Profile -> Store offers repeatable consumable packs of 1000, 2000 and 5000
